@@ -2142,7 +2142,9 @@ static struct clk_regmap *const axg_clk_regmaps[] = {
 	&axg_vclk_input,
 	&axg_vclk2_input,
 	&axg_vclk_div,
+	&axg_vclk_div1,
 	&axg_vclk2_div,
+	&axg_vclk2_div1,
 	&axg_vclk_div2_en,
 	&axg_vclk_div4_en,
 	&axg_vclk_div6_en,
@@ -2181,6 +2183,8 @@ static struct platform_driver axg_driver = {
 		.of_match_table = clkc_match_table,
 	},
 };
-
 module_platform_driver(axg_driver);
-MODULE_LICENSE("GPL v2");
+
+MODULE_DESCRIPTION("Amlogic AXG Main Clock Controller driver");
+MODULE_LICENSE("GPL");
+MODULE_IMPORT_NS(CLK_MESON);

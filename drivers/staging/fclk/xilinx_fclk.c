@@ -91,12 +91,11 @@ static int fclk_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int fclk_remove(struct platform_device *pdev)
+static void fclk_remove(struct platform_device *pdev)
 {
 	struct fclk_state *st = platform_get_drvdata(pdev);
 
 	clk_disable_unprepare(st->pl);
-	return 0;
 }
 
 static struct platform_driver fclk_driver = {

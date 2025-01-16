@@ -470,14 +470,12 @@ static int ufs_versal2_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int ufs_versal2_remove(struct platform_device *pdev)
+static void ufs_versal2_remove(struct platform_device *pdev)
 {
 	struct ufs_hba *hba = platform_get_drvdata(pdev);
 
 	pm_runtime_get_sync(&(pdev)->dev);
 	ufshcd_remove(hba);
-
-	return 0;
 }
 
 static const struct dev_pm_ops ufs_versal2_pm_ops = {

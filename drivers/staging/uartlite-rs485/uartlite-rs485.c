@@ -169,7 +169,8 @@ static int ulite_receive(struct uart_port *port, int stat)
 
 static int ulite_transmit(struct uart_port *port, int stat)
 {
-	struct circ_buf *xmit  = &port->state->xmit;
+	struct tty_port *tport = &port->state->port;
+	unsigned char ch;
 
 	if (stat & ULITE_STATUS_TXFULL)
 		return 0;
@@ -181,15 +182,16 @@ static int ulite_transmit(struct uart_port *port, int stat)
 		return 1;
 	}
 
-	if (uart_circ_empty(xmit) || uart_tx_stopped(port))
+	if (uart_tx_stopped(port))
 		return 0;
 
-	uart_out32(xmit->buf[xmit->tail], ULITE_TX, port);
-	xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
-	port->icount.tx++;
+	if (!uart_fifo_get(port, &ch))
+		return 0;
+
+	uart_out32(ch, ULITE_TX, port);
 
 	/* wake up */
-	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
+	if (kfifo_len(&tport->xmit_fifo) < WAKEUP_CHARS)
 		uart_write_wakeup(port);
 
 	return 1;
@@ -668,18 +670,16 @@ static int ulite_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int ulite_remove(struct platform_device *pdev)
+static void ulite_remove(struct platform_device *pdev)
 {
 	struct uart_port *port = dev_get_drvdata(&pdev->dev);
 	struct uartlite_data *pdata = port->private_data;
-	int rc;
 
 	clk_disable_unprepare(pdata->clk);
-	rc = ulite_release(&pdev->dev);
+	ulite_release(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
 	pm_runtime_set_suspended(&pdev->dev);
 	pm_runtime_dont_use_autosuspend(&pdev->dev);
-	return rc;
 }
 
 static struct platform_driver ulite_platform_driver = {

@@ -464,7 +464,7 @@ static void pata_parport_bus_release(struct device *dev)
 	/* nothing to do here but required to avoid warning on device removal */
 }
 
-static struct bus_type pata_parport_bus_type = {
+static const struct bus_type pata_parport_bus_type = {
 	.name = DRV_NAME,
 };
 
@@ -768,7 +768,6 @@ static struct parport_driver pata_parport_driver = {
 	.name = DRV_NAME,
 	.match_port = pata_parport_attach,
 	.detach = pata_parport_detach,
-	.devmodel = true,
 };
 
 static __init int pata_parport_init(void)

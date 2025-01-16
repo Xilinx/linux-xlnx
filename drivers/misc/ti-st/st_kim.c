@@ -198,7 +198,7 @@ static long read_local_version(struct kim_data_s *kim_gdata, char *bts_scr_name)
 {
 	unsigned short version = 0, chip = 0, min_ver = 0, maj_ver = 0;
 	static const char read_ver_cmd[] = { 0x01, 0x01, 0x10, 0x00 };
-	long timeout;
+	long time_left;
 
 	pr_debug("%s", __func__);
 
@@ -208,11 +208,11 @@ static long read_local_version(struct kim_data_s *kim_gdata, char *bts_scr_name)
 		return -EIO;
 	}
 
-	timeout = wait_for_completion_interruptible_timeout(
+	time_left = wait_for_completion_interruptible_timeout(
 		&kim_gdata->kim_rcvd, msecs_to_jiffies(CMD_RESP_TIME));
-	if (timeout <= 0) {
+	if (time_left <= 0) {
 		pr_err(" waiting for ver info- timed out or received signal");
-		return timeout ? -ERESTARTSYS : -ETIMEDOUT;
+		return time_left ? -ERESTARTSYS : -ETIMEDOUT;
 	}
 	reinit_completion(&kim_gdata->kim_rcvd);
 	/*
@@ -563,7 +563,7 @@ long st_kim_stop(void *kim_data)
 
 static int version_show(struct seq_file *s, void *unused)
 {
-	struct kim_data_s *kim_gdata = (struct kim_data_s *)s->private;
+	struct kim_data_s *kim_gdata = s->private;
 	seq_printf(s, "%04X %d.%d.%d\n", kim_gdata->version.full,
 			kim_gdata->version.chip, kim_gdata->version.maj_ver,
 			kim_gdata->version.min_ver);
@@ -572,7 +572,7 @@ static int version_show(struct seq_file *s, void *unused)
 
 static int list_show(struct seq_file *s, void *unused)
 {
-	struct kim_data_s *kim_gdata = (struct kim_data_s *)s->private;
+	struct kim_data_s *kim_gdata = s->private;
 	kim_st_list_protocols(kim_gdata->core_data, s);
 	return 0;
 }
@@ -590,7 +590,7 @@ static ssize_t store_dev_name(struct device *dev,
 {
 	struct kim_data_s *kim_data = dev_get_drvdata(dev);
 	pr_debug("storing dev name >%s<", buf);
-	strncpy(kim_data->dev_name, buf, count);
+	strscpy(kim_data->dev_name, buf, sizeof(kim_data->dev_name));
 	pr_debug("stored dev name >%s<", kim_data->dev_name);
 	return count;
 }
@@ -751,7 +751,8 @@ static int kim_probe(struct platform_device *pdev)
 	}
 
 	/* copying platform data */
-	strncpy(kim_gdata->dev_name, pdata->dev_name, UART_DEV_NAME_LEN);
+	strscpy(kim_gdata->dev_name, pdata->dev_name,
+		sizeof(kim_gdata->dev_name));
 	kim_gdata->flow_cntrl = pdata->flow_cntrl;
 	kim_gdata->baud_rate = pdata->baud_rate;
 	pr_info("sysfs entries created\n");
@@ -773,7 +774,7 @@ err_core_init:
 	return err;
 }
 
-static int kim_remove(struct platform_device *pdev)
+static void kim_remove(struct platform_device *pdev)
 {
 	/* free the GPIOs requested */
 	struct ti_st_plat_data	*pdata = pdev->dev.platform_data;
@@ -797,7 +798,6 @@ static int kim_remove(struct platform_device *pdev)
 
 	kfree(kim_gdata);
 	kim_gdata = NULL;
-	return 0;
 }
 
 static int kim_suspend(struct platform_device *pdev, pm_message_t state)
@@ -824,7 +824,7 @@ static int kim_resume(struct platform_device *pdev)
 /* entry point for ST KIM module, called in from ST Core */
 static struct platform_driver kim_platform_driver = {
 	.probe = kim_probe,
-	.remove = kim_remove,
+	.remove_new = kim_remove,
 	.suspend = kim_suspend,
 	.resume = kim_resume,
 	.driver = {

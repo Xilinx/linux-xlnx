@@ -1033,8 +1033,7 @@ static int snd_dummy_probe(struct platform_device *devptr)
 	dummy->card = card;
 	for (mdl = dummy_models; *mdl && model[dev]; mdl++) {
 		if (strcmp(model[dev], (*mdl)->name) == 0) {
-			printk(KERN_INFO
-				"snd-dummy: Using model '%s' for card %i\n",
+			pr_info("snd-dummy: Using model '%s' for card %i\n",
 				(*mdl)->name, card->number);
 			m = dummy->model = *mdl;
 			break;
@@ -1098,7 +1097,6 @@ static int snd_dummy_probe(struct platform_device *devptr)
 	return 0;
 }
 
-#ifdef CONFIG_PM_SLEEP
 static int snd_dummy_suspend(struct device *pdev)
 {
 	struct snd_card *card = dev_get_drvdata(pdev);
@@ -1115,11 +1113,7 @@ static int snd_dummy_resume(struct device *pdev)
 	return 0;
 }
 
-static SIMPLE_DEV_PM_OPS(snd_dummy_pm, snd_dummy_suspend, snd_dummy_resume);
-#define SND_DUMMY_PM_OPS	&snd_dummy_pm
-#else
-#define SND_DUMMY_PM_OPS	NULL
-#endif
+static DEFINE_SIMPLE_DEV_PM_OPS(snd_dummy_pm, snd_dummy_suspend, snd_dummy_resume);
 
 #define SND_DUMMY_DRIVER	"snd_dummy"
 
@@ -1127,7 +1121,7 @@ static struct platform_driver snd_dummy_driver = {
 	.probe		= snd_dummy_probe,
 	.driver		= {
 		.name	= SND_DUMMY_DRIVER,
-		.pm	= SND_DUMMY_PM_OPS,
+		.pm	= &snd_dummy_pm,
 	},
 };
 
@@ -1173,7 +1167,7 @@ static int __init alsa_card_dummy_init(void)
 	}
 	if (!cards) {
 #ifdef MODULE
-		printk(KERN_ERR "Dummy soundcard not found or device busy\n");
+		pr_err("Dummy soundcard not found or device busy\n");
 #endif
 		snd_dummy_unregister_all();
 		return -ENODEV;

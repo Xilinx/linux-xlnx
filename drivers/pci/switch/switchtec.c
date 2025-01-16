@@ -37,7 +37,9 @@ MODULE_PARM_DESC(nirqs, "number of interrupts to allocate (more may be useful fo
 static dev_t switchtec_devt;
 static DEFINE_IDA(switchtec_minor_ida);
 
-struct class *switchtec_class;
+const struct class switchtec_class = {
+	.name = "switchtec",
+};
 EXPORT_SYMBOL_GPL(switchtec_class);
 
 enum mrpc_state {
@@ -1308,13 +1310,6 @@ static void stdev_release(struct device *dev)
 {
 	struct switchtec_dev *stdev = to_stdev(dev);
 
-	if (stdev->dma_mrpc) {
-		iowrite32(0, &stdev->mmio_mrpc->dma_en);
-		flush_wc_buf(stdev);
-		writeq(0, &stdev->mmio_mrpc->dma_addr);
-		dma_free_coherent(&stdev->pdev->dev, sizeof(*stdev->dma_mrpc),
-				stdev->dma_mrpc, stdev->dma_mrpc_dma_addr);
-	}
 	kfree(stdev);
 }
 
@@ -1358,7 +1353,7 @@ static struct switchtec_dev *stdev_create(struct pci_dev *pdev)
 		return ERR_PTR(-ENOMEM);
 
 	stdev->alive = true;
-	stdev->pdev = pdev;
+	stdev->pdev = pci_dev_get(pdev);
 	INIT_LIST_HEAD(&stdev->mrpc_queue);
 	mutex_init(&stdev->mrpc_mutex);
 	stdev->mrpc_busy = 0;
@@ -1370,7 +1365,7 @@ static struct switchtec_dev *stdev_create(struct pci_dev *pdev)
 
 	dev = &stdev->dev;
 	device_initialize(dev);
-	dev->class = switchtec_class;
+	dev->class = &switchtec_class;
 	dev->parent = &pdev->dev;
 	dev->groups = switchtec_device_groups;
 	dev->release = stdev_release;
@@ -1391,6 +1386,7 @@ static struct switchtec_dev *stdev_create(struct pci_dev *pdev)
 	return stdev;
 
 err_put:
+	pci_dev_put(stdev->pdev);
 	put_device(&stdev->dev);
 	return ERR_PTR(rc);
 }
@@ -1644,6 +1640,18 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	return 0;
 }
 
+static void switchtec_exit_pci(struct switchtec_dev *stdev)
+{
+	if (stdev->dma_mrpc) {
+		iowrite32(0, &stdev->mmio_mrpc->dma_en);
+		flush_wc_buf(stdev);
+		writeq(0, &stdev->mmio_mrpc->dma_addr);
+		dma_free_coherent(&stdev->pdev->dev, sizeof(*stdev->dma_mrpc),
+				  stdev->dma_mrpc, stdev->dma_mrpc_dma_addr);
+		stdev->dma_mrpc = NULL;
+	}
+}
+
 static int switchtec_pci_probe(struct pci_dev *pdev,
 			       const struct pci_device_id *id)
 {
@@ -1666,7 +1674,7 @@ static int switchtec_pci_probe(struct pci_dev *pdev,
 	rc = switchtec_init_isr(stdev);
 	if (rc) {
 		dev_err(&stdev->dev, "failed to init isr.\n");
-		goto err_put;
+		goto err_exit_pci;
 	}
 
 	iowrite32(SWITCHTEC_EVENT_CLEAR |
@@ -1687,6 +1695,8 @@ static int switchtec_pci_probe(struct pci_dev *pdev,
 
 err_devadd:
 	stdev_kill(stdev);
+err_exit_pci:
+	switchtec_exit_pci(stdev);
 err_put:
 	ida_free(&switchtec_minor_ida, MINOR(stdev->dev.devt));
 	put_device(&stdev->dev);
@@ -1703,6 +1713,9 @@ static void switchtec_pci_remove(struct pci_dev *pdev)
 	ida_free(&switchtec_minor_ida, MINOR(stdev->dev.devt));
 	dev_info(&stdev->dev, "unregistered.\n");
 	stdev_kill(stdev);
+	switchtec_exit_pci(stdev);
+	pci_dev_put(stdev->pdev);
+	stdev->pdev = NULL;
 	put_device(&stdev->dev);
 }
 
@@ -1840,11 +1853,9 @@ static int __init switchtec_init(void)
 	if (rc)
 		return rc;
 
-	switchtec_class = class_create("switchtec");
-	if (IS_ERR(switchtec_class)) {
-		rc = PTR_ERR(switchtec_class);
+	rc = class_register(&switchtec_class);
+	if (rc)
 		goto err_create_class;
-	}
 
 	rc = pci_register_driver(&switchtec_pci_driver);
 	if (rc)
@@ -1855,7 +1866,7 @@ static int __init switchtec_init(void)
 	return 0;
 
 err_pci_register:
-	class_destroy(switchtec_class);
+	class_unregister(&switchtec_class);
 
 err_create_class:
 	unregister_chrdev_region(switchtec_devt, max_devices);
@@ -1867,7 +1878,7 @@ module_init(switchtec_init);
 static void __exit switchtec_exit(void)
 {
 	pci_unregister_driver(&switchtec_pci_driver);
-	class_destroy(switchtec_class);
+	class_unregister(&switchtec_class);
 	unregister_chrdev_region(switchtec_devt, max_devices);
 	ida_destroy(&switchtec_minor_ida);
 

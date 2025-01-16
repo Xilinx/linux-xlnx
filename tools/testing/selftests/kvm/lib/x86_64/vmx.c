@@ -54,7 +54,7 @@ int vcpu_enable_evmcs(struct kvm_vcpu *vcpu)
 	/* KVM should return supported EVMCS version range */
 	TEST_ASSERT(((evmcs_ver >> 8) >= (evmcs_ver & 0xff)) &&
 		    (evmcs_ver & 0xff) > 0,
-		    "Incorrect EVMCS version range: %x:%x\n",
+		    "Incorrect EVMCS version range: %x:%x",
 		    evmcs_ver & 0xff, evmcs_ver >> 8);
 
 	return evmcs_ver;
@@ -200,7 +200,7 @@ static inline void init_vmcs_control_fields(struct vmx_pages *vmx)
 	if (vmx->eptp_gpa) {
 		uint64_t ept_paddr;
 		struct eptPageTablePointer eptp = {
-			.memory_type = VMX_BASIC_MEM_TYPE_WB,
+			.memory_type = X86_MEMTYPE_WB,
 			.page_walk_length = 3, /* + 1 */
 			.ad_enabled = ept_vpid_cap_supported(VMX_EPT_VPID_CAP_AD_BITS),
 			.address = vmx->eptp_gpa >> PAGE_SHIFT_4K,
@@ -387,10 +387,10 @@ static void nested_create_pte(struct kvm_vm *vm,
 		 * this level.
 		 */
 		TEST_ASSERT(current_level != target_level,
-			    "Cannot create hugepage at level: %u, nested_paddr: 0x%lx\n",
+			    "Cannot create hugepage at level: %u, nested_paddr: 0x%lx",
 			    current_level, nested_paddr);
 		TEST_ASSERT(!pte->page_size,
-			    "Cannot create page table at level: %u, nested_paddr: 0x%lx\n",
+			    "Cannot create page table at level: %u, nested_paddr: 0x%lx",
 			    current_level, nested_paddr);
 	}
 }

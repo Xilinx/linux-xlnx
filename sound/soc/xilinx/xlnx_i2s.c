@@ -308,15 +308,13 @@ err_axis_clk:
 	return ret;
 }
 
-static int xlnx_i2s_remove(struct platform_device *pdev)
+static void xlnx_i2s_remove(struct platform_device *pdev)
 {
 	struct xlnx_i2s_drv_data *drv_data = dev_get_drvdata(&pdev->dev);
 
 	clk_disable_unprepare(drv_data->aud_mclk);
 	clk_disable_unprepare(drv_data->axis_clk);
 	clk_disable_unprepare(drv_data->axi_clk);
-
-	return 0;
 }
 
 static struct platform_driver xlnx_i2s_aud_driver = {

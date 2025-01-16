@@ -13,6 +13,7 @@
 #include <linux/net_tstamp.h>
 #include <linux/interrupt.h>
 #include <linux/phy/phy.h>
+#include <linux/workqueue.h>
 
 #if defined(CONFIG_ARCH_DMA_ADDR_T_64BIT) || defined(CONFIG_MACB_USE_HWSTAMP)
 #define MACB_EXT_DESC
@@ -415,7 +416,7 @@
 #define MACB_PFR_SIZE		1
 #define MACB_PTZ_OFFSET		13 /* Enable pause time zero interrupt */
 #define MACB_PTZ_SIZE		1
-#define MACB_WOL_OFFSET		28 /* Enable WOL received interrupt */
+#define MACB_WOL_OFFSET		14 /* Enable wake-on-lan interrupt */
 #define MACB_WOL_SIZE		1
 #define MACB_DRQFR_OFFSET	18 /* PTP Delay Request Frame Received */
 #define MACB_DRQFR_SIZE		1
@@ -646,7 +647,8 @@
 #define GEM_T2OFST_SIZE				7
 
 /* Bitfields in queue pointer registers */
-#define GEM_RBQP_DISABLE	0x1
+#define MACB_QUEUE_DISABLE_OFFSET		0 /* disable queue */
+#define MACB_QUEUE_DISABLE_SIZE			1
 
 /* Offset for screener type 2 compare values (T2CMPOFST).
  * Note the offset is applied after the specified point,
@@ -737,7 +739,6 @@
 #define MACB_CAPS_MIIONRGMII			0x00000200
 #define MACB_CAPS_NEED_TSUCLK			0x00000400
 #define MACB_CAPS_QUEUE_DISABLE			0x00000800
-#define MACB_CAPS_WOL				0x00001000
 #define MACB_CAPS_PCS				0x01000000
 #define MACB_CAPS_HIGH_SPEED			0x02000000
 #define MACB_CAPS_CLK_HW_CHG			0x04000000
@@ -1168,11 +1169,12 @@ struct macb_ptp_info {
 	s32 (*get_ptp_max_adj)(void);
 	unsigned int (*get_tsu_rate)(struct macb *bp);
 	int (*get_ts_info)(struct net_device *dev,
-			   struct ethtool_ts_info *info);
+			   struct kernel_ethtool_ts_info *info);
 	int (*get_hwtst)(struct net_device *netdev,
-			 struct ifreq *ifr);
+			 struct kernel_hwtstamp_config *tstamp_config);
 	int (*set_hwtst)(struct net_device *netdev,
-			 struct ifreq *ifr, int cmd);
+			 struct kernel_hwtstamp_config *tstamp_config,
+			 struct netlink_ext_ack *extack);
 };
 
 struct macb_pm_data {
@@ -1259,6 +1261,7 @@ struct macb {
 	void	(*macb_reg_writel)(struct macb *bp, int offset, u32 value);
 
 	struct macb_dma_desc	*rx_ring_tieoff;
+	dma_addr_t		rx_ring_tieoff_dma;
 	size_t			rx_buffer_size;
 
 	unsigned int		rx_ring_size;
@@ -1280,8 +1283,6 @@ struct macb {
 		struct macb_stats	macb;
 		struct gem_stats	gem;
 	}			hw_stats;
-
-	dma_addr_t		rx_ring_tieoff_dma;
 
 	struct macb_or_gem_ops	macbgem_ops;
 
@@ -1306,6 +1307,7 @@ struct macb {
 	unsigned int		jumbo_max_len;
 
 	u32			wol;
+	u32			wolopts;
 
 	/* holds value of rx watermark value for pbuf_rxcutthru register */
 	u32			rx_watermark;
@@ -1322,14 +1324,14 @@ struct macb {
 	struct ptp_clock *ptp_clock;
 	struct ptp_clock_info ptp_clock_info;
 	struct tsu_incr tsu_incr;
-	struct hwtstamp_config tstamp_config;
+	struct kernel_hwtstamp_config tstamp_config;
 
 	/* RX queue filer rule set*/
 	struct ethtool_rx_fs_list rx_fs_list;
 	spinlock_t rx_fs_lock;
 	unsigned int max_tuples;
 
-	struct tasklet_struct	hresp_err_tasklet;
+	struct work_struct	hresp_err_bh_work;
 
 	int	rx_bd_rd_prefetch;
 	int	tx_bd_rd_prefetch;
@@ -1371,8 +1373,12 @@ static inline void gem_ptp_do_rxstamp(struct macb *bp, struct sk_buff *skb, stru
 
 	gem_ptp_rxstamp(bp, skb, desc);
 }
-int gem_get_hwtst(struct net_device *dev, struct ifreq *rq);
-int gem_set_hwtst(struct net_device *dev, struct ifreq *ifr, int cmd);
+
+int gem_get_hwtst(struct net_device *dev,
+		  struct kernel_hwtstamp_config *tstamp_config);
+int gem_set_hwtst(struct net_device *dev,
+		  struct kernel_hwtstamp_config *tstamp_config,
+		  struct netlink_ext_ack *extack);
 #else
 static inline void gem_ptp_init(struct net_device *ndev) { }
 static inline void gem_ptp_remove(struct net_device *ndev) { }

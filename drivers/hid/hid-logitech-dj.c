@@ -13,7 +13,7 @@
 #include <linux/kfifo.h>
 #include <linux/delay.h>
 #include <linux/usb.h> /* For to_usb_interface for kvm extra intf check */
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include "hid-ids.h"
 
 #define DJ_MAX_PAIRED_DEVICES			7
@@ -965,9 +965,7 @@ static void logi_hidpp_dev_conn_notif_equad(struct hid_device *hdev,
 		}
 		break;
 	case REPORT_TYPE_MOUSE:
-		workitem->reports_supported |= STD_MOUSE | HIDPP;
-		if (djrcv_dev->type == recvr_type_mouse_only)
-			workitem->reports_supported |= MULTIMEDIA;
+		workitem->reports_supported |= STD_MOUSE | HIDPP | MULTIMEDIA;
 		break;
 	}
 }
@@ -1286,8 +1284,10 @@ static int logi_dj_recv_switch_to_dj_mode(struct dj_receiver_dev *djrcv_dev,
 		 */
 		msleep(50);
 
-		if (retval)
+		if (retval) {
+			kfree(dj_report);
 			return retval;
+		}
 	}
 
 	/*
@@ -1695,12 +1695,11 @@ static int logi_dj_raw_event(struct hid_device *hdev,
 		}
 		/*
 		 * Mouse-only receivers send unnumbered mouse data. The 27 MHz
-		 * receiver uses 6 byte packets, the nano receiver 8 bytes,
-		 * the lightspeed receiver (Pro X Superlight) 13 bytes.
+		 * receiver uses 6 byte packets, the nano receiver 8 bytes.
 		 */
 		if (djrcv_dev->unnumbered_application == HID_GD_MOUSE &&
-		    size <= 13){
-			u8 mouse_report[14];
+		    size <= 8) {
+			u8 mouse_report[9];
 
 			/* Prepend report id */
 			mouse_report[0] = REPORT_TYPE_MOUSE;
@@ -1984,10 +1983,6 @@ static const struct hid_device_id logi_dj_receivers[] = {
 	  HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH,
 		USB_DEVICE_ID_LOGITECH_NANO_RECEIVER_LIGHTSPEED_1_1),
 	 .driver_data = recvr_type_gaming_hidpp},
-	{ /* Logitech lightspeed receiver (0xc547) */
-	  HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH,
-		USB_DEVICE_ID_LOGITECH_NANO_RECEIVER_LIGHTSPEED_1_2),
-	 .driver_data = recvr_type_gaming_hidpp},
 
 	{ /* Logitech 27 MHz HID++ 1.0 receiver (0xc513) */
 	  HID_USB_DEVICE(USB_VENDOR_ID_LOGITECH, USB_DEVICE_ID_MX3000_RECEIVER),
@@ -2052,6 +2047,7 @@ static struct hid_driver logi_djreceiver_driver = {
 
 module_hid_driver(logi_djreceiver_driver);
 
+MODULE_DESCRIPTION("HID driver for Logitech receivers");
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Logitech");
 MODULE_AUTHOR("Nestor Lopez Casado");

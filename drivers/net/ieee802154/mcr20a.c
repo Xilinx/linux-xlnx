@@ -12,7 +12,6 @@
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/skbuff.h>
-#include <linux/of_gpio.h>
 #include <linux/regmap.h>
 #include <linux/ieee802154.h>
 #include <linux/debugfs.h>
@@ -251,7 +250,7 @@ static const struct regmap_config mcr20a_dar_regmap = {
 	.val_bits		= 8,
 	.write_flag_mask	= REGISTER_ACCESS | REGISTER_WRITE,
 	.read_flag_mask		= REGISTER_ACCESS | REGISTER_READ,
-	.cache_type		= REGCACHE_RBTREE,
+	.cache_type		= REGCACHE_MAPLE,
 	.writeable_reg		= mcr20a_dar_writeable,
 	.readable_reg		= mcr20a_dar_readable,
 	.volatile_reg		= mcr20a_dar_volatile,
@@ -387,7 +386,7 @@ static const struct regmap_config mcr20a_iar_regmap = {
 	.val_bits		= 8,
 	.write_flag_mask	= REGISTER_ACCESS | REGISTER_WRITE | IAR_INDEX,
 	.read_flag_mask		= REGISTER_ACCESS | REGISTER_READ  | IAR_INDEX,
-	.cache_type		= REGCACHE_RBTREE,
+	.cache_type		= REGCACHE_MAPLE,
 	.writeable_reg		= mcr20a_iar_writeable,
 	.readable_reg		= mcr20a_iar_readable,
 	.volatile_reg		= mcr20a_iar_volatile,
@@ -1303,15 +1302,12 @@ mcr20a_probe(struct spi_device *spi)
 		irq_type = IRQF_TRIGGER_FALLING;
 
 	ret = devm_request_irq(&spi->dev, spi->irq, mcr20a_irq_isr,
-			       irq_type, dev_name(&spi->dev), lp);
+			       irq_type | IRQF_NO_AUTOEN, dev_name(&spi->dev), lp);
 	if (ret) {
 		dev_err(&spi->dev, "could not request_irq for mcr20a\n");
 		ret = -ENODEV;
 		goto free_dev;
 	}
-
-	/* disable_irq by default and wait for starting hardware */
-	disable_irq(spi->irq);
 
 	ret = ieee802154_register_hw(hw);
 	if (ret) {

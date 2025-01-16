@@ -8,11 +8,6 @@
 
 #include "mcb-internal.h"
 
-struct mcb_parse_priv {
-	phys_addr_t mapbase;
-	void __iomem *base;
-};
-
 #define for_each_chameleon_cell(dtype, p)	\
 	for ((dtype) = get_next_dtype((p));	\
 	     (dtype) != CHAMELEON_DTYPE_END;	\
@@ -106,7 +101,7 @@ static int chameleon_parse_gdd(struct mcb_bus *bus,
 	return 0;
 
 err:
-	put_device(&mdev->dev);
+	mcb_free_dev(mdev);
 
 	return ret;
 }

@@ -329,7 +329,7 @@ static ssize_t mei_write(struct file *file, const char __user *ubuf,
 	}
 
 	if (!mei_cl_is_connected(cl)) {
-		cl_err(dev, cl, "is not connected");
+		cl_dbg(dev, cl, "is not connected");
 		rets = -ENODEV;
 		goto out;
 	}
@@ -460,10 +460,10 @@ end:
 /**
  * mei_vt_support_check - check if client support vtags
  *
- * Locking: called under "dev->device_lock" lock
- *
  * @dev: mei_device
  * @uuid: client UUID
+ *
+ * Locking: called under "dev->device_lock" lock
  *
  * Return:
  *	0 - supported
@@ -587,8 +587,8 @@ static int mei_ioctl_connect_vtag(struct file *file,
 }
 
 /**
- * mei_ioctl_client_notify_request -
- *     propagate event notification request to client
+ * mei_ioctl_client_notify_request - propagate event notification
+ *                                   request to client
  *
  * @file: pointer to file structure
  * @request: 0 - disable, 1 - enable
@@ -1176,7 +1176,6 @@ static const struct file_operations mei_fops = {
 	.poll = mei_poll,
 	.fsync = mei_fsync,
 	.fasync = mei_fasync,
-	.llseek = no_llseek
 };
 
 /**

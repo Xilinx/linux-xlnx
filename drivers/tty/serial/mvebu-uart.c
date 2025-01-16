@@ -187,9 +187,9 @@ static unsigned int mvebu_uart_tx_empty(struct uart_port *port)
 	unsigned long flags;
 	unsigned int st;
 
-	spin_lock_irqsave(&port->lock, flags);
+	uart_port_lock_irqsave(port, &flags);
 	st = readl(port->membase + UART_STAT);
-	spin_unlock_irqrestore(&port->lock, flags);
+	uart_port_unlock_irqrestore(port, flags);
 
 	return (st & STAT_TX_EMP) ? TIOCSER_TEMT : 0;
 }
@@ -219,12 +219,10 @@ static void mvebu_uart_stop_tx(struct uart_port *port)
 static void mvebu_uart_start_tx(struct uart_port *port)
 {
 	unsigned int ctl;
-	struct circ_buf *xmit = &port->state->xmit;
+	unsigned char c;
 
-	if (IS_EXTENDED(port) && !uart_circ_empty(xmit)) {
-		writel(xmit->buf[xmit->tail], port->membase + UART_TSH(port));
-		uart_xmit_advance(port, 1);
-	}
+	if (IS_EXTENDED(port) && uart_fifo_get(port, &c))
+		writel(c, port->membase + UART_TSH(port));
 
 	ctl = readl(port->membase + UART_INTR(port));
 	ctl |= CTRL_TX_RDY_INT(port);
@@ -249,14 +247,14 @@ static void mvebu_uart_break_ctl(struct uart_port *port, int brk)
 	unsigned int ctl;
 	unsigned long flags;
 
-	spin_lock_irqsave(&port->lock, flags);
+	uart_port_lock_irqsave(port, &flags);
 	ctl = readl(port->membase + UART_CTRL(port));
 	if (brk == -1)
 		ctl |= CTRL_SND_BRK_SEQ;
 	else
 		ctl &= ~CTRL_SND_BRK_SEQ;
 	writel(ctl, port->membase + UART_CTRL(port));
-	spin_unlock_irqrestore(&port->lock, flags);
+	uart_port_unlock_irqrestore(port, flags);
 }
 
 static void mvebu_uart_rx_chars(struct uart_port *port, unsigned int status)
@@ -540,7 +538,7 @@ static void mvebu_uart_set_termios(struct uart_port *port,
 	unsigned long flags;
 	unsigned int baud, min_baud, max_baud;
 
-	spin_lock_irqsave(&port->lock, flags);
+	uart_port_lock_irqsave(port, &flags);
 
 	port->read_status_mask = STAT_RX_RDY(port) | STAT_OVR_ERR |
 		STAT_TX_RDY(port) | STAT_TX_FIFO_FUL;
@@ -589,7 +587,7 @@ static void mvebu_uart_set_termios(struct uart_port *port,
 		uart_update_timeout(port, termios->c_cflag, baud);
 	}
 
-	spin_unlock_irqrestore(&port->lock, flags);
+	uart_port_unlock_irqrestore(port, flags);
 }
 
 static const char *mvebu_uart_type(struct uart_port *port)
@@ -735,9 +733,9 @@ static void mvebu_uart_console_write(struct console *co, const char *s,
 	int locked = 1;
 
 	if (oops_in_progress)
-		locked = spin_trylock_irqsave(&port->lock, flags);
+		locked = uart_port_trylock_irqsave(port, &flags);
 	else
-		spin_lock_irqsave(&port->lock, flags);
+		uart_port_lock_irqsave(port, &flags);
 
 	ier = readl(port->membase + UART_CTRL(port)) & CTRL_BRK_INT;
 	intr = readl(port->membase + UART_INTR(port)) &
@@ -758,7 +756,7 @@ static void mvebu_uart_console_write(struct console *co, const char *s,
 	}
 
 	if (locked)
-		spin_unlock_irqrestore(&port->lock, flags);
+		uart_port_unlock_irqrestore(port, flags);
 }
 
 static int mvebu_uart_console_setup(struct console *co, char *options)

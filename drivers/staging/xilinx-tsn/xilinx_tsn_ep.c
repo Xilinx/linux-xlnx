@@ -22,6 +22,7 @@
 #include <linux/of_platform.h>
 #include <linux/of_address.h>
 #include <linux/of_net.h>
+#include <linux/platform_device.h>
 #include <linux/skbuff.h>
 
 #include "xilinx_axienet_tsn.h"
@@ -331,7 +332,7 @@ static int netdev_set_mac_address(struct net_device *ndev, void *p)
  * Return: 0
  */
 static int tsn_ethtools_get_ts_info(struct net_device *ndev,
-				    struct ethtool_ts_info *info)
+				    struct kernel_ethtool_ts_info *info)
 {
 	info->phc_index = axienet_phc_index;
 	return 0;
@@ -631,7 +632,7 @@ free_netdev:
 	return ret;
 }
 
-static int tsn_ep_remove(struct platform_device *pdev)
+static void tsn_ep_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
 
@@ -641,8 +642,6 @@ static int tsn_ep_remove(struct platform_device *pdev)
 	unregister_netdev(ndev);
 
 	free_netdev(ndev);
-
-	return 0;
 }
 
 static struct platform_driver tsn_ep_driver = {

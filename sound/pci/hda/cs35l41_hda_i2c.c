@@ -30,7 +30,7 @@ static int cs35l41_hda_i2c_probe(struct i2c_client *clt)
 		return -ENODEV;
 
 	return cs35l41_hda_probe(&clt->dev, device_name, clt->addr, clt->irq,
-				 devm_regmap_init_i2c(clt, &cs35l41_regmap_i2c));
+				 devm_regmap_init_i2c(clt, &cs35l41_regmap_i2c), I2C);
 }
 
 static void cs35l41_hda_i2c_remove(struct i2c_client *clt)
@@ -39,7 +39,7 @@ static void cs35l41_hda_i2c_remove(struct i2c_client *clt)
 }
 
 static const struct i2c_device_id cs35l41_hda_i2c_id[] = {
-	{ "cs35l41-hda", 0 },
+	{ "cs35l41-hda" },
 	{}
 };
 

@@ -136,8 +136,15 @@ pte_tlbinv(struct intel_context *ce,
 	i915_request_get(rq);
 	i915_request_add(rq);
 
-	/* Short sleep to sanitycheck the batch is spinning before we begin */
-	msleep(10);
+	/*
+	 * Short sleep to sanitycheck the batch is spinning before we begin.
+	 * FIXME: Why is GSC so slow?
+	 */
+	if (ce->engine->class == OTHER_CLASS)
+		msleep(200);
+	else
+		msleep(10);
+
 	if (va == vb) {
 		if (!i915_request_completed(rq)) {
 			pr_err("%s(%s): Semaphore sanitycheck failed %llx, with alignment %llx, using PTE size %x (phys %x, sg %x)\n",
@@ -199,8 +206,8 @@ static struct drm_i915_gem_object *create_lmem(struct intel_gt *gt)
 	 * of pages. To succeed with both allocations, especially in case of Small
 	 * BAR, try to allocate no more than quarter of mappable memory.
 	 */
-	if (mr && size > mr->io_size / 4)
-		size = mr->io_size / 4;
+	if (mr && size > resource_size(&mr->io) / 4)
+		size = resource_size(&mr->io) / 4;
 
 	return i915_gem_object_create_lmem(gt->i915, size, I915_BO_ALLOC_CONTIGUOUS);
 }

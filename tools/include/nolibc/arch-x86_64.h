@@ -161,7 +161,7 @@
  * 2) The deepest stack frame should be zero (the %rbp).
  *
  */
-void __attribute__((weak, noreturn, optimize("Os", "omit-frame-pointer"))) __no_stack_protector _start(void)
+void __attribute__((weak, noreturn)) __nolibc_entrypoint __no_stack_protector _start(void)
 {
 	__asm__ volatile (
 		"xor  %ebp, %ebp\n"       /* zero the stack frame                            */
@@ -170,7 +170,49 @@ void __attribute__((weak, noreturn, optimize("Os", "omit-frame-pointer"))) __no_
 		"call _start_c\n"         /* transfer to c runtime                           */
 		"hlt\n"                   /* ensure it does not return                       */
 	);
-	__builtin_unreachable();
+	__nolibc_entrypoint_epilogue();
 }
+
+#define NOLIBC_ARCH_HAS_MEMMOVE
+void *memmove(void *dst, const void *src, size_t len);
+
+#define NOLIBC_ARCH_HAS_MEMCPY
+void *memcpy(void *dst, const void *src, size_t len);
+
+#define NOLIBC_ARCH_HAS_MEMSET
+void *memset(void *dst, int c, size_t len);
+
+__asm__ (
+".section .text.nolibc_memmove_memcpy\n"
+".weak memmove\n"
+".weak memcpy\n"
+"memmove:\n"
+"memcpy:\n"
+	"movq %rdx, %rcx\n\t"
+	"movq %rdi, %rax\n\t"
+	"movq %rdi, %rdx\n\t"
+	"subq %rsi, %rdx\n\t"
+	"cmpq %rcx, %rdx\n\t"
+	"jb   1f\n\t"
+	"rep movsb\n\t"
+	"retq\n"
+"1:" /* backward copy */
+	"leaq -1(%rdi, %rcx, 1), %rdi\n\t"
+	"leaq -1(%rsi, %rcx, 1), %rsi\n\t"
+	"std\n\t"
+	"rep movsb\n\t"
+	"cld\n\t"
+	"retq\n"
+
+".section .text.nolibc_memset\n"
+".weak memset\n"
+"memset:\n"
+	"xchgl %eax, %esi\n\t"
+	"movq  %rdx, %rcx\n\t"
+	"pushq %rdi\n\t"
+	"rep stosb\n\t"
+	"popq  %rax\n\t"
+	"retq\n"
+);
 
 #endif /* _NOLIBC_ARCH_X86_64_H */

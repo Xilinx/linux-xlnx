@@ -16,10 +16,12 @@
  * GNU General Public License for more details.
  */
 
+#include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/module.h>
 #include <linux/miscdevice.h>
 #include <linux/of_net.h>
+#include <linux/platform_device.h>
 #include "xilinx_tsn_switch.h"
 
 static struct miscdevice switch_dev;
@@ -1899,11 +1901,10 @@ err:
 	return ret;
 }
 
-static int tsnswitch_remove(struct platform_device *pdev)
+static void tsnswitch_remove(struct platform_device *pdev)
 {
 	misc_deregister(&switch_dev);
 	xlnx_switchdev_remove();
-	return 0;
 }
 
 static struct platform_driver tsnswitch_driver = {

@@ -4,11 +4,58 @@
 #include <linux/err.h>
 #include <linux/string.h>
 #include <linux/bitfield.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 #include <ufs/ufs.h>
+#include <ufs/unipro.h>
 #include "ufs-sysfs.h"
 #include "ufshcd-priv.h"
+
+static const char *ufs_pa_pwr_mode_to_string(enum ufs_pa_pwr_mode mode)
+{
+	switch (mode) {
+	case FAST_MODE:		return "FAST_MODE";
+	case SLOW_MODE:		return "SLOW_MODE";
+	case FASTAUTO_MODE:	return "FASTAUTO_MODE";
+	case SLOWAUTO_MODE:	return "SLOWAUTO_MODE";
+	default:		return "UNKNOWN";
+	}
+}
+
+static const char *ufs_hs_gear_rate_to_string(enum ufs_hs_gear_rate rate)
+{
+	switch (rate) {
+	case PA_HS_MODE_A:	return "HS_RATE_A";
+	case PA_HS_MODE_B:	return "HS_RATE_B";
+	default:		return "UNKNOWN";
+	}
+}
+
+static const char *ufs_pwm_gear_to_string(enum ufs_pwm_gear_tag gear)
+{
+	switch (gear) {
+	case UFS_PWM_G1:	return "PWM_GEAR1";
+	case UFS_PWM_G2:	return "PWM_GEAR2";
+	case UFS_PWM_G3:	return "PWM_GEAR3";
+	case UFS_PWM_G4:	return "PWM_GEAR4";
+	case UFS_PWM_G5:	return "PWM_GEAR5";
+	case UFS_PWM_G6:	return "PWM_GEAR6";
+	case UFS_PWM_G7:	return "PWM_GEAR7";
+	default:		return "UNKNOWN";
+	}
+}
+
+static const char *ufs_hs_gear_to_string(enum ufs_hs_gear_tag gear)
+{
+	switch (gear) {
+	case UFS_HS_G1:	return "HS_GEAR1";
+	case UFS_HS_G2:	return "HS_GEAR2";
+	case UFS_HS_G3:	return "HS_GEAR3";
+	case UFS_HS_G4:	return "HS_GEAR4";
+	case UFS_HS_G5:	return "HS_GEAR5";
+	default:	return "UNKNOWN";
+	}
+}
 
 static const char *ufshcd_uic_link_state_to_string(
 			enum uic_link_state state)
@@ -151,6 +198,24 @@ static u32 ufshcd_us_to_ahit(unsigned int timer)
 	       FIELD_PREP(UFSHCI_AHIBERN8_SCALE_MASK, scale);
 }
 
+static int ufshcd_read_hci_reg(struct ufs_hba *hba, u32 *val, unsigned int reg)
+{
+	down(&hba->host_sem);
+	if (!ufshcd_is_user_access_allowed(hba)) {
+		up(&hba->host_sem);
+		return -EBUSY;
+	}
+
+	ufshcd_rpm_get_sync(hba);
+	ufshcd_hold(hba);
+	*val = ufshcd_readl(hba, reg);
+	ufshcd_release(hba);
+	ufshcd_rpm_put_sync(hba);
+
+	up(&hba->host_sem);
+	return 0;
+}
+
 static ssize_t auto_hibern8_show(struct device *dev,
 				 struct device_attribute *attr, char *buf)
 {
@@ -161,23 +226,11 @@ static ssize_t auto_hibern8_show(struct device *dev,
 	if (!ufshcd_is_auto_hibern8_supported(hba))
 		return -EOPNOTSUPP;
 
-	down(&hba->host_sem);
-	if (!ufshcd_is_user_access_allowed(hba)) {
-		ret = -EBUSY;
-		goto out;
-	}
+	ret = ufshcd_read_hci_reg(hba, &ahit, REG_AUTO_HIBERNATE_IDLE_TIMER);
+	if (ret)
+		return ret;
 
-	pm_runtime_get_sync(hba->dev);
-	ufshcd_hold(hba);
-	ahit = ufshcd_readl(hba, REG_AUTO_HIBERNATE_IDLE_TIMER);
-	ufshcd_release(hba);
-	pm_runtime_put_sync(hba->dev);
-
-	ret = sysfs_emit(buf, "%d\n", ufshcd_ahit_to_us(ahit));
-
-out:
-	up(&hba->host_sem);
-	return ret;
+	return sysfs_emit(buf, "%d\n", ufshcd_ahit_to_us(ahit));
 }
 
 static ssize_t auto_hibern8_store(struct device *dev,
@@ -255,6 +308,35 @@ out:
 	return res < 0 ? res : count;
 }
 
+static ssize_t rtc_update_ms_show(struct device *dev, struct device_attribute *attr,
+				  char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%d\n", hba->dev_info.rtc_update_period);
+}
+
+static ssize_t rtc_update_ms_store(struct device *dev, struct device_attribute *attr,
+				   const char *buf, size_t count)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+	unsigned int ms;
+	bool resume_period_update = false;
+
+	if (kstrtouint(buf, 0, &ms))
+		return -EINVAL;
+
+	if (!hba->dev_info.rtc_update_period && ms > 0)
+		resume_period_update =  true;
+	/* Minimum and maximum update frequency should be synchronized with all UFS vendors */
+	hba->dev_info.rtc_update_period = ms;
+
+	if (resume_period_update)
+		schedule_delayed_work(&hba->ufs_rtc_update_work,
+				      msecs_to_jiffies(hba->dev_info.rtc_update_period));
+	return count;
+}
+
 static ssize_t enable_wb_buf_flush_show(struct device *dev,
 				    struct device_attribute *attr,
 				    char *buf)
@@ -329,6 +411,53 @@ static ssize_t wb_flush_threshold_store(struct device *dev,
 	return count;
 }
 
+/**
+ * pm_qos_enable_show - sysfs handler to show pm qos enable value
+ * @dev: device associated with the UFS controller
+ * @attr: sysfs attribute handle
+ * @buf: buffer for sysfs file
+ *
+ * Print 1 if PM QoS feature is enabled, 0 if disabled.
+ *
+ * Returns number of characters written to @buf.
+ */
+static ssize_t pm_qos_enable_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%d\n", hba->pm_qos_enabled);
+}
+
+/**
+ * pm_qos_enable_store - sysfs handler to store value
+ * @dev: device associated with the UFS controller
+ * @attr: sysfs attribute handle
+ * @buf: buffer for sysfs file
+ * @count: stores buffer characters count
+ *
+ * Input 0 to disable PM QoS and 1 value to enable.
+ * Default state: 1
+ *
+ * Return: number of characters written to @buf on success, < 0 upon failure.
+ */
+static ssize_t pm_qos_enable_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+	bool value;
+
+	if (kstrtobool(buf, &value))
+		return -EINVAL;
+
+	if (value)
+		ufshcd_pm_qos_init(hba);
+	else
+		ufshcd_pm_qos_exit(hba);
+
+	return count;
+}
+
 static DEVICE_ATTR_RW(rpm_lvl);
 static DEVICE_ATTR_RO(rpm_target_dev_state);
 static DEVICE_ATTR_RO(rpm_target_link_state);
@@ -339,6 +468,8 @@ static DEVICE_ATTR_RW(auto_hibern8);
 static DEVICE_ATTR_RW(wb_on);
 static DEVICE_ATTR_RW(enable_wb_buf_flush);
 static DEVICE_ATTR_RW(wb_flush_threshold);
+static DEVICE_ATTR_RW(rtc_update_ms);
+static DEVICE_ATTR_RW(pm_qos_enable);
 
 static struct attribute *ufs_sysfs_ufshcd_attrs[] = {
 	&dev_attr_rpm_lvl.attr,
@@ -351,6 +482,8 @@ static struct attribute *ufs_sysfs_ufshcd_attrs[] = {
 	&dev_attr_wb_on.attr,
 	&dev_attr_enable_wb_buf_flush.attr,
 	&dev_attr_wb_flush_threshold.attr,
+	&dev_attr_rtc_update_ms.attr,
+	&dev_attr_pm_qos_enable.attr,
 	NULL
 };
 
@@ -390,6 +523,58 @@ static struct attribute *ufs_sysfs_capabilities_attrs[] = {
 static const struct attribute_group ufs_sysfs_capabilities_group = {
 	.name = "capabilities",
 	.attrs = ufs_sysfs_capabilities_attrs,
+};
+
+static ssize_t version_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "0x%x\n", hba->ufs_version);
+}
+
+static ssize_t product_id_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	int ret;
+	u32 val;
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	ret = ufshcd_read_hci_reg(hba, &val, REG_CONTROLLER_PID);
+	if (ret)
+		return ret;
+
+	return sysfs_emit(buf, "0x%x\n", val);
+}
+
+static ssize_t man_id_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	int ret;
+	u32 val;
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	ret = ufshcd_read_hci_reg(hba, &val, REG_CONTROLLER_MID);
+	if (ret)
+		return ret;
+
+	return sysfs_emit(buf, "0x%x\n", val);
+}
+
+static DEVICE_ATTR_RO(version);
+static DEVICE_ATTR_RO(product_id);
+static DEVICE_ATTR_RO(man_id);
+
+static struct attribute *ufs_sysfs_ufshci_cap_attrs[] = {
+	&dev_attr_version.attr,
+	&dev_attr_product_id.attr,
+	&dev_attr_man_id.attr,
+	NULL
+};
+
+static const struct attribute_group ufs_sysfs_ufshci_group = {
+	.name = "ufshci_capabilities",
+	.attrs = ufs_sysfs_ufshci_cap_attrs,
 };
 
 static ssize_t monitor_enable_show(struct device *dev,
@@ -626,6 +811,78 @@ static struct attribute *ufs_sysfs_monitor_attrs[] = {
 static const struct attribute_group ufs_sysfs_monitor_group = {
 	.name = "monitor",
 	.attrs = ufs_sysfs_monitor_attrs,
+};
+
+static ssize_t lane_show(struct device *dev, struct device_attribute *attr,
+			 char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%u\n", hba->pwr_info.lane_rx);
+}
+
+static ssize_t mode_show(struct device *dev, struct device_attribute *attr,
+			 char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%s\n", ufs_pa_pwr_mode_to_string(hba->pwr_info.pwr_rx));
+}
+
+static ssize_t rate_show(struct device *dev, struct device_attribute *attr,
+			 char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%s\n", ufs_hs_gear_rate_to_string(hba->pwr_info.hs_rate));
+}
+
+static ssize_t gear_show(struct device *dev, struct device_attribute *attr,
+			 char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%s\n", hba->pwr_info.hs_rate ?
+			  ufs_hs_gear_to_string(hba->pwr_info.gear_rx) :
+			  ufs_pwm_gear_to_string(hba->pwr_info.gear_rx));
+}
+
+static ssize_t dev_pm_show(struct device *dev, struct device_attribute *attr,
+			   char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%s\n", ufshcd_ufs_dev_pwr_mode_to_string(hba->curr_dev_pwr_mode));
+}
+
+static ssize_t link_state_show(struct device *dev,
+			       struct device_attribute *attr, char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%s\n", ufshcd_uic_link_state_to_string(hba->uic_link_state));
+}
+
+static DEVICE_ATTR_RO(lane);
+static DEVICE_ATTR_RO(mode);
+static DEVICE_ATTR_RO(rate);
+static DEVICE_ATTR_RO(gear);
+static DEVICE_ATTR_RO(dev_pm);
+static DEVICE_ATTR_RO(link_state);
+
+static struct attribute *ufs_power_info_attrs[] = {
+	&dev_attr_lane.attr,
+	&dev_attr_mode.attr,
+	&dev_attr_rate.attr,
+	&dev_attr_gear.attr,
+	&dev_attr_dev_pm.attr,
+	&dev_attr_link_state.attr,
+	NULL
+};
+
+static const struct attribute_group ufs_sysfs_power_info_group = {
+	.name = "power_info",
+	.attrs = ufs_power_info_attrs,
 };
 
 static ssize_t ufs_sysfs_read_desc_param(struct ufs_hba *hba,
@@ -1141,6 +1398,78 @@ static const struct attribute_group ufs_sysfs_flags_group = {
 	.attrs = ufs_sysfs_device_flags,
 };
 
+static ssize_t max_number_of_rtt_show(struct device *dev,
+				      struct device_attribute *attr, char *buf)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+	u32 rtt;
+	int ret;
+
+	down(&hba->host_sem);
+	if (!ufshcd_is_user_access_allowed(hba)) {
+		up(&hba->host_sem);
+		return -EBUSY;
+	}
+
+	ufshcd_rpm_get_sync(hba);
+	ret = ufshcd_query_attr(hba, UPIU_QUERY_OPCODE_READ_ATTR,
+		QUERY_ATTR_IDN_MAX_NUM_OF_RTT, 0, 0, &rtt);
+	ufshcd_rpm_put_sync(hba);
+
+	if (ret)
+		goto out;
+
+	ret = sysfs_emit(buf, "0x%08X\n", rtt);
+
+out:
+	up(&hba->host_sem);
+	return ret;
+}
+
+static ssize_t max_number_of_rtt_store(struct device *dev,
+				       struct device_attribute *attr,
+				       const char *buf, size_t count)
+{
+	struct ufs_hba *hba = dev_get_drvdata(dev);
+	struct ufs_dev_info *dev_info = &hba->dev_info;
+	struct scsi_device *sdev;
+	unsigned int rtt;
+	int ret;
+
+	if (kstrtouint(buf, 0, &rtt))
+		return -EINVAL;
+
+	if (rtt > dev_info->rtt_cap) {
+		dev_err(dev, "rtt can be at most bDeviceRTTCap\n");
+		return -EINVAL;
+	}
+
+	down(&hba->host_sem);
+	if (!ufshcd_is_user_access_allowed(hba)) {
+		ret = -EBUSY;
+		goto out;
+	}
+
+	ufshcd_rpm_get_sync(hba);
+
+	shost_for_each_device(sdev, hba->host)
+		blk_mq_freeze_queue(sdev->request_queue);
+
+	ret = ufshcd_query_attr(hba, UPIU_QUERY_OPCODE_WRITE_ATTR,
+		QUERY_ATTR_IDN_MAX_NUM_OF_RTT, 0, 0, &rtt);
+
+	shost_for_each_device(sdev, hba->host)
+		blk_mq_unfreeze_queue(sdev->request_queue);
+
+	ufshcd_rpm_put_sync(hba);
+
+out:
+	up(&hba->host_sem);
+	return ret < 0 ? ret : count;
+}
+
+static DEVICE_ATTR_RW(max_number_of_rtt);
+
 static inline bool ufshcd_is_wb_attrs(enum attr_idn idn)
 {
 	return idn >= QUERY_ATTR_IDN_WB_FLUSH_STATUS &&
@@ -1188,7 +1517,6 @@ UFS_ATTRIBUTE(max_data_in_size, _MAX_DATA_IN);
 UFS_ATTRIBUTE(max_data_out_size, _MAX_DATA_OUT);
 UFS_ATTRIBUTE(reference_clock_frequency, _REF_CLK_FREQ);
 UFS_ATTRIBUTE(configuration_descriptor_lock, _CONF_DESC_LOCK);
-UFS_ATTRIBUTE(max_number_of_rtt, _MAX_NUM_OF_RTT);
 UFS_ATTRIBUTE(exception_event_control, _EE_CONTROL);
 UFS_ATTRIBUTE(exception_event_status, _EE_STATUS);
 UFS_ATTRIBUTE(ffu_status, _FFU_STATUS);
@@ -1232,7 +1560,9 @@ static const struct attribute_group ufs_sysfs_attributes_group = {
 static const struct attribute_group *ufs_sysfs_groups[] = {
 	&ufs_sysfs_default_group,
 	&ufs_sysfs_capabilities_group,
+	&ufs_sysfs_ufshci_group,
 	&ufs_sysfs_monitor_group,
+	&ufs_sysfs_power_info_group,
 	&ufs_sysfs_device_descriptor_group,
 	&ufs_sysfs_interconnect_descriptor_group,
 	&ufs_sysfs_geometry_descriptor_group,

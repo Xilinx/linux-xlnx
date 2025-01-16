@@ -30,7 +30,7 @@ void tcp_eat_skb(struct sock *sk, struct sk_buff *skb)
 }
 
 static int bpf_tcp_ingress(struct sock *sk, struct sk_psock *psock,
-			   struct sk_msg *msg, u32 apply_bytes, int flags)
+			   struct sk_msg *msg, u32 apply_bytes)
 {
 	bool apply = apply_bytes;
 	struct scatterlist *sge;
@@ -167,7 +167,7 @@ int tcp_bpf_sendmsg_redir(struct sock *sk, bool ingress,
 	if (unlikely(!psock))
 		return -EPIPE;
 
-	ret = ingress ? bpf_tcp_ingress(sk, psock, msg, bytes, flags) :
+	ret = ingress ? bpf_tcp_ingress(sk, psock, msg, bytes) :
 			tcp_bpf_push_locked(sk, msg, bytes, flags, false);
 	sk_psock_put(sk, psock);
 	return ret;
@@ -221,11 +221,11 @@ static int tcp_bpf_recvmsg_parser(struct sock *sk,
 				  int flags,
 				  int *addr_len)
 {
-	struct tcp_sock *tcp = tcp_sk(sk);
 	int peek = flags & MSG_PEEK;
-	u32 seq = tcp->copied_seq;
 	struct sk_psock *psock;
+	struct tcp_sock *tcp;
 	int copied = 0;
+	u32 seq;
 
 	if (unlikely(flags & MSG_ERRQUEUE))
 		return inet_recv_error(sk, msg, len, addr_len);
@@ -238,7 +238,8 @@ static int tcp_bpf_recvmsg_parser(struct sock *sk,
 		return tcp_recvmsg(sk, msg, len, flags, addr_len);
 
 	lock_sock(sk);
-
+	tcp = tcp_sk(sk);
+	seq = tcp->copied_seq;
 	/* We may have received data on the sk_receive_queue pre-accept and
 	 * then we can not use read_skb in this context because we haven't
 	 * assigned a sk_socket yet so have no link to the ops. The work-around
@@ -577,7 +578,7 @@ out_err:
 		err = sk_stream_error(sk, msg->msg_flags, err);
 	release_sock(sk);
 	sk_psock_put(sk, psock);
-	return copied ? copied : err;
+	return copied > 0 ? copied : err;
 }
 
 enum {

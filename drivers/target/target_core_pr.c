@@ -19,7 +19,7 @@
 #include <linux/fcntl.h>
 #include <linux/fs.h>
 #include <scsi/scsi_proto.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 #include <target/target_core_base.h>
 #include <target/target_core_backend.h>
@@ -470,6 +470,7 @@ static int core_scsi3_pr_seq_non_holder(struct se_cmd *cmd, u32 pr_reg_type,
 	case INQUIRY:
 	case LOG_SENSE:
 	case SERVICE_ACTION_IN_12:
+	case READ_CAPACITY:
 	case REPORT_LUNS:
 	case REQUEST_SENSE:
 	case PERSISTENT_RESERVE_IN:

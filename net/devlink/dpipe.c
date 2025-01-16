@@ -289,7 +289,7 @@ err_table_put:
 	return err;
 }
 
-int devlink_nl_cmd_dpipe_table_get(struct sk_buff *skb, struct genl_info *info)
+int devlink_nl_dpipe_table_get_doit(struct sk_buff *skb, struct genl_info *info)
 {
 	struct devlink *devlink = info->user_ptr[0];
 	const char *table_name =  NULL;
@@ -562,8 +562,8 @@ send_done:
 	return genlmsg_reply(dump_ctx.skb, info);
 }
 
-int devlink_nl_cmd_dpipe_entries_get(struct sk_buff *skb,
-				     struct genl_info *info)
+int devlink_nl_dpipe_entries_get_doit(struct sk_buff *skb,
+				      struct genl_info *info)
 {
 	struct devlink *devlink = info->user_ptr[0];
 	struct devlink_dpipe_table *table;
@@ -712,8 +712,8 @@ err_table_put:
 	return err;
 }
 
-int devlink_nl_cmd_dpipe_headers_get(struct sk_buff *skb,
-				     struct genl_info *info)
+int devlink_nl_dpipe_headers_get_doit(struct sk_buff *skb,
+				      struct genl_info *info)
 {
 	struct devlink *devlink = info->user_ptr[0];
 
@@ -746,8 +746,8 @@ static int devlink_dpipe_table_counters_set(struct devlink *devlink,
 	return 0;
 }
 
-int devlink_nl_cmd_dpipe_table_counters_set(struct sk_buff *skb,
-					    struct genl_info *info)
+int devlink_nl_dpipe_table_counters_set_doit(struct sk_buff *skb,
+					     struct genl_info *info)
 {
 	struct devlink *devlink = info->user_ptr[0];
 	const char *table_name;
@@ -839,7 +839,7 @@ EXPORT_SYMBOL_GPL(devlink_dpipe_table_counter_enabled);
  */
 int devl_dpipe_table_register(struct devlink *devlink,
 			      const char *table_name,
-			      struct devlink_dpipe_table_ops *table_ops,
+			      const struct devlink_dpipe_table_ops *table_ops,
 			      void *priv, bool counter_control_extern)
 {
 	struct devlink_dpipe_table *table;

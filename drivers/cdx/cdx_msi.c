@@ -16,15 +16,13 @@
 
 #include "cdx.h"
 
-static void cdx_msi_write_msg(struct irq_data *irq_data,
-			      struct msi_msg *msg)
+static void cdx_msi_write_msg(struct irq_data *irq_data, struct msi_msg *msg)
 {
 	struct msi_desc *msi_desc = irq_data_get_msi_desc(irq_data);
 	struct cdx_device *cdx_dev = to_cdx_device(msi_desc->dev);
 
-	/* We would not operate on msg here rather we wait for
-	 * irq_bus_sync_unlock() to be called from preemptible
-	 * task context.
+	/* We would not operate on msg here rather we wait for irq_bus_sync_unlock()
+	 * to be called from preemptible task context.
 	 */
 	msi_desc->msg = *msg;
 	cdx_dev->msi_write_pending = true;
@@ -44,7 +42,6 @@ static void cdx_msi_write_irq_unlock(struct irq_data *irq_data)
 	struct cdx_device *cdx_dev = to_cdx_device(msi_desc->dev);
 	struct cdx_controller *cdx = cdx_dev->cdx;
 	struct cdx_device_config dev_config;
-	int ret;
 
 	if (!cdx_dev->msi_write_pending) {
 		mutex_unlock(&cdx_dev->irqchip_lock);
@@ -56,30 +53,31 @@ static void cdx_msi_write_irq_unlock(struct irq_data *irq_data)
 
 	dev_config.msi.msi_index = msi_desc->msi_index;
 	dev_config.msi.data = msi_desc->msg.data;
-	dev_config.msi.addr = ((u64)(msi_desc->msg.address_hi) << 32) |
-			      msi_desc->msg.address_lo;
+	dev_config.msi.addr = ((u64)(msi_desc->msg.address_hi) << 32) | msi_desc->msg.address_lo;
 
+	/*
+	 * dev_configure() is a controller callback which can interact with
+	 * Firmware or other entities, and can sleep, so invoke this function
+	 * outside of the mutex held region.
+	 */
 	dev_config.type = CDX_DEV_MSI_CONF;
-	ret = cdx->ops->dev_configure(cdx, cdx_dev->bus_num, cdx_dev->dev_num,
-				      &dev_config);
-	if (ret)
-		dev_err(&cdx_dev->dev, "Write MSI failed to CDX controller\n");
+	if (cdx->ops->dev_configure)
+		cdx->ops->dev_configure(cdx, cdx_dev->bus_num, cdx_dev->dev_num, &dev_config);
 }
 
 int cdx_enable_msi(struct cdx_device *cdx_dev)
 {
 	struct cdx_controller *cdx = cdx_dev->cdx;
 	struct cdx_device_config dev_config;
-	int ret;
 
 	dev_config.type = CDX_DEV_MSI_ENABLE;
 	dev_config.msi_enable = true;
-	ret = cdx->ops->dev_configure(cdx, cdx_dev->bus_num, cdx_dev->dev_num,
-				      &dev_config);
-	if (ret)
-		dev_err(&cdx_dev->dev, "MSI enable failed\n");
+	if (cdx->ops->dev_configure) {
+		return cdx->ops->dev_configure(cdx, cdx_dev->bus_num, cdx_dev->dev_num,
+					       &dev_config);
+	}
 
-	return ret;
+	return -EOPNOTSUPP;
 }
 EXPORT_SYMBOL_GPL(cdx_enable_msi);
 
@@ -87,14 +85,11 @@ void cdx_disable_msi(struct cdx_device *cdx_dev)
 {
 	struct cdx_controller *cdx = cdx_dev->cdx;
 	struct cdx_device_config dev_config;
-	int ret;
 
 	dev_config.type = CDX_DEV_MSI_ENABLE;
 	dev_config.msi_enable = false;
-	ret = cdx->ops->dev_configure(cdx, cdx_dev->bus_num, cdx_dev->dev_num,
-				      &dev_config);
-	if (ret)
-		dev_err(&cdx_dev->dev, "MSI disable failed\n");
+	if (cdx->ops->dev_configure)
+		cdx->ops->dev_configure(cdx, cdx_dev->bus_num, cdx_dev->dev_num, &dev_config);
 }
 EXPORT_SYMBOL_GPL(cdx_disable_msi);
 
@@ -109,32 +104,14 @@ static struct irq_chip cdx_msi_irq_chip = {
 	.irq_bus_sync_unlock	= cdx_msi_write_irq_unlock
 };
 
-int cdx_msi_domain_alloc_irqs(struct device *dev, unsigned int irq_count)
-{
-	int ret;
-
-	ret = msi_setup_device_data(dev);
-	if (ret)
-		return ret;
-
-	ret = msi_domain_alloc_irqs_range(dev, MSI_DEFAULT_DOMAIN,
-					  0, irq_count - 1);
-	if (ret)
-		dev_err(dev, "Failed to allocate IRQs: %d\n", ret);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(cdx_msi_domain_alloc_irqs);
-
-/* Convert an msi_desc to a globally unique identifier. */
+/* Convert an msi_desc to a unique identifier within the domain. */
 static irq_hw_number_t cdx_domain_calc_hwirq(struct cdx_device *dev,
 					     struct msi_desc *desc)
 {
 	return ((irq_hw_number_t)dev->msi_dev_id << 10) | desc->msi_index;
 }
 
-static void cdx_msi_set_desc(msi_alloc_info_t *arg,
-			     struct msi_desc *desc)
+static void cdx_msi_set_desc(msi_alloc_info_t *arg, struct msi_desc *desc)
 {
 	arg->desc = desc;
 	arg->hwirq = cdx_domain_calc_hwirq(to_cdx_device(desc->dev), desc);
@@ -147,19 +124,21 @@ static int cdx_msi_prepare(struct irq_domain *msi_domain,
 	struct cdx_device *cdx_dev = to_cdx_device(dev);
 	struct device *parent = cdx_dev->cdx->dev;
 	struct msi_domain_info *msi_info;
-	u32 dev_id = 0;
+	u32 dev_id;
 	int ret;
 
 	/* Retrieve device ID from requestor ID using parent device */
-	ret = of_map_id(parent->of_node, cdx_dev->msi_dev_id, "msi-map",
-			"msi-map-mask", NULL, &dev_id);
+	ret = of_map_id(parent->of_node, cdx_dev->msi_dev_id, "msi-map", "msi-map-mask",
+			NULL, &dev_id);
 	if (ret) {
 		dev_err(dev, "of_map_id failed for MSI: %d\n", ret);
 		return ret;
 	}
 
+#ifdef GENERIC_MSI_DOMAIN_OPS
 	/* Set the device Id to be passed to the GIC-ITS */
 	info->scratchpad[0].ul = dev_id;
+#endif
 
 	msi_info = msi_get_domain_info(msi_domain->parent);
 
@@ -194,15 +173,13 @@ struct irq_domain *cdx_msi_domain_init(struct device *dev)
 		return NULL;
 	}
 
-	parent = irq_find_matching_fwnode(of_node_to_fwnode(parent_node),
-					  DOMAIN_BUS_NEXUS);
+	parent = irq_find_matching_fwnode(of_node_to_fwnode(parent_node), DOMAIN_BUS_NEXUS);
 	if (!parent || !msi_get_domain_info(parent)) {
 		dev_err(dev, "unable to locate ITS domain\n");
 		return NULL;
 	}
 
-	cdx_msi_domain = msi_create_irq_domain(fwnode_handle, &cdx_msi_domain_info,
-					       parent);
+	cdx_msi_domain = msi_create_irq_domain(fwnode_handle, &cdx_msi_domain_info, parent);
 	if (!cdx_msi_domain) {
 		dev_err(dev, "unable to create CDX-MSI domain\n");
 		return NULL;

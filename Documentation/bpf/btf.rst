@@ -272,10 +272,8 @@ In this case, if the base type is an int type, it must be a regular int type:
   * ``BTF_INT_OFFSET()`` must be 0.
   * ``BTF_INT_BITS()`` must be equal to ``{1,2,4,8,16} * 8``.
 
-The following kernel patch introduced ``kind_flag`` and explained why both
-modes exist:
-
-  https://github.com/torvalds/linux/commit/9d5f9f701b1891466fb3dbb1806ad97716f95cc3#diff-fa650a64fdd3968396883d2fe8215ff3
+Commit 9d5f9f701b18 introduced ``kind_flag`` and explains why both modes
+exist.
 
 2.2.6 BTF_KIND_ENUM
 ~~~~~~~~~~~~~~~~~~~
@@ -370,7 +368,7 @@ No additional type data follow ``btf_type``.
   * ``info.kind_flag``: 0
   * ``info.kind``: BTF_KIND_FUNC
   * ``info.vlen``: linkage information (BTF_FUNC_STATIC, BTF_FUNC_GLOBAL
-                   or BTF_FUNC_EXTERN)
+                   or BTF_FUNC_EXTERN - see :ref:`BTF_Function_Linkage_Constants`)
   * ``type``: a BTF_KIND_FUNC_PROTO type
 
 No additional type data follow ``btf_type``.
@@ -426,9 +424,8 @@ following data::
         __u32   linkage;
     };
 
-``struct btf_var`` encoding:
-  * ``linkage``: currently only static variable 0, or globally allocated
-                 variable in ELF sections 1
+``btf_var.linkage`` may take the values: BTF_VAR_STATIC, BTF_VAR_GLOBAL_ALLOCATED or BTF_VAR_GLOBAL_EXTERN -
+see :ref:`BTF_Var_Linkage_Constants`.
 
 Not all type of global variables are supported by LLVM at this point.
 The following is currently available:
@@ -550,6 +547,38 @@ The ``btf_enum64`` encoding:
 
 If the original enum value is signed and the size is less than 8,
 that value will be sign extended into 8 bytes.
+
+2.3 Constant Values
+-------------------
+
+.. _BTF_Function_Linkage_Constants:
+
+2.3.1 Function Linkage Constant Values
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. table:: Function Linkage Values and Meanings
+
+  ===================  =====  ===========
+  kind                 value  description
+  ===================  =====  ===========
+  ``BTF_FUNC_STATIC``  0x0    definition of subprogram not visible outside containing compilation unit
+  ``BTF_FUNC_GLOBAL``  0x1    definition of subprogram visible outside containing compilation unit
+  ``BTF_FUNC_EXTERN``  0x2    declaration of a subprogram whose definition is outside the containing compilation unit
+  ===================  =====  ===========
+
+
+.. _BTF_Var_Linkage_Constants:
+
+2.3.2 Variable Linkage Constant Values
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. table:: Variable Linkage Values and Meanings
+
+  ============================  =====  ===========
+  kind                          value  description
+  ============================  =====  ===========
+  ``BTF_VAR_STATIC``            0x0    definition of global variable not visible outside containing compilation unit
+  ``BTF_VAR_GLOBAL_ALLOCATED``  0x1    definition of global variable visible outside containing compilation unit
+  ``BTF_VAR_GLOBAL_EXTERN``     0x2    declaration of global variable whose definition is outside the containing compilation unit
+  ============================  =====  ===========
 
 3. BTF Kernel API
 =================

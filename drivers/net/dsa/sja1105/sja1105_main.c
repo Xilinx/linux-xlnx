@@ -21,6 +21,8 @@
 #include <linux/if_bridge.h>
 #include <linux/if_ether.h>
 #include <linux/dsa/8021q.h>
+#include <linux/units.h>
+
 #include "sja1105.h"
 #include "sja1105_tas.h"
 
@@ -1186,9 +1188,8 @@ static int sja1105_parse_ports_node(struct sja1105_private *priv,
 				    struct device_node *ports_node)
 {
 	struct device *dev = &priv->spidev->dev;
-	struct device_node *child;
 
-	for_each_available_child_of_node(ports_node, child) {
+	for_each_available_child_of_node_scoped(ports_node, child) {
 		struct device_node *phy_node;
 		phy_interface_t phy_mode;
 		u32 index;
@@ -1198,7 +1199,6 @@ static int sja1105_parse_ports_node(struct sja1105_private *priv,
 		if (of_property_read_u32(child, "reg", &index) < 0) {
 			dev_err(dev, "Port number not defined in device tree "
 				"(property \"reg\")\n");
-			of_node_put(child);
 			return -ENODEV;
 		}
 
@@ -1208,7 +1208,6 @@ static int sja1105_parse_ports_node(struct sja1105_private *priv,
 			dev_err(dev, "Failed to read phy-mode or "
 				"phy-interface-type property for port %d\n",
 				index);
-			of_node_put(child);
 			return -ENODEV;
 		}
 
@@ -1217,7 +1216,6 @@ static int sja1105_parse_ports_node(struct sja1105_private *priv,
 			if (!of_phy_is_fixed_link(child)) {
 				dev_err(dev, "phy-handle or fixed-link "
 					"properties missing!\n");
-				of_node_put(child);
 				return -ENODEV;
 			}
 			/* phy-handle is missing, but fixed-link isn't.
@@ -1231,10 +1229,8 @@ static int sja1105_parse_ports_node(struct sja1105_private *priv,
 		priv->phy_mode[index] = phy_mode;
 
 		err = sja1105_parse_rgmii_delays(priv, index, child);
-		if (err) {
-			of_node_put(child);
+		if (err)
 			return err;
-		}
 	}
 
 	return 0;
@@ -1356,10 +1352,11 @@ static int sja1105_adjust_port_config(struct sja1105_private *priv, int port,
 }
 
 static struct phylink_pcs *
-sja1105_mac_select_pcs(struct dsa_switch *ds, int port, phy_interface_t iface)
+sja1105_mac_select_pcs(struct phylink_config *config, phy_interface_t iface)
 {
-	struct sja1105_private *priv = ds->priv;
-	struct dw_xpcs *xpcs = priv->xpcs[port];
+	struct dsa_port *dp = dsa_phylink_to_port(config);
+	struct sja1105_private *priv = dp->ds->priv;
+	struct dw_xpcs *xpcs = priv->xpcs[dp->index];
 
 	if (xpcs)
 		return &xpcs->pcs;
@@ -1367,21 +1364,31 @@ sja1105_mac_select_pcs(struct dsa_switch *ds, int port, phy_interface_t iface)
 	return NULL;
 }
 
-static void sja1105_mac_link_down(struct dsa_switch *ds, int port,
+static void sja1105_mac_config(struct phylink_config *config,
+			       unsigned int mode,
+			       const struct phylink_link_state *state)
+{
+}
+
+static void sja1105_mac_link_down(struct phylink_config *config,
 				  unsigned int mode,
 				  phy_interface_t interface)
 {
-	sja1105_inhibit_tx(ds->priv, BIT(port), true);
+	struct dsa_port *dp = dsa_phylink_to_port(config);
+
+	sja1105_inhibit_tx(dp->ds->priv, BIT(dp->index), true);
 }
 
-static void sja1105_mac_link_up(struct dsa_switch *ds, int port,
+static void sja1105_mac_link_up(struct phylink_config *config,
+				struct phy_device *phydev,
 				unsigned int mode,
 				phy_interface_t interface,
-				struct phy_device *phydev,
 				int speed, int duplex,
 				bool tx_pause, bool rx_pause)
 {
-	struct sja1105_private *priv = ds->priv;
+	struct dsa_port *dp = dsa_phylink_to_port(config);
+	struct sja1105_private *priv = dp->ds->priv;
+	int port = dp->index;
 
 	sja1105_adjust_port_config(priv, port, speed);
 
@@ -2120,13 +2127,12 @@ static int sja1105_bridge_join(struct dsa_switch *ds, int port,
 	if (rc)
 		return rc;
 
-	rc = dsa_tag_8021q_bridge_join(ds, port, bridge);
+	rc = dsa_tag_8021q_bridge_join(ds, port, bridge, tx_fwd_offload,
+				       extack);
 	if (rc) {
 		sja1105_bridge_member(ds, port, bridge, false);
 		return rc;
 	}
-
-	*tx_fwd_offload = true;
 
 	return 0;
 }
@@ -2138,7 +2144,6 @@ static void sja1105_bridge_leave(struct dsa_switch *ds, int port,
 	sja1105_bridge_member(ds, port, bridge, false);
 }
 
-#define BYTES_PER_KBIT (1000LL / 8)
 /* Port 0 (the uC port) does not have CBS shapers */
 #define SJA1110_FIXED_CBS(port, prio) ((((port) - 1) * SJA1105_NUM_TC) + (prio))
 
@@ -2688,7 +2693,7 @@ static int sja1105_mgmt_xmit(struct dsa_switch *ds, int port, int slot,
 	}
 
 	/* Transfer skb to the host port. */
-	dsa_enqueue_skb(skb, dsa_to_port(ds, port)->slave);
+	dsa_enqueue_skb(skb, dsa_to_port(ds, port)->user);
 
 	/* Wait until the switch has processed the frame */
 	do {
@@ -3081,7 +3086,7 @@ static int sja1105_port_bridge_flags(struct dsa_switch *ds, int port,
  * ref_clk pin. So port clocking needs to be initialized early, before
  * connecting to PHYs is attempted, otherwise they won't respond through MDIO.
  * Setting correct PHY link speed does not matter now.
- * But dsa_slave_phy_setup is called later than sja1105_setup, so the PHY
+ * But dsa_user_phy_setup is called later than sja1105_setup, so the PHY
  * bindings are not yet parsed by DSA core. We need to parse early so that we
  * can populate the xMII mode parameters table.
  */
@@ -3153,10 +3158,8 @@ static int sja1105_setup(struct dsa_switch *ds)
 	 * TPID is ETH_P_SJA1105, and the VLAN ID is the port pvid.
 	 */
 	ds->vlan_filtering_is_global = true;
-	ds->untag_bridge_pvid = true;
 	ds->fdb_isolation = true;
-	/* tag_8021q has 3 bits for the VBID, and the value 0 is reserved */
-	ds->max_num_bridges = 7;
+	ds->max_num_bridges = DSA_TAG_8021Q_MAX_NUM_BRIDGES;
 
 	/* Advertise the 8 egress queues */
 	ds->num_tx_queues = SJA1105_NUM_TC;
@@ -3197,6 +3200,13 @@ static void sja1105_teardown(struct dsa_switch *ds)
 	sja1105_static_config_free(&priv->static_config);
 }
 
+static const struct phylink_mac_ops sja1105_phylink_mac_ops = {
+	.mac_select_pcs	= sja1105_mac_select_pcs,
+	.mac_config	= sja1105_mac_config,
+	.mac_link_up	= sja1105_mac_link_up,
+	.mac_link_down	= sja1105_mac_link_down,
+};
+
 static const struct dsa_switch_ops sja1105_switch_ops = {
 	.get_tag_protocol	= sja1105_get_tag_protocol,
 	.connect_tag_protocol	= sja1105_connect_tag_protocol,
@@ -3206,9 +3216,6 @@ static const struct dsa_switch_ops sja1105_switch_ops = {
 	.port_change_mtu	= sja1105_change_mtu,
 	.port_max_mtu		= sja1105_get_max_mtu,
 	.phylink_get_caps	= sja1105_phylink_get_caps,
-	.phylink_mac_select_pcs	= sja1105_mac_select_pcs,
-	.phylink_mac_link_up	= sja1105_mac_link_up,
-	.phylink_mac_link_down	= sja1105_mac_link_down,
 	.get_strings		= sja1105_get_strings,
 	.get_ethtool_stats	= sja1105_get_ethtool_stats,
 	.get_sset_count		= sja1105_get_sset_count,
@@ -3374,6 +3381,7 @@ static int sja1105_probe(struct spi_device *spi)
 	ds->dev = dev;
 	ds->num_ports = priv->info->num_ports;
 	ds->ops = &sja1105_switch_ops;
+	ds->phylink_mac_ops = &sja1105_phylink_mac_ops;
 	ds->priv = priv;
 	priv->ds = ds;
 
@@ -3455,7 +3463,6 @@ MODULE_DEVICE_TABLE(spi, sja1105_spi_ids);
 static struct spi_driver sja1105_driver = {
 	.driver = {
 		.name  = "sja1105",
-		.owner = THIS_MODULE,
 		.of_match_table = of_match_ptr(sja1105_dt_ids),
 	},
 	.id_table = sja1105_spi_ids,

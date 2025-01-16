@@ -102,12 +102,15 @@ static inline u64 get_jiffies_64(void)
 }
 #endif
 
-/*
- *	These inlines deal with timer wrapping correctly. You are
- *	strongly encouraged to use them:
- *	1. Because people otherwise forget
- *	2. Because if the timer wrap changes in future you won't have to
- *	   alter your driver code.
+/**
+ * DOC: General information about time_* inlines
+ *
+ * These inlines deal with timer wrapping correctly. You are strongly encouraged
+ * to use them:
+ *
+ * #. Because people otherwise forget
+ * #. Because if the timer wrap changes in future you won't have to alter your
+ *    driver code.
  */
 
 /**
@@ -415,7 +418,7 @@ extern unsigned long preset_lpj;
 #define NSEC_CONVERSION ((unsigned long)((((u64)1 << NSEC_JIFFIE_SC) +\
                                         TICK_NSEC -1) / (u64)TICK_NSEC))
 /*
- * The maximum jiffie value is (MAX_INT >> 1).  Here we translate that
+ * The maximum jiffy value is (MAX_INT >> 1).  Here we translate that
  * into seconds.  The 64-bit case will overflow if we are not careful,
  * so use the messy SH_DIV macro to do it.  Still all constants.
  */

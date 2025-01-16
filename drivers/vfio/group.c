@@ -112,7 +112,7 @@ static int vfio_group_ioctl_set_container(struct vfio_group *group,
 		return -EFAULT;
 
 	f = fdget(fd);
-	if (!f.file)
+	if (!fd_file(f))
 		return -EBADF;
 
 	mutex_lock(&group->group_lock);
@@ -125,13 +125,13 @@ static int vfio_group_ioctl_set_container(struct vfio_group *group,
 		goto out_unlock;
 	}
 
-	container = vfio_container_from_file(f.file);
+	container = vfio_container_from_file(fd_file(f));
 	if (container) {
 		ret = vfio_container_attach_group(container, group);
 		goto out_unlock;
 	}
 
-	iommufd = iommufd_ctx_from_file(f.file);
+	iommufd = iommufd_ctx_from_file(fd_file(f));
 	if (!IS_ERR(iommufd)) {
 		if (IS_ENABLED(CONFIG_VFIO_NOIOMMU) &&
 		    group->type == VFIO_NO_IOMMU)
@@ -285,6 +285,13 @@ static struct file *vfio_device_open_file(struct vfio_device *device)
 	 * explicitly prevented.  Now there's need.
 	 */
 	filep->f_mode |= (FMODE_PREAD | FMODE_PWRITE);
+
+	/*
+	 * Use the pseudo fs inode on the device to link all mmaps
+	 * to the same address space, allowing us to unmap all vmas
+	 * associated to this device using unmap_mapping_range().
+	 */
+	filep->f_mapping = device->inode->i_mapping;
 
 	if (device->group->type == VFIO_NO_IOMMU)
 		dev_warn(device->dev, "vfio-noiommu device opened by user "

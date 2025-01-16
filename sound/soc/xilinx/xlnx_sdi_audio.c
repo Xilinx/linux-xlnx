@@ -575,7 +575,7 @@ err_axis:
 	return ret;
 }
 
-static int xlnx_sdi_audio_remove(struct platform_device *pdev)
+static void xlnx_sdi_audio_remove(struct platform_device *pdev)
 {
 	struct dev_ctx *ctx = dev_get_drvdata(&pdev->dev);
 
@@ -585,7 +585,6 @@ static int xlnx_sdi_audio_remove(struct platform_device *pdev)
 	clk_disable_unprepare(ctx->aud_clk);
 	clk_disable_unprepare(ctx->axis_clk);
 	clk_disable_unprepare(ctx->axi_clk);
-	return 0;
 }
 
 static const struct of_device_id xlnx_sdi_audio_of_match[] = {

@@ -139,6 +139,10 @@ static const struct opt3001_scale opt3001_scales[] = {
 		.val2 = 400000,
 	},
 	{
+		.val = 41932,
+		.val2 = 800000,
+	},
+	{
 		.val = 83865,
 		.val2 = 600000,
 	},
@@ -822,7 +826,7 @@ static void opt3001_remove(struct i2c_client *client)
 }
 
 static const struct i2c_device_id opt3001_id[] = {
-	{ "opt3001", 0 },
+	{ "opt3001" },
 	{ } /* Terminating Entry */
 };
 MODULE_DEVICE_TABLE(i2c, opt3001_id);

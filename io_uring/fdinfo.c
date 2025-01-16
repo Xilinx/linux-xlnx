@@ -50,11 +50,12 @@ static __cold int io_uring_show_cred(struct seq_file *m, unsigned int id,
  * Caller holds a reference to the file already, we don't need to do
  * anything else to get an extra reference.
  */
-__cold void io_uring_show_fdinfo(struct seq_file *m, struct file *f)
+__cold void io_uring_show_fdinfo(struct seq_file *m, struct file *file)
 {
-	struct io_ring_ctx *ctx = f->private_data;
+	struct io_ring_ctx *ctx = file->private_data;
 	struct io_overflow_cqe *ocqe;
 	struct io_rings *r = ctx->rings;
+	struct rusage sq_usage;
 	unsigned int sq_mask = ctx->sq_entries - 1, cq_mask = ctx->cq_entries - 1;
 	unsigned int sq_head = READ_ONCE(r->sq.head);
 	unsigned int sq_tail = READ_ONCE(r->sq.tail);
@@ -64,6 +65,7 @@ __cold void io_uring_show_fdinfo(struct seq_file *m, struct file *f)
 	unsigned int sq_shift = 0;
 	unsigned int sq_entries, cq_entries;
 	int sq_pid = -1, sq_cpu = -1;
+	u64 sq_total_time = 0, sq_work_time = 0;
 	bool has_lock;
 	unsigned int i;
 
@@ -145,17 +147,24 @@ __cold void io_uring_show_fdinfo(struct seq_file *m, struct file *f)
 	if (has_lock && (ctx->flags & IORING_SETUP_SQPOLL)) {
 		struct io_sq_data *sq = ctx->sq_data;
 
-		if (mutex_trylock(&sq->lock)) {
-			if (sq->thread) {
-				sq_pid = task_pid_nr(sq->thread);
-				sq_cpu = task_cpu(sq->thread);
-			}
-			mutex_unlock(&sq->lock);
+		/*
+		 * sq->thread might be NULL if we raced with the sqpoll
+		 * thread termination.
+		 */
+		if (sq->thread) {
+			sq_pid = sq->task_pid;
+			sq_cpu = sq->sq_cpu;
+			getrusage(sq->thread, RUSAGE_SELF, &sq_usage);
+			sq_total_time = (sq_usage.ru_stime.tv_sec * 1000000
+					 + sq_usage.ru_stime.tv_usec);
+			sq_work_time = sq->work_time;
 		}
 	}
 
 	seq_printf(m, "SqThread:\t%d\n", sq_pid);
 	seq_printf(m, "SqThreadCpu:\t%d\n", sq_cpu);
+	seq_printf(m, "SqTotalTime:\t%llu\n", sq_total_time);
+	seq_printf(m, "SqWorkTime:\t%llu\n", sq_work_time);
 	seq_printf(m, "UserFiles:\t%u\n", ctx->nr_user_files);
 	for (i = 0; has_lock && i < ctx->nr_user_files; i++) {
 		struct file *f = io_file_from_index(&ctx->file_table, i);
@@ -168,9 +177,8 @@ __cold void io_uring_show_fdinfo(struct seq_file *m, struct file *f)
 	seq_printf(m, "UserBufs:\t%u\n", ctx->nr_user_bufs);
 	for (i = 0; has_lock && i < ctx->nr_user_bufs; i++) {
 		struct io_mapped_ubuf *buf = ctx->user_bufs[i];
-		unsigned int len = buf->ubuf_end - buf->ubuf;
 
-		seq_printf(m, "%5u: 0x%llx/%u\n", i, buf->ubuf, len);
+		seq_printf(m, "%5u: 0x%llx/%u\n", i, buf->ubuf, buf->len);
 	}
 	if (has_lock && !xa_empty(&ctx->personalities)) {
 		unsigned long index;
@@ -212,7 +220,19 @@ __cold void io_uring_show_fdinfo(struct seq_file *m, struct file *f)
 			   cqe->user_data, cqe->res, cqe->flags);
 
 	}
-
 	spin_unlock(&ctx->completion_lock);
+
+#ifdef CONFIG_NET_RX_BUSY_POLL
+	if (ctx->napi_enabled) {
+		seq_puts(m, "NAPI:\tenabled\n");
+		seq_printf(m, "napi_busy_poll_dt:\t%llu\n", ctx->napi_busy_poll_dt);
+		if (ctx->napi_prefer_busy_poll)
+			seq_puts(m, "napi_prefer_busy_poll:\ttrue\n");
+		else
+			seq_puts(m, "napi_prefer_busy_poll:\tfalse\n");
+	} else {
+		seq_puts(m, "NAPI:\tdisabled\n");
+	}
+#endif
 }
 #endif

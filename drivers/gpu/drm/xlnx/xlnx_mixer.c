@@ -2216,7 +2216,7 @@ static int xlnx_mix_parse_dt_bg_video_fmt(struct device_node *node,
 		DRM_ERROR("No xlnx,vformat value for layer 0 in dts\n");
 		return -EINVAL;
 	}
-	strncpy((char *)&layer->hw_config.vid_fmt, vformat, 4);
+	strscpy((char *)&layer->hw_config.vid_fmt, vformat, 4);
 	layer->hw_config.is_streaming =
 		of_property_read_bool(layer_node, "xlnx,layer-streaming");
 	if (of_property_read_u32(node, "xlnx,bpc", &mixer_hw->bg_layer_bpc)) {
@@ -2493,7 +2493,7 @@ static int xlnx_mix_of_init_layer(struct device *dev, struct device_node *node,
 		return ret;
 	}
 
-	strncpy((char *)&layer->hw_config.vid_fmt, vformat, 4);
+	strscpy((char *)&layer->hw_config.vid_fmt, vformat, 4);
 	layer->hw_config.can_scale =
 		    of_property_read_bool(layer_node, "xlnx,layer-scale");
 	if (layer->hw_config.can_scale) {
@@ -3134,7 +3134,7 @@ err:
 	return ret;
 }
 
-static int xlnx_mix_remove(struct platform_device *pdev)
+static void xlnx_mix_remove(struct platform_device *pdev)
 {
 	struct xlnx_mix *mixer = platform_get_drvdata(pdev);
 
@@ -3146,7 +3146,6 @@ static int xlnx_mix_remove(struct platform_device *pdev)
 	}
 	xlnx_drm_pipeline_exit(mixer->master);
 	component_del(&pdev->dev, &xlnx_mix_component_ops);
-	return 0;
 }
 
 /*

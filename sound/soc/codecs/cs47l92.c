@@ -1850,12 +1850,12 @@ static int cs47l92_open(struct snd_soc_component *component,
 	struct madera *madera = priv->madera;
 	int n_adsp;
 
-	if (strcmp(asoc_rtd_to_codec(rtd, 0)->name, "cs47l92-dsp-trace") == 0) {
+	if (strcmp(snd_soc_rtd_to_codec(rtd, 0)->name, "cs47l92-dsp-trace") == 0) {
 		n_adsp = 0;
 	} else {
 		dev_err(madera->dev,
 			"No suitable compressed stream for DAI '%s'\n",
-			asoc_rtd_to_codec(rtd, 0)->name);
+			snd_soc_rtd_to_codec(rtd, 0)->name);
 		return -EINVAL;
 	}
 
@@ -2092,7 +2092,7 @@ static struct platform_driver cs47l92_codec_driver = {
 		.name = "cs47l92-codec",
 	},
 	.probe = &cs47l92_probe,
-	.remove_new = cs47l92_remove,
+	.remove = cs47l92_remove,
 };
 
 module_platform_driver(cs47l92_codec_driver);

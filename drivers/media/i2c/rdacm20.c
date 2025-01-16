@@ -463,8 +463,8 @@ static int rdacm20_initialize(struct rdacm20_device *dev)
 		return ret;
 
 	/*
-	 *  Ensure that we have a good link configuration before attempting to
-	 *  identify the device.
+	 * Ensure that we have a good link configuration before attempting to
+	 * identify the device.
 	 */
 	ret = max9271_configure_i2c(&dev->serializer,
 				    MAX9271_I2CSLVSH_469NS_234NS |
@@ -625,8 +625,7 @@ error_free_ctrls:
 	v4l2_ctrl_handler_free(&dev->ctrls);
 error:
 	media_entity_cleanup(&dev->sd.entity);
-	if (dev->sensor)
-		i2c_unregister_device(dev->sensor);
+	i2c_unregister_device(dev->sensor);
 
 	dev_err(&client->dev, "probe failed\n");
 

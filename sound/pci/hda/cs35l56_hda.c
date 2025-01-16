@@ -14,8 +14,10 @@
 #include <linux/regmap.h>
 #include <linux/slab.h>
 #include <sound/core.h>
+#include <sound/cs-amp-lib.h>
 #include <sound/hda_codec.h>
 #include <sound/tlv.h>
+#include "cirrus_scodec.h"
 #include "cs35l56_hda.h"
 #include "hda_component.h"
 #include "hda_cs_dsp_ctl.h"
@@ -29,20 +31,37 @@
   *  ASP1_RX_WL = 24 bits per sample
   *  ASP1_TX_WL = 24 bits per sample
   *  ASP1_RXn_EN 1..3 and ASP1_TXn_EN 1..4 disabled
+  *
+  * Override any Windows-specific mixer settings applied by the firmware.
   */
 static const struct reg_sequence cs35l56_hda_dai_config[] = {
 	{ CS35L56_ASP1_CONTROL1,	0x00000021 },
 	{ CS35L56_ASP1_CONTROL2,	0x20200200 },
 	{ CS35L56_ASP1_CONTROL3,	0x00000003 },
+	{ CS35L56_ASP1_FRAME_CONTROL1,	0x03020100 },
+	{ CS35L56_ASP1_FRAME_CONTROL5,	0x00020100 },
 	{ CS35L56_ASP1_DATA_CONTROL5,	0x00000018 },
 	{ CS35L56_ASP1_DATA_CONTROL1,	0x00000018 },
 	{ CS35L56_ASP1_ENABLES1,	0x00000000 },
+	{ CS35L56_ASP1TX1_INPUT,	0x00000018 },
+	{ CS35L56_ASP1TX2_INPUT,	0x00000019 },
+	{ CS35L56_ASP1TX3_INPUT,	0x00000020 },
+	{ CS35L56_ASP1TX4_INPUT,	0x00000028 },
+
 };
+
+static void cs35l56_hda_wait_dsp_ready(struct cs35l56_hda *cs35l56)
+{
+	/* Wait for patching to complete */
+	flush_work(&cs35l56->dsp_work);
+}
 
 static void cs35l56_hda_play(struct cs35l56_hda *cs35l56)
 {
 	unsigned int val;
 	int ret;
+
+	cs35l56_hda_wait_dsp_ready(cs35l56);
 
 	pm_runtime_get_sync(cs35l56->base.dev);
 	ret = cs35l56_mbox_send(&cs35l56->base, CS35L56_MBOX_CMD_AUDIO_PLAY);
@@ -132,6 +151,10 @@ static int cs35l56_hda_runtime_resume(struct device *dev)
 		}
 	}
 
+	ret = cs35l56_force_sync_asp1_registers_from_cache(&cs35l56->base);
+	if (ret)
+		goto err;
+
 	return 0;
 
 err:
@@ -165,6 +188,8 @@ static int cs35l56_hda_mixer_get(struct snd_kcontrol *kcontrol,
 	unsigned int reg_val;
 	int i;
 
+	cs35l56_hda_wait_dsp_ready(cs35l56);
+
 	regmap_read(cs35l56->base.regmap, kcontrol->private_value, &reg_val);
 	reg_val &= CS35L56_ASP_TXn_SRC_MASK;
 
@@ -187,6 +212,8 @@ static int cs35l56_hda_mixer_put(struct snd_kcontrol *kcontrol,
 
 	if (item >= CS35L56_NUM_INPUT_SRC)
 		return -EINVAL;
+
+	cs35l56_hda_wait_dsp_ready(cs35l56);
 
 	regmap_update_bits_check(cs35l56->base.regmap, kcontrol->private_value,
 				 CS35L56_INPUT_MASK, cs35l56_tx_input_values[item],
@@ -212,6 +239,8 @@ static int cs35l56_hda_posture_get(struct snd_kcontrol *kcontrol,
 	unsigned int pos;
 	int ret;
 
+	cs35l56_hda_wait_dsp_ready(cs35l56);
+
 	ret = regmap_read(cs35l56->base.regmap, CS35L56_MAIN_POSTURE_NUMBER, &pos);
 	if (ret)
 		return ret;
@@ -232,6 +261,8 @@ static int cs35l56_hda_posture_put(struct snd_kcontrol *kcontrol,
 	if ((pos < CS35L56_MAIN_POSTURE_MIN) ||
 	    (pos > CS35L56_MAIN_POSTURE_MAX))
 		return -EINVAL;
+
+	cs35l56_hda_wait_dsp_ready(cs35l56);
 
 	ret = regmap_update_bits_check(cs35l56->base.regmap,
 				       CS35L56_MAIN_POSTURE_NUMBER,
@@ -276,6 +307,8 @@ static int cs35l56_hda_vol_get(struct snd_kcontrol *kcontrol,
 	int vol;
 	int ret;
 
+	cs35l56_hda_wait_dsp_ready(cs35l56);
+
 	ret = regmap_read(cs35l56->base.regmap, CS35L56_MAIN_RENDER_USER_VOLUME, &raw_vol);
 
 	if (ret)
@@ -307,6 +340,8 @@ static int cs35l56_hda_vol_put(struct snd_kcontrol *kcontrol,
 
 	raw_vol = (vol + CS35L56_MAIN_RENDER_USER_VOLUME_MIN) <<
 		  CS35L56_MAIN_RENDER_USER_VOLUME_SHIFT;
+
+	cs35l56_hda_wait_dsp_ready(cs35l56);
 
 	ret = regmap_update_bits_check(cs35l56->base.regmap,
 				       CS35L56_MAIN_RENDER_USER_VOLUME,
@@ -378,12 +413,12 @@ static void cs35l56_hda_remove_controls(struct cs35l56_hda *cs35l56)
 }
 
 static const struct cs_dsp_client_ops cs35l56_hda_client_ops = {
-	.control_remove = hda_cs_dsp_control_remove,
+	/* cs_dsp requires the client to provide this even if it is empty */
 };
 
 static int cs35l56_hda_request_firmware_file(struct cs35l56_hda *cs35l56,
 					     const struct firmware **firmware, char **filename,
-					     const char *dir, const char *system_name,
+					     const char *base_name, const char *system_name,
 					     const char *amp_name,
 					     const char *filetype)
 {
@@ -391,17 +426,13 @@ static int cs35l56_hda_request_firmware_file(struct cs35l56_hda *cs35l56,
 	int ret = 0;
 
 	if (system_name && amp_name)
-		*filename = kasprintf(GFP_KERNEL, "%scs35l56%s-%02x-dsp1-misc-%s-%s.%s", dir,
-				      cs35l56->base.secured ? "s" : "", cs35l56->base.rev,
+		*filename = kasprintf(GFP_KERNEL, "%s-%s-%s.%s", base_name,
 				      system_name, amp_name, filetype);
 	else if (system_name)
-		*filename = kasprintf(GFP_KERNEL, "%scs35l56%s-%02x-dsp1-misc-%s.%s", dir,
-				      cs35l56->base.secured ? "s" : "", cs35l56->base.rev,
+		*filename = kasprintf(GFP_KERNEL, "%s-%s.%s", base_name,
 				      system_name, filetype);
 	else
-		*filename = kasprintf(GFP_KERNEL, "%scs35l56%s-%02x-dsp1-misc.%s", dir,
-				      cs35l56->base.secured ? "s" : "", cs35l56->base.rev,
-				      filetype);
+		*filename = kasprintf(GFP_KERNEL, "%s.%s", base_name, filetype);
 
 	if (!*filename)
 		return -ENOMEM;
@@ -434,8 +465,8 @@ static int cs35l56_hda_request_firmware_file(struct cs35l56_hda *cs35l56,
 	return 0;
 }
 
-static const char cirrus_dir[] = "cirrus/";
 static void cs35l56_hda_request_firmware_files(struct cs35l56_hda *cs35l56,
+					       unsigned int preloaded_fw_ver,
 					       const struct firmware **wmfw_firmware,
 					       char **wmfw_filename,
 					       const struct firmware **coeff_firmware,
@@ -443,55 +474,75 @@ static void cs35l56_hda_request_firmware_files(struct cs35l56_hda *cs35l56,
 {
 	const char *system_name = cs35l56->system_name;
 	const char *amp_name = cs35l56->amp_name;
+	char base_name[37];
 	int ret;
+
+	if (preloaded_fw_ver) {
+		snprintf(base_name, sizeof(base_name),
+			 "cirrus/cs35l%02x-%02x%s-%06x-dsp1-misc",
+			 cs35l56->base.type,
+			 cs35l56->base.rev,
+			 cs35l56->base.secured ? "-s" : "",
+			 preloaded_fw_ver & 0xffffff);
+	} else {
+		snprintf(base_name, sizeof(base_name),
+			 "cirrus/cs35l%02x-%02x%s-dsp1-misc",
+			 cs35l56->base.type,
+			 cs35l56->base.rev,
+			 cs35l56->base.secured ? "-s" : "");
+	}
 
 	if (system_name && amp_name) {
 		if (!cs35l56_hda_request_firmware_file(cs35l56, wmfw_firmware, wmfw_filename,
-						       cirrus_dir, system_name, amp_name, "wmfw")) {
+						       base_name, system_name, amp_name, "wmfw")) {
 			cs35l56_hda_request_firmware_file(cs35l56, coeff_firmware, coeff_filename,
-							  cirrus_dir, system_name, amp_name, "bin");
+							  base_name, system_name, amp_name, "bin");
 			return;
 		}
 	}
 
 	if (system_name) {
 		if (!cs35l56_hda_request_firmware_file(cs35l56, wmfw_firmware, wmfw_filename,
-						       cirrus_dir, system_name, NULL, "wmfw")) {
+						       base_name, system_name, NULL, "wmfw")) {
 			if (amp_name)
 				cs35l56_hda_request_firmware_file(cs35l56,
 								  coeff_firmware, coeff_filename,
-								  cirrus_dir, system_name,
+								  base_name, system_name,
 								  amp_name, "bin");
 			if (!*coeff_firmware)
 				cs35l56_hda_request_firmware_file(cs35l56,
 								  coeff_firmware, coeff_filename,
-								  cirrus_dir, system_name,
+								  base_name, system_name,
 								  NULL, "bin");
 			return;
 		}
+
+		/*
+		 * Check for system-specific bin files without wmfw before
+		 * falling back to generic firmware
+		 */
+		if (amp_name)
+			cs35l56_hda_request_firmware_file(cs35l56, coeff_firmware, coeff_filename,
+							  base_name, system_name, amp_name, "bin");
+		if (!*coeff_firmware)
+			cs35l56_hda_request_firmware_file(cs35l56, coeff_firmware, coeff_filename,
+							  base_name, system_name, NULL, "bin");
+
+		if (*coeff_firmware)
+			return;
 	}
 
 	ret = cs35l56_hda_request_firmware_file(cs35l56, wmfw_firmware, wmfw_filename,
-						cirrus_dir, NULL, NULL, "wmfw");
+						base_name, NULL, NULL, "wmfw");
 	if (!ret) {
 		cs35l56_hda_request_firmware_file(cs35l56, coeff_firmware, coeff_filename,
-						  cirrus_dir, NULL, NULL, "bin");
+						  base_name, NULL, NULL, "bin");
 		return;
-	}
-
-	/* When a firmware file is not found must still search for the coeff files */
-	if (system_name) {
-		if (amp_name)
-			cs35l56_hda_request_firmware_file(cs35l56, coeff_firmware, coeff_filename,
-							  cirrus_dir, system_name, amp_name, "bin");
-		if (!*coeff_firmware)
-			cs35l56_hda_request_firmware_file(cs35l56, coeff_firmware, coeff_filename,
-							  cirrus_dir, system_name, NULL, "bin");
 	}
 
 	if (!*coeff_firmware)
 		cs35l56_hda_request_firmware_file(cs35l56, coeff_firmware, coeff_filename,
-						  cirrus_dir, NULL, NULL, "bin");
+						  base_name, NULL, NULL, "bin");
 }
 
 static void cs35l56_hda_release_firmware_files(const struct firmware *wmfw_firmware,
@@ -508,52 +559,63 @@ static void cs35l56_hda_release_firmware_files(const struct firmware *wmfw_firmw
 	kfree(coeff_filename);
 }
 
-static void cs35l56_hda_add_dsp_controls(struct cs35l56_hda *cs35l56)
+static void cs35l56_hda_apply_calibration(struct cs35l56_hda *cs35l56)
 {
-	struct hda_cs_dsp_ctl_info info;
+	int ret;
 
-	info.device_name = cs35l56->amp_name;
-	info.fw_type = HDA_CS_DSP_FW_MISC;
-	info.card = cs35l56->codec->card;
+	if (!cs35l56->base.cal_data_valid || cs35l56->base.secured)
+		return;
 
-	hda_cs_dsp_add_controls(&cs35l56->cs_dsp, &info);
+	ret = cs_amp_write_cal_coeffs(&cs35l56->cs_dsp,
+				      &cs35l56_calibration_controls,
+				      &cs35l56->base.cal_data);
+	if (ret < 0)
+		dev_warn(cs35l56->base.dev, "Failed to write calibration: %d\n", ret);
+	else
+		dev_info(cs35l56->base.dev, "Calibration applied\n");
 }
 
-static int cs35l56_hda_fw_load(struct cs35l56_hda *cs35l56)
+static void cs35l56_hda_fw_load(struct cs35l56_hda *cs35l56)
 {
 	const struct firmware *coeff_firmware = NULL;
 	const struct firmware *wmfw_firmware = NULL;
 	char *coeff_filename = NULL;
 	char *wmfw_filename = NULL;
-	unsigned int firmware_missing;
-	int ret = 0;
+	unsigned int preloaded_fw_ver;
+	bool firmware_missing;
+	int ret;
 
-	/* Prepare for a new DSP power-up */
+	/*
+	 * Prepare for a new DSP power-up. If the DSP has had firmware
+	 * downloaded previously then it needs to be powered down so that it
+	 * can be updated.
+	 */
 	if (cs35l56->base.fw_patched)
 		cs_dsp_power_down(&cs35l56->cs_dsp);
 
 	cs35l56->base.fw_patched = false;
 
-	pm_runtime_get_sync(cs35l56->base.dev);
-
-	ret = regmap_read(cs35l56->base.regmap, CS35L56_PROTECTION_STATUS, &firmware_missing);
-	if (ret) {
-		dev_err(cs35l56->base.dev, "Failed to read PROTECTION_STATUS: %d\n", ret);
-		goto err_pm_put;
+	ret = pm_runtime_resume_and_get(cs35l56->base.dev);
+	if (ret < 0) {
+		dev_err(cs35l56->base.dev, "Failed to resume and get %d\n", ret);
+		return;
 	}
-
-	firmware_missing &= CS35L56_FIRMWARE_MISSING;
 
 	/*
-	 * Firmware can only be downloaded if the CS35L56 is secured or is
-	 * running from the built-in ROM. If it is secured the BIOS will have
-	 * downloaded firmware, and the wmfw/bin files will only contain
-	 * tunings that are safe to download with the firmware running.
+	 * The firmware can only be upgraded if it is currently running
+	 * from the built-in ROM. If not, the wmfw/bin must be for the
+	 * version of firmware that is running on the chip.
 	 */
-	if (cs35l56->base.secured || firmware_missing) {
-		cs35l56_hda_request_firmware_files(cs35l56, &wmfw_firmware, &wmfw_filename,
-						   &coeff_firmware, &coeff_filename);
-	}
+	ret = cs35l56_read_prot_status(&cs35l56->base, &firmware_missing, &preloaded_fw_ver);
+	if (ret)
+		goto err_pm_put;
+
+	if (firmware_missing)
+		preloaded_fw_ver = 0;
+
+	cs35l56_hda_request_firmware_files(cs35l56, preloaded_fw_ver,
+					   &wmfw_firmware, &wmfw_filename,
+					   &coeff_firmware, &coeff_filename);
 
 	/*
 	 * If the BIOS didn't patch the firmware a bin file is mandatory to
@@ -561,19 +623,18 @@ static int cs35l56_hda_fw_load(struct cs35l56_hda *cs35l56)
 	 */
 	if (!coeff_firmware && firmware_missing) {
 		dev_err(cs35l56->base.dev, ".bin file required but not found\n");
-		ret = -ENOENT;
 		goto err_fw_release;
 	}
 
 	mutex_lock(&cs35l56->base.irq_lock);
 
 	/*
-	 * When the device is running in secure mode the firmware files can
-	 * only contain insecure tunings and therefore we do not need to
-	 * shutdown the firmware to apply them and can use the lower cost
-	 * reinit sequence instead.
+	 * If the firmware hasn't been patched it must be shutdown before
+	 * doing a full patch and reset afterwards. If it is already
+	 * running a patched version the firmware files only contain
+	 * tunings and we can use the lower cost reinit sequence instead.
 	 */
-	if (!cs35l56->base.secured && (wmfw_firmware || coeff_firmware)) {
+	if (firmware_missing && (wmfw_firmware || coeff_firmware)) {
 		ret = cs35l56_firmware_shutdown(&cs35l56->base);
 		if (ret)
 			goto err;
@@ -592,17 +653,15 @@ static int cs35l56_hda_fw_load(struct cs35l56_hda *cs35l56)
 	if (coeff_filename)
 		dev_dbg(cs35l56->base.dev, "Loaded Coefficients: %s\n", coeff_filename);
 
-	if (cs35l56->base.secured) {
-		ret = cs35l56_mbox_send(&cs35l56->base, CS35L56_MBOX_CMD_AUDIO_REINIT);
-		if (ret)
-			goto err_powered_up;
-	} else if (wmfw_firmware || coeff_firmware) {
-		/* If we downloaded firmware, reset the device and wait for it to boot */
+	/* If we downloaded firmware, reset the device and wait for it to boot */
+	if (firmware_missing && (wmfw_firmware || coeff_firmware)) {
 		cs35l56_system_reset(&cs35l56->base, false);
 		regcache_mark_dirty(cs35l56->base.regmap);
 		ret = cs35l56_wait_for_firmware_boot(&cs35l56->base);
 		if (ret)
 			goto err_powered_up;
+
+		regcache_cache_only(cs35l56->base.regmap, false);
 	}
 
 	/* Disable auto-hibernate so that runtime_pm has control */
@@ -620,6 +679,11 @@ static int cs35l56_hda_fw_load(struct cs35l56_hda *cs35l56)
 	if (ret)
 		dev_dbg(cs35l56->base.dev, "%s: cs_dsp_run ret %d\n", __func__, ret);
 
+	cs35l56_hda_apply_calibration(cs35l56);
+	ret = cs35l56_mbox_send(&cs35l56->base, CS35L56_MBOX_CMD_AUDIO_REINIT);
+	if (ret)
+		cs_dsp_stop(&cs35l56->cs_dsp);
+
 err_powered_up:
 	if (!cs35l56->base.fw_patched)
 		cs_dsp_power_down(&cs35l56->cs_dsp);
@@ -630,34 +694,36 @@ err_fw_release:
 					   coeff_firmware, coeff_filename);
 err_pm_put:
 	pm_runtime_put(cs35l56->base.dev);
+}
 
-	return ret;
+static void cs35l56_hda_dsp_work(struct work_struct *work)
+{
+	struct cs35l56_hda *cs35l56 = container_of(work, struct cs35l56_hda, dsp_work);
+
+	cs35l56_hda_fw_load(cs35l56);
 }
 
 static int cs35l56_hda_bind(struct device *dev, struct device *master, void *master_data)
 {
 	struct cs35l56_hda *cs35l56 = dev_get_drvdata(dev);
-	struct hda_component *comps = master_data;
-	int ret;
+	struct hda_component_parent *parent = master_data;
+	struct hda_component *comp;
 
-	if (!comps || cs35l56->index < 0 || cs35l56->index >= HDA_MAX_COMPONENTS)
+	comp = hda_component_from_index(parent, cs35l56->index);
+	if (!comp)
 		return -EINVAL;
 
-	comps = &comps[cs35l56->index];
-	if (comps->dev)
+	if (comp->dev)
 		return -EBUSY;
 
-	comps->dev = dev;
-	cs35l56->codec = comps->codec;
-	strscpy(comps->name, dev_name(dev), sizeof(comps->name));
-	comps->playback_hook = cs35l56_hda_playback_hook;
+	comp->dev = dev;
+	cs35l56->codec = parent->codec;
+	strscpy(comp->name, dev_name(dev), sizeof(comp->name));
+	comp->playback_hook = cs35l56_hda_playback_hook;
 
-	ret = cs35l56_hda_fw_load(cs35l56);
-	if (ret)
-		return ret;
+	queue_work(system_long_wq, &cs35l56->dsp_work);
 
 	cs35l56_hda_create_controls(cs35l56);
-	cs35l56_hda_add_dsp_controls(cs35l56);
 
 #if IS_ENABLED(CONFIG_SND_DEBUG)
 	cs35l56->debugfs_root = debugfs_create_dir(dev_name(cs35l56->base.dev), sound_debugfs_root);
@@ -672,7 +738,10 @@ static int cs35l56_hda_bind(struct device *dev, struct device *master, void *mas
 static void cs35l56_hda_unbind(struct device *dev, struct device *master, void *master_data)
 {
 	struct cs35l56_hda *cs35l56 = dev_get_drvdata(dev);
-	struct hda_component *comps = master_data;
+	struct hda_component_parent *parent = master_data;
+	struct hda_component *comp;
+
+	cancel_work_sync(&cs35l56->dsp_work);
 
 	cs35l56_hda_remove_controls(cs35l56);
 
@@ -684,10 +753,11 @@ static void cs35l56_hda_unbind(struct device *dev, struct device *master, void *
 	if (cs35l56->base.fw_patched)
 		cs_dsp_power_down(&cs35l56->cs_dsp);
 
-	cs_dsp_remove(&cs35l56->cs_dsp);
+	comp = hda_component_from_index(parent, cs35l56->index);
+	if (comp && (comp->dev == dev))
+		memset(comp, 0, sizeof(*comp));
 
-	if (comps[cs35l56->index].dev == dev)
-		memset(&comps[cs35l56->index], 0, sizeof(*comps));
+	cs35l56->codec = NULL;
 
 	dev_dbg(cs35l56->base.dev, "Unbound\n");
 }
@@ -700,6 +770,8 @@ static const struct component_ops cs35l56_hda_comp_ops = {
 static int cs35l56_hda_system_suspend(struct device *dev)
 {
 	struct cs35l56_hda *cs35l56 = dev_get_drvdata(dev);
+
+	cs35l56_hda_wait_dsp_ready(cs35l56);
 
 	if (cs35l56->playing)
 		cs35l56_hda_pause(cs35l56);
@@ -794,13 +866,13 @@ static int cs35l56_hda_system_resume(struct device *dev)
 
 	cs35l56->suspended = false;
 
+	if (!cs35l56->codec)
+		return 0;
+
 	ret = cs35l56_is_fw_reload_needed(&cs35l56->base);
 	dev_dbg(cs35l56->base.dev, "fw_reload_needed: %d\n", ret);
-	if (ret > 0) {
-		ret = cs35l56_hda_fw_load(cs35l56);
-		if (ret)
-			return ret;
-	}
+	if (ret > 0)
+		queue_work(system_long_wq, &cs35l56->dsp_work);
 
 	if (cs35l56->playing)
 		cs35l56_hda_play(cs35l56);
@@ -808,9 +880,10 @@ static int cs35l56_hda_system_resume(struct device *dev)
 	return 0;
 }
 
-static int cs35l56_hda_read_acpi(struct cs35l56_hda *cs35l56, int id)
+static int cs35l56_hda_read_acpi(struct cs35l56_hda *cs35l56, int hid, int id)
 {
 	u32 values[HDA_MAX_COMPONENTS];
+	char hid_string[8];
 	struct acpi_device *adev;
 	const char *property, *sub;
 	size_t nval;
@@ -821,7 +894,8 @@ static int cs35l56_hda_read_acpi(struct cs35l56_hda *cs35l56, int id)
 	 * the serial-multi-instantiate driver, so lookup the node by HID
 	 */
 	if (!ACPI_COMPANION(cs35l56->base.dev)) {
-		adev = acpi_dev_get_first_match_dev("CSC3556", NULL, -1);
+		snprintf(hid_string, sizeof(hid_string), "CSC%04X", hid);
+		adev = acpi_dev_get_first_match_dev(hid_string, NULL, -1);
 		if (!adev) {
 			dev_err(cs35l56->base.dev, "Failed to find an ACPI device for %s\n",
 				dev_name(cs35l56->base.dev));
@@ -869,7 +943,17 @@ static int cs35l56_hda_read_acpi(struct cs35l56_hda *cs35l56, int id)
 			 "Read ACPI _SUB failed(%ld): fallback to generic firmware\n",
 			 PTR_ERR(sub));
 	} else {
-		cs35l56->system_name = sub;
+		ret = cirrus_scodec_get_speaker_id(cs35l56->base.dev, cs35l56->index, nval, -1);
+		if (ret == -ENOENT) {
+			cs35l56->system_name = sub;
+		} else if (ret >= 0) {
+			cs35l56->system_name = kasprintf(GFP_KERNEL, "%s-spkid%d", sub, ret);
+			kfree(sub);
+			if (!cs35l56->system_name)
+				return -ENOMEM;
+		} else {
+			return ret;
+		}
 	}
 
 	cs35l56->base.reset_gpio = devm_gpiod_get_index_optional(cs35l56->base.dev,
@@ -899,14 +983,16 @@ err:
 	return ret;
 }
 
-int cs35l56_hda_common_probe(struct cs35l56_hda *cs35l56, int id)
+int cs35l56_hda_common_probe(struct cs35l56_hda *cs35l56, int hid, int id)
 {
 	int ret;
 
 	mutex_init(&cs35l56->base.irq_lock);
 	dev_set_drvdata(cs35l56->base.dev, cs35l56);
 
-	ret = cs35l56_hda_read_acpi(cs35l56, id);
+	INIT_WORK(&cs35l56->dsp_work, cs35l56_hda_dsp_work);
+
+	ret = cs35l56_hda_read_acpi(cs35l56, hid, id);
 	if (ret)
 		goto err;
 
@@ -916,6 +1002,8 @@ int cs35l56_hda_common_probe(struct cs35l56_hda *cs35l56, int id)
 		ret = -ENOMEM;
 		goto err;
 	}
+
+	cs35l56->base.cal_index = -1;
 
 	cs35l56_init_cs_dsp(&cs35l56->base, &cs35l56->cs_dsp);
 	cs35l56->cs_dsp.client_ops = &cs35l56_hda_client_ops;
@@ -942,6 +1030,8 @@ int cs35l56_hda_common_probe(struct cs35l56_hda *cs35l56, int id)
 	if (ret)
 		goto err;
 
+	regcache_cache_only(cs35l56->base.regmap, false);
+
 	ret = cs35l56_set_patch(&cs35l56->base);
 	if (ret)
 		goto err;
@@ -954,17 +1044,24 @@ int cs35l56_hda_common_probe(struct cs35l56_hda *cs35l56, int id)
 	if (ret)
 		goto err;
 
+	ret = cs35l56_get_calibration(&cs35l56->base);
+	if (ret)
+		goto err;
+
 	ret = cs_dsp_halo_init(&cs35l56->cs_dsp);
 	if (ret) {
 		dev_err_probe(cs35l56->base.dev, ret, "cs_dsp_halo_init failed\n");
 		goto err;
 	}
 
-	dev_dbg(cs35l56->base.dev, "DSP system name: '%s', amp name: '%s'\n",
-		cs35l56->system_name, cs35l56->amp_name);
+	dev_info(cs35l56->base.dev, "DSP system name: '%s', amp name: '%s'\n",
+		 cs35l56->system_name, cs35l56->amp_name);
 
 	regmap_multi_reg_write(cs35l56->base.regmap, cs35l56_hda_dai_config,
 			       ARRAY_SIZE(cs35l56_hda_dai_config));
+	ret = cs35l56_force_sync_asp1_registers_from_cache(&cs35l56->base);
+	if (ret)
+		goto dsp_err;
 
 	/*
 	 * By default only enable one ASP1TXn, where n=amplifier index,
@@ -978,18 +1075,20 @@ int cs35l56_hda_common_probe(struct cs35l56_hda *cs35l56, int id)
 	pm_runtime_mark_last_busy(cs35l56->base.dev);
 	pm_runtime_enable(cs35l56->base.dev);
 
+	cs35l56->base.init_done = true;
+
 	ret = component_add(cs35l56->base.dev, &cs35l56_hda_comp_ops);
 	if (ret) {
 		dev_err(cs35l56->base.dev, "Register component failed: %d\n", ret);
 		goto pm_err;
 	}
 
-	cs35l56->base.init_done = true;
-
 	return 0;
 
 pm_err:
 	pm_runtime_disable(cs35l56->base.dev);
+dsp_err:
+	cs_dsp_remove(&cs35l56->cs_dsp);
 err:
 	gpiod_set_value_cansleep(cs35l56->base.reset_gpio, 0);
 
@@ -1001,11 +1100,13 @@ void cs35l56_hda_remove(struct device *dev)
 {
 	struct cs35l56_hda *cs35l56 = dev_get_drvdata(dev);
 
+	component_del(cs35l56->base.dev, &cs35l56_hda_comp_ops);
+
 	pm_runtime_dont_use_autosuspend(cs35l56->base.dev);
 	pm_runtime_get_sync(cs35l56->base.dev);
 	pm_runtime_disable(cs35l56->base.dev);
 
-	component_del(cs35l56->base.dev, &cs35l56_hda_comp_ops);
+	cs_dsp_remove(&cs35l56->cs_dsp);
 
 	kfree(cs35l56->system_name);
 	pm_runtime_put_noidle(cs35l56->base.dev);
@@ -1025,9 +1126,11 @@ const struct dev_pm_ops cs35l56_hda_pm_ops = {
 EXPORT_SYMBOL_NS_GPL(cs35l56_hda_pm_ops, SND_HDA_SCODEC_CS35L56);
 
 MODULE_DESCRIPTION("CS35L56 HDA Driver");
+MODULE_IMPORT_NS(FW_CS_DSP);
+MODULE_IMPORT_NS(SND_HDA_CIRRUS_SCODEC);
 MODULE_IMPORT_NS(SND_HDA_CS_DSP_CONTROLS);
 MODULE_IMPORT_NS(SND_SOC_CS35L56_SHARED);
+MODULE_IMPORT_NS(SND_SOC_CS_AMP_LIB);
 MODULE_AUTHOR("Richard Fitzgerald <rf@opensource.cirrus.com>");
 MODULE_AUTHOR("Simon Trimmer <simont@opensource.cirrus.com>");
 MODULE_LICENSE("GPL");
-MODULE_IMPORT_NS(FW_CS_DSP);

@@ -1092,7 +1092,7 @@ static int ftmac100_change_mtu(struct net_device *netdev, int mtu)
 	}
 	iowrite32(maccr, priv->base + FTMAC100_OFFSET_MACCR);
 
-	netdev->mtu = mtu;
+	WRITE_ONCE(netdev->mtu, mtu);
 
 	return 0;
 }
@@ -1219,7 +1219,7 @@ err_alloc_etherdev:
 	return err;
 }
 
-static int ftmac100_remove(struct platform_device *pdev)
+static void ftmac100_remove(struct platform_device *pdev)
 {
 	struct net_device *netdev;
 	struct ftmac100 *priv;
@@ -1234,7 +1234,6 @@ static int ftmac100_remove(struct platform_device *pdev)
 
 	netif_napi_del(&priv->napi);
 	free_netdev(netdev);
-	return 0;
 }
 
 static const struct of_device_id ftmac100_of_ids[] = {
@@ -1244,7 +1243,7 @@ static const struct of_device_id ftmac100_of_ids[] = {
 
 static struct platform_driver ftmac100_driver = {
 	.probe		= ftmac100_probe,
-	.remove		= ftmac100_remove,
+	.remove_new	= ftmac100_remove,
 	.driver		= {
 		.name	= DRV_NAME,
 		.of_match_table = ftmac100_of_ids

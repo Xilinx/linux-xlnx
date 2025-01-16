@@ -6,17 +6,28 @@
 //                         Cirrus Logic International Semiconductor Ltd.
 
 #include <linux/bitops.h>
+#include <linux/bits.h>
+#include <linux/build_bug.h>
+#include <linux/clk.h>
+#include <linux/device.h>
 #include <linux/err.h>
 #include <linux/errno.h>
+#include <linux/find.h>
 #include <linux/gcd.h>
 #include <linux/irq.h>
+#include <linux/irqdomain.h>
 #include <linux/jiffies.h>
 #include <linux/mfd/cs42l43.h>
 #include <linux/mfd/cs42l43-regs.h>
+#include <linux/mod_devicetable.h>
 #include <linux/module.h>
+#include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
+#include <linux/regmap.h>
 #include <linux/string.h>
+#include <linux/workqueue.h>
 #include <sound/control.h>
+#include <sound/cs42l43.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc-component.h>
@@ -138,7 +149,87 @@ CS42L43_IRQ_ERROR(spkr_therm_warm)
 CS42L43_IRQ_ERROR(spkl_therm_warm)
 CS42L43_IRQ_ERROR(spkr_sc_detect)
 CS42L43_IRQ_ERROR(spkl_sc_detect)
-CS42L43_IRQ_ERROR(hp_ilimit)
+
+static void cs42l43_hp_ilimit_clear_work(struct work_struct *work)
+{
+	struct cs42l43_codec *priv = container_of(work, struct cs42l43_codec,
+						  hp_ilimit_clear_work.work);
+	struct snd_soc_dapm_context *dapm = snd_soc_component_get_dapm(priv->component);
+
+	snd_soc_dapm_mutex_lock(dapm);
+
+	priv->hp_ilimit_count--;
+
+	if (priv->hp_ilimit_count)
+		queue_delayed_work(system_wq, &priv->hp_ilimit_clear_work,
+				   msecs_to_jiffies(CS42L43_HP_ILIMIT_DECAY_MS));
+
+	snd_soc_dapm_mutex_unlock(dapm);
+}
+
+static void cs42l43_hp_ilimit_work(struct work_struct *work)
+{
+	struct cs42l43_codec *priv = container_of(work, struct cs42l43_codec,
+						  hp_ilimit_work);
+	struct snd_soc_dapm_context *dapm = snd_soc_component_get_dapm(priv->component);
+	struct cs42l43 *cs42l43 = priv->core;
+
+	snd_soc_dapm_mutex_lock(dapm);
+
+	if (priv->hp_ilimit_count < CS42L43_HP_ILIMIT_MAX_COUNT) {
+		if (!priv->hp_ilimit_count)
+			queue_delayed_work(system_wq, &priv->hp_ilimit_clear_work,
+					   msecs_to_jiffies(CS42L43_HP_ILIMIT_DECAY_MS));
+
+		priv->hp_ilimit_count++;
+		snd_soc_dapm_mutex_unlock(dapm);
+		return;
+	}
+
+	dev_err(priv->dev, "Disabling headphone for %dmS, due to frequent current limit\n",
+		CS42L43_HP_ILIMIT_BACKOFF_MS);
+
+	priv->hp_ilimited = true;
+
+	// No need to wait for disable, as just disabling for a period of time
+	regmap_update_bits(cs42l43->regmap, CS42L43_BLOCK_EN8,
+			   CS42L43_HP_EN_MASK, 0);
+
+	snd_soc_dapm_mutex_unlock(dapm);
+
+	msleep(CS42L43_HP_ILIMIT_BACKOFF_MS);
+
+	snd_soc_dapm_mutex_lock(dapm);
+
+	if (priv->hp_ena && !priv->load_detect_running) {
+		unsigned long time_left;
+
+		reinit_completion(&priv->hp_startup);
+
+		regmap_update_bits(cs42l43->regmap, CS42L43_BLOCK_EN8,
+				   CS42L43_HP_EN_MASK, priv->hp_ena);
+
+		time_left = wait_for_completion_timeout(&priv->hp_startup,
+							msecs_to_jiffies(CS42L43_HP_TIMEOUT_MS));
+		if (!time_left)
+			dev_err(priv->dev, "ilimit HP restore timed out\n");
+	}
+
+	priv->hp_ilimited = false;
+
+	snd_soc_dapm_mutex_unlock(dapm);
+}
+
+static irqreturn_t cs42l43_hp_ilimit(int irq, void *data)
+{
+	struct cs42l43_codec *priv = data;
+
+	dev_dbg(priv->dev, "headphone ilimit IRQ\n");
+
+	queue_work(system_long_wq, &priv->hp_ilimit_work);
+
+	return IRQ_HANDLED;
+}
 
 #define CS42L43_IRQ_COMPLETE(name) \
 static irqreturn_t cs42l43_##name(int irq, void *data) \
@@ -162,24 +253,20 @@ CS42L43_IRQ_COMPLETE(load_detect)
 static irqreturn_t cs42l43_mic_shutter(int irq, void *data)
 {
 	struct cs42l43_codec *priv = data;
-	const char * const controls[] = {
-		"Decimator 1 Switch",
-		"Decimator 2 Switch",
-		"Decimator 3 Switch",
-		"Decimator 4 Switch",
-	};
-	int i, ret;
+	struct snd_soc_component *component = priv->component;
+	int i;
 
 	dev_dbg(priv->dev, "Microphone shutter changed\n");
 
-	if (!priv->component)
+	if (!component)
 		return IRQ_NONE;
 
-	for (i = 0; i < ARRAY_SIZE(controls); i++) {
-		ret = snd_soc_component_notify_control(priv->component,
-						       controls[i]);
-		if (ret)
+	for (i = 1; i < ARRAY_SIZE(priv->kctl); i++) {
+		if (!priv->kctl[i])
 			return IRQ_NONE;
+
+		snd_ctl_notify(component->card->snd_card,
+			       SNDRV_CTL_EVENT_MASK_VALUE, &priv->kctl[i]->id);
 	}
 
 	return IRQ_HANDLED;
@@ -188,17 +275,18 @@ static irqreturn_t cs42l43_mic_shutter(int irq, void *data)
 static irqreturn_t cs42l43_spk_shutter(int irq, void *data)
 {
 	struct cs42l43_codec *priv = data;
-	int ret;
+	struct snd_soc_component *component = priv->component;
 
 	dev_dbg(priv->dev, "Speaker shutter changed\n");
 
-	if (!priv->component)
+	if (!component)
 		return IRQ_NONE;
 
-	ret = snd_soc_component_notify_control(priv->component,
-					       "Speaker Digital Switch");
-	if (ret)
+	if (!priv->kctl[0])
 		return IRQ_NONE;
+
+	snd_ctl_notify(component->card->snd_card,
+		       SNDRV_CTL_EVENT_MASK_VALUE, &priv->kctl[0]->id);
 
 	return IRQ_HANDLED;
 }
@@ -220,8 +308,9 @@ static int cs42l43_startup(struct snd_pcm_substream *substream, struct snd_soc_d
 	struct snd_soc_component *component = dai->component;
 	struct cs42l43_codec *priv = snd_soc_component_get_drvdata(component);
 	struct cs42l43 *cs42l43 = priv->core;
-	int provider = !!regmap_test_bits(cs42l43->regmap, CS42L43_ASP_CLK_CONFIG2,
-					  CS42L43_ASP_MASTER_MODE_MASK);
+	int provider = !dai->id || !!regmap_test_bits(cs42l43->regmap,
+						      CS42L43_ASP_CLK_CONFIG2,
+						      CS42L43_ASP_MASTER_MODE_MASK);
 
 	if (provider)
 		priv->constraint.mask = CS42L43_PROVIDER_RATE_MASK;
@@ -459,23 +548,22 @@ static int cs42l43_asp_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	return 0;
 }
 
-static void cs42l43_mask_to_slots(struct cs42l43_codec *priv, unsigned int mask, int *slots)
+static void cs42l43_mask_to_slots(struct cs42l43_codec *priv, unsigned long mask,
+				  int *slots, unsigned int nslots)
 {
-	int i;
+	int i = 0;
+	int slot;
 
-	for (i = 0; i < CS42L43_ASP_MAX_CHANNELS; ++i) {
-		int slot = ffs(mask) - 1;
-
-		if (slot < 0)
+	for_each_set_bit(slot, &mask, BITS_PER_TYPE(mask)) {
+		if (i == nslots) {
+			dev_warn(priv->dev, "Too many channels in TDM mask: %lx\n",
+				 mask);
 			return;
+		}
 
-		slots[i] = slot;
-
-		mask &= ~(1 << slot);
+		slots[i++] = slot;
 	}
 
-	if (mask)
-		dev_warn(priv->dev, "Too many channels in TDM mask\n");
 }
 
 static int cs42l43_asp_set_tdm_slot(struct snd_soc_dai *dai, unsigned int tx_mask,
@@ -492,13 +580,54 @@ static int cs42l43_asp_set_tdm_slot(struct snd_soc_dai *dai, unsigned int tx_mas
 		rx_mask = CS42L43_DEFAULT_SLOTS;
 	}
 
-	cs42l43_mask_to_slots(priv, tx_mask, priv->tx_slots);
-	cs42l43_mask_to_slots(priv, rx_mask, priv->rx_slots);
+	cs42l43_mask_to_slots(priv, tx_mask, priv->tx_slots,
+			      ARRAY_SIZE(priv->tx_slots));
+	cs42l43_mask_to_slots(priv, rx_mask, priv->rx_slots,
+			      ARRAY_SIZE(priv->rx_slots));
+
+	return 0;
+}
+
+static int cs42l43_dai_probe(struct snd_soc_dai *dai)
+{
+	struct snd_soc_component *component = dai->component;
+	struct cs42l43_codec *priv = snd_soc_component_get_drvdata(component);
+	static const char * const controls[] = {
+		"Speaker Digital Switch",
+		"Decimator 1 Switch",
+		"Decimator 2 Switch",
+		"Decimator 3 Switch",
+		"Decimator 4 Switch",
+	};
+	int i;
+
+	static_assert(ARRAY_SIZE(controls) == ARRAY_SIZE(priv->kctl));
+
+	for (i = 0; i < ARRAY_SIZE(controls); i++) {
+		if (priv->kctl[i])
+			continue;
+
+		priv->kctl[i] = snd_soc_component_get_kcontrol(component, controls[i]);
+	}
+
+	return 0;
+}
+
+static int cs42l43_dai_remove(struct snd_soc_dai *dai)
+{
+	struct snd_soc_component *component = dai->component;
+	struct cs42l43_codec *priv = snd_soc_component_get_drvdata(component);
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(priv->kctl); i++)
+		priv->kctl[i] = NULL;
 
 	return 0;
 }
 
 static const struct snd_soc_dai_ops cs42l43_asp_ops = {
+	.probe		= cs42l43_dai_probe,
+	.remove		= cs42l43_dai_remove,
 	.startup	= cs42l43_startup,
 	.hw_params	= cs42l43_asp_hw_params,
 	.set_fmt	= cs42l43_asp_set_fmt,
@@ -516,9 +645,11 @@ static int cs42l43_sdw_hw_params(struct snd_pcm_substream *substream,
 		return ret;
 
 	return cs42l43_set_sample_rate(substream, params, dai);
-};
+}
 
 static const struct snd_soc_dai_ops cs42l43_sdw_ops = {
+	.probe		= cs42l43_dai_probe,
+	.remove		= cs42l43_dai_remove,
 	.startup	= cs42l43_startup,
 	.set_stream	= cs42l43_sdw_set_stream,
 	.hw_params	= cs42l43_sdw_hw_params,
@@ -971,12 +1102,10 @@ static int cs42l43_decim_get(struct snd_kcontrol *kcontrol,
 	int ret;
 
 	ret = cs42l43_shutter_get(priv, CS42L43_STATUS_MIC_SHUTTER_MUTE_SHIFT);
-	if (ret < 0)
-		return ret;
+	if (ret > 0)
+		ret = cs42l43_dapm_get_volsw(kcontrol, ucontrol);
 	else if (!ret)
 		ucontrol->value.integer.value[0] = ret;
-	else
-		ret = cs42l43_dapm_get_volsw(kcontrol, ucontrol);
 
 	return ret;
 }
@@ -989,12 +1118,10 @@ static int cs42l43_spk_get(struct snd_kcontrol *kcontrol,
 	int ret;
 
 	ret = cs42l43_shutter_get(priv, CS42L43_STATUS_SPK_SHUTTER_MUTE_SHIFT);
-	if (ret < 0)
-		return ret;
+	if (ret > 0)
+		ret = snd_soc_get_volsw(kcontrol, ucontrol);
 	else if (!ret)
 		ucontrol->value.integer.value[0] = ret;
-	else
-		ret = snd_soc_get_volsw(kcontrol, ucontrol);
 
 	return ret;
 }
@@ -1251,10 +1378,9 @@ static int cs42l43_enable_pll(struct cs42l43_codec *priv)
 
 	dev_dbg(priv->dev, "Enabling PLL at %uHz\n", freq);
 
-	while (freq > cs42l43_pll_configs[ARRAY_SIZE(cs42l43_pll_configs) - 1].freq) {
-		div++;
-		freq /= 2;
-	}
+	div = fls(freq) -
+	      fls(cs42l43_pll_configs[ARRAY_SIZE(cs42l43_pll_configs) - 1].freq);
+	freq >>= div;
 
 	if (div <= CS42L43_PLL_REFCLK_DIV_MASK) {
 		int i;
@@ -1452,13 +1578,13 @@ static int cs42l43_hp_ev(struct snd_soc_dapm_widget *w,
 		if (ret)
 			return ret;
 
-		if (!priv->load_detect_running)
+		if (!priv->load_detect_running && !priv->hp_ilimited)
 			regmap_update_bits(cs42l43->regmap, CS42L43_BLOCK_EN8,
 					   mask, val);
 		break;
 	case SND_SOC_DAPM_POST_PMU:
 	case SND_SOC_DAPM_POST_PMD:
-		if (priv->load_detect_running)
+		if (priv->load_detect_running || priv->hp_ilimited)
 			break;
 
 		ret = cs42l43_dapm_wait_completion(&priv->hp_startup,
@@ -2014,8 +2140,10 @@ static int cs42l43_component_probe(struct snd_soc_component *component)
 
 	snd_soc_component_init_regmap(component, cs42l43->regmap);
 
-	cs42l43_mask_to_slots(priv, CS42L43_DEFAULT_SLOTS, priv->tx_slots);
-	cs42l43_mask_to_slots(priv, CS42L43_DEFAULT_SLOTS, priv->rx_slots);
+	cs42l43_mask_to_slots(priv, CS42L43_DEFAULT_SLOTS, priv->tx_slots,
+			      ARRAY_SIZE(priv->tx_slots));
+	cs42l43_mask_to_slots(priv, CS42L43_DEFAULT_SLOTS, priv->rx_slots,
+			      ARRAY_SIZE(priv->rx_slots));
 
 	priv->component = component;
 	priv->constraint = cs42l43_constraint;
@@ -2023,10 +2151,28 @@ static int cs42l43_component_probe(struct snd_soc_component *component)
 	return 0;
 }
 
+static void cs42l43_component_remove(struct snd_soc_component *component)
+{
+	struct cs42l43_codec *priv = snd_soc_component_get_drvdata(component);
+
+	cs42l43_set_jack(priv->component, NULL, NULL);
+
+	cancel_delayed_work_sync(&priv->bias_sense_timeout);
+	cancel_delayed_work_sync(&priv->tip_sense_work);
+	cancel_delayed_work_sync(&priv->button_press_work);
+	cancel_work_sync(&priv->button_release_work);
+
+	cancel_work_sync(&priv->hp_ilimit_work);
+	cancel_delayed_work_sync(&priv->hp_ilimit_clear_work);
+
+	priv->component = NULL;
+}
+
 static const struct snd_soc_component_driver cs42l43_component_drv = {
 	.name			= "cs42l43-codec",
 
 	.probe			= cs42l43_component_probe,
+	.remove			= cs42l43_component_remove,
 	.set_sysclk		= cs42l43_set_sysclk,
 	.set_jack		= cs42l43_set_jack,
 
@@ -2169,13 +2315,18 @@ static int cs42l43_codec_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&priv->tip_sense_work, cs42l43_tip_sense_work);
 	INIT_DELAYED_WORK(&priv->bias_sense_timeout, cs42l43_bias_sense_timeout);
 	INIT_DELAYED_WORK(&priv->button_press_work, cs42l43_button_press_work);
+	INIT_DELAYED_WORK(&priv->hp_ilimit_clear_work, cs42l43_hp_ilimit_clear_work);
 	INIT_WORK(&priv->button_release_work, cs42l43_button_release_work);
+	INIT_WORK(&priv->hp_ilimit_work, cs42l43_hp_ilimit_work);
 
 	pm_runtime_set_autosuspend_delay(priv->dev, 100);
 	pm_runtime_use_autosuspend(priv->dev);
 	pm_runtime_set_active(priv->dev);
 	pm_runtime_get_noresume(priv->dev);
-	devm_pm_runtime_enable(priv->dev);
+
+	ret = devm_pm_runtime_enable(priv->dev);
+	if (ret)
+		goto err_pm;
 
 	for (i = 0; i < ARRAY_SIZE(cs42l43_irqs); i++) {
 		ret = cs42l43_request_irq(priv, dom, cs42l43_irqs[i].name,
@@ -2232,13 +2383,11 @@ err_pm:
 	return ret;
 }
 
-static int cs42l43_codec_remove(struct platform_device *pdev)
+static void cs42l43_codec_remove(struct platform_device *pdev)
 {
 	struct cs42l43_codec *priv = platform_get_drvdata(pdev);
 
 	clk_put(priv->mclk);
-
-	return 0;
 }
 
 static int cs42l43_codec_runtime_resume(struct device *dev)
@@ -2253,8 +2402,51 @@ static int cs42l43_codec_runtime_resume(struct device *dev)
 	return 0;
 }
 
-DEFINE_RUNTIME_DEV_PM_OPS(cs42l43_codec_pm_ops, NULL,
-			  cs42l43_codec_runtime_resume, NULL);
+static int cs42l43_codec_suspend(struct device *dev)
+{
+	struct cs42l43_codec *priv = dev_get_drvdata(dev);
+	struct cs42l43 *cs42l43 = priv->core;
+
+	disable_irq(cs42l43->irq);
+
+	return 0;
+}
+
+static int cs42l43_codec_suspend_noirq(struct device *dev)
+{
+	struct cs42l43_codec *priv = dev_get_drvdata(dev);
+	struct cs42l43 *cs42l43 = priv->core;
+
+	enable_irq(cs42l43->irq);
+
+	return 0;
+}
+
+static int cs42l43_codec_resume(struct device *dev)
+{
+	struct cs42l43_codec *priv = dev_get_drvdata(dev);
+	struct cs42l43 *cs42l43 = priv->core;
+
+	enable_irq(cs42l43->irq);
+
+	return 0;
+}
+
+static int cs42l43_codec_resume_noirq(struct device *dev)
+{
+	struct cs42l43_codec *priv = dev_get_drvdata(dev);
+	struct cs42l43 *cs42l43 = priv->core;
+
+	disable_irq(cs42l43->irq);
+
+	return 0;
+}
+
+static const struct dev_pm_ops cs42l43_codec_pm_ops = {
+	SYSTEM_SLEEP_PM_OPS(cs42l43_codec_suspend, cs42l43_codec_resume)
+	NOIRQ_SYSTEM_SLEEP_PM_OPS(cs42l43_codec_suspend_noirq, cs42l43_codec_resume_noirq)
+	RUNTIME_PM_OPS(NULL, cs42l43_codec_runtime_resume, NULL)
+};
 
 static const struct platform_device_id cs42l43_codec_id_table[] = {
 	{ "cs42l43-codec", },
@@ -2265,7 +2457,7 @@ MODULE_DEVICE_TABLE(platform, cs42l43_codec_id_table);
 static struct platform_driver cs42l43_codec_driver = {
 	.driver = {
 		.name	= "cs42l43-codec",
-		.pm	= &cs42l43_codec_pm_ops,
+		.pm	= pm_ptr(&cs42l43_codec_pm_ops),
 	},
 
 	.probe		= cs42l43_codec_probe,

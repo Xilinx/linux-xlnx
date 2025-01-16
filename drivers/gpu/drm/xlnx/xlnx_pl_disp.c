@@ -610,7 +610,7 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 		goto err_dma;
 	}
 
-	strncpy((char *)&xlnx_pl_disp->fmt, vformat, XLNX_PL_DISP_VFMT_SIZE);
+	strscpy((char *)&xlnx_pl_disp->fmt, vformat, XLNX_PL_DISP_VFMT_SIZE);
 	info = drm_format_info(xlnx_pl_disp->fmt);
 	if (!info) {
 		dev_err(dev, "Invalid video format in dts\n");
@@ -657,7 +657,7 @@ err_dma:
 	return ret;
 }
 
-static int xlnx_pl_disp_remove(struct platform_device *pdev)
+static void xlnx_pl_disp_remove(struct platform_device *pdev)
 {
 	struct xlnx_pl_disp *xlnx_pl_disp = platform_get_drvdata(pdev);
 	struct xlnx_dma_chan *xlnx_dma_chan = xlnx_pl_disp->chan;
@@ -670,8 +670,6 @@ static int xlnx_pl_disp_remove(struct platform_device *pdev)
 	/* Make sure the channel is terminated before release */
 	dmaengine_terminate_sync(xlnx_dma_chan->dma_chan);
 	dma_release_channel(xlnx_dma_chan->dma_chan);
-
-	return 0;
 }
 
 static const struct of_device_id xlnx_pl_disp_of_match[] = {

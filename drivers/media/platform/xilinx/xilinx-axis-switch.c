@@ -133,8 +133,7 @@ xvsw_get_pad_format(struct xvswitch_device *xvsw,
 
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		get_fmt = v4l2_subdev_get_try_format(&xvsw->subdev, sd_state,
-						     pad);
+		get_fmt = v4l2_subdev_state_get_format(sd_state, pad);
 		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		get_fmt = &xvsw->formats[pad];
@@ -569,7 +568,7 @@ static int xvsw_probe(struct platform_device *pdev)
 	v4l2_subdev_init(subdev, &xvsw_ops);
 	subdev->dev = &pdev->dev;
 	subdev->internal_ops = &xvsw_internal_ops;
-	strlcpy(subdev->name, dev_name(&pdev->dev), sizeof(subdev->name));
+	strscpy(subdev->name, dev_name(&pdev->dev), sizeof(subdev->name));
 	v4l2_set_subdevdata(subdev, xvsw);
 	subdev->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 	subdev->entity.ops = &xvsw_media_ops;
@@ -599,7 +598,7 @@ clk_error:
 	return ret;
 }
 
-static int xvsw_remove(struct platform_device *pdev)
+static void xvsw_remove(struct platform_device *pdev)
 {
 	struct xvswitch_device *xvsw = platform_get_drvdata(pdev);
 	struct v4l2_subdev *subdev = &xvsw->subdev;
@@ -609,7 +608,6 @@ static int xvsw_remove(struct platform_device *pdev)
 	if (!xvsw->tdest_routing)
 		clk_disable_unprepare(xvsw->saxi_ctlclk);
 	clk_disable_unprepare(xvsw->aclk);
-	return 0;
 }
 
 static const struct of_device_id xvsw_of_id_table[] = {

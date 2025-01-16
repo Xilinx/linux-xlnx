@@ -10,7 +10,7 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_drv.h>
-#include <drm/drm_fbdev_generic.h>
+#include <drm/drm_fbdev_ttm.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_ioctl.h>
 #include <drm/drm_modeset_helper.h>
@@ -184,7 +184,7 @@ static int lsdc_get_dedicated_vram(struct lsdc_device *ldev,
 	drm_info(ddev, "Dedicated vram start: 0x%llx, size: %uMiB\n",
 		 (u64)base, (u32)(size >> 20));
 
-	return 0;
+	return (size > SZ_1M) ? 0 : -ENODEV;
 }
 
 static struct lsdc_device *
@@ -314,7 +314,7 @@ static int lsdc_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (ret)
 		return ret;
 
-	drm_fbdev_generic_setup(ddev, 32);
+	drm_fbdev_ttm_setup(ddev, 32);
 
 	return 0;
 }
@@ -325,6 +325,11 @@ static void lsdc_pci_remove(struct pci_dev *pdev)
 
 	drm_dev_unregister(ddev);
 	drm_atomic_helper_shutdown(ddev);
+}
+
+static void lsdc_pci_shutdown(struct pci_dev *pdev)
+{
+	drm_atomic_helper_shutdown(pci_get_drvdata(pdev));
 }
 
 static int lsdc_drm_freeze(struct drm_device *ddev)
@@ -447,6 +452,7 @@ struct pci_driver lsdc_pci_driver = {
 	.id_table = lsdc_pciid_list,
 	.probe = lsdc_pci_probe,
 	.remove = lsdc_pci_remove,
+	.shutdown = lsdc_pci_shutdown,
 	.driver.pm = &lsdc_pm_ops,
 };
 

@@ -432,7 +432,9 @@ static int handle_aes_req(struct crypto_engine *engine, void *req)
 
 	drv_ctx = container_of(alg, struct xilinx_aead_drv_ctx, aead.base);
 	err = drv_ctx->aes_aead_cipher(areq);
+	local_bh_disable();
 	crypto_finalize_aead_request(engine, areq, err);
+	local_bh_enable();
 
 	return 0;
 }
@@ -846,7 +848,7 @@ err_engine:
 	return err;
 }
 
-static int zynqmp_aes_aead_remove(struct platform_device *pdev)
+static void zynqmp_aes_aead_remove(struct platform_device *pdev)
 {
 	struct xilinx_aead_drv_ctx *aes_drv_ctx;
 
@@ -854,13 +856,11 @@ static int zynqmp_aes_aead_remove(struct platform_device *pdev)
 
 	crypto_engine_exit(aes_drv_ctx->engine);
 	crypto_engine_unregister_aead(&aes_drv_ctx->aead);
-
-	return 0;
 }
 
 static struct platform_driver zynqmp_aes_driver = {
 	.probe	= zynqmp_aes_aead_probe,
-	.remove = zynqmp_aes_aead_remove,
+	.remove_new = zynqmp_aes_aead_remove,
 	.driver = {
 		.name		= "zynqmp-aes",
 	},
@@ -894,5 +894,6 @@ static void __exit aes_driver_exit(void)
 
 module_init(aes_driver_init);
 module_exit(aes_driver_exit);
-MODULE_DESCRIPTION("zynqmp aes-gcm hardware acceleration support.");
+
+MODULE_DESCRIPTION("Xilinx ZynqMP AES Driver");
 MODULE_LICENSE("GPL");

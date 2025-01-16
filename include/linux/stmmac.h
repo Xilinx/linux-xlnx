@@ -13,7 +13,7 @@
 #define __STMMAC_PLATFORM_DATA
 
 #include <linux/platform_device.h>
-#include <linux/phy.h>
+#include <linux/phylink.h>
 
 #define MTL_MAX_RX_QUEUES	8
 #define MTL_MAX_TX_QUEUES	8
@@ -82,8 +82,8 @@ struct stmmac_priv;
 
 struct stmmac_mdio_bus_data {
 	unsigned int phy_mask;
-	unsigned int has_xpcs;
-	unsigned int xpcs_an_inband;
+	unsigned int pcs_mask;
+	unsigned int default_an_inband;
 	int *irqs;
 	int probed_phy_irq;
 	bool needs_reset;
@@ -100,6 +100,7 @@ struct stmmac_dma_cfg {
 	bool eame;
 	bool multi_msi_en;
 	bool dche;
+	bool atds;
 };
 
 #define AXI_BLEN	7
@@ -115,20 +116,6 @@ struct stmmac_axi {
 	bool axi_rb;
 };
 
-#define EST_GCL		1024
-struct stmmac_est {
-	struct mutex lock;
-	int enable;
-	u32 btr_reserve[2];
-	u32 btr_offset[2];
-	u32 btr[2];
-	u32 ctr[2];
-	u32 ter;
-	u32 gcl_unaligned[EST_GCL];
-	u32 gcl[EST_GCL];
-	u32 gcl_size;
-};
-
 struct stmmac_rxq_cfg {
 	u8 mode_to_use;
 	u32 chan;
@@ -139,6 +126,7 @@ struct stmmac_rxq_cfg {
 
 struct stmmac_txq_cfg {
 	u32 weight;
+	bool coe_unsupported;
 	u8 mode_to_use;
 	/* Credit Base Shaper parameters */
 	u32 send_slope;
@@ -148,32 +136,6 @@ struct stmmac_txq_cfg {
 	bool use_prio;
 	u32 prio;
 	int tbs_en;
-};
-
-/* FPE link state */
-enum stmmac_fpe_state {
-	FPE_STATE_OFF = 0,
-	FPE_STATE_CAPABLE = 1,
-	FPE_STATE_ENTERING_ON = 2,
-	FPE_STATE_ON = 3,
-};
-
-/* FPE link-partner hand-shaking mPacket type */
-enum stmmac_mpacket_type {
-	MPACKET_VERIFY = 0,
-	MPACKET_RESPONSE = 1,
-};
-
-enum stmmac_fpe_task_state_t {
-	__FPE_REMOVING,
-	__FPE_TASK_SCHED,
-};
-
-struct stmmac_fpe_cfg {
-	bool enable;				/* FPE enable */
-	bool hs_enable;				/* FPE handshake enable */
-	enum stmmac_fpe_state lp_fpe_state;	/* Link Partner FPE state */
-	enum stmmac_fpe_state lo_fpe_state;	/* Local station FPE state */
 };
 
 struct stmmac_safety_feature_cfg {
@@ -243,8 +205,6 @@ struct plat_stmmacenet_data {
 	struct fwnode_handle *port_node;
 	struct device_node *mdio_node;
 	struct stmmac_dma_cfg *dma_cfg;
-	struct stmmac_est *est;
-	struct stmmac_fpe_cfg *fpe_cfg;
 	struct stmmac_safety_feature_cfg *safety_feat_cfg;
 	int clk_csr;
 	int has_gmac;
@@ -282,6 +242,10 @@ struct plat_stmmacenet_data {
 	int (*crosststamp)(ktime_t *device, struct system_counterval_t *system,
 			   void *ctx);
 	void (*dump_debug_regs)(void *priv);
+	int (*pcs_init)(struct stmmac_priv *priv);
+	void (*pcs_exit)(struct stmmac_priv *priv);
+	struct phylink_pcs *(*select_pcs)(struct stmmac_priv *priv,
+					  phy_interface_t interface);
 	void *bsp_priv;
 	struct clk *stmmac_clk;
 	struct clk *pclk;
@@ -302,7 +266,6 @@ struct plat_stmmacenet_data {
 	unsigned int eee_usecs_rate;
 	struct pci_dev *pdev;
 	int int_snapshot_num;
-	int ext_snapshot_num;
 	int msi_mac_vec;
 	int msi_wol_vec;
 	int msi_lpi_vec;

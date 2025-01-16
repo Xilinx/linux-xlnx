@@ -490,7 +490,7 @@ void flush_dcache_folio(struct folio *folio)
 		}
 		set_dcache_dirty(folio, this_cpu);
 	} else {
-		/* We could delay the flush for the !page_mapping
+		/* We could delay the flush for the !folio_mapping
 		 * case too.  But that case is for exec env/arg
 		 * pages and those are %99 certainly going to get
 		 * faulted into the tlb (and thus flushed) anyways.
@@ -1075,14 +1075,9 @@ static void __init allocate_node_data(int nid)
 {
 	struct pglist_data *p;
 	unsigned long start_pfn, end_pfn;
-#ifdef CONFIG_NUMA
 
-	NODE_DATA(nid) = memblock_alloc_node(sizeof(struct pglist_data),
-					     SMP_CACHE_BYTES, nid);
-	if (!NODE_DATA(nid)) {
-		prom_printf("Cannot allocate pglist_data for nid[%d]\n", nid);
-		prom_halt();
-	}
+#ifdef CONFIG_NUMA
+	alloc_node_data(nid);
 
 	NODE_DATA(nid)->node_id = nid;
 #endif
@@ -1115,11 +1110,9 @@ static void init_node_masks_nonnuma(void)
 }
 
 #ifdef CONFIG_NUMA
-struct pglist_data *node_data[MAX_NUMNODES];
 
 EXPORT_SYMBOL(numa_cpu_lookup_table);
 EXPORT_SYMBOL(numa_cpumask_lookup_table);
-EXPORT_SYMBOL(node_data);
 
 static int scan_pio_for_cfg_handle(struct mdesc_handle *md, u64 pio,
 				   u32 cfg_handle)
@@ -1665,14 +1658,14 @@ bool kern_addr_valid(unsigned long addr)
 	if (pud_none(*pud))
 		return false;
 
-	if (pud_large(*pud))
+	if (pud_leaf(*pud))
 		return pfn_valid(pud_pfn(*pud));
 
 	pmd = pmd_offset(pud, addr);
 	if (pmd_none(*pmd))
 		return false;
 
-	if (pmd_large(*pmd))
+	if (pmd_leaf(*pmd))
 		return pfn_valid(pmd_pfn(*pmd));
 
 	pte = pte_offset_kernel(pmd, addr);
@@ -2640,11 +2633,6 @@ int __meminit vmemmap_populate(unsigned long vstart, unsigned long vend,
 
 	return 0;
 }
-
-void vmemmap_free(unsigned long start, unsigned long end,
-		struct vmem_altmap *altmap)
-{
-}
 #endif /* CONFIG_SPARSEMEM_VMEMMAP */
 
 /* These are actually filled in at boot time by sun4{u,v}_pgprot_init() */
@@ -2968,7 +2956,7 @@ void update_mmu_cache_pmd(struct vm_area_struct *vma, unsigned long addr,
 	struct mm_struct *mm;
 	pmd_t entry = *pmd;
 
-	if (!pmd_large(entry) || !pmd_young(entry))
+	if (!pmd_leaf(entry) || !pmd_young(entry))
 		return;
 
 	pte = pmd_val(entry);

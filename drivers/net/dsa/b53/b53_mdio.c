@@ -329,7 +329,7 @@ static int b53_mdio_probe(struct mdio_device *mdiodev)
 	 * layer setup
 	 */
 	if (of_machine_is_compatible("brcm,bcm7445d0") &&
-	    strcmp(mdiodev->bus->name, "sf2 slave mii"))
+	    strcmp(mdiodev->bus->name, "sf2 user mii"))
 		return -EPROBE_DEFER;
 
 	dev = b53_switch_alloc(&mdiodev->dev, &b53_mdio_ops, mdiodev->bus);
@@ -343,10 +343,9 @@ static int b53_mdio_probe(struct mdio_device *mdiodev)
 	dev_set_drvdata(&mdiodev->dev, dev);
 
 	ret = b53_switch_register(dev);
-	if (ret) {
-		dev_err(&mdiodev->dev, "failed to register switch: %i\n", ret);
-		return ret;
-	}
+	if (ret)
+		return dev_err_probe(&mdiodev->dev, ret,
+				     "failed to register switch\n");
 
 	return ret;
 }

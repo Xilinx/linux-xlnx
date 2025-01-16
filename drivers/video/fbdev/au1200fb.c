@@ -1236,6 +1236,8 @@ static int au1200fb_fb_mmap(struct fb_info *info, struct vm_area_struct *vma)
 {
 	struct au1200fb_device *fbdev = info->par;
 
+	vma->vm_page_prot = pgprot_decrypted(vma->vm_page_prot);
+
 	return dma_mmap_coherent(fbdev->dev, vma,
 				 fbdev->fb_mem, fbdev->fb_phys, fbdev->fb_len);
 }
@@ -1488,15 +1490,12 @@ static int au1200fb_ioctl(struct fb_info *info, unsigned int cmd,
 
 static const struct fb_ops au1200fb_fb_ops = {
 	.owner		= THIS_MODULE,
+	__FB_DEFAULT_DMAMEM_OPS_RDWR,
 	.fb_check_var	= au1200fb_fb_check_var,
 	.fb_set_par	= au1200fb_fb_set_par,
 	.fb_setcolreg	= au1200fb_fb_setcolreg,
 	.fb_blank	= au1200fb_fb_blank,
-	.fb_fillrect	= sys_fillrect,
-	.fb_copyarea	= sys_copyarea,
-	.fb_imageblit	= sys_imageblit,
-	.fb_read	= fb_sys_read,
-	.fb_write	= fb_sys_write,
+	__FB_DEFAULT_DMAMEM_OPS_DRAW,
 	.fb_sync	= NULL,
 	.fb_ioctl	= au1200fb_ioctl,
 	.fb_mmap	= au1200fb_fb_mmap,
@@ -1558,7 +1557,7 @@ static int au1200fb_init_fbinfo(struct au1200fb_device *fbdev)
 		return ret;
 	}
 
-	strncpy(fbi->fix.id, "AU1200", sizeof(fbi->fix.id));
+	strscpy(fbi->fix.id, "AU1200");
 	fbi->fix.smem_start = fbdev->fb_phys;
 	fbi->fix.smem_len = fbdev->fb_len;
 	fbi->fix.type = FB_TYPE_PACKED_PIXELS;
@@ -1567,6 +1566,8 @@ static int au1200fb_init_fbinfo(struct au1200fb_device *fbdev)
 	fbi->fix.mmio_start = 0;
 	fbi->fix.mmio_len = 0;
 	fbi->fix.accel = FB_ACCEL_NONE;
+
+	fbi->flags |= FBINFO_VIRTFB;
 
 	fbi->screen_buffer = fbdev->fb_mem;
 
@@ -1719,15 +1720,6 @@ static int au1200fb_drv_probe(struct platform_device *dev)
 		}
 
 		au1200fb_fb_set_par(fbi);
-
-#if !defined(CONFIG_FRAMEBUFFER_CONSOLE) && defined(CONFIG_LOGO)
-		if (plane == 0)
-			if (fb_prepare_logo(fbi, FB_ROTATE_UR)) {
-				/* Start display and show logo on boot */
-				fb_set_cmap(&fbi->cmap, fbi);
-				fb_show_logo(fbi, FB_ROTATE_UR);
-			}
-#endif
 	}
 
 	/* Now hook interrupt too */
@@ -1841,7 +1833,7 @@ static struct platform_driver au1200fb_driver = {
 		.pm	= AU1200FB_PMOPS,
 	},
 	.probe		= au1200fb_drv_probe,
-	.remove_new	= au1200fb_drv_remove,
+	.remove		= au1200fb_drv_remove,
 };
 module_platform_driver(au1200fb_driver);
 

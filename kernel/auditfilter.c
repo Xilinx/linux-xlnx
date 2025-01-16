@@ -529,7 +529,8 @@ static struct audit_entry *audit_data_to_entry(struct audit_rule_data *data,
 			entry->rule.buflen += f_val;
 			f->lsm_str = str;
 			err = security_audit_rule_init(f->type, f->op, str,
-						       (void **)&f->lsm_rule);
+						       (void **)&f->lsm_rule,
+						       GFP_KERNEL);
 			/* Keep currently invalid fields around in case they
 			 * become valid after a policy reload. */
 			if (err == -EINVAL) {
@@ -788,7 +789,7 @@ static int audit_compare_rule(struct audit_krule *a, struct audit_krule *b)
 static inline int audit_dupe_lsm_field(struct audit_field *df,
 					   struct audit_field *sf)
 {
-	int ret = 0;
+	int ret;
 	char *lsm_str;
 
 	/* our own copy of lsm_str */
@@ -799,7 +800,7 @@ static inline int audit_dupe_lsm_field(struct audit_field *df,
 
 	/* our own (refreshed) copy of lsm_rule */
 	ret = security_audit_rule_init(df->type, df->op, df->lsm_str,
-				       (void **)&df->lsm_rule);
+				       (void **)&df->lsm_rule, GFP_KERNEL);
 	/* Keep currently invalid fields around in case they
 	 * become valid after a policy reload. */
 	if (ret == -EINVAL) {
@@ -1343,7 +1344,7 @@ int audit_filter(int msgtype, unsigned int listtype)
 
 			switch (f->type) {
 			case AUDIT_PID:
-				pid = task_pid_nr(current);
+				pid = task_tgid_nr(current);
 				result = audit_comparator(pid, f->op, f->val);
 				break;
 			case AUDIT_UID:

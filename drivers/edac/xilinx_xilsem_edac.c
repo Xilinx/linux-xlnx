@@ -675,7 +675,7 @@ static int xsem_edac_probe(struct platform_device *pdev)
 		return PTR_ERR(plmrtca_baseaddr);
 
 	dci = edac_device_alloc_ctl_info(sizeof(*priv), VERSAL_XILSEM_EDAC_STRNG,
-					 1, VERSAL_XILSEM_EDAC_STRNG, 1, 0, NULL, 0,
+					 1, VERSAL_XILSEM_EDAC_STRNG, 1, 0,
 					 edac_device_alloc_index());
 	if (!dci) {
 		edac_printk(KERN_ERR, EDAC_DEVICE, "Unable to allocate EDAC device\n");
@@ -742,7 +742,7 @@ free_dev_ctl:
  *
  * Return: Unconditionally 0
  */
-static int xsem_edac_remove(struct platform_device *pdev)
+static void xsem_edac_remove(struct platform_device *pdev)
 {
 	struct edac_device_ctl_info *dci = platform_get_drvdata(pdev);
 	struct xsem_edac_priv *priv = dci->pvt_info;
@@ -752,8 +752,6 @@ static int xsem_edac_remove(struct platform_device *pdev)
 			      xsem_err_callback, dci);
 	edac_device_del_device(&pdev->dev);
 	edac_device_free_ctl_info(dci);
-
-	return 0;
 }
 
 static const struct of_device_id xlnx_xsem_edac_match[] = {

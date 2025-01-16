@@ -8,6 +8,7 @@
 
 #include <linux/acpi.h>
 #include <linux/module.h>
+#include <linux/platform_data/x86/intel_scu_ipc.h>
 #include <linux/platform_device.h>
 #include <linux/property.h>
 #include <linux/usb/pd.h>
@@ -17,8 +18,6 @@
 #include <linux/usb/typec_tbt.h>
 #include <linux/debugfs.h>
 #include <linux/usb.h>
-
-#include <asm/intel_scu_ipc.h>
 
 #define PMC_USBC_CMD		0xa7
 
@@ -191,6 +190,12 @@ static int hsl_orientation(struct pmc_usb_port *port)
 	return port->orientation - 1;
 }
 
+static bool is_pmc_mux_tbt(struct acpi_device *adev)
+{
+	return acpi_dev_hid_uid_match(adev, "INTC1072", NULL) ||
+	       acpi_dev_hid_uid_match(adev, "INTC1079", NULL);
+}
+
 static int pmc_usb_send_command(struct intel_scu_ipc_dev *ipc, u8 *msg, u32 len)
 {
 	u8 response[4];
@@ -292,6 +297,24 @@ pmc_usb_mux_dp(struct pmc_usb_port *port, struct typec_mux_state *state)
 
 	req.mode_data |= (state->mode - TYPEC_STATE_MODAL) <<
 			 PMC_USB_ALTMODE_DP_MODE_SHIFT;
+
+	if (!is_pmc_mux_tbt(port->pmc->iom_adev)) {
+		u8 cable_speed = (data->conf & DP_CONF_SIGNALLING_MASK) >>
+				  DP_CONF_SIGNALLING_SHIFT;
+
+		u8 cable_type = (data->conf & DP_CONF_CABLE_TYPE_MASK) >>
+				 DP_CONF_CABLE_TYPE_SHIFT;
+
+		req.mode_data |= PMC_USB_ALTMODE_CABLE_SPD(cable_speed);
+
+		if (cable_type == DP_CONF_CABLE_TYPE_OPTICAL)
+			req.mode_data |= PMC_USB_ALTMODE_CABLE_TYPE;
+		else if (cable_type == DP_CONF_CABLE_TYPE_RE_TIMER)
+			req.mode_data |= PMC_USB_ALTMODE_ACTIVE_CABLE |
+					 PMC_USB_ALTMODE_RETIMER_CABLE;
+		else if (cable_type == DP_CONF_CABLE_TYPE_RE_DRIVER)
+			req.mode_data |= PMC_USB_ALTMODE_ACTIVE_CABLE;
+	}
 
 	ret = pmc_usb_command(port, (void *)&req, sizeof(req));
 	if (ret)
@@ -599,6 +622,7 @@ static int pmc_usb_register_port(struct pmc_usb *pmc, int index,
 	desc.driver_data = port;
 	desc.name = fwnode_get_name(fwnode);
 	desc.set = pmc_usb_set_role;
+	desc.allow_userspace_control = true;
 
 	port->usb_sw = usb_role_switch_register(pmc->dev, &desc);
 	if (IS_ERR(port->usb_sw)) {

@@ -315,6 +315,7 @@ void __noreturn kthread_exit(long result)
 	kthread->result = result;
 	do_exit(0);
 }
+EXPORT_SYMBOL(kthread_exit);
 
 /**
  * kthread_complete_and_exit - Exit the current kthread.
@@ -622,6 +623,8 @@ void kthread_unpark(struct task_struct *k)
 {
 	struct kthread *kthread = to_kthread(k);
 
+	if (!test_bit(KTHREAD_SHOULD_PARK, &kthread->flags))
+		return;
 	/*
 	 * Newly created kthread was parked when the CPU was offline.
 	 * The binding was lost and we need to set it again.
@@ -714,6 +717,24 @@ int kthread_stop(struct task_struct *k)
 	return ret;
 }
 EXPORT_SYMBOL(kthread_stop);
+
+/**
+ * kthread_stop_put - stop a thread and put its task struct
+ * @k: thread created by kthread_create().
+ *
+ * Stops a thread created by kthread_create() and put its task_struct.
+ * Only use when holding an extra task struct reference obtained by
+ * calling get_task_struct().
+ */
+int kthread_stop_put(struct task_struct *k)
+{
+	int ret;
+
+	ret = kthread_stop(k);
+	put_task_struct(k);
+	return ret;
+}
+EXPORT_SYMBOL(kthread_stop_put);
 
 int kthreadd(void *unused)
 {
@@ -826,8 +847,16 @@ repeat:
 		 * event only cares about the address.
 		 */
 		trace_sched_kthread_work_execute_end(work, func);
-	} else if (!freezing(current))
+	} else if (!freezing(current)) {
 		schedule();
+	} else {
+		/*
+		 * Handle the case where the current remains
+		 * TASK_INTERRUPTIBLE. try_to_freeze() expects
+		 * the current to be TASK_RUNNING.
+		 */
+		__set_current_state(TASK_RUNNING);
+	}
 
 	try_to_freeze();
 	cond_resched();
@@ -1469,7 +1498,6 @@ void kthread_unuse_mm(struct mm_struct *mm)
 	 * clearing tsk->mm.
 	 */
 	smp_mb__after_spinlock();
-	sync_mm_rss(mm);
 	local_irq_disable();
 	tsk->mm = NULL;
 	membarrier_update_current_mm(NULL);

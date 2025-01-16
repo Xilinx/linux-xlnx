@@ -22,10 +22,12 @@
 #include <sys/mount.h>
 #include <sys/prctl.h>
 #include <sys/reboot.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/sysmacros.h>
 #include <sys/time.h>
+#include <sys/utsname.h>
 #include <sys/wait.h>
 #include <dirent.h>
 #include <errno.h>
@@ -40,6 +42,8 @@
 #include <limits.h>
 #endif
 #endif
+
+#include "nolibc-test-linkage.h"
 
 /* for the type of int_fast16_t and int_fast32_t, musl differs from glibc and nolibc */
 #define SINT_MAX_OF_TYPE(type) (((type)1 << (sizeof(type) * 8 - 2)) - (type)1 + ((type)1 << (sizeof(type) * 8 - 2)))
@@ -56,6 +60,17 @@ static int test_argc;
 
 /* will be used by some test cases as readable file, please don't write it */
 static const char *argv0;
+
+/* will be used by constructor tests */
+static int constructor_test_value;
+
+static const int is_nolibc =
+#ifdef NOLIBC
+	1
+#else
+	0
+#endif
+;
 
 /* definition of a series of tests */
 struct test {
@@ -125,11 +140,17 @@ static const char *errorname(int err)
 	}
 }
 
-static void putcharn(char c, size_t n)
+static void align_result(size_t llen)
 {
-	char buf[64];
+	const size_t align = 64;
+	char buf[align];
+	size_t n;
 
-	memset(buf, c, n);
+	if (llen >= align)
+		return;
+
+	n = align - llen;
+	memset(buf, ' ', n);
 	buf[n] = '\0';
 	fputs(buf, stdout);
 }
@@ -145,14 +166,13 @@ static void result(int llen, enum RESULT r)
 	const char *msg;
 
 	if (r == OK)
-		msg = " [OK]";
+		msg = "  [OK]";
 	else if (r == SKIPPED)
 		msg = "[SKIPPED]";
 	else
-		msg = "[FAIL]";
+		msg = " [FAIL]";
 
-	if (llen < 64)
-		putcharn(' ', 64 - llen);
+	align_result(llen);
 	puts(msg);
 }
 
@@ -522,7 +542,7 @@ int expect_strzr(const char *expr, int llen)
 {
 	int ret = 0;
 
-	llen += printf(" = <%s> ", expr);
+	llen += printf(" = <%s> ", expr ? expr : "(null)");
 	if (expr) {
 		ret = 1;
 		result(llen, FAIL);
@@ -541,7 +561,7 @@ int expect_strnz(const char *expr, int llen)
 {
 	int ret = 0;
 
-	llen += printf(" = <%s> ", expr);
+	llen += printf(" = <%s> ", expr ? expr : "(null)");
 	if (!expr) {
 		ret = 1;
 		result(llen, FAIL);
@@ -589,10 +609,88 @@ int expect_strne(const char *expr, int llen, const char *cmp)
 	return ret;
 }
 
+#define EXPECT_STRBUFEQ(cond, expr, buf, val, cmp)				\
+	do { if (!(cond)) result(llen, SKIPPED); else ret += expect_str_buf_eq(expr, buf, val, llen, cmp); } while (0)
+
+static __attribute__((unused))
+int expect_str_buf_eq(size_t expr, const char *buf, size_t val, int llen, const char *cmp)
+{
+	llen += printf(" = %lu <%s> ", (unsigned long)expr, buf);
+	if (strcmp(buf, cmp) != 0) {
+		result(llen, FAIL);
+		return 1;
+	}
+	if (expr != val) {
+		result(llen, FAIL);
+		return 1;
+	}
+
+	result(llen, OK);
+	return 0;
+}
+
+#define EXPECT_STRTOX(cond, func, input, base, expected, chars, expected_errno)				\
+	do { if (!(cond)) result(llen, SKIPPED); else ret += expect_strtox(llen, func, input, base, expected, chars, expected_errno); } while (0)
+
+static __attribute__((unused))
+int expect_strtox(int llen, void *func, const char *input, int base, intmax_t expected, int expected_chars, int expected_errno)
+{
+	char *endptr;
+	int actual_errno, actual_chars;
+	intmax_t r;
+
+	errno = 0;
+	if (func == strtol) {
+		r = strtol(input, &endptr, base);
+	} else if (func == strtoul) {
+		r = strtoul(input, &endptr, base);
+	} else {
+		result(llen, FAIL);
+		return 1;
+	}
+	actual_errno = errno;
+	actual_chars = endptr - input;
+
+	llen += printf(" %lld = %lld", (long long)expected, (long long)r);
+	if (r != expected) {
+		result(llen, FAIL);
+		return 1;
+	}
+	if (expected_chars == -1) {
+		if (*endptr != '\0') {
+			result(llen, FAIL);
+			return 1;
+		}
+	} else if (expected_chars != actual_chars) {
+		result(llen, FAIL);
+		return 1;
+	}
+	if (actual_errno != expected_errno) {
+		result(llen, FAIL);
+		return 1;
+	}
+
+	result(llen, OK);
+	return 0;
+}
 
 /* declare tests based on line numbers. There must be exactly one test per line. */
 #define CASE_TEST(name) \
 	case __LINE__: llen += printf("%d %s", test, #name);
+
+/* constructors validate that they are executed in definition order */
+__attribute__((constructor))
+static void constructor1(void)
+{
+	constructor_test_value = 1;
+}
+
+__attribute__((constructor))
+static void constructor2(int argc, char **argv, char **envp)
+{
+	if (argc && argv && envp)
+		constructor_test_value *= 2;
+}
 
 int run_startup(int min, int max)
 {
@@ -630,7 +728,9 @@ int run_startup(int min, int max)
 		CASE_TEST(environ_HOME);     EXPECT_PTRNZ(1, getenv("HOME")); break;
 		CASE_TEST(auxv_addr);        EXPECT_PTRGT(test_auxv != (void *)-1, test_auxv, brk); break;
 		CASE_TEST(auxv_AT_UID);      EXPECT_EQ(1, getauxval(AT_UID), getuid()); break;
-		CASE_TEST(auxv_AT_PAGESZ);   EXPECT_GE(1, getauxval(AT_PAGESZ), 4096); break;
+		CASE_TEST(constructor);      EXPECT_EQ(1, constructor_test_value, 2); break;
+		CASE_TEST(linkage_errno);    EXPECT_PTREQ(1, linkage_test_errno_addr(), &errno); break;
+		CASE_TEST(linkage_constr);   EXPECT_EQ(1, linkage_test_constructor_test_value, 6); break;
 		case __LINE__:
 			return ret; /* must be last */
 		/* note: do not set any defaults so as to permit holes above */
@@ -735,6 +835,45 @@ int test_stat_timestamps(void)
 	return 0;
 }
 
+int test_uname(void)
+{
+	struct utsname buf;
+	char osrelease[sizeof(buf.release)];
+	ssize_t r;
+	int fd;
+
+	memset(&buf.domainname, 'P', sizeof(buf.domainname));
+
+	if (uname(&buf))
+		return 1;
+
+	if (strncmp("Linux", buf.sysname, sizeof(buf.sysname)))
+		return 1;
+
+	fd = open("/proc/sys/kernel/osrelease", O_RDONLY);
+	if (fd == -1)
+		return 1;
+
+	r = read(fd, osrelease, sizeof(osrelease));
+	if (r == -1)
+		return 1;
+
+	close(fd);
+
+	if (osrelease[r - 1] == '\n')
+		r--;
+
+	/* Validate one of the later fields to ensure field sizes are correct */
+	if (strncmp(osrelease, buf.release, r))
+		return 1;
+
+	/* Ensure the field domainname is set, it is missing from struct old_utsname */
+	if (strnlen(buf.domainname, sizeof(buf.domainname)) == sizeof(buf.domainname))
+		return 1;
+
+	return 0;
+}
+
 int test_mmap_munmap(void)
 {
 	int ret, fd, i, page_size;
@@ -814,6 +953,33 @@ int test_pipe(void)
 	return !!memcmp(buf, msg, len);
 }
 
+int test_rlimit(void)
+{
+	struct rlimit rlim = {
+		.rlim_cur = 1 << 20,
+		.rlim_max = 1 << 21,
+	};
+	int ret;
+
+	ret = setrlimit(RLIMIT_CORE, &rlim);
+	if (ret)
+		return -1;
+
+	rlim.rlim_cur = 0;
+	rlim.rlim_max = 0;
+
+	ret = getrlimit(RLIMIT_CORE, &rlim);
+	if (ret)
+		return -1;
+
+	if (rlim.rlim_cur != 1 << 20)
+		return -1;
+	if (rlim.rlim_max != 1 << 21)
+		return -1;
+
+	return 0;
+}
+
 
 /* Run syscall tests between IDs <min> and <max>.
  * Return 0 on success, non-zero on failure.
@@ -830,6 +996,7 @@ int run_syscall(int min, int max)
 	int ret = 0;
 	void *p1, *p2;
 	int has_gettid = 1;
+	int has_brk;
 
 	/* <proc> indicates whether or not /proc is mounted */
 	proc = stat("/proc", &stat_buf) == 0;
@@ -841,6 +1008,9 @@ int run_syscall(int min, int max)
 #if defined(__GLIBC_MINOR__) && defined(__GLIBC__)
 	has_gettid = __GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 30);
 #endif
+
+	/* on musl setting brk()/sbrk() always fails */
+	has_brk = brk(0) == 0;
 
 	for (test = min; test >= 0 && test <= max; test++) {
 		int llen = 0; /* line length */
@@ -857,9 +1027,9 @@ int run_syscall(int min, int max)
 		CASE_TEST(kill_0);            EXPECT_SYSZR(1, kill(getpid(), 0)); break;
 		CASE_TEST(kill_CONT);         EXPECT_SYSZR(1, kill(getpid(), 0)); break;
 		CASE_TEST(kill_BADPID);       EXPECT_SYSER(1, kill(INT_MAX, 0), -1, ESRCH); break;
-		CASE_TEST(sbrk_0);            EXPECT_PTRNE(1, sbrk(0), (void *)-1); break;
-		CASE_TEST(sbrk);              if ((p1 = p2 = sbrk(4096)) != (void *)-1) p2 = sbrk(-4096); EXPECT_SYSZR(1, (p2 == (void *)-1) || p2 == p1); break;
-		CASE_TEST(brk);               EXPECT_SYSZR(1, brk(sbrk(0))); break;
+		CASE_TEST(sbrk_0);            EXPECT_PTRNE(has_brk, sbrk(0), (void *)-1); break;
+		CASE_TEST(sbrk);              if ((p1 = p2 = sbrk(4096)) != (void *)-1) p2 = sbrk(-4096); EXPECT_SYSZR(has_brk, (p2 == (void *)-1) || p2 == p1); break;
+		CASE_TEST(brk);               EXPECT_SYSZR(has_brk, brk(sbrk(0))); break;
 		CASE_TEST(chdir_root);        EXPECT_SYSZR(1, chdir("/")); chdir(getenv("PWD")); break;
 		CASE_TEST(chdir_dot);         EXPECT_SYSZR(1, chdir(".")); break;
 		CASE_TEST(chdir_blah);        EXPECT_SYSER(1, chdir("/blah"), -1, ENOENT); break;
@@ -885,7 +1055,6 @@ int run_syscall(int min, int max)
 		CASE_TEST(gettimeofday_tv_tz);EXPECT_SYSZR(1, gettimeofday(&tv, &tz)); break;
 		CASE_TEST(getpagesize);       EXPECT_SYSZR(1, test_getpagesize()); break;
 		CASE_TEST(ioctl_tiocinq);     EXPECT_SYSZR(1, ioctl(0, TIOCINQ, &tmp)); break;
-		CASE_TEST(ioctl_tiocinq);     EXPECT_SYSZR(1, ioctl(0, TIOCINQ, &tmp)); break;
 		CASE_TEST(link_root1);        EXPECT_SYSER(1, link("/", "/"), -1, EEXIST); break;
 		CASE_TEST(link_blah);         EXPECT_SYSER(1, link("/proc/self/blah", "/blah"), -1, ENOENT); break;
 		CASE_TEST(link_dir);          EXPECT_SYSER(euid0, link("/", "/blah"), -1, EPERM); break;
@@ -894,25 +1063,28 @@ int run_syscall(int min, int max)
 		CASE_TEST(lseek_0);           EXPECT_SYSER(1, lseek(0, 0, SEEK_SET), -1, ESPIPE); break;
 		CASE_TEST(mkdir_root);        EXPECT_SYSER(1, mkdir("/", 0755), -1, EEXIST); break;
 		CASE_TEST(mmap_bad);          EXPECT_PTRER(1, mmap(NULL, 0, PROT_READ, MAP_PRIVATE, 0, 0), MAP_FAILED, EINVAL); break;
-		CASE_TEST(munmap_bad);        EXPECT_SYSER(1, munmap((void *)1, 0), -1, EINVAL); break;
+		CASE_TEST(munmap_bad);        EXPECT_SYSER(1, munmap(NULL, 0), -1, EINVAL); break;
 		CASE_TEST(mmap_munmap_good);  EXPECT_SYSZR(1, test_mmap_munmap()); break;
 		CASE_TEST(open_tty);          EXPECT_SYSNE(1, tmp = open("/dev/null", 0), -1); if (tmp != -1) close(tmp); break;
 		CASE_TEST(open_blah);         EXPECT_SYSER(1, tmp = open("/proc/self/blah", 0), -1, ENOENT); if (tmp != -1) close(tmp); break;
 		CASE_TEST(pipe);              EXPECT_SYSZR(1, test_pipe()); break;
 		CASE_TEST(poll_null);         EXPECT_SYSZR(1, poll(NULL, 0, 0)); break;
 		CASE_TEST(poll_stdout);       EXPECT_SYSNE(1, ({ struct pollfd fds = { 1, POLLOUT, 0}; poll(&fds, 1, 0); }), -1); break;
-		CASE_TEST(poll_fault);        EXPECT_SYSER(1, poll((void *)1, 1, 0), -1, EFAULT); break;
+		CASE_TEST(poll_fault);        EXPECT_SYSER(1, poll(NULL, 1, 0), -1, EFAULT); break;
 		CASE_TEST(prctl);             EXPECT_SYSER(1, prctl(PR_SET_NAME, (unsigned long)NULL, 0, 0, 0), -1, EFAULT); break;
 		CASE_TEST(read_badf);         EXPECT_SYSER(1, read(-1, &tmp, 1), -1, EBADF); break;
+		CASE_TEST(rlimit);            EXPECT_SYSZR(1, test_rlimit()); break;
 		CASE_TEST(rmdir_blah);        EXPECT_SYSER(1, rmdir("/blah"), -1, ENOENT); break;
 		CASE_TEST(sched_yield);       EXPECT_SYSZR(1, sched_yield()); break;
 		CASE_TEST(select_null);       EXPECT_SYSZR(1, ({ struct timeval tv = { 0 }; select(0, NULL, NULL, NULL, &tv); })); break;
 		CASE_TEST(select_stdout);     EXPECT_SYSNE(1, ({ fd_set fds; FD_ZERO(&fds); FD_SET(1, &fds); select(2, NULL, &fds, NULL, NULL); }), -1); break;
 		CASE_TEST(select_fault);      EXPECT_SYSER(1, select(1, (void *)1, NULL, NULL, 0), -1, EFAULT); break;
 		CASE_TEST(stat_blah);         EXPECT_SYSER(1, stat("/proc/self/blah", &stat_buf), -1, ENOENT); break;
-		CASE_TEST(stat_fault);        EXPECT_SYSER(1, stat((void *)1, &stat_buf), -1, EFAULT); break;
+		CASE_TEST(stat_fault);        EXPECT_SYSER(1, stat(NULL, &stat_buf), -1, EFAULT); break;
 		CASE_TEST(stat_timestamps);   EXPECT_SYSZR(1, test_stat_timestamps()); break;
 		CASE_TEST(symlink_root);      EXPECT_SYSER(1, symlink("/", "/"), -1, EEXIST); break;
+		CASE_TEST(uname);             EXPECT_SYSZR(proc, test_uname()); break;
+		CASE_TEST(uname_fault);       EXPECT_SYSER(1, uname(NULL), -1, EFAULT); break;
 		CASE_TEST(unlink_root);       EXPECT_SYSER(1, unlink("/"), -1, EISDIR); break;
 		CASE_TEST(unlink_blah);       EXPECT_SYSER(1, unlink("/proc/self/blah"), -1, ENOENT); break;
 		CASE_TEST(wait_child);        EXPECT_SYSER(1, wait(&tmp), -1, ECHILD); break;
@@ -938,6 +1110,14 @@ int run_stdlib(int min, int max)
 	for (test = min; test >= 0 && test <= max; test++) {
 		int llen = 0; /* line length */
 
+		/* For functions that take a long buffer, like strlcat()
+		 * Add some more chars after the \0, to test functions that overwrite the buffer set
+		 * the \0 at the exact right position.
+		 */
+		char buf[10] = "test123456";
+		buf[4] = '\0';
+
+
 		/* avoid leaving empty lines below, this will insert holes into
 		 * test numbers.
 		 */
@@ -954,6 +1134,17 @@ int run_stdlib(int min, int max)
 		CASE_TEST(strchr_foobar_z);    EXPECT_STRZR(1, strchr("foobar", 'z')); break;
 		CASE_TEST(strrchr_foobar_o);   EXPECT_STREQ(1, strrchr("foobar", 'o'), "obar"); break;
 		CASE_TEST(strrchr_foobar_z);   EXPECT_STRZR(1, strrchr("foobar", 'z')); break;
+		CASE_TEST(strlcat_0);          EXPECT_STRBUFEQ(is_nolibc, strlcat(buf, "bar", 0), buf, 3, "test"); break;
+		CASE_TEST(strlcat_1);          EXPECT_STRBUFEQ(is_nolibc, strlcat(buf, "bar", 1), buf, 4, "test"); break;
+		CASE_TEST(strlcat_5);          EXPECT_STRBUFEQ(is_nolibc, strlcat(buf, "bar", 5), buf, 7, "test"); break;
+		CASE_TEST(strlcat_6);          EXPECT_STRBUFEQ(is_nolibc, strlcat(buf, "bar", 6), buf, 7, "testb"); break;
+		CASE_TEST(strlcat_7);          EXPECT_STRBUFEQ(is_nolibc, strlcat(buf, "bar", 7), buf, 7, "testba"); break;
+		CASE_TEST(strlcat_8);          EXPECT_STRBUFEQ(is_nolibc, strlcat(buf, "bar", 8), buf, 7, "testbar"); break;
+		CASE_TEST(strlcpy_0);          EXPECT_STRBUFEQ(is_nolibc, strlcpy(buf, "bar", 0), buf, 3, "test"); break;
+		CASE_TEST(strlcpy_1);          EXPECT_STRBUFEQ(is_nolibc, strlcpy(buf, "bar", 1), buf, 3, ""); break;
+		CASE_TEST(strlcpy_2);          EXPECT_STRBUFEQ(is_nolibc, strlcpy(buf, "bar", 2), buf, 3, "b"); break;
+		CASE_TEST(strlcpy_3);          EXPECT_STRBUFEQ(is_nolibc, strlcpy(buf, "bar", 3), buf, 3, "ba"); break;
+		CASE_TEST(strlcpy_4);          EXPECT_STRBUFEQ(is_nolibc, strlcpy(buf, "bar", 4), buf, 3, "bar"); break;
 		CASE_TEST(memcmp_20_20);       EXPECT_EQ(1, memcmp("aaa\x20", "aaa\x20", 4), 0); break;
 		CASE_TEST(memcmp_20_60);       EXPECT_LT(1, memcmp("aaa\x20", "aaa\x60", 4), 0); break;
 		CASE_TEST(memcmp_60_20);       EXPECT_GT(1, memcmp("aaa\x60", "aaa\x20", 4), 0); break;
@@ -1004,6 +1195,26 @@ int run_stdlib(int min, int max)
 		CASE_TEST(limit_ptrdiff_min);       EXPECT_EQ(1, PTRDIFF_MIN, sizeof(long) == 8 ? (ptrdiff_t) 0x8000000000000000LL  : (ptrdiff_t) 0x80000000); break;
 		CASE_TEST(limit_ptrdiff_max);       EXPECT_EQ(1, PTRDIFF_MAX, sizeof(long) == 8 ? (ptrdiff_t) 0x7fffffffffffffffLL  : (ptrdiff_t) 0x7fffffff); break;
 		CASE_TEST(limit_size_max);          EXPECT_EQ(1, SIZE_MAX,    sizeof(long) == 8 ? (size_t)    0xffffffffffffffffULL : (size_t)    0xffffffffU); break;
+		CASE_TEST(strtol_simple);           EXPECT_STRTOX(1, strtol, "35", 10, 35, -1, 0); break;
+		CASE_TEST(strtol_positive);         EXPECT_STRTOX(1, strtol, "+35", 10, 35, -1, 0); break;
+		CASE_TEST(strtol_negative);         EXPECT_STRTOX(1, strtol, "-35", 10, -35, -1, 0); break;
+		CASE_TEST(strtol_hex_auto);         EXPECT_STRTOX(1, strtol, "0xFF", 0, 255, -1, 0); break;
+		CASE_TEST(strtol_base36);           EXPECT_STRTOX(1, strtol, "12yZ", 36, 50507, -1, 0); break;
+		CASE_TEST(strtol_cutoff);           EXPECT_STRTOX(1, strtol, "1234567890", 8, 342391, 7, 0); break;
+		CASE_TEST(strtol_octal_auto);       EXPECT_STRTOX(1, strtol, "011", 0, 9, -1, 0); break;
+		CASE_TEST(strtol_hex_00);           EXPECT_STRTOX(1, strtol, "0x00", 16, 0, -1, 0); break;
+		CASE_TEST(strtol_hex_FF);           EXPECT_STRTOX(1, strtol, "FF", 16, 255, -1, 0); break;
+		CASE_TEST(strtol_hex_ff);           EXPECT_STRTOX(1, strtol, "ff", 16, 255, -1, 0); break;
+		CASE_TEST(strtol_hex_prefix);       EXPECT_STRTOX(1, strtol, "0xFF", 16, 255, -1, 0); break;
+		CASE_TEST(strtol_trailer);          EXPECT_STRTOX(1, strtol, "35foo", 10, 35, 2, 0); break;
+		CASE_TEST(strtol_overflow);         EXPECT_STRTOX(1, strtol, "0x8000000000000000", 16, LONG_MAX, -1, ERANGE); break;
+		CASE_TEST(strtol_underflow);        EXPECT_STRTOX(1, strtol, "-0x8000000000000001", 16, LONG_MIN, -1, ERANGE); break;
+		CASE_TEST(strtoul_negative);        EXPECT_STRTOX(1, strtoul, "-0x1", 16, ULONG_MAX, 4, 0); break;
+		CASE_TEST(strtoul_overflow);        EXPECT_STRTOX(1, strtoul, "0x10000000000000000", 16, ULONG_MAX, -1, ERANGE); break;
+		CASE_TEST(strerror_success);        EXPECT_STREQ(is_nolibc, strerror(0), "errno=0"); break;
+		CASE_TEST(strerror_EINVAL);         EXPECT_STREQ(is_nolibc, strerror(EINVAL), "errno=22"); break;
+		CASE_TEST(strerror_int_max);        EXPECT_STREQ(is_nolibc, strerror(INT_MAX), "errno=2147483647"); break;
+		CASE_TEST(strerror_int_min);        EXPECT_STREQ(is_nolibc, strerror(INT_MIN), "errno=-2147483648"); break;
 
 		case __LINE__:
 			return ret; /* must be last */
@@ -1113,6 +1324,7 @@ static int run_protection(int min __attribute__((unused)),
 {
 	pid_t pid;
 	int llen = 0, status;
+	struct rlimit rlimit = { 0, 0 };
 
 	llen += printf("0 -fstackprotector ");
 
@@ -1144,6 +1356,7 @@ static int run_protection(int min __attribute__((unused)),
 		close(STDERR_FILENO);
 
 		prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
+		setrlimit(RLIMIT_CORE, &rlimit);
 		smash_stack();
 		return 1;
 

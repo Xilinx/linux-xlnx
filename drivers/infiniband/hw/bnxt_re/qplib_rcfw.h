@@ -141,9 +141,9 @@ struct bnxt_qplib_crsbe {
 /* Allocate 1 per QP for async error notification for now */
 #define BNXT_QPLIB_CREQE_MAX_CNT	(64 * 1024)
 #define BNXT_QPLIB_CREQE_UNITS		16	/* 16-Bytes per prod unit */
-#define CREQ_CMP_VALID(hdr, raw_cons, cp_bit)			\
+#define CREQ_CMP_VALID(hdr, pass)			\
 	(!!((hdr)->v & CREQ_BASE_V) ==				\
-	   !((raw_cons) & (cp_bit)))
+	   !((pass) & BNXT_QPLIB_FLAG_EPOCH_CONS_MASK))
 #define CREQ_ENTRY_POLL_BUDGET		0x100
 
 /* HWQ */
@@ -224,6 +224,8 @@ struct bnxt_qplib_rcfw {
 	struct bnxt_qplib_crsqe		*crsqe_tbl;
 	int qp_tbl_size;
 	struct bnxt_qplib_qp_node *qp_tbl;
+	/* To synchronize the qp-handle hash table */
+	spinlock_t			tbl_lock;
 	u64 oos_prev;
 	u32 init_oos_stats;
 	u32 cmdq_depth;

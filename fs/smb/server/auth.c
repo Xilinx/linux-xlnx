@@ -208,10 +208,12 @@ out:
 
 /**
  * ksmbd_auth_ntlmv2() - NTLMv2 authentication handler
- * @sess:	session of connection
+ * @conn:		connection
+ * @sess:		session of connection
  * @ntlmv2:		NTLMv2 challenge response
  * @blen:		NTLMv2 blob length
  * @domain_name:	domain name
+ * @cryptkey:		session crypto key
  *
  * Return:	0 on success, error number on error
  */
@@ -294,7 +296,8 @@ out:
  * ksmbd_decode_ntlmssp_auth_blob() - helper function to construct
  * authenticate blob
  * @authblob:	authenticate blob source pointer
- * @usr:	user details
+ * @blob_len:	length of the @authblob message
+ * @conn:	connection
  * @sess:	session of connection
  *
  * Return:	0 on success, error number on error
@@ -376,8 +379,8 @@ int ksmbd_decode_ntlmssp_auth_blob(struct authenticate_message *authblob,
  * ksmbd_decode_ntlmssp_neg_blob() - helper function to construct
  * negotiate blob
  * @negblob: negotiate blob source pointer
- * @rsp:     response header pointer to be updated
- * @sess:    session of connection
+ * @blob_len:	length of the @authblob message
+ * @conn:	connection
  *
  */
 int ksmbd_decode_ntlmssp_neg_blob(struct negotiate_message *negblob,
@@ -403,8 +406,7 @@ int ksmbd_decode_ntlmssp_neg_blob(struct negotiate_message *negblob,
  * ksmbd_build_ntlmssp_challenge_blob() - helper function to construct
  * challenge blob
  * @chgblob: challenge blob source pointer to initialize
- * @rsp:     response header pointer to be updated
- * @sess:    session of connection
+ * @conn:	connection
  *
  */
 unsigned int
@@ -510,6 +512,7 @@ int ksmbd_krb5_authenticate(struct ksmbd_session *sess, char *in_blob,
 			    int in_len, char *out_blob, int *out_len)
 {
 	struct ksmbd_spnego_authen_response *resp;
+	struct ksmbd_login_response_ext *resp_ext = NULL;
 	struct ksmbd_user *user = NULL;
 	int retval;
 
@@ -538,7 +541,10 @@ int ksmbd_krb5_authenticate(struct ksmbd_session *sess, char *in_blob,
 		goto out;
 	}
 
-	user = ksmbd_alloc_user(&resp->login_response);
+	if (resp->login_response.status & KSMBD_USER_FLAG_EXTENSION)
+		resp_ext = ksmbd_ipc_login_request_ext(resp->login_response.account);
+
+	user = ksmbd_alloc_user(&resp->login_response, resp_ext);
 	if (!user) {
 		ksmbd_debug(AUTH, "login failure\n");
 		retval = -ENOMEM;

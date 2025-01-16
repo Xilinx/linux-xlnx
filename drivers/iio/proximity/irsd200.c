@@ -5,9 +5,8 @@
  * Copyright (C) 2023 Axis Communications AB
  */
 
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <linux/bitfield.h>
-#include <linux/gpio.h>
 #include <linux/i2c.h>
 #include <linux/module.h>
 #include <linux/regmap.h>

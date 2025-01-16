@@ -373,23 +373,25 @@ static void dwc3_xlnx_mask_phy_rst(struct dwc3_xlnx *priv_data, bool mask)
 static int dwc3_xlnx_init_versal(struct dwc3_xlnx *priv_data)
 {
 	struct device		*dev = priv_data->dev;
+	struct reset_control	*crst;
 	int			ret;
 
-	priv_data->crst = devm_reset_control_get_exclusive(dev, NULL);
-	if (IS_ERR(priv_data->crst))
-		return dev_err_probe(dev, PTR_ERR(priv_data->crst),
-				     "failed to get reset signal\n");
+	crst = devm_reset_control_get_exclusive(dev, NULL);
+	if (IS_ERR(crst))
+		return dev_err_probe(dev, PTR_ERR(crst), "failed to get reset signal\n");
 
 	dwc3_xlnx_mask_phy_rst(priv_data, false);
 
+	priv_data->crst = crst;
+
 	/* Assert and De-assert reset */
-	ret = reset_control_assert(priv_data->crst);
+	ret = reset_control_assert(crst);
 	if (ret < 0) {
 		dev_err_probe(dev, ret, "failed to assert Reset\n");
 		return ret;
 	}
 
-	ret = reset_control_deassert(priv_data->crst);
+	ret = reset_control_deassert(crst);
 	if (ret < 0) {
 		dev_err_probe(dev, ret, "failed to De-assert Reset\n");
 		return ret;
@@ -609,6 +611,31 @@ static const struct of_device_id dwc3_xlnx_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, dwc3_xlnx_of_match);
 
+static int dwc3_set_swnode(struct device *dev)
+{
+	struct device_node *np = dev->of_node, *dwc3_np;
+	struct property_entry props[2];
+	int prop_idx = 0, ret = 0;
+
+	dwc3_np = of_get_compatible_child(np, "snps,dwc3");
+	if (!dwc3_np) {
+		ret = -ENODEV;
+		dev_err(dev, "failed to find dwc3 core child\n");
+		return ret;
+	}
+
+	memset(props, 0, sizeof(struct property_entry) * ARRAY_SIZE(props));
+	if (of_dma_is_coherent(dwc3_np))
+		props[prop_idx++] = PROPERTY_ENTRY_U16("snps,gsbuscfg0-reqinfo",
+						       0xffff);
+	of_node_put(dwc3_np);
+
+	if (prop_idx)
+		ret = device_create_managed_software_node(dev, props, NULL);
+
+	return ret;
+}
+
 static int dwc3_xlnx_probe(struct platform_device *pdev)
 {
 	struct dwc3_xlnx		*priv_data;
@@ -626,11 +653,8 @@ static int dwc3_xlnx_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	regs = devm_platform_ioremap_resource(pdev, 0);
-	if (IS_ERR(regs)) {
-		ret = PTR_ERR(regs);
-		dev_err_probe(dev, ret, "failed to map registers\n");
-		return ret;
-	}
+	if (IS_ERR(regs))
+		return dev_err_probe(dev, PTR_ERR(regs), "failed to map registers\n");
 
 	match = of_match_node(dwc3_xlnx_of_match, pdev->dev.of_node);
 
@@ -707,6 +731,10 @@ static int dwc3_xlnx_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_clk_put;
 
+	ret = dwc3_set_swnode(dev);
+	if (ret)
+		goto err_clk_put;
+
 	ret = of_platform_populate(np, NULL, NULL, dev);
 	if (ret)
 		goto err_clk_put;
@@ -717,9 +745,14 @@ static int dwc3_xlnx_probe(struct platform_device *pdev)
 		goto err_pm_set_suspended;
 
 	pm_suspend_ignore_children(dev, false);
-	return pm_runtime_resume_and_get(dev);
+	ret = pm_runtime_resume_and_get(dev);
+	if (ret < 0)
+		goto err_pm_set_suspended;
+
+	return 0;
 
 err_pm_set_suspended:
+	of_platform_depopulate(dev);
 	pm_runtime_set_suspended(dev);
 
 err_clk_put:

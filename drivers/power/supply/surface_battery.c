@@ -6,7 +6,7 @@
  * Copyright (C) 2019-2021 Maximilian Luz <luzmaximilian@gmail.com>
  */
 
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <linux/jiffies.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -722,7 +722,7 @@ static void spwr_battery_init(struct spwr_battery_device *bat, struct ssam_devic
 			      struct ssam_event_registry registry, const char *name)
 {
 	mutex_init(&bat->lock);
-	strncpy(bat->name, name, ARRAY_SIZE(bat->name) - 1);
+	strscpy(bat->name, name, sizeof(bat->name));
 
 	bat->sdev = sdev;
 

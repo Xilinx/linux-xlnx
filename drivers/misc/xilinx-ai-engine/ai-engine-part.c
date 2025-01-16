@@ -23,6 +23,7 @@
 #include <linux/uaccess.h>
 #include <linux/uio.h>
 #include <uapi/linux/xlnx-ai-engine.h>
+#include <linux/xlnx-ai-engine.h>
 
 #include "ai-engine-internal.h"
 

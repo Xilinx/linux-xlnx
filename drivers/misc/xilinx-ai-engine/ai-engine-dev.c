@@ -643,7 +643,7 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int xilinx_ai_engine_remove(struct platform_device *pdev)
+static void xilinx_ai_engine_remove(struct platform_device *pdev)
 {
 	struct aie_device *adev = platform_get_drvdata(pdev);
 	struct list_head *node, *pos;
@@ -655,13 +655,11 @@ static int xilinx_ai_engine_remove(struct platform_device *pdev)
 		aperture = list_entry(pos, struct aie_aperture, node);
 		ret = aie_aperture_remove(aperture);
 		if (ret)
-			return ret;
+			return;
 	}
 
 	device_del(&adev->dev);
 	put_device(&adev->dev);
-
-	return 0;
 }
 
 static const struct of_device_id xilinx_ai_engine_of_match[] = {

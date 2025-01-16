@@ -44,9 +44,10 @@ static int pvcalls_stream_connect(struct socket *sock, struct sockaddr *addr,
 	return pvcalls_front_connect(sock, addr, addr_len, flags);
 }
 
-static int pvcalls_accept(struct socket *sock, struct socket *newsock, int flags, bool kern)
+static int pvcalls_accept(struct socket *sock, struct socket *newsock,
+			  struct proto_accept_arg *arg)
 {
-	return pvcalls_front_accept(sock, newsock, flags);
+	return pvcalls_front_accept(sock, newsock, arg->flags);
 }
 
 static int pvcalls_getname(struct socket *sock,
@@ -125,7 +126,8 @@ const struct proto_ops pvcalls_stream_ops = {
 	.mmap = sock_no_mmap,
 };
 
-bool pvcalls = false;
+bool pvcalls;
+
 static __init int xen_parse_pvcalls(char *arg)
 {
        pvcalls = true;

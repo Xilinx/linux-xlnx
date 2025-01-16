@@ -4004,16 +4004,20 @@ static int xhdmirx_g_input_status(struct v4l2_subdev *sd, u32 *status)
  * xhdmirx_query_dv_timings - Gets the current incoming dv timings
  *
  * @subdev: pointer to v4l2 subdev
+ * @pad: media pad
  * @timings: pointer to the dv timings to be filled and returned
  *
  * This function returns the incoming stream's dv timings
  *
  * Returns: 0 on success else -ENOLINK
  */
-static int xhdmirx_query_dv_timings(struct v4l2_subdev *subdev,
+static int xhdmirx_query_dv_timings(struct v4l2_subdev *subdev, unsigned int pad,
 				    struct v4l2_dv_timings *timings)
 {
 	struct xhdmirx_state *xhdmi = to_xhdmirx_state(subdev);
+
+	if (pad != 0)
+		return -EINVAL;
 
 	if (!xhdmi->hdmi_stream_up) {
 		dev_dbg(xhdmi->dev, "failed as no link\n");
@@ -4036,7 +4040,7 @@ __xhdmirx_get_pad_format_ptr(struct xhdmirx_state *xhdmi,
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
 		dev_dbg(xhdmi->dev, "%s V4L2_SUBDEV_FORMAT_TRY\n", __func__);
-		return v4l2_subdev_get_try_format(&xhdmi->sd, sd_state, pad);
+		return v4l2_subdev_state_get_format(sd_state, pad);
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		dev_dbg(xhdmi->dev, "%s V4L2_SUBDEV_FORMAT_ACTIVE\n", __func__);
 		return &xhdmi->mbus_fmt;
@@ -4126,7 +4130,6 @@ static int xhdmirx_subscribe_event(struct v4l2_subdev *sd, struct v4l2_fh *fh,
 
 static const struct v4l2_subdev_video_ops xvideo_ops = {
 	.s_stream		= xhdmirx_s_stream,
-	.query_dv_timings	= xhdmirx_query_dv_timings,
 	.g_input_status		= xhdmirx_g_input_status,
 };
 
@@ -4140,6 +4143,7 @@ static const struct v4l2_subdev_core_ops xcore_ops = {
 };
 
 static const struct v4l2_subdev_pad_ops xpad_ops = {
+	.query_dv_timings	= xhdmirx_query_dv_timings,
 	.get_edid		= xhdmirx_get_edid,
 	.set_edid		= xhdmirx_set_edid,
 	.dv_timings_cap		= xhdmirx_dv_timings_cap,
@@ -4671,7 +4675,7 @@ mutex_err:
 	return ret;
 }
 
-static int xhdmirx_remove(struct platform_device *pdev)
+static void xhdmirx_remove(struct platform_device *pdev)
 {
 	struct xhdmirx_state *xhdmi = platform_get_drvdata(pdev);
 	struct v4l2_subdev *sd = &xhdmi->sd;
@@ -4686,7 +4690,6 @@ static int xhdmirx_remove(struct platform_device *pdev)
 	clk_bulk_disable_unprepare(num_clks, xhdmi->clks);
 
 	dev_info(xhdmi->dev, "driver removed successfully\n");
-	return 0;
 }
 
 static const struct of_device_id xhdmirx_of_id_table[] = {

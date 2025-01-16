@@ -693,6 +693,35 @@ static int sdhci_pci_o2_init_sd_express(struct mmc_host *mmc, struct mmc_ios *io
 	return 0;
 }
 
+static void sdhci_pci_o2_set_power(struct sdhci_host *host, unsigned char mode,  unsigned short vdd)
+{
+	struct sdhci_pci_chip *chip;
+	struct sdhci_pci_slot *slot = sdhci_priv(host);
+	u32 scratch_32 = 0;
+	u8 scratch_8 = 0;
+
+	chip = slot->chip;
+
+	if (mode == MMC_POWER_OFF) {
+		/* UnLock WP */
+		pci_read_config_byte(chip->pdev, O2_SD_LOCK_WP, &scratch_8);
+		scratch_8 &= 0x7f;
+		pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch_8);
+
+		/* Set PCR 0x354[16] to switch Clock Source back to OPE Clock */
+		pci_read_config_dword(chip->pdev, O2_SD_OUTPUT_CLK_SOURCE_SWITCH, &scratch_32);
+		scratch_32 &= ~(O2_SD_SEL_DLL);
+		pci_write_config_dword(chip->pdev, O2_SD_OUTPUT_CLK_SOURCE_SWITCH, scratch_32);
+
+		/* Lock WP */
+		pci_read_config_byte(chip->pdev, O2_SD_LOCK_WP, &scratch_8);
+		scratch_8 |= 0x80;
+		pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch_8);
+	}
+
+	sdhci_set_power(host, mode, vdd);
+}
+
 static int sdhci_pci_o2_probe_slot(struct sdhci_pci_slot *slot)
 {
 	struct sdhci_pci_chip *chip;
@@ -794,7 +823,7 @@ static int sdhci_pci_o2_probe(struct sdhci_pci_chip *chip)
 		ret = pci_read_config_byte(chip->pdev,
 				O2_SD_LOCK_WP, &scratch);
 		if (ret)
-			return ret;
+			goto read_fail;
 		scratch &= 0x7f;
 		pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch);
 
@@ -805,7 +834,7 @@ static int sdhci_pci_o2_probe(struct sdhci_pci_chip *chip)
 		ret = pci_read_config_byte(chip->pdev,
 				O2_SD_CLKREQ, &scratch);
 		if (ret)
-			return ret;
+			goto read_fail;
 		scratch |= 0x20;
 		pci_write_config_byte(chip->pdev, O2_SD_CLKREQ, scratch);
 
@@ -814,7 +843,7 @@ static int sdhci_pci_o2_probe(struct sdhci_pci_chip *chip)
 		 */
 		ret = pci_read_config_byte(chip->pdev, O2_SD_CAPS, &scratch);
 		if (ret)
-			return ret;
+			goto read_fail;
 		scratch |= 0x01;
 		pci_write_config_byte(chip->pdev, O2_SD_CAPS, scratch);
 		pci_write_config_byte(chip->pdev, O2_SD_CAPS, 0x73);
@@ -827,7 +856,7 @@ static int sdhci_pci_o2_probe(struct sdhci_pci_chip *chip)
 		ret = pci_read_config_byte(chip->pdev,
 				O2_SD_INF_MOD, &scratch);
 		if (ret)
-			return ret;
+			goto read_fail;
 		scratch |= 0x08;
 		pci_write_config_byte(chip->pdev, O2_SD_INF_MOD, scratch);
 
@@ -835,7 +864,7 @@ static int sdhci_pci_o2_probe(struct sdhci_pci_chip *chip)
 		ret = pci_read_config_byte(chip->pdev,
 				O2_SD_LOCK_WP, &scratch);
 		if (ret)
-			return ret;
+			goto read_fail;
 		scratch |= 0x80;
 		pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch);
 		break;
@@ -846,7 +875,7 @@ static int sdhci_pci_o2_probe(struct sdhci_pci_chip *chip)
 		ret = pci_read_config_byte(chip->pdev,
 				O2_SD_LOCK_WP, &scratch);
 		if (ret)
-			return ret;
+			goto read_fail;
 
 		scratch &= 0x7f;
 		pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch);
@@ -857,7 +886,7 @@ static int sdhci_pci_o2_probe(struct sdhci_pci_chip *chip)
 						    O2_SD_FUNC_REG0,
 						    &scratch_32);
 			if (ret)
-				return ret;
+				goto read_fail;
 			scratch_32 = ((scratch_32 & 0xFF000000) >> 24);
 
 			/* Check Whether subId is 0x11 or 0x12 */
@@ -869,7 +898,7 @@ static int sdhci_pci_o2_probe(struct sdhci_pci_chip *chip)
 							    O2_SD_FUNC_REG4,
 							    &scratch_32);
 				if (ret)
-					return ret;
+					goto read_fail;
 
 				/* Enable Base Clk setting change */
 				scratch_32 |= O2_SD_FREG4_ENABLE_CLK_SET;
@@ -892,7 +921,7 @@ static int sdhci_pci_o2_probe(struct sdhci_pci_chip *chip)
 		ret = pci_read_config_dword(chip->pdev,
 					    O2_SD_CLK_SETTING, &scratch_32);
 		if (ret)
-			return ret;
+			goto read_fail;
 
 		scratch_32 &= ~(0xFF00);
 		scratch_32 |= 0x07E0C800;
@@ -902,14 +931,14 @@ static int sdhci_pci_o2_probe(struct sdhci_pci_chip *chip)
 		ret = pci_read_config_dword(chip->pdev,
 					    O2_SD_CLKREQ, &scratch_32);
 		if (ret)
-			return ret;
+			goto read_fail;
 		scratch_32 |= 0x3;
 		pci_write_config_dword(chip->pdev, O2_SD_CLKREQ, scratch_32);
 
 		ret = pci_read_config_dword(chip->pdev,
 					    O2_SD_PLL_SETTING, &scratch_32);
 		if (ret)
-			return ret;
+			goto read_fail;
 
 		scratch_32 &= ~(0x1F3F070E);
 		scratch_32 |= 0x18270106;
@@ -920,7 +949,7 @@ static int sdhci_pci_o2_probe(struct sdhci_pci_chip *chip)
 		ret = pci_read_config_dword(chip->pdev,
 					    O2_SD_CAP_REG2, &scratch_32);
 		if (ret)
-			return ret;
+			goto read_fail;
 		scratch_32 &= ~(0xE0);
 		pci_write_config_dword(chip->pdev,
 				       O2_SD_CAP_REG2, scratch_32);
@@ -932,7 +961,7 @@ static int sdhci_pci_o2_probe(struct sdhci_pci_chip *chip)
 		ret = pci_read_config_byte(chip->pdev,
 					   O2_SD_LOCK_WP, &scratch);
 		if (ret)
-			return ret;
+			goto read_fail;
 		scratch |= 0x80;
 		pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch);
 		break;
@@ -942,7 +971,7 @@ static int sdhci_pci_o2_probe(struct sdhci_pci_chip *chip)
 		ret = pci_read_config_byte(chip->pdev,
 				O2_SD_LOCK_WP, &scratch);
 		if (ret)
-			return ret;
+			goto read_fail;
 
 		scratch &= 0x7f;
 		pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch);
@@ -950,7 +979,7 @@ static int sdhci_pci_o2_probe(struct sdhci_pci_chip *chip)
 		ret = pci_read_config_dword(chip->pdev,
 					    O2_SD_PLL_SETTING, &scratch_32);
 		if (ret)
-			return ret;
+			goto read_fail;
 
 		if ((scratch_32 & 0xff000000) == 0x01000000) {
 			scratch_32 &= 0x0000FFFF;
@@ -969,7 +998,7 @@ static int sdhci_pci_o2_probe(struct sdhci_pci_chip *chip)
 						    O2_SD_FUNC_REG4,
 						    &scratch_32);
 			if (ret)
-				return ret;
+				goto read_fail;
 			scratch_32 |= (1 << 22);
 			pci_write_config_dword(chip->pdev,
 					       O2_SD_FUNC_REG4, scratch_32);
@@ -988,7 +1017,7 @@ static int sdhci_pci_o2_probe(struct sdhci_pci_chip *chip)
 		ret = pci_read_config_byte(chip->pdev,
 					   O2_SD_LOCK_WP, &scratch);
 		if (ret)
-			return ret;
+			goto read_fail;
 		scratch |= 0x80;
 		pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch);
 		break;
@@ -999,7 +1028,7 @@ static int sdhci_pci_o2_probe(struct sdhci_pci_chip *chip)
 		/* UnLock WP */
 		ret = pci_read_config_byte(chip->pdev, O2_SD_LOCK_WP, &scratch);
 		if (ret)
-			return ret;
+			goto read_fail;
 		scratch &= 0x7f;
 		pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch);
 
@@ -1028,13 +1057,16 @@ static int sdhci_pci_o2_probe(struct sdhci_pci_chip *chip)
 		/* Lock WP */
 		ret = pci_read_config_byte(chip->pdev, O2_SD_LOCK_WP, &scratch);
 		if (ret)
-			return ret;
+			goto read_fail;
 		scratch |= 0x80;
 		pci_write_config_byte(chip->pdev, O2_SD_LOCK_WP, scratch);
 		break;
 	}
 
 	return 0;
+
+read_fail:
+	return pcibios_err_to_errno(ret);
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -1051,6 +1083,7 @@ static const struct sdhci_ops sdhci_pci_o2_ops = {
 	.set_bus_width = sdhci_set_bus_width,
 	.reset = sdhci_reset,
 	.set_uhs_signaling = sdhci_set_uhs_signaling,
+	.set_power = sdhci_pci_o2_set_power,
 };
 
 const struct sdhci_pci_fixes sdhci_o2 = {

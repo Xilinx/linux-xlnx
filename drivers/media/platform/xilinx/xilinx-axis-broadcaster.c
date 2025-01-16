@@ -63,7 +63,7 @@ xvbr_get_pad_format(struct xvbroadcaster_device *xvbr,
 {
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(&xvbr->subdev, sd_state, pad);
+		return v4l2_subdev_state_get_format(sd_state, pad);
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		return &xvbr->formats;
 	default:
@@ -107,7 +107,7 @@ static int xvbr_open(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
 	unsigned int i;
 
 	for (i = 0; i < xvbr->npads; ++i) {
-		format = v4l2_subdev_get_try_format(subdev, fh->state, i);
+		format = v4l2_subdev_state_get_format(fh->state, i);
 		*format = xvbr->formats;
 	}
 
@@ -228,7 +228,7 @@ static int xvbr_probe(struct platform_device *pdev)
 	v4l2_subdev_init(subdev, &xvbr_ops);
 	subdev->dev = &pdev->dev;
 	subdev->internal_ops = &xvbr_internal_ops;
-	strlcpy(subdev->name, dev_name(&pdev->dev), sizeof(subdev->name));
+	strscpy(subdev->name, dev_name(&pdev->dev), sizeof(subdev->name));
 	v4l2_set_subdevdata(subdev, xvbr);
 	subdev->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 	subdev->entity.ops = &xvbr_media_ops;
@@ -255,15 +255,13 @@ error:
 	return ret;
 }
 
-static int xvbr_remove(struct platform_device *pdev)
+static void xvbr_remove(struct platform_device *pdev)
 {
 	struct xvbroadcaster_device *xvbr = platform_get_drvdata(pdev);
 	struct v4l2_subdev *subdev = &xvbr->subdev;
 
 	v4l2_async_unregister_subdev(subdev);
 	media_entity_cleanup(&subdev->entity);
-
-	return 0;
 }
 
 static const struct of_device_id xvbr_of_id_table[] = {
@@ -278,7 +276,7 @@ static struct platform_driver xvbr_driver = {
 		.of_match_table	= xvbr_of_id_table,
 	},
 	.probe			= xvbr_probe,
-	.remove			= xvbr_remove,
+	.remove		= xvbr_remove,
 };
 
 module_platform_driver(xvbr_driver);

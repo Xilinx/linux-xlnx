@@ -17,6 +17,7 @@
 #define MAX_ENTRIES_HASH_OF_MAPS	64
 #define N_THREADS			8
 #define MAX_MAP_KEY_SIZE		4
+#define PCPU_MIN_UNIT_SIZE		32768
 
 static void map_info(int map_fd, struct bpf_map_info *info)
 {
@@ -131,10 +132,17 @@ static bool is_lru(__u32 map_type)
 	       map_type == BPF_MAP_TYPE_LRU_PERCPU_HASH;
 }
 
+static bool is_percpu(__u32 map_type)
+{
+	return map_type == BPF_MAP_TYPE_PERCPU_HASH ||
+	       map_type == BPF_MAP_TYPE_LRU_PERCPU_HASH;
+}
+
 struct upsert_opts {
 	__u32 map_type;
 	int map_fd;
 	__u32 n;
+	bool retry_for_nomem;
 };
 
 static int create_small_hash(void)
@@ -148,19 +156,38 @@ static int create_small_hash(void)
 	return map_fd;
 }
 
+static bool retry_for_nomem_fn(int err)
+{
+	return err == ENOMEM;
+}
+
 static void *patch_map_thread(void *arg)
 {
+	/* 8KB is enough for 1024 CPUs. And it is shared between N_THREADS. */
+	static __u8 blob[8 << 10];
 	struct upsert_opts *opts = arg;
+	void *val_ptr;
 	int val;
 	int ret;
 	int i;
 
 	for (i = 0; i < opts->n; i++) {
-		if (opts->map_type == BPF_MAP_TYPE_HASH_OF_MAPS)
+		if (opts->map_type == BPF_MAP_TYPE_HASH_OF_MAPS) {
 			val = create_small_hash();
-		else
+			val_ptr = &val;
+		} else if (is_percpu(opts->map_type)) {
+			val_ptr = blob;
+		} else {
 			val = rand();
-		ret = bpf_map_update_elem(opts->map_fd, &i, &val, 0);
+			val_ptr = &val;
+		}
+
+		/* 2 seconds may be enough ? */
+		if (opts->retry_for_nomem)
+			ret = map_update_retriable(opts->map_fd, &i, val_ptr, 0,
+						   40, retry_for_nomem_fn);
+		else
+			ret = bpf_map_update_elem(opts->map_fd, &i, val_ptr, 0);
 		CHECK(ret < 0, "bpf_map_update_elem", "key=%d error: %s\n", i, strerror(errno));
 
 		if (opts->map_type == BPF_MAP_TYPE_HASH_OF_MAPS)
@@ -281,6 +308,13 @@ static void __test(int map_fd)
 	else
 		opts.n /= 2;
 
+	/* per-cpu bpf memory allocator may not be able to allocate per-cpu
+	 * pointer successfully and it can not refill free llist timely, and
+	 * bpf_map_update_elem() will return -ENOMEM. so just retry to mitigate
+	 * the problem temporarily.
+	 */
+	opts.retry_for_nomem = is_percpu(opts.map_type) && (info.map_flags & BPF_F_NO_PREALLOC);
+
 	/*
 	 * Upsert keys [0, n) under some competition: with random values from
 	 * N_THREADS threads. Check values, then delete all elements and check
@@ -326,20 +360,14 @@ static int map_create(__u32 type, const char *name, struct bpf_map_create_opts *
 
 static int create_hash(void)
 {
-	struct bpf_map_create_opts map_opts = {
-		.sz = sizeof(map_opts),
-		.map_flags = BPF_F_NO_PREALLOC,
-	};
+	LIBBPF_OPTS(bpf_map_create_opts, map_opts, .map_flags = BPF_F_NO_PREALLOC);
 
 	return map_create(BPF_MAP_TYPE_HASH, "hash", &map_opts);
 }
 
 static int create_percpu_hash(void)
 {
-	struct bpf_map_create_opts map_opts = {
-		.sz = sizeof(map_opts),
-		.map_flags = BPF_F_NO_PREALLOC,
-	};
+	LIBBPF_OPTS(bpf_map_create_opts, map_opts, .map_flags = BPF_F_NO_PREALLOC);
 
 	return map_create(BPF_MAP_TYPE_PERCPU_HASH, "percpu_hash", &map_opts);
 }
@@ -356,21 +384,17 @@ static int create_percpu_hash_prealloc(void)
 
 static int create_lru_hash(__u32 type, __u32 map_flags)
 {
-	struct bpf_map_create_opts map_opts = {
-		.sz = sizeof(map_opts),
-		.map_flags = map_flags,
-	};
+	LIBBPF_OPTS(bpf_map_create_opts, map_opts, .map_flags = map_flags);
 
 	return map_create(type, "lru_hash", &map_opts);
 }
 
 static int create_hash_of_maps(void)
 {
-	struct bpf_map_create_opts map_opts = {
-		.sz = sizeof(map_opts),
+	LIBBPF_OPTS(bpf_map_create_opts, map_opts,
 		.map_flags = BPF_F_NO_PREALLOC,
 		.inner_map_fd = create_small_hash(),
-	};
+	);
 	int ret;
 
 	ret = map_create_opts(BPF_MAP_TYPE_HASH_OF_MAPS, "hash_of_maps",
@@ -433,6 +457,22 @@ static void map_percpu_stats_hash_of_maps(void)
 	printf("test_%s:PASS\n", __func__);
 }
 
+static void map_percpu_stats_map_value_size(void)
+{
+	int fd;
+	int value_sz = PCPU_MIN_UNIT_SIZE + 1;
+	struct bpf_map_create_opts opts = { .sz = sizeof(opts) };
+	enum bpf_map_type map_types[] = { BPF_MAP_TYPE_PERCPU_ARRAY,
+					  BPF_MAP_TYPE_PERCPU_HASH,
+					  BPF_MAP_TYPE_LRU_PERCPU_HASH };
+	for (int i = 0; i < ARRAY_SIZE(map_types); i++) {
+		fd = bpf_map_create(map_types[i], NULL, sizeof(__u32), value_sz, 1, &opts);
+		CHECK(fd < 0 && errno != E2BIG, "percpu map value size",
+			"error: %s\n", strerror(errno));
+	}
+	printf("test_%s:PASS\n", __func__);
+}
+
 void test_map_percpu_stats(void)
 {
 	map_percpu_stats_hash();
@@ -444,4 +484,5 @@ void test_map_percpu_stats(void)
 	map_percpu_stats_percpu_lru_hash();
 	map_percpu_stats_percpu_lru_hash_no_common();
 	map_percpu_stats_hash_of_maps();
+	map_percpu_stats_map_value_size();
 }

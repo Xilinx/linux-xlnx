@@ -14,7 +14,7 @@
 
 #ifdef __KERNEL__
 
-#ifdef CONFIG_KASAN
+#if defined(CONFIG_KASAN) && CONFIG_THREAD_SHIFT < 15
 #define MIN_THREAD_SHIFT	(CONFIG_THREAD_SHIFT + 1)
 #else
 #define MIN_THREAD_SHIFT	CONFIG_THREAD_SHIFT
@@ -225,6 +225,10 @@ static inline int arch_within_stack_frames(const void * const stack,
 
 	return BAD_STACK;
 }
+
+#ifdef CONFIG_PPC32
+extern void *emergency_ctx[];
+#endif
 
 #endif	/* !__ASSEMBLY__ */
 

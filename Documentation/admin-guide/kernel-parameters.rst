@@ -108,6 +108,7 @@ is applicable::
 	CMA	Contiguous Memory Area support is enabled.
 	DRM	Direct Rendering Management support is enabled.
 	DYNAMIC_DEBUG Build in debug messages and enable them at runtime
+	EARLY	Parameter processed too early to be embedded in initrd.
 	EDD	BIOS Enhanced Disk Drive Services (EDD) is enabled
 	EFI	EFI Partitioning (GPT) is enabled
 	EVM	Extended Verification Module
@@ -117,7 +118,6 @@ is applicable::
 	HIBERNATION HIBERNATION is enabled.
 	HW	Appropriate hardware is enabled.
 	HYPER_V HYPERV support is enabled.
-	IA-64	IA-64 architecture is enabled.
 	IMA     Integrity measurement architecture is enabled.
 	IP_PNP	IP DHCP, BOOTP, or RARP is enabled.
 	IPV6	IPv6 support is enabled.
@@ -218,8 +218,3 @@ bytes respectively. Such letter suffixes can also be entirely omitted:
 
 .. include:: kernel-parameters.txt
    :literal:
-
-Todo
-----
-
-	Add more DRM drivers.

@@ -140,8 +140,15 @@ static void mt7915_mac_sta_poll(struct mt7915_dev *dev)
 			msta->airtime_ac[i] = mt76_rr(dev, addr);
 			msta->airtime_ac[i + 4] = mt76_rr(dev, addr + 4);
 
-			tx_time[i] = msta->airtime_ac[i] - tx_last;
-			rx_time[i] = msta->airtime_ac[i + 4] - rx_last;
+			if (msta->airtime_ac[i] <= tx_last)
+				tx_time[i] = 0;
+			else
+				tx_time[i] = msta->airtime_ac[i] - tx_last;
+
+			if (msta->airtime_ac[i + 4] <= rx_last)
+				rx_time[i] = 0;
+			else
+				rx_time[i] = msta->airtime_ac[i + 4] - rx_last;
 
 			if ((tx_last | rx_last) & BIT(30))
 				clear = true;
@@ -809,7 +816,7 @@ int mt7915_tx_prepare_skb(struct mt76_dev *mdev, void *txwi_ptr,
 		txp->rept_wds_wcid = cpu_to_le16(wcid->idx);
 	else
 		txp->rept_wds_wcid = cpu_to_le16(0x3ff);
-	tx_info->skb = DMA_DUMMY_DATA;
+	tx_info->skb = NULL;
 
 	/* pass partial skb header to fw */
 	tx_info->buf[1].len = MT_CT_PARSE_LEN;
@@ -1247,7 +1254,7 @@ mt7915_phy_get_nf(struct mt7915_phy *phy, int idx)
 
 void mt7915_update_channel(struct mt76_phy *mphy)
 {
-	struct mt7915_phy *phy = (struct mt7915_phy *)mphy->priv;
+	struct mt7915_phy *phy = mphy->priv;
 	struct mt76_channel_state *state = mphy->chan_state;
 	int nf;
 
@@ -1338,10 +1345,8 @@ mt7915_mac_restart(struct mt7915_dev *dev)
 	set_bit(MT76_RESET, &dev->mphy.state);
 	set_bit(MT76_MCU_RESET, &dev->mphy.state);
 	wake_up(&dev->mt76.mcu.wait);
-	if (ext_phy) {
+	if (ext_phy)
 		set_bit(MT76_RESET, &ext_phy->state);
-		set_bit(MT76_MCU_RESET, &ext_phy->state);
-	}
 
 	/* lock/unlock all queues to ensure that no tx is pending */
 	mt76_txq_schedule_all(&dev->mphy);
@@ -1401,8 +1406,8 @@ mt7915_mac_restart(struct mt7915_dev *dev)
 		goto out;
 
 	mt7915_mac_init(dev);
-	mt7915_init_txpower(dev, &dev->mphy.sband_2g.sband);
-	mt7915_init_txpower(dev, &dev->mphy.sband_5g.sband);
+	mt7915_init_txpower(&dev->phy);
+	mt7915_init_txpower(phy2);
 	ret = mt7915_txbf_init(dev);
 
 	if (test_bit(MT76_STATE_RUNNING, &dev->mphy.state)) {
@@ -1443,6 +1448,7 @@ mt7915_mac_full_reset(struct mt7915_dev *dev)
 
 	dev->recovery.hw_full_reset = true;
 
+	set_bit(MT76_MCU_RESET, &dev->mphy.state);
 	wake_up(&dev->mt76.mcu.wait);
 	ieee80211_stop_queues(mt76_hw(dev));
 	if (ext_phy)
@@ -1457,26 +1463,27 @@ mt7915_mac_full_reset(struct mt7915_dev *dev)
 		if (!mt7915_mac_restart(dev))
 			break;
 	}
-	mutex_unlock(&dev->mt76.mutex);
 
 	if (i == 10)
 		dev_err(dev->mt76.dev, "chip full reset failed\n");
 
+	spin_lock_bh(&dev->mt76.sta_poll_lock);
+	while (!list_empty(&dev->mt76.sta_poll_list))
+		list_del_init(dev->mt76.sta_poll_list.next);
+	spin_unlock_bh(&dev->mt76.sta_poll_lock);
+
+	memset(dev->mt76.wcid_mask, 0, sizeof(dev->mt76.wcid_mask));
+	dev->mt76.vif_mask = 0;
+
+	i = mt76_wcid_alloc(dev->mt76.wcid_mask, MT7915_WTBL_STA);
+	dev->mt76.global_wcid.idx = i;
+	dev->recovery.hw_full_reset = false;
+
+	mutex_unlock(&dev->mt76.mutex);
+
 	ieee80211_restart_hw(mt76_hw(dev));
 	if (ext_phy)
 		ieee80211_restart_hw(ext_phy->hw);
-
-	ieee80211_wake_queues(mt76_hw(dev));
-	if (ext_phy)
-		ieee80211_wake_queues(ext_phy->hw);
-
-	dev->recovery.hw_full_reset = false;
-	ieee80211_queue_delayed_work(mt76_hw(dev), &dev->mphy.mac_work,
-				     MT7915_WATCHDOG_TIME);
-	if (ext_phy)
-		ieee80211_queue_delayed_work(ext_phy->hw,
-					     &ext_phy->mac_work,
-					     MT7915_WATCHDOG_TIME);
 }
 
 /* system error recovery */
@@ -1520,12 +1527,6 @@ void mt7915_mac_reset_work(struct work_struct *work)
 	if (!(READ_ONCE(dev->recovery.state) & MT_MCU_CMD_STOP_DMA))
 		return;
 
-	if (mtk_wed_device_active(&dev->mt76.mmio.wed)) {
-		mtk_wed_device_stop(&dev->mt76.mmio.wed);
-		if (!is_mt798x(&dev->mt76))
-			mt76_wr(dev, MT_INT_WED_MASK_CSR, 0);
-	}
-
 	ieee80211_stop_queues(mt76_hw(dev));
 	if (ext_phy)
 		ieee80211_stop_queues(ext_phy->hw);
@@ -1538,12 +1539,17 @@ void mt7915_mac_reset_work(struct work_struct *work)
 		set_bit(MT76_RESET, &phy2->mt76->state);
 		cancel_delayed_work_sync(&phy2->mt76->mac_work);
 	}
+
+	mutex_lock(&dev->mt76.mutex);
+
 	mt76_worker_disable(&dev->mt76.tx_worker);
 	mt76_for_each_q_rx(&dev->mt76, i)
 		napi_disable(&dev->mt76.napi[i]);
 	napi_disable(&dev->mt76.tx_napi);
 
-	mutex_lock(&dev->mt76.mutex);
+
+	if (mtk_wed_device_active(&dev->mt76.mmio.wed))
+		mtk_wed_device_stop(&dev->mt76.mmio.wed);
 
 	mt76_wr(dev, MT_MCU_INT_EVENT, MT_MCU_INT_EVENT_DMA_STOPPED);
 
@@ -1688,6 +1694,11 @@ void mt7915_reset(struct mt7915_dev *dev)
 		mt7915_irq_disable(dev, MT_INT_MCU_CMD);
 		queue_work(dev->mt76.wq, &dev->dump_work);
 		return;
+	}
+
+	if ((READ_ONCE(dev->recovery.state) & MT_MCU_CMD_STOP_DMA)) {
+		set_bit(MT76_MCU_RESET, &dev->mphy.state);
+		wake_up(&dev->mt76.mcu.wait);
 	}
 
 	queue_work(dev->mt76.wq, &dev->reset_work);

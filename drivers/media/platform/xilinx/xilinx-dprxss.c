@@ -13,9 +13,11 @@
 #include <linux/interrupt.h>
 #include <linux/mfd/syscon.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
 #include <linux/of_device.h>
+#include <linux/of_platform.h>
 #include <linux/phy/phy.h>
 #include <linux/phy/phy-dp.h>
 #include <linux/platform_device.h>
@@ -1693,8 +1695,7 @@ __xdprxss_get_pad_format(struct xdprxss_state *xdprxss,
 
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		format = v4l2_subdev_get_try_format(&xdprxss->subdev,
-						    sd_state, pad);
+		format = v4l2_subdev_state_get_format(sd_state, pad);
 		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		format = &xdprxss->format;
@@ -1708,7 +1709,7 @@ __xdprxss_get_pad_format(struct xdprxss_state *xdprxss,
 }
 
 /**
- * xdprxss_init_cfg - Initialise the pad format config to default
+ * xdprxss_init_state - Initialise the pad format config to default
  * @sd: Pointer to V4L2 Sub device structure
  * @sd_state: Pointer to sub device pad information structure
  *
@@ -1717,13 +1718,13 @@ __xdprxss_get_pad_format(struct xdprxss_state *xdprxss,
  *
  * Return: 0 on success
  */
-static int xdprxss_init_cfg(struct v4l2_subdev *sd,
-			    struct v4l2_subdev_state *sd_state)
+static int xdprxss_init_state(struct v4l2_subdev *sd,
+			      struct v4l2_subdev_state *sd_state)
 {
 	struct xdprxss_state *xdprxss = to_xdprxssstate(sd);
 	struct v4l2_mbus_framefmt *format;
 
-	format = v4l2_subdev_get_try_format(sd, sd_state, 0);
+	format = v4l2_subdev_state_get_format(sd_state, 0);
 
 	if (!xdprxss->valid_stream)
 		*format = xdprxss->format;
@@ -1855,10 +1856,13 @@ static int xdprxss_get_dv_timings_cap(struct v4l2_subdev *subdev,
 	return 0;
 }
 
-static int xdprxss_query_dv_timings(struct v4l2_subdev *sd,
+static int xdprxss_query_dv_timings(struct v4l2_subdev *sd, unsigned int pad,
 				    struct v4l2_dv_timings *timings)
 {
 	struct xdprxss_state *state = to_xdprxssstate(sd);
+
+	if (pad != 0)
+		return -EINVAL;
 
 	if (!timings)
 		return -EINVAL;
@@ -2239,13 +2243,12 @@ static const struct v4l2_subdev_core_ops xdprxss_core_ops = {
 };
 
 static const struct v4l2_subdev_video_ops xdprxss_video_ops = {
-	.query_dv_timings	= xdprxss_query_dv_timings,
 	.s_stream		= xdprxss_s_stream,
 	.g_input_status		= xdprxss_g_input_status,
 };
 
 static const struct v4l2_subdev_pad_ops xdprxss_pad_ops = {
-	.init_cfg		= xdprxss_init_cfg,
+	.query_dv_timings	= xdprxss_query_dv_timings,
 	.enum_mbus_code		= xdprxss_enum_mbus_code,
 	.get_fmt		= xdprxss_getset_format,
 	.set_fmt		= xdprxss_getset_format,
@@ -2257,6 +2260,10 @@ static const struct v4l2_subdev_ops xdprxss_ops = {
 	.core	= &xdprxss_core_ops,
 	.video	= &xdprxss_video_ops,
 	.pad	= &xdprxss_pad_ops
+};
+
+static const struct v4l2_subdev_internal_ops xdprxss_internal_ops = {
+	.init_state		= xdprxss_init_state,
 };
 
 /* ----------------------------------------------------------------
@@ -3034,6 +3041,7 @@ static int xdprxss_probe(struct platform_device *pdev)
 	/* Initialize V4L2 subdevice and media entity */
 	subdev = &xdprxss->subdev;
 	v4l2_subdev_init(subdev, &xdprxss_ops);
+	subdev->internal_ops = &xdprxss_internal_ops;
 	subdev->dev = &pdev->dev;
 	strscpy(subdev->name, dev_name(&pdev->dev), sizeof(subdev->name));
 
@@ -3183,7 +3191,7 @@ error_phy:
 	return ret;
 }
 
-static int xdprxss_remove(struct platform_device *pdev)
+static void xdprxss_remove(struct platform_device *pdev)
 {
 	struct xdprxss_state *xdprxss = platform_get_drvdata(pdev);
 	struct v4l2_subdev *subdev = &xdprxss->subdev;
@@ -3205,8 +3213,6 @@ static int xdprxss_remove(struct platform_device *pdev)
 
 	if (xdprxss->audio_init)
 		dprx_unregister_aud_dev(&pdev->dev);
-
-	return 0;
 }
 
 static const struct of_device_id xdprxss_of_id_table[] = {

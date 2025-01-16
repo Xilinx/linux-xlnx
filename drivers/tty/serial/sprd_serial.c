@@ -227,13 +227,13 @@ static int sprd_tx_buf_remap(struct uart_port *port)
 {
 	struct sprd_uart_port *sp =
 		container_of(port, struct sprd_uart_port, port);
-	struct circ_buf *xmit = &port->state->xmit;
+	struct tty_port *tport = &port->state->port;
+	unsigned char *tail;
 
-	sp->tx_dma.trans_len =
-		CIRC_CNT_TO_END(xmit->head, xmit->tail, UART_XMIT_SIZE);
+	sp->tx_dma.trans_len = kfifo_out_linear_ptr(&tport->xmit_fifo, &tail,
+			UART_XMIT_SIZE);
 
-	sp->tx_dma.phys_addr = dma_map_single(port->dev,
-					      (void *)&(xmit->buf[xmit->tail]),
+	sp->tx_dma.phys_addr = dma_map_single(port->dev, tail,
 					      sp->tx_dma.trans_len,
 					      DMA_TO_DEVICE);
 	return dma_mapping_error(port->dev, sp->tx_dma.phys_addr);
@@ -244,23 +244,23 @@ static void sprd_complete_tx_dma(void *data)
 	struct uart_port *port = (struct uart_port *)data;
 	struct sprd_uart_port *sp =
 		container_of(port, struct sprd_uart_port, port);
-	struct circ_buf *xmit = &port->state->xmit;
+	struct tty_port *tport = &port->state->port;
 	unsigned long flags;
 
-	spin_lock_irqsave(&port->lock, flags);
+	uart_port_lock_irqsave(port, &flags);
 	dma_unmap_single(port->dev, sp->tx_dma.phys_addr,
 			 sp->tx_dma.trans_len, DMA_TO_DEVICE);
 
 	uart_xmit_advance(port, sp->tx_dma.trans_len);
 
-	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
+	if (kfifo_len(&tport->xmit_fifo) < WAKEUP_CHARS)
 		uart_write_wakeup(port);
 
-	if (uart_circ_empty(xmit) || sprd_tx_buf_remap(port) ||
+	if (kfifo_is_empty(&tport->xmit_fifo) || sprd_tx_buf_remap(port) ||
 	    sprd_tx_dma_config(port))
 		sp->tx_dma.trans_len = 0;
 
-	spin_unlock_irqrestore(&port->lock, flags);
+	uart_port_unlock_irqrestore(port, flags);
 }
 
 static int sprd_uart_dma_submit(struct uart_port *port,
@@ -319,7 +319,7 @@ static void sprd_start_tx_dma(struct uart_port *port)
 {
 	struct sprd_uart_port *sp =
 		container_of(port, struct sprd_uart_port, port);
-	struct circ_buf *xmit = &port->state->xmit;
+	struct tty_port *tport = &port->state->port;
 
 	if (port->x_char) {
 		serial_out(port, SPRD_TXD, port->x_char);
@@ -328,7 +328,7 @@ static void sprd_start_tx_dma(struct uart_port *port)
 		return;
 	}
 
-	if (uart_circ_empty(xmit) || uart_tx_stopped(port)) {
+	if (kfifo_is_empty(&tport->xmit_fifo) || uart_tx_stopped(port)) {
 		sprd_stop_tx_dma(port);
 		return;
 	}
@@ -429,13 +429,13 @@ static void sprd_complete_rx_dma(void *data)
 	enum dma_status status;
 	unsigned long flags;
 
-	spin_lock_irqsave(&port->lock, flags);
+	uart_port_lock_irqsave(port, &flags);
 
 	status = dmaengine_tx_status(sp->rx_dma.chn,
 				     sp->rx_dma.cookie, &state);
 	if (status != DMA_COMPLETE) {
 		sprd_stop_rx(port);
-		spin_unlock_irqrestore(&port->lock, flags);
+		uart_port_unlock_irqrestore(port, flags);
 		return;
 	}
 
@@ -449,7 +449,7 @@ static void sprd_complete_rx_dma(void *data)
 	if (sprd_start_dma_rx(port))
 		sprd_stop_rx(port);
 
-	spin_unlock_irqrestore(&port->lock, flags);
+	uart_port_unlock_irqrestore(port, flags);
 }
 
 static int sprd_start_dma_rx(struct uart_port *port)
@@ -638,12 +638,12 @@ static irqreturn_t sprd_handle_irq(int irq, void *dev_id)
 	struct uart_port *port = dev_id;
 	unsigned int ims;
 
-	spin_lock(&port->lock);
+	uart_port_lock(port);
 
 	ims = serial_in(port, SPRD_IMSR);
 
 	if (!ims) {
-		spin_unlock(&port->lock);
+		uart_port_unlock(port);
 		return IRQ_NONE;
 	}
 
@@ -660,7 +660,7 @@ static irqreturn_t sprd_handle_irq(int irq, void *dev_id)
 	if (ims & SPRD_IMSR_TX_FIFO_EMPTY)
 		sprd_tx(port);
 
-	spin_unlock(&port->lock);
+	uart_port_unlock(port);
 
 	return IRQ_HANDLED;
 }
@@ -727,13 +727,13 @@ static int sprd_startup(struct uart_port *port)
 	serial_out(port, SPRD_CTL1, fc);
 
 	/* enable interrupt */
-	spin_lock_irqsave(&port->lock, flags);
+	uart_port_lock_irqsave(port, &flags);
 	ien = serial_in(port, SPRD_IEN);
 	ien |= SPRD_IEN_BREAK_DETECT | SPRD_IEN_TIMEOUT;
 	if (!sp->rx_dma.enable)
 		ien |= SPRD_IEN_RX_FULL;
 	serial_out(port, SPRD_IEN, ien);
-	spin_unlock_irqrestore(&port->lock, flags);
+	uart_port_unlock_irqrestore(port, flags);
 
 	return 0;
 }
@@ -793,7 +793,7 @@ static void sprd_set_termios(struct uart_port *port, struct ktermios *termios,
 			lcr |= SPRD_LCR_EVEN_PAR;
 	}
 
-	spin_lock_irqsave(&port->lock, flags);
+	uart_port_lock_irqsave(port, &flags);
 
 	/* update the per-port timeout */
 	uart_update_timeout(port, termios->c_cflag, baud);
@@ -837,7 +837,7 @@ static void sprd_set_termios(struct uart_port *port, struct ktermios *termios,
 	fc |= RX_TOUT_THLD_DEF | RX_HFC_THLD_DEF;
 	serial_out(port, SPRD_CTL1, fc);
 
-	spin_unlock_irqrestore(&port->lock, flags);
+	uart_port_unlock_irqrestore(port, flags);
 
 	/* Don't rewrite B0 */
 	if (tty_termios_baud_rate(termios))
@@ -974,9 +974,9 @@ static void sprd_console_write(struct console *co, const char *s,
 	if (port->sysrq)
 		locked = 0;
 	else if (oops_in_progress)
-		locked = spin_trylock_irqsave(&port->lock, flags);
+		locked = uart_port_trylock_irqsave(port, &flags);
 	else
-		spin_lock_irqsave(&port->lock, flags);
+		uart_port_lock_irqsave(port, &flags);
 
 	uart_console_write(port, s, count, sprd_console_putchar);
 
@@ -984,7 +984,7 @@ static void sprd_console_write(struct console *co, const char *s,
 	wait_for_xmitr(port);
 
 	if (locked)
-		spin_unlock_irqrestore(&port->lock, flags);
+		uart_port_unlock_irqrestore(port, flags);
 }
 
 static int sprd_console_setup(struct console *co, char *options)
@@ -1076,7 +1076,7 @@ static struct uart_driver sprd_uart_driver = {
 	.cons = SPRD_CONSOLE,
 };
 
-static int sprd_remove(struct platform_device *dev)
+static void sprd_remove(struct platform_device *dev)
 {
 	struct sprd_uart_port *sup = platform_get_drvdata(dev);
 
@@ -1089,8 +1089,6 @@ static int sprd_remove(struct platform_device *dev)
 
 	if (!sprd_ports_num)
 		uart_unregister_driver(&sprd_uart_driver);
-
-	return 0;
 }
 
 static bool sprd_uart_is_console(struct uart_port *uport)
@@ -1257,7 +1255,7 @@ MODULE_DEVICE_TABLE(of, serial_ids);
 
 static struct platform_driver sprd_platform_driver = {
 	.probe		= sprd_probe,
-	.remove		= sprd_remove,
+	.remove_new	= sprd_remove,
 	.driver		= {
 		.name	= "sprd_serial",
 		.of_match_table = serial_ids,

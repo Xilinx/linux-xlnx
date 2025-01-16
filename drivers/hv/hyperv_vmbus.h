@@ -380,12 +380,6 @@ void hv_vss_deinit(void);
 int hv_vss_pre_suspend(void);
 int hv_vss_pre_resume(void);
 void hv_vss_onchannelcallback(void *context);
-
-int hv_fcopy_init(struct hv_util_service *srv);
-void hv_fcopy_deinit(void);
-int hv_fcopy_pre_suspend(void);
-int hv_fcopy_pre_resume(void);
-void hv_fcopy_onchannelcallback(void *context);
 void vmbus_initiate_unload(bool crash);
 
 static inline void hv_poll_channel(struct vmbus_channel *channel,
@@ -415,6 +409,11 @@ extern const struct vmbus_device vmbus_devs[];
 static inline bool hv_is_perf_channel(struct vmbus_channel *channel)
 {
 	return vmbus_devs[channel->device_id].perf_device;
+}
+
+static inline size_t hv_dev_ring_size(struct vmbus_channel *channel)
+{
+	return vmbus_devs[channel->device_id].pref_ring_size;
 }
 
 static inline bool hv_is_allocated_cpu(unsigned int cpu)

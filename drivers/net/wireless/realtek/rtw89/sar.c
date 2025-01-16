@@ -366,7 +366,7 @@ static void rtw89_tas_state_update(struct rtw89_dev *rtwdev)
 	if (src == RTW89_SAR_SOURCE_NONE)
 		return;
 
-	chan = rtw89_chan_get(rtwdev, RTW89_SUB_ENTITY_0);
+	chan = rtw89_chan_get(rtwdev, RTW89_CHANCTX_0);
 	ret = sar_hdl->query_sar_config(rtwdev, chan->freq, &cfg);
 	if (ret)
 		return;
@@ -404,16 +404,18 @@ out:
 void rtw89_tas_init(struct rtw89_dev *rtwdev)
 {
 	struct rtw89_tas_info *tas = &rtwdev->tas;
+	struct rtw89_acpi_dsm_result res = {};
 	int ret;
 	u8 val;
 
-	ret = rtw89_acpi_evaluate_dsm(rtwdev, RTW89_ACPI_DSM_FUNC_TAS_EN, &val);
+	ret = rtw89_acpi_evaluate_dsm(rtwdev, RTW89_ACPI_DSM_FUNC_TAS_EN, &res);
 	if (ret) {
 		rtw89_debug(rtwdev, RTW89_DBG_SAR,
 			    "acpi: cannot get TAS: %d\n", ret);
 		return;
 	}
 
+	val = res.u.value;
 	switch (val) {
 	case 0:
 		tas->enable = false;

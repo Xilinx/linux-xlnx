@@ -11,6 +11,20 @@ the ``genetlink-legacy`` protocol level.
 Specification
 =============
 
+Globals
+-------
+
+Attributes listed directly at the root level of the spec file.
+
+version
+~~~~~~~
+
+Generic Netlink family version, default is 1.
+
+``version`` has historically been used to introduce family changes
+which may break backwards compatibility. Since compatibility breaking changes
+are generally not allowed ``version`` is very rarely used.
+
 Attribute type nests
 --------------------
 
@@ -32,10 +46,16 @@ For reference the ``multi-attr`` array may look like this::
 
 where ``ARRAY-ATTR`` is the array entry type.
 
-array-nest
-~~~~~~~~~~
+indexed-array
+~~~~~~~~~~~~~
 
-``array-nest`` creates the following structure::
+``indexed-array`` wraps the entire array in an extra attribute (hence
+limiting its size to 64kB). The ``ENTRY`` nests are special and have the
+index of the entry as their type instead of normal attribute type.
+
+A ``sub-type`` is needed to describe what type in the ``ENTRY``. A ``nest``
+``sub-type`` means there are nest arrays in the ``ENTRY``, with the structure
+looks like::
 
   [SOME-OTHER-ATTR]
   [ARRAY-ATTR]
@@ -46,9 +66,13 @@ array-nest
       [MEMBER1]
       [MEMBER2]
 
-It wraps the entire array in an extra attribute (hence limiting its size
-to 64kB). The ``ENTRY`` nests are special and have the index of the entry
-as their type instead of normal attribute type.
+Other ``sub-type`` like ``u32`` means there is only one member as described
+in ``sub-type`` in the ``ENTRY``. The structure looks like::
+
+  [SOME-OTHER-ATTR]
+  [ARRAY-ATTR]
+    [ENTRY u32]
+    [ENTRY u32]
 
 type-value
 ~~~~~~~~~~
@@ -168,7 +192,7 @@ members
 
  - ``name`` - The attribute name of the struct member
  - ``type`` - One of the scalar types ``u8``, ``u16``, ``u32``, ``u64``, ``s8``,
-   ``s16``, ``s32``, ``s64``, ``string`` or ``binary``.
+   ``s16``, ``s32``, ``s64``, ``string``, ``binary`` or ``bitfield32``.
  - ``byte-order`` - ``big-endian`` or ``little-endian``
  - ``doc``, ``enum``, ``enum-as-flags``, ``display-hint`` - Same as for
    :ref:`attribute definitions <attribute_properties>`

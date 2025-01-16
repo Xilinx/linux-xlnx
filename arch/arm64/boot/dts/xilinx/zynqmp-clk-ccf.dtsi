@@ -75,6 +75,22 @@
 	clocks = <&zynqmp_clk ACPU>;
 };
 
+&cpu0_debug {
+	clocks = <&zynqmp_clk DBF_FPD>;
+};
+
+&cpu1_debug {
+	clocks = <&zynqmp_clk DBF_FPD>;
+};
+
+&cpu2_debug {
+	clocks = <&zynqmp_clk DBF_FPD>;
+};
+
+&cpu3_debug {
+	clocks = <&zynqmp_clk DBF_FPD>;
+};
+
 &fpd_dma_chan1 {
 	clocks = <&zynqmp_clk GDMA_REF>, <&zynqmp_clk LPD_LSBUS>;
 };
@@ -301,8 +317,4 @@
 	assigned-clocks = <&zynqmp_clk DP_STC_REF>,
 			  <&zynqmp_clk DP_AUDIO_REF>,
 			  <&zynqmp_clk DP_VIDEO_REF>;  /* rpll, rpll, vpll */
-};
-
-&zynqmp_dp_snd_codec0 {
-	clocks = <&zynqmp_clk DP_AUDIO_REF>;
 };

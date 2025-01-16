@@ -118,6 +118,9 @@ static int msm_hdmi_phy_pll_init(struct platform_device *pdev,
 	case MSM_HDMI_PHY_8996:
 		ret = msm_hdmi_pll_8996_init(pdev);
 		break;
+	case MSM_HDMI_PHY_8998:
+		ret = msm_hdmi_pll_8998_init(pdev);
+		break;
 	/*
 	 * we don't have PLL support for these, don't report an error for now
 	 */
@@ -177,11 +180,9 @@ static int msm_hdmi_phy_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int msm_hdmi_phy_remove(struct platform_device *pdev)
+static void msm_hdmi_phy_remove(struct platform_device *pdev)
 {
 	pm_runtime_disable(&pdev->dev);
-
-	return 0;
 }
 
 static const struct of_device_id msm_hdmi_phy_dt_match[] = {
@@ -195,12 +196,14 @@ static const struct of_device_id msm_hdmi_phy_dt_match[] = {
 	  .data = &msm_hdmi_phy_8x74_cfg },
 	{ .compatible = "qcom,hdmi-phy-8996",
 	  .data = &msm_hdmi_phy_8996_cfg },
+	{ .compatible = "qcom,hdmi-phy-8998",
+	  .data = &msm_hdmi_phy_8998_cfg },
 	{}
 };
 
 static struct platform_driver msm_hdmi_phy_platform_driver = {
 	.probe      = msm_hdmi_phy_probe,
-	.remove     = msm_hdmi_phy_remove,
+	.remove_new = msm_hdmi_phy_remove,
 	.driver     = {
 		.name   = "msm_hdmi_phy",
 		.of_match_table = msm_hdmi_phy_dt_match,

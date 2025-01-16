@@ -8,6 +8,7 @@
  */
 
 #include <linux/of_address.h>
+#include <linux/platform_device.h>
 #include <linux/skbuff.h>
 #include <linux/udp.h>
 #include <linux/tcp.h>
@@ -328,8 +329,8 @@ int axienet_eoe_recv_gro(struct net_device *ndev, int budget,
 
 	ndev->stats.rx_packets += packets;
 	ndev->stats.rx_bytes += size;
-	q->rx_packets += packets;
-	q->rx_bytes += size;
+	q->rxq_packets += packets;
+	q->rxq_bytes += size;
 
 	if (tail_p) {
 		axienet_dma_bdout(q, XMCDMA_CHAN_TAILDESC_OFFSET(q->chan_id) +

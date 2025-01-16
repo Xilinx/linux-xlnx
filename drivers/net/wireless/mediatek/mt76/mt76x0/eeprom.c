@@ -10,7 +10,7 @@
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/partitions.h>
 #include <linux/etherdevice.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include "mt76x0.h"
 #include "eeprom.h"
 #include "../mt76x02_phy.h"
@@ -342,4 +342,5 @@ int mt76x0_eeprom_init(struct mt76x02_dev *dev)
 	return 0;
 }
 
+MODULE_DESCRIPTION("MediaTek MT76x EEPROM helpers");
 MODULE_LICENSE("Dual BSD/GPL");

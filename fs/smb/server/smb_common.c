@@ -9,7 +9,7 @@
 #include "smb_common.h"
 #include "server.h"
 #include "misc.h"
-#include "smbstatus.h"
+#include "../common/smb2status.h"
 #include "connection.h"
 #include "ksmbd_work.h"
 #include "mgmt/user_session.h"
@@ -158,8 +158,12 @@ int ksmbd_verify_smb_message(struct ksmbd_work *work)
  */
 bool ksmbd_smb_request(struct ksmbd_conn *conn)
 {
-	__le32 *proto = (__le32 *)smb2_get_msg(conn->request_buf);
+	__le32 *proto;
 
+	if (conn->request_buf[0] != 0)
+		return false;
+
+	proto = (__le32 *)smb2_get_msg(conn->request_buf);
 	if (*proto == SMB2_COMPRESSION_TRANSFORM_ID) {
 		pr_err_ratelimited("smb2 compression not support yet");
 		return false;
@@ -366,11 +370,26 @@ static int smb1_allocate_rsp_buf(struct ksmbd_work *work)
 	return 0;
 }
 
+/**
+ * set_smb1_rsp_status() - set error type in smb response header
+ * @work:	smb work containing smb response header
+ * @err:	error code to set in response
+ */
+static void set_smb1_rsp_status(struct ksmbd_work *work, __le32 err)
+{
+	work->send_no_response = 1;
+}
+
 static struct smb_version_ops smb1_server_ops = {
 	.get_cmd_val = get_smb1_cmd_val,
 	.init_rsp_hdr = init_smb1_rsp_hdr,
 	.allocate_rsp_buf = smb1_allocate_rsp_buf,
 	.check_user_session = smb1_check_user_session,
+	.set_rsp_status = set_smb1_rsp_status,
+};
+
+static struct smb_version_values smb1_server_values = {
+	.max_credits = SMB2_MAX_CREDITS,
 };
 
 static int smb1_negotiate(struct ksmbd_work *work)
@@ -384,18 +403,18 @@ static struct smb_version_cmds smb1_server_cmds[1] = {
 
 static int init_smb1_server(struct ksmbd_conn *conn)
 {
+	conn->vals = &smb1_server_values;
 	conn->ops = &smb1_server_ops;
 	conn->cmds = smb1_server_cmds;
 	conn->max_cmds = ARRAY_SIZE(smb1_server_cmds);
 	return 0;
 }
 
-int ksmbd_init_smb_server(struct ksmbd_work *work)
+int ksmbd_init_smb_server(struct ksmbd_conn *conn)
 {
-	struct ksmbd_conn *conn = work->conn;
 	__le32 proto;
 
-	proto = *(__le32 *)((struct smb_hdr *)work->request_buf)->Protocol;
+	proto = *(__le32 *)((struct smb_hdr *)conn->request_buf)->Protocol;
 	if (conn->need_neg == false) {
 		if (proto == SMB1_PROTO_NUMBER)
 			return -EINVAL;
@@ -442,10 +461,13 @@ int ksmbd_populate_dot_dotdot_entries(struct ksmbd_work *work, int info_level,
 			}
 
 			ksmbd_kstat.kstat = &kstat;
-			ksmbd_vfs_fill_dentry_attrs(work,
-						    idmap,
-						    dentry,
-						    &ksmbd_kstat);
+			rc = ksmbd_vfs_fill_dentry_attrs(work,
+							 idmap,
+							 dentry,
+							 &ksmbd_kstat);
+			if (rc)
+				break;
+
 			rc = fn(conn, info_level, d_info, &ksmbd_kstat);
 			if (rc)
 				break;
@@ -470,7 +492,7 @@ int ksmbd_populate_dot_dotdot_entries(struct ksmbd_work *work, int info_level,
  * @shortname:	destination short filename
  *
  * Return:	shortname length or 0 when source long name is '.' or '..'
- * TODO: Though this function comforms the restriction of 8.3 Filename spec,
+ * TODO: Though this function conforms the restriction of 8.3 Filename spec,
  * but the result is different with Windows 7's one. need to check.
  */
 int ksmbd_extract_shortname(struct ksmbd_conn *conn, const char *longname,
@@ -628,7 +650,7 @@ int ksmbd_smb_check_shared_mode(struct file *filp, struct ksmbd_file *curr_fp)
 	 * Lookup fp in master fp list, and check desired access and
 	 * shared mode between previous open and current open.
 	 */
-	read_lock(&curr_fp->f_ci->m_lock);
+	down_read(&curr_fp->f_ci->m_lock);
 	list_for_each_entry(prev_fp, &curr_fp->f_ci->m_fp_list, node) {
 		if (file_inode(filp) != file_inode(prev_fp->filp))
 			continue;
@@ -704,7 +726,7 @@ int ksmbd_smb_check_shared_mode(struct file *filp, struct ksmbd_file *curr_fp)
 			break;
 		}
 	}
-	read_unlock(&curr_fp->f_ci->m_lock);
+	up_read(&curr_fp->f_ci->m_lock);
 
 	return rc;
 }
@@ -714,17 +736,19 @@ bool is_asterisk(char *p)
 	return p && p[0] == '*';
 }
 
-int ksmbd_override_fsids(struct ksmbd_work *work)
+int __ksmbd_override_fsids(struct ksmbd_work *work,
+		struct ksmbd_share_config *share)
 {
 	struct ksmbd_session *sess = work->sess;
-	struct ksmbd_share_config *share = work->tcon->share_conf;
+	struct ksmbd_user *user = sess->user;
 	struct cred *cred;
 	struct group_info *gi;
 	unsigned int uid;
 	unsigned int gid;
+	int i;
 
-	uid = user_uid(sess->user);
-	gid = user_gid(sess->user);
+	uid = user_uid(user);
+	gid = user_gid(user);
 	if (share->force_uid != KSMBD_SHARE_INVALID_UID)
 		uid = share->force_uid;
 	if (share->force_gid != KSMBD_SHARE_INVALID_GID)
@@ -737,11 +761,18 @@ int ksmbd_override_fsids(struct ksmbd_work *work)
 	cred->fsuid = make_kuid(&init_user_ns, uid);
 	cred->fsgid = make_kgid(&init_user_ns, gid);
 
-	gi = groups_alloc(0);
+	gi = groups_alloc(user->ngroups);
 	if (!gi) {
 		abort_creds(cred);
 		return -ENOMEM;
 	}
+
+	for (i = 0; i < user->ngroups; i++)
+		gi->gid[i] = make_kgid(&init_user_ns, user->sgid[i]);
+
+	if (user->ngroups)
+		groups_sort(gi);
+
 	set_groups(cred, gi);
 	put_group_info(gi);
 
@@ -755,6 +786,11 @@ int ksmbd_override_fsids(struct ksmbd_work *work)
 		return -EINVAL;
 	}
 	return 0;
+}
+
+int ksmbd_override_fsids(struct ksmbd_work *work)
+{
+	return __ksmbd_override_fsids(work, work->tcon->share_conf);
 }
 
 void ksmbd_revert_fsids(struct ksmbd_work *work)

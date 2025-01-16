@@ -18,8 +18,6 @@
  */
 u32 efi_kaslr_get_phys_seed(efi_handle_t image_handle)
 {
-	efi_status_t status;
-	u32 phys_seed;
 	efi_guid_t li_fixed_proto = LINUX_EFI_LOADED_IMAGE_FIXED_GUID;
 	void *p;
 
@@ -32,18 +30,20 @@ u32 efi_kaslr_get_phys_seed(efi_handle_t image_handle)
 			       &li_fixed_proto, &p) == EFI_SUCCESS) {
 		efi_info("Image placement fixed by loader\n");
 	} else {
+		efi_status_t status;
+		u32 phys_seed;
+
 		status = efi_get_random_bytes(sizeof(phys_seed),
 					      (u8 *)&phys_seed);
-		if (status == EFI_SUCCESS) {
+		if (status == EFI_SUCCESS)
 			return phys_seed;
-		} else if (status == EFI_NOT_FOUND) {
+
+		if (status == EFI_NOT_FOUND)
 			efi_info("EFI_RNG_PROTOCOL unavailable\n");
-			efi_nokaslr = true;
-		} else if (status != EFI_SUCCESS) {
-			efi_err("efi_get_random_bytes() failed (0x%lx)\n",
-				status);
-			efi_nokaslr = true;
-		}
+		else
+			efi_err("efi_get_random_bytes() failed (0x%lx)\n", status);
+
+		efi_nokaslr = true;
 	}
 
 	return 0;
@@ -119,7 +119,7 @@ efi_status_t efi_kaslr_relocate_kernel(unsigned long *image_addr,
 		 */
 		status = efi_random_alloc(*reserve_size, min_kimg_align,
 					  reserve_addr, phys_seed,
-					  EFI_LOADER_CODE, EFI_ALLOC_LIMIT);
+					  EFI_LOADER_CODE, 0, EFI_ALLOC_LIMIT);
 		if (status != EFI_SUCCESS)
 			efi_warn("efi_random_alloc() failed: 0x%lx\n", status);
 	} else {

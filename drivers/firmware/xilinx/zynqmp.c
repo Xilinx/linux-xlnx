@@ -3,7 +3,7 @@
  * Xilinx Zynq MPSoC Firmware layer
  *
  *  Copyright (C) 2014-2022 Xilinx, Inc.
- *  Copyright (C), 2022 - 2024 Advanced Micro Devices, Inc.
+ *  Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc.
  *
  *  Michal Simek <michal.simek@amd.com>
  *  Davorin Mista <davorin.mista@aggios.com>
@@ -573,6 +573,35 @@ int zynqmp_pm_get_family_info(u32 *family, u32 *subfamily)
 EXPORT_SYMBOL_GPL(zynqmp_pm_get_family_info);
 
 /**
+ * zynqmp_pm_get_sip_svc_version() - Get SiP service call version
+ * @version:	Returned version value
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int zynqmp_pm_get_sip_svc_version(u32 *version)
+{
+	struct arm_smccc_res res;
+	u64 args[SMC_ARG_CNT_64] = {0};
+
+	if (!version)
+		return -EINVAL;
+
+	/* Check if SiP SVC version already verified */
+	if (sip_svc_version > 0) {
+		*version = sip_svc_version;
+		return 0;
+	}
+
+	args[0] = GET_SIP_SVC_VERSION;
+
+	arm_smccc_smc(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], &res);
+
+	*version = ((lower_32_bits(res.a0) << 16U) | lower_32_bits(res.a1));
+
+	return zynqmp_pm_ret_code(XST_PM_SUCCESS);
+}
+
+/**
  * xlnx_get_crypto_dev_data() - Get crypto dev data of platform
  * @feature_map:	List of available feature map of all platform
  *
@@ -608,35 +637,6 @@ void *xlnx_get_crypto_dev_data(struct xlnx_feature *feature_map)
 	return ERR_PTR(-ENODEV);
 }
 EXPORT_SYMBOL_GPL(xlnx_get_crypto_dev_data);
-
-/**
- * zynqmp_pm_get_sip_svc_version() - Get SiP service call version
- * @version:	Returned version value
- *
- * Return: Returns status, either success or error+reason
- */
-static int zynqmp_pm_get_sip_svc_version(u32 *version)
-{
-	struct arm_smccc_res res;
-	u64 args[SMC_ARG_CNT_64] = {0};
-
-	if (!version)
-		return -EINVAL;
-
-	/* Check if SiP SVC version already verified */
-	if (sip_svc_version > 0) {
-		*version = sip_svc_version;
-		return 0;
-	}
-
-	args[0] = GET_SIP_SVC_VERSION;
-
-	arm_smccc_smc(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], &res);
-
-	*version = ((lower_32_bits(res.a0) << 16U) | lower_32_bits(res.a1));
-
-	return zynqmp_pm_ret_code(XST_PM_SUCCESS);
-}
 
 /**
  * zynqmp_pm_get_trustzone_version() - Get secure trustzone firmware version
@@ -730,6 +730,7 @@ int zynqmp_pm_query_data(struct zynqmp_pm_query_data qdata, u32 *out)
 
 	ret = zynqmp_pm_invoke_fn(PM_QUERY_DATA, out, 4, qdata.qid,
 				  qdata.arg1, qdata.arg2, qdata.arg3);
+
 	/*
 	 * For clock name query, all bytes in SMC response are clock name
 	 * characters and return code is always success. For invalid clocks,
@@ -1132,7 +1133,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_aie_operation);
  *
  * Return: Returns status, either success or error+reason
  */
-int zynqmp_pm_reset_assert(const enum zynqmp_pm_reset reset,
+int zynqmp_pm_reset_assert(const u32 reset,
 			   const enum zynqmp_pm_reset_action assert_flag)
 {
 	return zynqmp_pm_invoke_fn(PM_RESET_ASSERT, NULL, 2, reset, assert_flag);
@@ -1146,7 +1147,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_reset_assert);
  *
  * Return: Returns status, either success or error+reason
  */
-int zynqmp_pm_reset_get_status(const enum zynqmp_pm_reset reset, u32 *status)
+int zynqmp_pm_reset_get_status(const u32 reset, u32 *status)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 	int ret;
@@ -1734,47 +1735,6 @@ int zynqmp_pm_set_tcm_config(u32 node_id, enum rpu_tcm_comb tcm_mode)
 				   (u32)tcm_mode);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_tcm_config);
-
-/**
- * zynqmp_pm_get_node_status - PM call to request a node's current power state
- * @node:		ID of the component or sub-system in question
- * @status:		Current operating state of the requested node
- * @requirements:	Current requirements asserted on the node,
- *			used for slave nodes only.
- * @usage:		Usage information, used for slave nodes only:
- *			PM_USAGE_NO_MASTER	- No master is currently using
- *						  the node
- *			PM_USAGE_CURRENT_MASTER	- Only requesting master is
- *						  currently using the node
- *			PM_USAGE_OTHER_MASTER	- Only other masters are
- *						  currently using the node
- *			PM_USAGE_BOTH_MASTERS	- Both the current and at least
- *						  one other master is currently
- *						  using the node
- *
- * Return:		Returns status, either success or error+reason
- */
-int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
-			      u32 *const requirements, u32 *const usage)
-{
-	u32 ret_payload[PAYLOAD_ARG_CNT];
-	int ret;
-
-	if (!status)
-		return -EINVAL;
-
-	ret = zynqmp_pm_invoke_fn(PM_GET_NODE_STATUS, ret_payload, 1, node);
-	if (ret_payload[0] == XST_PM_SUCCESS) {
-		*status = ret_payload[1];
-		if (requirements)
-			*requirements = ret_payload[2];
-		if (usage)
-			*usage = ret_payload[3];
-	}
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_get_node_status);
 
 /**
  * zynqmp_pm_force_pwrdwn - PM call to request for another PU or subsystem to
@@ -3252,7 +3212,7 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
 
 	if (pm_family_code == VERSAL_FAMILY_CODE) {
 		em_dev = platform_device_register_data(&pdev->dev, "xlnx_event_manager",
-						       -1, &pm_sub_family_code, 4);
+						       -1, NULL, 0);
 		if (IS_ERR(em_dev))
 			dev_err_probe(&pdev->dev, PTR_ERR(em_dev), "EM register fail with error\n");
 	}
@@ -3260,7 +3220,7 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
 	return of_platform_populate(dev->of_node, NULL, NULL, dev);
 }
 
-static int zynqmp_firmware_remove(struct platform_device *pdev)
+static void zynqmp_firmware_remove(struct platform_device *pdev)
 {
 	struct pm_api_feature_data *feature_data;
 	struct hlist_node *tmp;
@@ -3275,8 +3235,6 @@ static int zynqmp_firmware_remove(struct platform_device *pdev)
 	}
 
 	platform_device_unregister(em_dev);
-
-	return 0;
 }
 
 static const struct of_device_id zynqmp_firmware_of_match[] = {
@@ -3293,6 +3251,6 @@ static struct platform_driver zynqmp_firmware_driver = {
 		.dev_groups = zynqmp_firmware_groups,
 	},
 	.probe = zynqmp_firmware_probe,
-	.remove = zynqmp_firmware_remove,
+	.remove_new = zynqmp_firmware_remove,
 };
 module_platform_driver(zynqmp_firmware_driver);

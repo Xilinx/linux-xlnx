@@ -9,7 +9,7 @@
 #include <linux/io.h>
 #include <linux/iopoll.h>
 
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 #include <drm/display/drm_hdcp_helper.h>
 
@@ -403,7 +403,8 @@ static int _cdns_mhdp_hdcp_disable(struct cdns_mhdp_device *mhdp)
 
 static int _cdns_mhdp_hdcp_enable(struct cdns_mhdp_device *mhdp, u8 content_type)
 {
-	int ret, tries = 3;
+	int ret = -EINVAL;
+	int tries = 3;
 	u32 i;
 
 	for (i = 0; i < tries; i++) {

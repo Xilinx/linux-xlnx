@@ -48,7 +48,7 @@ struct virtio_gpu_submit {
 static int virtio_gpu_do_fence_wait(struct virtio_gpu_submit *submit,
 				    struct dma_fence *in_fence)
 {
-	u32 context = submit->fence_ctx + submit->ring_idx;
+	u64 context = submit->fence_ctx + submit->ring_idx;
 
 	if (dma_fence_match_context(in_fence, context))
 		return 0;
@@ -99,8 +99,8 @@ virtio_gpu_parse_deps(struct virtio_gpu_submit *submit)
 		return 0;
 
 	/*
-	 * kvalloc at first tries to allocate memory using kmalloc and
-	 * falls back to vmalloc only on failure. It also uses __GFP_NOWARN
+	 * kvmalloc() at first tries to allocate memory using kmalloc() and
+	 * falls back to vmalloc() only on failure. It also uses __GFP_NOWARN
 	 * internally for allocations larger than a page size, preventing
 	 * storm of KMSG warnings.
 	 */
@@ -529,7 +529,7 @@ int virtio_gpu_execbuffer_ioctl(struct drm_device *dev, void *data,
 	virtio_gpu_submit(&submit);
 
 	/*
-	 * Set up usr-out data after submitting the job to optimize
+	 * Set up user-out data after submitting the job to optimize
 	 * the job submission path.
 	 */
 	virtio_gpu_install_out_fence_fd(&submit);

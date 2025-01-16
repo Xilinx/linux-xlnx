@@ -2,8 +2,7 @@
 config SUPERH
 	def_bool y
 	select ARCH_32BIT_OFF_T
-	select ARCH_ENABLE_MEMORY_HOTPLUG if SPARSEMEM && MMU
-	select ARCH_ENABLE_MEMORY_HOTREMOVE if SPARSEMEM && MMU
+	select ARCH_HAS_CPU_CACHE_ALIASING
 	select ARCH_HAVE_NMI_SAFE_CMPXCHG if (GUSA_RB || CPU_SH4A)
 	select ARCH_HAS_BINFMT_FLAT if !MMU
 	select ARCH_HAS_CPU_FINALIZE_INIT
@@ -15,6 +14,7 @@ config SUPERH
 	select ARCH_HIBERNATION_POSSIBLE if MMU
 	select ARCH_MIGHT_HAVE_PC_PARPORT
 	select ARCH_WANT_IPC_PARSE_VERSION
+	select ARCH_NEED_CMPXCHG_1_EMU
 	select CPU_NO_EFFICIENT_FFS
 	select DMA_DECLARE_COHERENT
 	select GENERIC_ATOMIC64
@@ -37,7 +37,7 @@ config SUPERH
 	select HAVE_DEBUG_BUGVERBOSE
 	select HAVE_DEBUG_KMEMLEAK
 	select HAVE_DYNAMIC_FTRACE
-	select HAVE_FAST_GUP if MMU
+	select HAVE_GUP_FAST if MMU
 	select HAVE_FUNCTION_GRAPH_TRACER
 	select HAVE_FUNCTION_TRACER
 	select HAVE_FTRACE_MCOUNT_RECORD
@@ -124,8 +124,8 @@ config ARCH_HAS_ILOG2_U64
 
 config NO_IOPORT_MAP
 	def_bool !PCI
-	depends on !SH_SH4202_MICRODEV && !SH_SHMIN && !SH_HP6XX && \
-		   !SH_SOLUTION_ENGINE
+	depends on !SH_SHMIN && !SH_HP6XX && !SH_SOLUTION_ENGINE && \
+		   !SH_DREAMCAST
 
 config IO_TRAPPED
 	bool
@@ -384,10 +384,6 @@ config CPU_SUBTYPE_SH7760
 	bool "Support SH7760 processor"
 	select CPU_SH4
 
-config CPU_SUBTYPE_SH4_202
-	bool "Support SH4-202 processor"
-	select CPU_SH4
-
 # SH-4A Processor Support
 
 config CPU_SUBTYPE_SH7723
@@ -518,7 +514,6 @@ config SH_PCLK_FREQ
 			      CPU_SUBTYPE_SH7263 || \
 			      CPU_SUBTYPE_MXG
 	default "60000000" if CPU_SUBTYPE_SH7751 || CPU_SUBTYPE_SH7751R
-	default "66000000" if CPU_SUBTYPE_SH4_202
 	default "50000000"
 	help
 	  This option is used to specify the peripheral clock frequency.
@@ -554,6 +549,9 @@ config ARCH_SUPPORTS_KEXEC
 
 config ARCH_SUPPORTS_CRASH_DUMP
 	def_bool BROKEN_ON_SMP
+
+config ARCH_DEFAULT_CRASH_DUMP
+	def_bool y
 
 config ARCH_SUPPORTS_KEXEC_JUMP
 	def_bool y
@@ -714,7 +712,6 @@ config ROMIMAGE_MMCIF
 
 choice
 	prompt "Kernel command line"
-	optional
 	default CMDLINE_OVERWRITE
 	help
 	  Setting this option allows the kernel command line arguments
@@ -732,6 +729,11 @@ config CMDLINE_EXTEND
 	  Given string will be concatenated with arguments passed in
 	  by a bootloader.
 
+config CMDLINE_FROM_BOOTLOADER
+	bool "Use bootloader kernel arguments"
+	help
+	  Uses the command-line options passed by the boot loader.
+
 endchoice
 
 config CMDLINE
@@ -742,10 +744,6 @@ config CMDLINE
 endmenu
 
 menu "Bus options"
-
-config SUPERHYWAY
-	tristate "SuperHyway Bus support"
-	depends on CPU_SUBTYPE_SH4_202
 
 config MAPLE
 	bool "Maple Bus support"

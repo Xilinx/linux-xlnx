@@ -18,6 +18,7 @@
 #include <linux/sunrpc/svcauth.h>
 #include <linux/err.h>
 #include <linux/hash.h>
+#include <linux/user_namespace.h>
 
 #include <trace/events/sunrpc.h>
 
@@ -98,7 +99,6 @@ enum svc_auth_status svc_authenticate(struct svc_rqst *rqstp)
 	rqstp->rq_authop = aops;
 	return aops->accept(rqstp);
 }
-EXPORT_SYMBOL_GPL(svc_authenticate);
 
 /**
  * svc_set_client - Assign an appropriate 'auth_domain' as the client
@@ -159,6 +159,49 @@ svc_auth_unregister(rpc_authflavor_t flavor)
 		rcu_assign_pointer(authtab[flavor], NULL);
 }
 EXPORT_SYMBOL_GPL(svc_auth_unregister);
+
+/**
+ * svc_auth_flavor - return RPC transaction's RPC_AUTH flavor
+ * @rqstp: RPC transaction context
+ *
+ * Returns an RPC flavor or GSS pseudoflavor.
+ */
+rpc_authflavor_t svc_auth_flavor(struct svc_rqst *rqstp)
+{
+	struct auth_ops *aops = rqstp->rq_authop;
+
+	if (!aops->pseudoflavor)
+		return aops->flavour;
+	return aops->pseudoflavor(rqstp);
+}
+EXPORT_SYMBOL_GPL(svc_auth_flavor);
+
+/**
+ * svcauth_map_clnt_to_svc_cred_local - maps a generic cred
+ * to a svc_cred suitable for use in nfsd.
+ * @clnt: rpc_clnt associated with nfs client
+ * @cred: generic cred associated with nfs client
+ * @svc: returned svc_cred that is suitable for use in nfsd
+ */
+void svcauth_map_clnt_to_svc_cred_local(struct rpc_clnt *clnt,
+					const struct cred *cred,
+					struct svc_cred *svc)
+{
+	struct user_namespace *userns = clnt->cl_cred ?
+		clnt->cl_cred->user_ns : &init_user_ns;
+
+	memset(svc, 0, sizeof(struct svc_cred));
+
+	svc->cr_uid = KUIDT_INIT(from_kuid_munged(userns, cred->fsuid));
+	svc->cr_gid = KGIDT_INIT(from_kgid_munged(userns, cred->fsgid));
+	svc->cr_flavor = clnt->cl_auth->au_flavor;
+	if (cred->group_info)
+		svc->cr_group_info = get_group_info(cred->group_info);
+	/* These aren't relevant for local (network is bypassed) */
+	svc->cr_principal = NULL;
+	svc->cr_gss_mech = NULL;
+}
+EXPORT_SYMBOL_GPL(svcauth_map_clnt_to_svc_cred_local);
 
 /**************************************************
  * 'auth_domains' are stored in a hash table indexed by name.

@@ -169,6 +169,7 @@ static const struct host1x_info host1x06_info = {
 	.num_sid_entries = ARRAY_SIZE(tegra186_sid_table),
 	.sid_table = tegra186_sid_table,
 	.reserve_vblank_syncpts = false,
+	.skip_reset_assert = true,
 };
 
 static const struct host1x_sid_entry tegra194_sid_table[] = {
@@ -214,6 +215,30 @@ static const struct host1x_info host1x07_info = {
  * and firmware stream ID in the MMIO path table.
  */
 static const struct host1x_sid_entry tegra234_sid_table[] = {
+	{
+		/* SE2 MMIO */
+		.base = 0x1658,
+		.offset = 0x90,
+		.limit = 0x90
+	},
+	{
+		/* SE4 MMIO */
+		.base = 0x1660,
+		.offset = 0x90,
+		.limit = 0x90
+	},
+	{
+		/* SE2 channel */
+		.base = 0x1738,
+		.offset = 0x90,
+		.limit = 0x90
+	},
+	{
+		/* SE4 channel */
+		.base = 0x1740,
+		.offset = 0x90,
+		.limit = 0x90
+	},
 	{
 		/* VIC channel */
 		.base = 0x17b8,
@@ -379,9 +404,10 @@ static struct iommu_domain *host1x_iommu_attach(struct host1x *host)
 		if (err < 0)
 			goto put_group;
 
-		host->domain = iommu_domain_alloc(&platform_bus_type);
-		if (!host->domain) {
-			err = -ENOMEM;
+		host->domain = iommu_paging_domain_alloc(host->dev);
+		if (IS_ERR(host->domain)) {
+			err = PTR_ERR(host->domain);
+			host->domain = NULL;
 			goto put_cache;
 		}
 
@@ -488,7 +514,7 @@ static int host1x_get_resets(struct host1x *host)
 static int host1x_probe(struct platform_device *pdev)
 {
 	struct host1x *host;
-	int err;
+	int err, i;
 
 	host = devm_kzalloc(&pdev->dev, sizeof(*host), GFP_KERNEL);
 	if (!host)
@@ -516,9 +542,30 @@ static int host1x_probe(struct platform_device *pdev)
 			return PTR_ERR(host->regs);
 	}
 
-	host->syncpt_irq = platform_get_irq(pdev, 0);
-	if (host->syncpt_irq < 0)
-		return host->syncpt_irq;
+	for (i = 0; i < ARRAY_SIZE(host->syncpt_irqs); i++) {
+		char irq_name[] = "syncptX";
+
+		sprintf(irq_name, "syncpt%d", i);
+
+		err = platform_get_irq_byname_optional(pdev, irq_name);
+		if (err == -ENXIO)
+			break;
+		if (err < 0)
+			return err;
+
+		host->syncpt_irqs[i] = err;
+	}
+
+	host->num_syncpt_irqs = i;
+
+	/* Device tree without irq names */
+	if (i == 0) {
+		host->syncpt_irqs[0] = platform_get_irq(pdev, 0);
+		if (host->syncpt_irqs[0] < 0)
+			return host->syncpt_irqs[0];
+
+		host->num_syncpt_irqs = 1;
+	}
 
 	mutex_init(&host->devices_lock);
 	INIT_LIST_HEAD(&host->devices);
@@ -578,12 +625,6 @@ static int host1x_probe(struct platform_device *pdev)
 		goto free_contexts;
 	}
 
-	err = host1x_intr_init(host);
-	if (err) {
-		dev_err(&pdev->dev, "failed to initialize interrupts\n");
-		goto deinit_syncpt;
-	}
-
 	pm_runtime_enable(&pdev->dev);
 
 	err = devm_tegra_core_dev_init_opp_table_common(&pdev->dev);
@@ -594,6 +635,12 @@ static int host1x_probe(struct platform_device *pdev)
 	err = pm_runtime_resume_and_get(&pdev->dev);
 	if (err)
 		goto pm_disable;
+
+	err = host1x_intr_init(host);
+	if (err) {
+		dev_err(&pdev->dev, "failed to initialize interrupts\n");
+		goto pm_put;
+	}
 
 	host1x_debug_init(host);
 
@@ -611,13 +658,11 @@ unregister:
 	host1x_unregister(host);
 deinit_debugfs:
 	host1x_debug_deinit(host);
-
+	host1x_intr_deinit(host);
+pm_put:
 	pm_runtime_put_sync_suspend(&pdev->dev);
 pm_disable:
 	pm_runtime_disable(&pdev->dev);
-
-	host1x_intr_deinit(host);
-deinit_syncpt:
 	host1x_syncpt_deinit(host);
 free_contexts:
 	host1x_memory_context_list_free(&host->context_list);
@@ -631,7 +676,7 @@ destroy_cache:
 	return err;
 }
 
-static int host1x_remove(struct platform_device *pdev)
+static void host1x_remove(struct platform_device *pdev)
 {
 	struct host1x *host = platform_get_drvdata(pdev);
 
@@ -646,8 +691,6 @@ static int host1x_remove(struct platform_device *pdev)
 	host1x_channel_list_free(&host->channel_list);
 	host1x_iommu_exit(host);
 	host1x_bo_cache_destroy(&host->cache);
-
-	return 0;
 }
 
 static int __maybe_unused host1x_runtime_suspend(struct device *dev)
@@ -655,16 +698,19 @@ static int __maybe_unused host1x_runtime_suspend(struct device *dev)
 	struct host1x *host = dev_get_drvdata(dev);
 	int err;
 
+	host1x_channel_stop_all(host);
 	host1x_intr_stop(host);
 	host1x_syncpt_save(host);
 
-	err = reset_control_bulk_assert(host->nresets, host->resets);
-	if (err) {
-		dev_err(dev, "failed to assert reset: %d\n", err);
-		goto resume_host1x;
-	}
+	if (!host->info->skip_reset_assert) {
+		err = reset_control_bulk_assert(host->nresets, host->resets);
+		if (err) {
+			dev_err(dev, "failed to assert reset: %d\n", err);
+			goto resume_host1x;
+		}
 
-	usleep_range(1000, 2000);
+		usleep_range(1000, 2000);
+	}
 
 	clk_disable_unprepare(host->clk);
 	reset_control_bulk_release(host->nresets, host->resets);
@@ -719,7 +765,7 @@ release_reset:
 static const struct dev_pm_ops host1x_pm_ops = {
 	SET_RUNTIME_PM_OPS(host1x_runtime_suspend, host1x_runtime_resume,
 			   NULL)
-	/* TODO: add system suspend-resume once driver will be ready for that */
+	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend, pm_runtime_force_resume)
 };
 
 static struct platform_driver tegra_host1x_driver = {
@@ -729,7 +775,7 @@ static struct platform_driver tegra_host1x_driver = {
 		.pm = &host1x_pm_ops,
 	},
 	.probe = host1x_probe,
-	.remove = host1x_remove,
+	.remove_new = host1x_remove,
 };
 
 static struct platform_driver * const drivers[] = {

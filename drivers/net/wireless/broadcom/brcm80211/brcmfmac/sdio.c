@@ -23,7 +23,7 @@
 #include <linux/bcma/bcma.h>
 #include <linux/debugfs.h>
 #include <linux/vmalloc.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <defs.h>
 #include <brcmu_wifi.h>
 #include <brcmu_utils.h>
@@ -4450,7 +4450,7 @@ struct brcmf_sdio *brcmf_sdio_probe(struct brcmf_sdio_dev *sdiodev)
 	brcmf_dbg(TRACE, "Enter\n");
 
 	/* Allocate private bus interface state */
-	bus = kzalloc(sizeof(struct brcmf_sdio), GFP_ATOMIC);
+	bus = kzalloc(sizeof(*bus), GFP_ATOMIC);
 	if (!bus)
 		goto fail;
 

@@ -13,6 +13,7 @@
 #include "test_util.h"
 #include "kvm_util.h"
 #include "processor.h"
+#include "ucall_common.h"
 
 struct guest_vals {
 	uint64_t a;
@@ -98,12 +99,27 @@ static void ucall_abort(const char *assert_msg, const char *expected_assert_msg)
 	int offset = len_str - len_substr;
 
 	TEST_ASSERT(len_substr <= len_str,
-		    "Expected '%s' to be a substring of '%s'\n",
+		    "Expected '%s' to be a substring of '%s'",
 		    assert_msg, expected_assert_msg);
 
 	TEST_ASSERT(strcmp(&assert_msg[offset], expected_assert_msg) == 0,
 		    "Unexpected mismatch. Expected: '%s', got: '%s'",
 		    expected_assert_msg, &assert_msg[offset]);
+}
+
+/*
+ * Open code vcpu_run(), sans the UCALL_ABORT handling, so that intentional
+ * guest asserts guest can be verified instead of being reported as failures.
+ */
+static void do_vcpu_run(struct kvm_vcpu *vcpu)
+{
+	int r;
+
+	do {
+		r = __vcpu_run(vcpu);
+	} while (r == -1 && errno == EINTR);
+
+	TEST_ASSERT(!r, KVM_IOCTL_ERROR(KVM_RUN, r));
 }
 
 static void run_test(struct kvm_vcpu *vcpu, const char *expected_printf,
@@ -113,10 +129,10 @@ static void run_test(struct kvm_vcpu *vcpu, const char *expected_printf,
 	struct ucall uc;
 
 	while (1) {
-		vcpu_run(vcpu);
+		do_vcpu_run(vcpu);
 
 		TEST_ASSERT(run->exit_reason == UCALL_EXIT_REASON,
-			    "Unexpected exit reason: %u (%s),\n",
+			    "Unexpected exit reason: %u (%s),",
 			    run->exit_reason, exit_reason_str(run->exit_reason));
 
 		switch (get_ucall(vcpu, &uc)) {
@@ -158,14 +174,14 @@ static void test_limits(void)
 
 	vm = vm_create_with_one_vcpu(&vcpu, guest_code_limits);
 	run = vcpu->run;
-	vcpu_run(vcpu);
+	do_vcpu_run(vcpu);
 
 	TEST_ASSERT(run->exit_reason == UCALL_EXIT_REASON,
-		    "Unexpected exit reason: %u (%s),\n",
+		    "Unexpected exit reason: %u (%s),",
 		    run->exit_reason, exit_reason_str(run->exit_reason));
 
 	TEST_ASSERT(get_ucall(vcpu, &uc) == UCALL_ABORT,
-		    "Unexpected ucall command: %lu,  Expected: %u (UCALL_ABORT)\n",
+		    "Unexpected ucall command: %lu,  Expected: %u (UCALL_ABORT)",
 		    uc.cmd, UCALL_ABORT);
 
 	kvm_vm_free(vm);

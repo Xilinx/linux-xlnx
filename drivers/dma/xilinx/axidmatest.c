@@ -650,7 +650,7 @@ free_tx:
 	return err;
 }
 
-static int xilinx_axidmatest_remove(struct platform_device *pdev)
+static void xilinx_axidmatest_remove(struct platform_device *pdev)
 {
 	struct dmatest_chan *dtc, *_dtc;
 	struct dma_chan *chan;
@@ -664,7 +664,6 @@ static int xilinx_axidmatest_remove(struct platform_device *pdev)
 		dmaengine_terminate_all(chan);
 		dma_release_channel(chan);
 	}
-	return 0;
 }
 
 static const struct of_device_id xilinx_axidmatest_of_ids[] = {

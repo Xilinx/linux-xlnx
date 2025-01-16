@@ -2016,8 +2016,7 @@ static struct v4l2_mbus_framefmt
 
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		get_fmt = v4l2_subdev_get_try_format(&xisp->xvip.subdev,
-						     sd_state, pad);
+		get_fmt = v4l2_subdev_state_get_format(sd_state, pad);
 		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		get_fmt = &xisp->formats[pad];
@@ -2685,7 +2684,7 @@ media_error:
 	return rval;
 }
 
-static int xisp_remove(struct platform_device *pdev)
+static void xisp_remove(struct platform_device *pdev)
 {
 	struct xisp_dev *xisp = platform_get_drvdata(pdev);
 	struct v4l2_subdev *subdev = &xisp->xvip.subdev;
@@ -2693,8 +2692,6 @@ static int xisp_remove(struct platform_device *pdev)
 	v4l2_async_unregister_subdev(subdev);
 	media_entity_cleanup(&subdev->entity);
 	xvip_cleanup_resources(&xisp->xvip);
-
-	return 0;
 }
 
 MODULE_DEVICE_TABLE(of, xisp_of_id_table);

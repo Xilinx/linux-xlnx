@@ -15,6 +15,8 @@
 #include "tctx.h"
 #include "poll.h"
 #include "timeout.h"
+#include "waitid.h"
+#include "futex.h"
 #include "cancel.h"
 
 struct io_cancel {
@@ -56,9 +58,8 @@ bool io_cancel_req_match(struct io_kiocb *req, struct io_cancel_data *cd)
 		return false;
 	if (cd->flags & IORING_ASYNC_CANCEL_ALL) {
 check_seq:
-		if (cd->seq == req->work.cancel_seq)
+		if (io_cancel_match_sequence(req, cd->seq))
 			return false;
-		req->work.cancel_seq = cd->seq;
 	}
 
 	return true;
@@ -119,6 +120,14 @@ int io_try_cancel(struct io_uring_task *tctx, struct io_cancel_data *cd,
 	if (ret != -ENOENT)
 		return ret;
 
+	ret = io_waitid_cancel(ctx, cd, issue_flags);
+	if (ret != -ENOENT)
+		return ret;
+
+	ret = io_futex_cancel(ctx, cd, issue_flags);
+	if (ret != -ENOENT)
+		return ret;
+
 	spin_lock(&ctx->completion_lock);
 	if (!(cd->flags & IORING_ASYNC_CANCEL_FD))
 		ret = io_timeout_cancel(ctx, cd);
@@ -175,9 +184,7 @@ static int __io_async_cancel(struct io_cancel_data *cd,
 	io_ring_submit_lock(ctx, issue_flags);
 	ret = -ENOENT;
 	list_for_each_entry(node, &ctx->tctx_list, ctx_node) {
-		struct io_uring_task *tctx = node->task->io_uring;
-
-		ret = io_async_cancel_one(tctx, cd);
+		ret = io_async_cancel_one(node->task->io_uring, cd);
 		if (ret != -ENOENT) {
 			if (!all)
 				break;
@@ -263,7 +270,7 @@ int io_sync_cancel(struct io_ring_ctx *ctx, void __user *arg)
 	};
 	ktime_t timeout = KTIME_MAX;
 	struct io_uring_sync_cancel_reg sc;
-	struct fd f = { };
+	struct file *file = NULL;
 	DEFINE_WAIT(wait);
 	int ret, i;
 
@@ -285,10 +292,10 @@ int io_sync_cancel(struct io_ring_ctx *ctx, void __user *arg)
 	/* we can grab a normal file descriptor upfront */
 	if ((cd.flags & IORING_ASYNC_CANCEL_FD) &&
 	   !(cd.flags & IORING_ASYNC_CANCEL_FD_FIXED)) {
-		f = fdget(sc.fd);
-		if (!f.file)
+		file = fget(sc.fd);
+		if (!file)
 			return -EBADF;
-		cd.file = f.file;
+		cd.file = file;
 	}
 
 	ret = __io_sync_cancel(current->io_uring, &cd, sc.fd);
@@ -338,6 +345,7 @@ int io_sync_cancel(struct io_ring_ctx *ctx, void __user *arg)
 	if (ret == -ENOENT || ret > 0)
 		ret = 0;
 out:
-	fdput(f);
+	if (file)
+		fput(file);
 	return ret;
 }

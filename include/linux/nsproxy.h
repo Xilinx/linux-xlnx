@@ -2,6 +2,7 @@
 #ifndef _LINUX_NSPROXY_H
 #define _LINUX_NSPROXY_H
 
+#include <linux/refcount.h>
 #include <linux/spinlock.h>
 #include <linux/sched.h>
 
@@ -40,6 +41,17 @@ struct nsproxy {
 	struct cgroup_namespace *cgroup_ns;
 };
 extern struct nsproxy init_nsproxy;
+
+#define to_ns_common(__ns)                              \
+	_Generic((__ns),                                \
+		struct cgroup_namespace *: &(__ns->ns), \
+		struct ipc_namespace *:    &(__ns->ns), \
+		struct net *:              &(__ns->ns), \
+		struct pid_namespace *:    &(__ns->ns), \
+		struct mnt_namespace *:    &(__ns->ns), \
+		struct time_namespace *:   &(__ns->ns), \
+		struct user_namespace *:   &(__ns->ns), \
+		struct uts_namespace *:    &(__ns->ns))
 
 /*
  * A structure to encompass all bits needed to install
@@ -110,5 +122,7 @@ static inline void get_nsproxy(struct nsproxy *ns)
 {
 	refcount_inc(&ns->count);
 }
+
+DEFINE_FREE(put_nsproxy, struct nsproxy *, if (_T) put_nsproxy(_T))
 
 #endif

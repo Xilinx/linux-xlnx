@@ -18,7 +18,7 @@
 #include <linux/crc32.h>
 #include <linux/slab.h>
 #include <linux/module.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include "smsc9420.h"
 
 #define DRV_NAME		"smsc9420"
@@ -26,6 +26,7 @@
 #define DRV_DESCRIPTION		"SMSC LAN9420 driver"
 #define DRV_VERSION		"1.01"
 
+MODULE_DESCRIPTION("SMSC LAN9420 Ethernet driver");
 MODULE_LICENSE("GPL");
 MODULE_VERSION(DRV_VERSION);
 

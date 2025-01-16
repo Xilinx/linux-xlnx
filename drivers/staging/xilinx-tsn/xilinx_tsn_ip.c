@@ -72,11 +72,6 @@ static int tsn_ip_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int tsn_ip_remove(struct platform_device *pdev)
-{
-	return 0;
-}
-
 u16 axienet_tsn_select_queue(struct net_device *ndev, struct sk_buff *skb,
 			     struct net_device *sb_dev)
 {
@@ -200,7 +195,7 @@ int axienet_tsn_probe(struct platform_device *pdev,
 
 	/* in switch-mode, get the endpoint network device. in ep-only mode,
 		the endpoint driver frees itself */
-	if (!(lp->abl_reg & TSN_BRIDGEEP_EPONLY) && ep_node){
+	if (!(lp->abl_reg & TSN_BRIDGEEP_EPONLY) && ep_node) {
 		lp->master = of_find_net_device_by_node(ep_node);
 		if (!lp->master) {
 			netdev_err(ndev, "Defer probe as EP is not probed\n");
@@ -422,7 +417,6 @@ int axienet_tsn_stop(struct net_device *ndev)
 
 static struct platform_driver tsn_ip_driver = {
 	.probe = tsn_ip_probe,
-	.remove = tsn_ip_remove,
 	.driver = {
 		 .name = "tsn_ip_axienet",
 		 .of_match_table = tsn_ip_of_match,

@@ -93,6 +93,7 @@ static void ionic_unmap_bars(struct ionic *ionic)
 			bars[i].len = 0;
 		}
 	}
+	ionic->num_bars = 0;
 }
 
 void __iomem *ionic_bus_map_dbpage(struct ionic *ionic, int page_num)
@@ -215,9 +216,18 @@ out:
 
 static void ionic_clear_pci(struct ionic *ionic)
 {
-	ionic_unmap_bars(ionic);
-	pci_release_regions(ionic->pdev);
-	pci_disable_device(ionic->pdev);
+	if (ionic->num_bars) {
+		ionic->idev.dev_info_regs = NULL;
+		ionic->idev.dev_cmd_regs = NULL;
+		ionic->idev.intr_status = NULL;
+		ionic->idev.intr_ctrl = NULL;
+
+		ionic_unmap_bars(ionic);
+		pci_release_regions(ionic->pdev);
+	}
+
+	if (pci_is_enabled(ionic->pdev))
+		pci_disable_device(ionic->pdev);
 }
 
 static int ionic_setup_one(struct ionic *ionic)
@@ -316,6 +326,11 @@ static int ionic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto err_out;
 	}
 
+#ifdef CONFIG_PPC64
+	/* Ensure MSI/MSI-X interrupts lie within addressable physical memory */
+	pdev->no_64bit_msi = 1;
+#endif
+
 	err = ionic_setup_one(ionic);
 	if (err)
 		goto err_out;
@@ -362,6 +377,7 @@ static int ionic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	mod_timer(&ionic->watchdog_timer,
 		  round_jiffies(jiffies + ionic->watchdog_period));
+	ionic_queue_doorbell_check(ionic, IONIC_NAPI_DEADLINE);
 
 	return 0;
 
@@ -378,6 +394,7 @@ err_out_free_irqs:
 err_out_pci:
 	ionic_dev_teardown(ionic);
 	ionic_clear_pci(ionic);
+	ionic_debugfs_del_dev(ionic);
 err_out:
 	mutex_destroy(&ionic->dev_cmd_lock);
 	ionic_devlink_free(ionic);
@@ -389,9 +406,15 @@ static void ionic_remove(struct pci_dev *pdev)
 {
 	struct ionic *ionic = pci_get_drvdata(pdev);
 
-	del_timer_sync(&ionic->watchdog_timer);
+	timer_shutdown_sync(&ionic->watchdog_timer);
 
 	if (ionic->lif) {
+		/* prevent adminq cmds if already known as down */
+		if (test_and_clear_bit(IONIC_LIF_F_FW_RESET, ionic->lif->state))
+			set_bit(IONIC_LIF_F_FW_STOPPING, ionic->lif->state);
+
+		if (ionic->lif->doorbell_wa)
+			cancel_delayed_work_sync(&ionic->doorbell_check_dwork);
 		ionic_lif_unregister(ionic->lif);
 		ionic_devlink_unregister(ionic);
 		ionic_lif_deinit(ionic->lif);
@@ -416,6 +439,8 @@ static void ionic_reset_prepare(struct pci_dev *pdev)
 
 	dev_dbg(ionic->dev, "%s: device stopping\n", __func__);
 
+	set_bit(IONIC_LIF_F_FW_RESET, lif->state);
+
 	del_timer_sync(&ionic->watchdog_timer);
 	cancel_work_sync(&lif->deferred.work);
 
@@ -424,6 +449,7 @@ static void ionic_reset_prepare(struct pci_dev *pdev)
 	ionic_txrx_free(lif);
 	ionic_lif_deinit(lif);
 	ionic_qcqs_free(lif);
+	ionic_debugfs_del_lif(lif);
 	mutex_unlock(&lif->queue_lock);
 
 	ionic_dev_teardown(ionic);
@@ -455,10 +481,35 @@ err_out:
 		__func__, err ? "failed" : "done");
 }
 
+static pci_ers_result_t ionic_pci_error_detected(struct pci_dev *pdev,
+						 pci_channel_state_t error)
+{
+	if (error == pci_channel_io_frozen) {
+		ionic_reset_prepare(pdev);
+		return PCI_ERS_RESULT_NEED_RESET;
+	}
+
+	return PCI_ERS_RESULT_NONE;
+}
+
+static void ionic_pci_error_resume(struct pci_dev *pdev)
+{
+	struct ionic *ionic = pci_get_drvdata(pdev);
+	struct ionic_lif *lif = ionic->lif;
+
+	if (lif && test_bit(IONIC_LIF_F_FW_RESET, lif->state))
+		pci_reset_function_locked(pdev);
+}
+
 static const struct pci_error_handlers ionic_err_handler = {
 	/* FLR handling */
 	.reset_prepare      = ionic_reset_prepare,
 	.reset_done         = ionic_reset_done,
+
+	/* PCI bus error detected on this device */
+	.error_detected     = ionic_pci_error_detected,
+	.resume		    = ionic_pci_error_resume,
+
 };
 
 static struct pci_driver ionic_driver = {

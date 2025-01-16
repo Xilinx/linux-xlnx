@@ -395,11 +395,11 @@ static int img_i2s_in_dma_prepare_slave_config(struct snd_pcm_substream *st,
 	struct snd_pcm_hw_params *params, struct dma_slave_config *sc)
 {
 	unsigned int i2s_channels = params_channels(params) / 2;
-	struct snd_soc_pcm_runtime *rtd = st->private_data;
+	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(st);
 	struct snd_dmaengine_dai_dma_data *dma_data;
 	int ret;
 
-	dma_data = snd_soc_dai_get_dma_data(asoc_rtd_to_cpu(rtd, 0), st);
+	dma_data = snd_soc_dai_get_dma_data(snd_soc_rtd_to_cpu(rtd, 0), st);
 
 	ret = snd_hwparams_to_dma_slave_config(st, params, sc);
 	if (ret)
@@ -607,7 +607,7 @@ static struct platform_driver img_i2s_in_driver = {
 		.pm = &img_i2s_in_pm_ops
 	},
 	.probe = img_i2s_in_probe,
-	.remove_new = img_i2s_in_dev_remove
+	.remove = img_i2s_in_dev_remove
 };
 module_platform_driver(img_i2s_in_driver);
 

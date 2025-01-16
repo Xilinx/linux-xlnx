@@ -1360,7 +1360,7 @@ int cpsw_run_xdp(struct cpsw_priv *priv, int ch, struct xdp_buff *xdp,
 		 *  particular hardware is sharing a common queue, so the
 		 *  incoming device might change per packet.
 		 */
-		xdp_do_flush_map();
+		xdp_do_flush();
 		break;
 	default:
 		bpf_warn_invalid_xdp_action(ndev, prog, act);
@@ -1403,6 +1403,9 @@ static int cpsw_qos_clsflower_add_policer(struct cpsw_priv *priv,
 				   "Unsupported keys used");
 		return -EOPNOTSUPP;
 	}
+
+	if (flow_rule_match_has_control_flags(rule, extack))
+		return -EOPNOTSUPP;
 
 	if (!flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_ETH_ADDRS)) {
 		NL_SET_ERR_MSG_MOD(extack, "Not matching on eth address");

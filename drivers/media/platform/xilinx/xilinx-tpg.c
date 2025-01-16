@@ -245,10 +245,11 @@ static void xtpg_update_pattern_control(struct xtpg_device *xtpg,
  * V4L2 Subdevice Video Operations
  */
 
-static int xtpg_g_frame_interval(struct v4l2_subdev *subdev,
-				 struct v4l2_subdev_frame_interval *fi)
+static int xtpg_get_frame_interval(struct v4l2_subdev *sd,
+				   struct v4l2_subdev_state *sd_state,
+				   struct v4l2_subdev_frame_interval *fi)
 {
-	struct xtpg_device *xtpg = to_tpg(subdev);
+	struct xtpg_device *xtpg = to_tpg(sd);
 
 	fi->interval.numerator = xtpg->fi_n;
 	fi->interval.denominator = xtpg->fi_d;
@@ -256,10 +257,11 @@ static int xtpg_g_frame_interval(struct v4l2_subdev *subdev,
 	return 0;
 }
 
-static int xtpg_s_frame_interval(struct v4l2_subdev *subdev,
-				 struct v4l2_subdev_frame_interval *fi)
+static int xtpg_set_frame_interval(struct v4l2_subdev *sd,
+				   struct v4l2_subdev_state *sd_state,
+				   struct v4l2_subdev_frame_interval *fi)
 {
-	struct xtpg_device *xtpg = to_tpg(subdev);
+	struct xtpg_device *xtpg = to_tpg(sd);
 
 	if (!fi->interval.numerator || !fi->interval.denominator) {
 		xtpg->fi_n = XTPG_MIN_FRM_INT;
@@ -403,9 +405,7 @@ __xtpg_get_pad_format(struct xtpg_device *xtpg,
 
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		format = v4l2_subdev_get_try_format(&xtpg->xvip.subdev,
-						    sd_state,
-						    pad);
+		format = v4l2_subdev_state_get_format(sd_state, pad);
 		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		format = &xtpg->formats[pad];
@@ -508,7 +508,7 @@ static int xtpg_enum_frame_size(struct v4l2_subdev *subdev,
 	struct v4l2_mbus_framefmt *format;
 	struct xtpg_device *xtpg = to_tpg(subdev);
 
-	format = v4l2_subdev_get_try_format(subdev, sd_state, fse->pad);
+	format = v4l2_subdev_state_get_format(sd_state, fse->pad);
 
 	if (fse->index || fse->code != format->code)
 		return -EINVAL;
@@ -537,11 +537,11 @@ static int xtpg_open(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
 	struct xtpg_device *xtpg = to_tpg(subdev);
 	struct v4l2_mbus_framefmt *format;
 
-	format = v4l2_subdev_get_try_format(subdev, fh->state, 0);
+	format = v4l2_subdev_state_get_format(fh->state, 0);
 	*format = xtpg->default_format;
 
 	if (xtpg->npads == 2) {
-		format = v4l2_subdev_get_try_format(subdev, fh->state, 1);
+		format = v4l2_subdev_state_get_format(fh->state, 1);
 		*format = xtpg->default_format;
 	}
 
@@ -699,8 +699,6 @@ static const struct v4l2_subdev_core_ops xtpg_core_ops = {
 };
 
 static const struct v4l2_subdev_video_ops xtpg_video_ops = {
-	.g_frame_interval = xtpg_g_frame_interval,
-	.s_frame_interval = xtpg_s_frame_interval,
 	.s_stream = xtpg_s_stream,
 };
 
@@ -709,6 +707,8 @@ static const struct v4l2_subdev_pad_ops xtpg_pad_ops = {
 	.enum_frame_size	= xtpg_enum_frame_size,
 	.get_fmt		= xtpg_get_format,
 	.set_fmt		= xtpg_set_format,
+	.get_frame_interval	= xtpg_get_frame_interval,
+	.set_frame_interval	= xtpg_set_frame_interval,
 };
 
 static const struct v4l2_subdev_ops xtpg_ops = {

@@ -12,9 +12,10 @@
 #include <linux/ratelimit.h>
 #include <linux/uaccess.h>
 #include <linux/sysctl.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <asm/hardirq.h>
 #include <asm/traps.h>
+#include "unaligned.h"
 
 /* #define DEBUG_UNALIGNED 1 */
 
@@ -104,6 +105,7 @@
 #define ERR_NOTHANDLED	-1
 
 int unaligned_enabled __read_mostly = 1;
+int no_unaligned_warning __read_mostly;
 
 static int emulate_ldh(struct pt_regs *regs, int toreg)
 {
@@ -120,8 +122,8 @@ static int emulate_ldh(struct pt_regs *regs, int toreg)
 "2:	ldbs	1(%%sr1,%3), %0\n"
 "	depw	%2, 23, 24, %0\n"
 "3:	\n"
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 3b)
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 3b)
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 3b, "%1")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 3b, "%1")
 	: "+r" (val), "+r" (ret), "=&r" (temp1)
 	: "r" (saddr), "r" (regs->isr) );
 
@@ -152,8 +154,8 @@ static int emulate_ldw(struct pt_regs *regs, int toreg, int flop)
 "	mtctl	%2,11\n"
 "	vshd	%0,%3,%0\n"
 "3:	\n"
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 3b)
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 3b)
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 3b, "%1")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 3b, "%1")
 	: "+r" (val), "+r" (ret), "=&r" (temp1), "=&r" (temp2)
 	: "r" (saddr), "r" (regs->isr) );
 
@@ -169,6 +171,7 @@ static int emulate_ldw(struct pt_regs *regs, int toreg, int flop)
 static int emulate_ldd(struct pt_regs *regs, int toreg, int flop)
 {
 	unsigned long saddr = regs->ior;
+	unsigned long shift, temp1;
 	__u64 val = 0;
 	ASM_EXCEPTIONTABLE_VAR(ret);
 
@@ -180,25 +183,22 @@ static int emulate_ldd(struct pt_regs *regs, int toreg, int flop)
 
 #ifdef CONFIG_64BIT
 	__asm__ __volatile__  (
-"	depd,z	%3,60,3,%%r19\n"		/* r19=(ofs&7)*8 */
-"	mtsp	%4, %%sr1\n"
-"	depd	%%r0,63,3,%3\n"
-"1:	ldd	0(%%sr1,%3),%0\n"
-"2:	ldd	8(%%sr1,%3),%%r20\n"
-"	subi	64,%%r19,%%r19\n"
-"	mtsar	%%r19\n"
-"	shrpd	%0,%%r20,%%sar,%0\n"
+"	depd,z	%2,60,3,%3\n"		/* shift=(ofs&7)*8 */
+"	mtsp	%5, %%sr1\n"
+"	depd	%%r0,63,3,%2\n"
+"1:	ldd	0(%%sr1,%2),%0\n"
+"2:	ldd	8(%%sr1,%2),%4\n"
+"	subi	64,%3,%3\n"
+"	mtsar	%3\n"
+"	shrpd	%0,%4,%%sar,%0\n"
 "3:	\n"
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 3b)
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 3b)
-	: "=r" (val), "+r" (ret)
-	: "0" (val), "r" (saddr), "r" (regs->isr)
-	: "r19", "r20" );
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 3b, "%1")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 3b, "%1")
+	: "+r" (val), "+r" (ret), "+r" (saddr), "=&r" (shift), "=&r" (temp1)
+	: "r" (regs->isr) );
 #else
-    {
-	unsigned long shift, temp1;
 	__asm__ __volatile__  (
-"	zdep	%2,29,2,%3\n"		/* r19=(ofs&3)*8 */
+"	zdep	%2,29,2,%3\n"		/* shift=(ofs&3)*8 */
 "	mtsp	%5, %%sr1\n"
 "	dep	%%r0,31,2,%2\n"
 "1:	ldw	0(%%sr1,%2),%0\n"
@@ -209,12 +209,11 @@ static int emulate_ldd(struct pt_regs *regs, int toreg, int flop)
 "	vshd	%0,%R0,%0\n"
 "	vshd	%R0,%4,%R0\n"
 "4:	\n"
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 4b)
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 4b)
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(3b, 4b)
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 4b, "%1")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 4b, "%1")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(3b, 4b, "%1")
 	: "+r" (val), "+r" (ret), "+r" (saddr), "=&r" (shift), "=&r" (temp1)
 	: "r" (regs->isr) );
-    }
 #endif
 
 	DPRINTF("val = 0x%llx\n", val);
@@ -244,8 +243,8 @@ static int emulate_sth(struct pt_regs *regs, int frreg)
 "1:	stb %1, 0(%%sr1, %3)\n"
 "2:	stb %2, 1(%%sr1, %3)\n"
 "3:	\n"
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 3b)
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 3b)
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 3b, "%0")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 3b, "%0")
 	: "+r" (ret), "=&r" (temp1)
 	: "r" (val), "r" (regs->ior), "r" (regs->isr) );
 
@@ -285,8 +284,8 @@ static int emulate_stw(struct pt_regs *regs, int frreg, int flop)
 "	stw	%%r20,0(%%sr1,%2)\n"
 "	stw	%%r21,4(%%sr1,%2)\n"
 "3:	\n"
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 3b)
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 3b)
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 3b, "%0")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 3b, "%0")
 	: "+r" (ret)
 	: "r" (val), "r" (regs->ior), "r" (regs->isr)
 	: "r19", "r20", "r21", "r22", "r1" );
@@ -329,10 +328,10 @@ static int emulate_std(struct pt_regs *regs, int frreg, int flop)
 "3:	std	%%r20,0(%%sr1,%2)\n"
 "4:	std	%%r21,8(%%sr1,%2)\n"
 "5:	\n"
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 5b)
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 5b)
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(3b, 5b)
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(4b, 5b)
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 5b, "%0")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 5b, "%0")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(3b, 5b, "%0")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(4b, 5b, "%0")
 	: "+r" (ret)
 	: "r" (val), "r" (regs->ior), "r" (regs->isr)
 	: "r19", "r20", "r21", "r22", "r1" );
@@ -357,11 +356,11 @@ static int emulate_std(struct pt_regs *regs, int frreg, int flop)
 "4:	stw	%%r1,4(%%sr1,%2)\n"
 "5:	stw	%R1,8(%%sr1,%2)\n"
 "6:	\n"
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 6b)
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 6b)
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(3b, 6b)
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(4b, 6b)
-	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(5b, 6b)
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(1b, 6b, "%0")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(2b, 6b, "%0")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(3b, 6b, "%0")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(4b, 6b, "%0")
+	ASM_EXCEPTIONTABLE_ENTRY_EFAULT(5b, 6b, "%0")
 	: "+r" (ret)
 	: "r" (val), "r" (regs->ior), "r" (regs->isr)
 	: "r19", "r20", "r21", "r1" );
@@ -399,6 +398,14 @@ void handle_unaligned(struct pt_regs *regs)
 
 		if (!unaligned_enabled)
 			goto force_sigbus;
+	} else {
+		static DEFINE_RATELIMIT_STATE(kernel_ratelimit, 5 * HZ, 5);
+		if (!(current->thread.flags & PARISC_UAC_NOPRINT) &&
+			!no_unaligned_warning &&
+			__ratelimit(&kernel_ratelimit))
+			pr_warn("Kernel: unaligned access to " RFMT " in %pS "
+					"(iir " RFMT ")\n",
+				regs->ior, (void *)regs->iaoq[0], regs->iir);
 	}
 
 	/* handle modification - OK, it's ugly, see the instruction manual */

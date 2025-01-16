@@ -80,21 +80,18 @@ static struct mtk_q_data *mtk_vdec_get_q_data(struct mtk_vcodec_dec_ctx *ctx,
 	return &ctx->q_data[MTK_Q_DATA_DST];
 }
 
-static int vidioc_try_decoder_cmd(struct file *file, void *priv,
-				struct v4l2_decoder_cmd *cmd)
+static int stateful_try_decoder_cmd(struct file *file, void *priv, struct v4l2_decoder_cmd *cmd)
 {
 	return v4l2_m2m_ioctl_try_decoder_cmd(file, priv, cmd);
 }
 
-
-static int vidioc_decoder_cmd(struct file *file, void *priv,
-				struct v4l2_decoder_cmd *cmd)
+static int stateful_decoder_cmd(struct file *file, void *priv, struct v4l2_decoder_cmd *cmd)
 {
 	struct mtk_vcodec_dec_ctx *ctx = fh_to_dec_ctx(priv);
 	struct vb2_queue *src_vq, *dst_vq;
 	int ret;
 
-	ret = vidioc_try_decoder_cmd(file, priv, cmd);
+	ret = stateful_try_decoder_cmd(file, priv, cmd);
 	if (ret)
 		return ret;
 
@@ -126,6 +123,57 @@ static int vidioc_decoder_cmd(struct file *file, void *priv,
 	}
 
 	return 0;
+}
+
+static int stateless_try_decoder_cmd(struct file *file, void *priv, struct v4l2_decoder_cmd *cmd)
+{
+	return v4l2_m2m_ioctl_stateless_try_decoder_cmd(file, priv, cmd);
+}
+
+static int stateless_decoder_cmd(struct file *file, void *priv, struct v4l2_decoder_cmd *cmd)
+{
+	struct mtk_vcodec_dec_ctx *ctx = fh_to_dec_ctx(priv);
+	int ret;
+
+	ret = v4l2_m2m_ioctl_stateless_try_decoder_cmd(file, priv, cmd);
+	if (ret)
+		return ret;
+
+	mtk_v4l2_vdec_dbg(3, ctx, "decoder cmd=%u", cmd->cmd);
+	switch (cmd->cmd) {
+	case V4L2_DEC_CMD_FLUSH:
+		/*
+		 * If the flag of the output buffer is equals V4L2_BUF_FLAG_M2M_HOLD_CAPTURE_BUF,
+		 * this command will prevent dequeueing the capture buffer containing the last
+		 * decoded frame. Or do nothing
+		 */
+		break;
+	default:
+		mtk_v4l2_vdec_err(ctx, "invalid stateless decoder cmd=%u", cmd->cmd);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int vidioc_try_decoder_cmd(struct file *file, void *priv, struct v4l2_decoder_cmd *cmd)
+{
+	struct mtk_vcodec_dec_ctx *ctx = fh_to_dec_ctx(priv);
+
+	if (ctx->dev->vdec_pdata->uses_stateless_api)
+		return stateless_try_decoder_cmd(file, priv, cmd);
+
+	return stateful_try_decoder_cmd(file, priv, cmd);
+}
+
+static int vidioc_decoder_cmd(struct file *file, void *priv, struct v4l2_decoder_cmd *cmd)
+{
+	struct mtk_vcodec_dec_ctx *ctx = fh_to_dec_ctx(priv);
+
+	if (ctx->dev->vdec_pdata->uses_stateless_api)
+		return stateless_decoder_cmd(file, priv, cmd);
+
+	return stateful_decoder_cmd(file, priv, cmd);
 }
 
 void mtk_vdec_unlock(struct mtk_vcodec_dec_ctx *ctx)
@@ -208,36 +256,14 @@ static int vidioc_vdec_dqbuf(struct file *file, void *priv,
 	return v4l2_m2m_dqbuf(file, ctx->m2m_ctx, buf);
 }
 
-static int mtk_vcodec_dec_get_chip_name(void *priv)
-{
-	struct mtk_vcodec_dec_ctx *ctx = fh_to_dec_ctx(priv);
-	struct device *dev = &ctx->dev->plat_dev->dev;
-
-	if (of_device_is_compatible(dev->of_node, "mediatek,mt8173-vcodec-dec"))
-		return 8173;
-	else if (of_device_is_compatible(dev->of_node, "mediatek,mt8183-vcodec-dec"))
-		return 8183;
-	else if (of_device_is_compatible(dev->of_node, "mediatek,mt8192-vcodec-dec"))
-		return 8192;
-	else if (of_device_is_compatible(dev->of_node, "mediatek,mt8195-vcodec-dec"))
-		return 8195;
-	else if (of_device_is_compatible(dev->of_node, "mediatek,mt8186-vcodec-dec"))
-		return 8186;
-	else if (of_device_is_compatible(dev->of_node, "mediatek,mt8188-vcodec-dec"))
-		return 8188;
-	else
-		return 8173;
-}
-
 static int vidioc_vdec_querycap(struct file *file, void *priv,
 				struct v4l2_capability *cap)
 {
 	struct mtk_vcodec_dec_ctx *ctx = fh_to_dec_ctx(priv);
 	struct device *dev = &ctx->dev->plat_dev->dev;
-	int platform_name = mtk_vcodec_dec_get_chip_name(priv);
 
 	strscpy(cap->driver, dev->driver->name, sizeof(cap->driver));
-	snprintf(cap->card, sizeof(cap->card), "MT%d video decoder", platform_name);
+	snprintf(cap->card, sizeof(cap->card), "MT%d video decoder", ctx->dev->chip_name);
 
 	return 0;
 }
@@ -284,7 +310,7 @@ static int vidioc_try_fmt(struct mtk_vcodec_dec_ctx *ctx, struct v4l2_format *f,
 		int tmp_w, tmp_h;
 
 		/*
-		 * Find next closer width align 64, heign align 64, size align
+		 * Find next closer width align 64, height align 64, size align
 		 * 64 rectangle
 		 * Note: This only get default value, the real HW needed value
 		 *       only available when ctx in MTK_STATE_HEADER state

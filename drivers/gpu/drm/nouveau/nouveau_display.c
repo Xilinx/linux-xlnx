@@ -83,7 +83,7 @@ static bool
 nouveau_display_scanoutpos_head(struct drm_crtc *crtc, int *vpos, int *hpos,
 				ktime_t *stime, ktime_t *etime)
 {
-	struct drm_vblank_crtc *vblank = &crtc->dev->vblank[drm_crtc_index(crtc)];
+	struct drm_vblank_crtc *vblank = drm_crtc_vblank_crtc(crtc);
 	struct nvif_head *head = &nouveau_crtc(crtc)->head;
 	struct nvif_head_scanoutpos_v0 args;
 	int retry = 20;
@@ -391,7 +391,6 @@ nouveau_user_framebuffer_create(struct drm_device *dev,
 
 static const struct drm_mode_config_funcs nouveau_mode_config_funcs = {
 	.fb_create = nouveau_user_framebuffer_create,
-	.output_poll_changed = drm_fb_helper_output_poll_changed,
 };
 
 
@@ -446,9 +445,10 @@ static struct nouveau_drm_prop_enum_list dither_depth[] = {
 } while(0)
 
 void
-nouveau_display_hpd_resume(struct drm_device *dev)
+nouveau_display_hpd_resume(struct nouveau_drm *drm)
 {
-	struct nouveau_drm *drm = nouveau_drm(dev);
+	if (drm->headless)
+		return;
 
 	spin_lock_irq(&drm->hpd_lock);
 	drm->hpd_pending = ~0;
@@ -635,7 +635,7 @@ nouveau_display_fini(struct drm_device *dev, bool suspend, bool runtime)
 	}
 	drm_connector_list_iter_end(&conn_iter);
 
-	if (!runtime)
+	if (!runtime && !drm->headless)
 		cancel_work_sync(&drm->hpd_work);
 
 	drm_kms_helper_poll_disable(dev);
@@ -724,10 +724,16 @@ nouveau_display_create(struct drm_device *dev)
 	drm_kms_helper_poll_init(dev);
 	drm_kms_helper_poll_disable(dev);
 
-	if (nouveau_modeset != 2 && drm->vbios.dcb.entries) {
-		ret = nvif_disp_ctor(&drm->client.device, "kmsDisp", 0,
-				     &disp->disp);
-		if (ret == 0) {
+	if (nouveau_modeset != 2) {
+		ret = nvif_disp_ctor(&drm->client.device, "kmsDisp", 0, &disp->disp);
+		/* no display hw */
+		if (ret == -ENODEV) {
+			ret = 0;
+			drm->headless = true;
+			goto disp_create_err;
+		}
+
+		if (!ret && (disp->disp.outp_mask || drm->vbios.dcb.entries)) {
 			nouveau_display_create_properties(dev);
 			if (disp->disp.object.oclass < NV50_DISP) {
 				dev->mode_config.fb_modifiers_not_supported = true;

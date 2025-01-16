@@ -6,7 +6,7 @@
  * Copyright (C) 2019-2021 Maximilian Luz <luzmaximilian@gmail.com>
  */
 
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
@@ -175,7 +175,7 @@ static void spwr_ac_init(struct spwr_ac_device *ac, struct ssam_device *sdev,
 			 struct ssam_event_registry registry, const char *name)
 {
 	mutex_init(&ac->lock);
-	strncpy(ac->name, name, ARRAY_SIZE(ac->name) - 1);
+	strscpy(ac->name, name, sizeof(ac->name));
 
 	ac->sdev = sdev;
 

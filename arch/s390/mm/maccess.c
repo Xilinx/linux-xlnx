@@ -15,10 +15,10 @@
 #include <linux/uio.h>
 #include <linux/io.h>
 #include <asm/asm-extable.h>
-#include <asm/ctl_reg.h>
 #include <asm/abs_lowcore.h>
 #include <asm/stacktrace.h>
 #include <asm/maccess.h>
+#include <asm/ctlreg.h>
 
 unsigned long __bootdata_preserved(__memcpy_real_area);
 pte_t *__bootdata_preserved(memcpy_real_ptep);
@@ -48,7 +48,7 @@ static notrace long s390_kernel_write_odd(void *dst, const void *src, size_t siz
 }
 
 /*
- * s390_kernel_write - write to kernel memory bypassing DAT
+ * __s390_kernel_write - write to kernel memory bypassing DAT
  * @dst: destination address
  * @src: source address
  * @size: number of bytes to copy
@@ -61,7 +61,7 @@ static notrace long s390_kernel_write_odd(void *dst, const void *src, size_t siz
  */
 static DEFINE_SPINLOCK(s390_kernel_write_lock);
 
-notrace void *s390_kernel_write(void *dst, const void *src, size_t size)
+notrace void *__s390_kernel_write(void *dst, const void *src, size_t size)
 {
 	void *tmp = dst;
 	unsigned long flags;

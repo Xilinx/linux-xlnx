@@ -22,6 +22,7 @@
 #include <linux/of_platform.h>
 #include <linux/of_address.h>
 #include <linux/of_net.h>
+#include <linux/platform_device.h>
 #include <linux/skbuff.h>
 
 #include "xilinx_axienet_tsn.h"
@@ -142,13 +143,12 @@ free_netdev:
 	return ret;
 }
 
-static int tsn_ex_ep_remove(struct platform_device *pdev)
+static void tsn_ex_ep_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
 
 	unregister_netdev(ndev);
 	free_netdev(ndev);
-	return 0;
 }
 
 static struct platform_driver tsn_ex_ep_driver = {

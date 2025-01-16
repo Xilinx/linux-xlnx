@@ -177,8 +177,8 @@ config XEN_GRANT_DMA_ALLOC
 
 config SWIOTLB_XEN
 	def_bool y
+	depends on ARCH_HAS_DMA_OPS
 	depends on XEN_PV || ARM || ARM64
-	select DMA_OPS
 	select SWIOTLB
 
 config XEN_PCI_STUB
@@ -269,12 +269,12 @@ config XEN_PRIVCMD
 	  disaggregated Xen setups this driver might be needed for other
 	  domains, too.
 
-config XEN_PRIVCMD_IRQFD
-	bool "Xen irqfd support"
+config XEN_PRIVCMD_EVENTFD
+	bool "Xen Ioeventfd and irqfd support"
 	depends on XEN_PRIVCMD && XEN_VIRTIO && EVENTFD
 	help
-	  Using the irqfd mechanism a virtio backend running in a daemon can
-	  speed up interrupt injection into a guest.
+	  Using the ioeventfd / irqfd mechanism a virtio backend running in a
+	  daemon can speed up interrupt delivery from / to a guest.
 
 config XEN_ACPI_PROCESSOR
 	tristate "Xen ACPI processor"
@@ -348,10 +348,10 @@ config XEN_GRANT_DMA_IOMMU
 
 config XEN_GRANT_DMA_OPS
 	bool
-	select DMA_OPS
 
 config XEN_VIRTIO
 	bool "Xen virtio support"
+	depends on ARCH_HAS_DMA_OPS
 	depends on VIRTIO
 	select XEN_GRANT_DMA_OPS
 	select XEN_GRANT_DMA_IOMMU if OF

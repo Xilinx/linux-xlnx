@@ -281,7 +281,6 @@ static int ttc_pwm_get_state(struct pwm_chip *chip,
 static const struct pwm_ops ttc_pwm_ops = {
 	.apply = ttc_pwm_apply,
 	.get_state = ttc_pwm_get_state,
-	.owner = THIS_MODULE,
 };
 
 static int ttc_pwm_probe(struct platform_device *pdev)
@@ -327,7 +326,6 @@ static int ttc_pwm_probe(struct platform_device *pdev)
 
 	clk_rate_exclusive_get(priv->clk);
 
-	priv->chip.dev = dev;
 	priv->chip.ops = &ttc_pwm_ops;
 	priv->chip.npwm = TTC_PWM_MAX_CH;
 	ret = pwmchip_add(&priv->chip);

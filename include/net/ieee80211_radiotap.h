@@ -18,37 +18,42 @@
 #define __RADIOTAP_H
 
 #include <linux/kernel.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 /**
  * struct ieee80211_radiotap_header - base radiotap header
  */
 struct ieee80211_radiotap_header {
-	/**
-	 * @it_version: radiotap version, always 0
-	 */
-	uint8_t it_version;
+	__struct_group(ieee80211_radiotap_header_fixed, hdr, __packed,
+		/**
+		 * @it_version: radiotap version, always 0
+		 */
+		uint8_t it_version;
 
-	/**
-	 * @it_pad: padding (or alignment)
-	 */
-	uint8_t it_pad;
+		/**
+		 * @it_pad: padding (or alignment)
+		 */
+		uint8_t it_pad;
 
-	/**
-	 * @it_len: overall radiotap header length
-	 */
-	__le16 it_len;
+		/**
+		 * @it_len: overall radiotap header length
+		 */
+		__le16 it_len;
 
-	/**
-	 * @it_present: (first) present word
-	 */
-	__le32 it_present;
+		/**
+		 * @it_present: (first) present word
+		 */
+		__le32 it_present;
+	);
 
 	/**
 	 * @it_optional: all remaining presence bitmaps
 	 */
 	__le32 it_optional[];
 } __packed;
+
+static_assert(offsetof(struct ieee80211_radiotap_header, it_optional) == sizeof(struct ieee80211_radiotap_header_fixed),
+	      "struct member likely outside of __struct_group()");
 
 /* version is always 0 */
 #define PKTHDR_RADIOTAP_VERSION	0
@@ -539,6 +544,12 @@ enum ieee80211_radiotap_eht_usig_common {
 	IEEE80211_RADIOTAP_EHT_USIG_COMMON_VALIDATE_BITS_OK	= 0x00000080,
 	IEEE80211_RADIOTAP_EHT_USIG_COMMON_PHY_VER		= 0x00007000,
 	IEEE80211_RADIOTAP_EHT_USIG_COMMON_BW			= 0x00038000,
+		IEEE80211_RADIOTAP_EHT_USIG_COMMON_BW_20MHZ		= 0,
+		IEEE80211_RADIOTAP_EHT_USIG_COMMON_BW_40MHZ		= 1,
+		IEEE80211_RADIOTAP_EHT_USIG_COMMON_BW_80MHZ		= 2,
+		IEEE80211_RADIOTAP_EHT_USIG_COMMON_BW_160MHZ		= 3,
+		IEEE80211_RADIOTAP_EHT_USIG_COMMON_BW_320MHZ_1		= 4,
+		IEEE80211_RADIOTAP_EHT_USIG_COMMON_BW_320MHZ_2		= 5,
 	IEEE80211_RADIOTAP_EHT_USIG_COMMON_UL_DL		= 0x00040000,
 	IEEE80211_RADIOTAP_EHT_USIG_COMMON_BSS_COLOR		= 0x01f80000,
 	IEEE80211_RADIOTAP_EHT_USIG_COMMON_TXOP			= 0xfe000000,
@@ -576,6 +587,7 @@ enum ieee80211_radiotap_eht_usig_tb {
 /**
  * ieee80211_get_radiotap_len - get radiotap header length
  * @data: pointer to the header
+ * Return: the radiotap header length
  */
 static inline u16 ieee80211_get_radiotap_len(const char *data)
 {

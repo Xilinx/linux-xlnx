@@ -55,18 +55,18 @@ static void guest_msr(struct msr_data *msr)
 	if (msr->fault_expected)
 		__GUEST_ASSERT(vector == GP_VECTOR,
 			       "Expected #GP on %sMSR(0x%x), got vector '0x%x'",
-			       msr->idx, msr->write ? "WR" : "RD", vector);
+			       msr->write ? "WR" : "RD", msr->idx, vector);
 	else
 		__GUEST_ASSERT(!vector,
 			       "Expected success on %sMSR(0x%x), got vector '0x%x'",
-			       msr->idx, msr->write ? "WR" : "RD", vector);
+			       msr->write ? "WR" : "RD", msr->idx, vector);
 
 	if (vector || is_write_only_msr(msr->idx))
 		goto done;
 
 	if (msr->write)
 		__GUEST_ASSERT(!vector,
-			       "WRMSR(0x%x) to '0x%llx', RDMSR read '0x%llx'",
+			       "WRMSR(0x%x) to '0x%lx', RDMSR read '0x%lx'",
 			       msr->idx, msr->write_val, msr_val);
 
 	/* Invariant TSC bit appears when TSC invariant control MSR is written to */
@@ -102,11 +102,11 @@ static void guest_hcall(vm_vaddr_t pgs_gpa, struct hcall_data *hcall)
 	vector = __hyperv_hypercall(hcall->control, input, output, &res);
 	if (hcall->ud_expected) {
 		__GUEST_ASSERT(vector == UD_VECTOR,
-			       "Expected #UD for control '%u', got vector '0x%x'",
+			       "Expected #UD for control '%lu', got vector '0x%x'",
 			       hcall->control, vector);
 	} else {
 		__GUEST_ASSERT(!vector,
-			       "Expected no exception for control '%u', got vector '0x%x'",
+			       "Expected no exception for control '%lu', got vector '0x%x'",
 			       hcall->control, vector);
 		GUEST_ASSERT_EQ(res, hcall->expect);
 	}
@@ -155,9 +155,6 @@ static void guest_test_msrs_access(void)
 		} else {
 			vcpu_init_cpuid(vcpu, prev_cpuid);
 		}
-
-		vm_init_descriptor_tables(vm);
-		vcpu_init_descriptor_tables(vcpu);
 
 		/* TODO: Make this entire test easier to maintain. */
 		if (stage >= 21)
@@ -454,7 +451,7 @@ static void guest_test_msrs_access(void)
 		case 44:
 			/* MSR is not available when CPUID feature bit is unset */
 			if (!has_invtsc)
-				continue;
+				goto next_stage;
 			msr->idx = HV_X64_MSR_TSC_INVARIANT_CONTROL;
 			msr->write = false;
 			msr->fault_expected = true;
@@ -462,7 +459,7 @@ static void guest_test_msrs_access(void)
 		case 45:
 			/* MSR is vailable when CPUID feature bit is set */
 			if (!has_invtsc)
-				continue;
+				goto next_stage;
 			vcpu_set_cpuid_feature(vcpu, HV_ACCESS_TSC_INVARIANT);
 			msr->idx = HV_X64_MSR_TSC_INVARIANT_CONTROL;
 			msr->write = false;
@@ -471,7 +468,7 @@ static void guest_test_msrs_access(void)
 		case 46:
 			/* Writing bits other than 0 is forbidden */
 			if (!has_invtsc)
-				continue;
+				goto next_stage;
 			msr->idx = HV_X64_MSR_TSC_INVARIANT_CONTROL;
 			msr->write = true;
 			msr->write_val = 0xdeadbeef;
@@ -480,7 +477,7 @@ static void guest_test_msrs_access(void)
 		case 47:
 			/* Setting bit 0 enables the feature */
 			if (!has_invtsc)
-				continue;
+				goto next_stage;
 			msr->idx = HV_X64_MSR_TSC_INVARIANT_CONTROL;
 			msr->write = true;
 			msr->write_val = 1;
@@ -513,6 +510,7 @@ static void guest_test_msrs_access(void)
 			return;
 		}
 
+next_stage:
 		stage++;
 		kvm_vm_free(vm);
 	}
@@ -530,9 +528,6 @@ static void guest_test_hcalls_access(void)
 
 	while (true) {
 		vm = vm_create_with_one_vcpu(&vcpu, guest_hcall);
-
-		vm_init_descriptor_tables(vm);
-		vcpu_init_descriptor_tables(vcpu);
 
 		/* Hypercall input/output */
 		hcall_page = vm_vaddr_alloc_pages(vm, 2);
@@ -690,6 +685,8 @@ static void guest_test_hcalls_access(void)
 
 int main(void)
 {
+	TEST_REQUIRE(kvm_has_cap(KVM_CAP_HYPERV_ENFORCE_CPUID));
+
 	pr_info("Testing access to Hyper-V specific MSRs\n");
 	guest_test_msrs_access();
 

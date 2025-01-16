@@ -33,7 +33,6 @@ int ecdsa_get_signature_rs(u64 *dest, size_t hdrlen, unsigned char tag,
 	size_t bufsize = ndigits * sizeof(u64);
 	ssize_t diff = vlen - bufsize;
 	const char *d = value;
-	u8 rs[ECC_MAX_BYTES];
 
 	if (!value || !vlen)
 		return -EINVAL;
@@ -41,7 +40,7 @@ int ecdsa_get_signature_rs(u64 *dest, size_t hdrlen, unsigned char tag,
 	/* diff = 0: 'value' has exacly the right size
 	 * diff > 0: 'value' has too many bytes; one leading zero is allowed that
 	 *           makes the value a positive integer; error on more
-	 * diff < 0: 'value' is missing leading zeros, which we add
+	 * diff < 0: 'value' is missing leading zeros
 	 */
 	if (diff > 0) {
 		/* skip over leading zeros that make 'value' a positive int */
@@ -56,14 +55,7 @@ int ecdsa_get_signature_rs(u64 *dest, size_t hdrlen, unsigned char tag,
 	if (-diff >= bufsize)
 		return -EINVAL;
 
-	if (diff) {
-		/* leading zeros not given in 'value' */
-		memset(rs, 0, -diff);
-	}
-
-	memcpy(&rs[-diff], d, vlen);
-
-	ecc_swap_digits((u64 *)rs, dest, ndigits);
+	ecc_digits_from_bytes(d, vlen, dest, ndigits);
 
 	return 0;
 }
@@ -138,10 +130,8 @@ static int ecdsa_verify(struct akcipher_request *req)
 	struct ecdsa_signature_ctx sig_ctx = {
 		.curve = ctx->curve,
 	};
-	u8 rawhash[ECC_MAX_BYTES];
 	u64 hash[ECC_MAX_DIGITS];
 	unsigned char *buffer;
-	ssize_t diff;
 	int ret;
 
 	if (unlikely(!ctx->pub_key_set))
@@ -160,18 +150,11 @@ static int ecdsa_verify(struct akcipher_request *req)
 	if (ret < 0)
 		goto error;
 
-	/* if the hash is shorter then we will add leading zeros to fit to ndigits */
-	diff = bufsize - req->dst_len;
-	if (diff >= 0) {
-		if (diff)
-			memset(rawhash, 0, diff);
-		memcpy(&rawhash[diff], buffer + req->src_len, req->dst_len);
-	} else if (diff < 0) {
-		/* given hash is longer, we take the left-most bytes */
-		memcpy(&rawhash, buffer + req->src_len, bufsize);
-	}
+	if (bufsize > req->dst_len)
+		bufsize = req->dst_len;
 
-	ecc_swap_digits((u64 *)rawhash, hash, ctx->curve->g.ndigits);
+	ecc_digits_from_bytes(buffer + req->src_len, bufsize,
+			      hash, ctx->curve->g.ndigits);
 
 	ret = _ecdsa_verify(ctx, hash, sig_ctx.r, sig_ctx.s);
 
@@ -211,9 +194,8 @@ static int ecdsa_ecc_ctx_reset(struct ecc_ctx *ctx)
 }
 
 /*
- * Set the public key given the raw uncompressed key data from an X509
- * certificate. The key data contain the concatenated X and Y coordinates of
- * the public key.
+ * Set the public ECC key as defined by RFC5480 section 2.2 "Subject Public
+ * Key". Only the uncompressed format is supported.
  */
 static int ecdsa_set_pub_key(struct crypto_akcipher *tfm, const void *key, unsigned int keylen)
 {
@@ -403,4 +385,8 @@ module_exit(ecdsa_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Stefan Berger <stefanb@linux.ibm.com>");
 MODULE_DESCRIPTION("ECDSA generic algorithm");
+MODULE_ALIAS_CRYPTO("ecdsa-nist-p192");
+MODULE_ALIAS_CRYPTO("ecdsa-nist-p256");
+MODULE_ALIAS_CRYPTO("ecdsa-nist-p384");
+MODULE_ALIAS_CRYPTO("ecdsa-nist-p521");
 MODULE_ALIAS_CRYPTO("ecdsa-generic");

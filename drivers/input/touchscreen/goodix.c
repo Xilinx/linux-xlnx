@@ -22,7 +22,7 @@
 #include <linux/slab.h>
 #include <linux/acpi.h>
 #include <linux/of.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include "goodix.h"
 
 #define GOODIX_GPIO_INT_NAME		"irq"
@@ -884,7 +884,8 @@ static int goodix_add_acpi_gpio_mappings(struct goodix_ts_data *ts)
 		}
 	}
 
-	if (ts->gpio_count == 2 && ts->gpio_int_idx == 0) {
+	/* Some devices with gpio_int_idx 0 list a third unused GPIO */
+	if ((ts->gpio_count == 2 || ts->gpio_count == 3) && ts->gpio_int_idx == 0) {
 		ts->irq_pin_access_method = IRQ_PIN_ACCESS_ACPI_GPIO;
 		gpio_mapping = acpi_goodix_int_first_gpios;
 	} else if (ts->gpio_count == 2 && ts->gpio_int_idx == 1) {
@@ -1509,7 +1510,7 @@ static int goodix_resume(struct device *dev)
 static DEFINE_SIMPLE_DEV_PM_OPS(goodix_pm_ops, goodix_suspend, goodix_resume);
 
 static const struct i2c_device_id goodix_ts_id[] = {
-	{ "GDIX1001:00", 0 },
+	{ "GDIX1001:00" },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, goodix_ts_id);

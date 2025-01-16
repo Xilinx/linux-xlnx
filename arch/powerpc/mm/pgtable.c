@@ -46,13 +46,13 @@ static inline int is_exec_fault(void)
  * and we avoid _PAGE_SPECIAL and cache inhibited pte. We also only do that
  * on userspace PTEs
  */
-static inline int pte_looks_normal(pte_t pte)
+static inline int pte_looks_normal(pte_t pte, unsigned long addr)
 {
 
 	if (pte_present(pte) && !pte_special(pte)) {
 		if (pte_ci(pte))
 			return 0;
-		if (pte_user(pte))
+		if (!is_kernel_addr(addr))
 			return 1;
 	}
 	return 0;
@@ -79,11 +79,11 @@ static struct folio *maybe_pte_to_folio(pte_t pte)
  * support falls into the same category.
  */
 
-static pte_t set_pte_filter_hash(pte_t pte)
+static pte_t set_pte_filter_hash(pte_t pte, unsigned long addr)
 {
 	pte = __pte(pte_val(pte) & ~_PAGE_HPTEFLAGS);
-	if (pte_looks_normal(pte) && !(cpu_has_feature(CPU_FTR_COHERENT_ICACHE) ||
-				       cpu_has_feature(CPU_FTR_NOEXECUTE))) {
+	if (pte_looks_normal(pte, addr) && !(cpu_has_feature(CPU_FTR_COHERENT_ICACHE) ||
+					     cpu_has_feature(CPU_FTR_NOEXECUTE))) {
 		struct folio *folio = maybe_pte_to_folio(pte);
 		if (!folio)
 			return pte;
@@ -97,7 +97,7 @@ static pte_t set_pte_filter_hash(pte_t pte)
 
 #else /* CONFIG_PPC_BOOK3S */
 
-static pte_t set_pte_filter_hash(pte_t pte) { return pte; }
+static pte_t set_pte_filter_hash(pte_t pte, unsigned long addr) { return pte; }
 
 #endif /* CONFIG_PPC_BOOK3S */
 
@@ -107,7 +107,7 @@ static pte_t set_pte_filter_hash(pte_t pte) { return pte; }
  *
  * This is also called once for the folio. So only work with folio->flags here.
  */
-static inline pte_t set_pte_filter(pte_t pte)
+static inline pte_t set_pte_filter(pte_t pte, unsigned long addr)
 {
 	struct folio *folio;
 
@@ -115,10 +115,10 @@ static inline pte_t set_pte_filter(pte_t pte)
 		return pte;
 
 	if (mmu_has_feature(MMU_FTR_HPTE_TABLE))
-		return set_pte_filter_hash(pte);
+		return set_pte_filter_hash(pte, addr);
 
 	/* No exec permission in the first place, move on */
-	if (!pte_exec(pte) || !pte_looks_normal(pte))
+	if (!pte_exec(pte) || !pte_looks_normal(pte, addr))
 		return pte;
 
 	/* If you set _PAGE_EXEC on weird pages you're on your own */
@@ -198,7 +198,7 @@ void set_ptes(struct mm_struct *mm, unsigned long addr, pte_t *ptep,
 	 * is called. Filter the pte value and use the filtered value
 	 * to setup all the ptes in the range.
 	 */
-	pte = set_pte_filter(pte);
+	pte = set_pte_filter(pte, addr);
 
 	/*
 	 * We don't need to call arch_enter/leave_lazy_mmu_mode()
@@ -220,10 +220,7 @@ void set_ptes(struct mm_struct *mm, unsigned long addr, pte_t *ptep,
 			break;
 		ptep++;
 		addr += PAGE_SIZE;
-		/*
-		 * increment the pfn.
-		 */
-		pte = pfn_pte(pte_pfn(pte) + 1, pte_pgprot((pte)));
+		pte = pte_next_pfn(pte);
 	}
 }
 
@@ -300,11 +297,14 @@ int huge_ptep_set_access_flags(struct vm_area_struct *vma,
 }
 
 #if defined(CONFIG_PPC_8xx)
-void set_huge_pte_at(struct mm_struct *mm, unsigned long addr, pte_t *ptep,
-		     pte_t pte, unsigned long sz)
+
+#if defined(CONFIG_SPLIT_PTE_PTLOCKS) || defined(CONFIG_SPLIT_PMD_PTLOCKS)
+/* We need the same lock to protect the PMD table and the two PTE tables. */
+#error "8M hugetlb folios are incompatible with split page table locks"
+#endif
+
+static void __set_huge_pte_at(pmd_t *pmd, pte_t *ptep, pte_basic_t val)
 {
-	pmd_t *pmd = pmd_off(mm, addr);
-	pte_basic_t val;
 	pte_basic_t *entry = (pte_basic_t *)ptep;
 	int num, i;
 
@@ -314,14 +314,59 @@ void set_huge_pte_at(struct mm_struct *mm, unsigned long addr, pte_t *ptep,
 	 */
 	VM_WARN_ON(pte_hw_valid(*ptep) && !pte_protnone(*ptep));
 
-	pte = set_pte_filter(pte);
-
-	val = pte_val(pte);
-
 	num = number_of_cells_per_pte(pmd, val, 1);
 
 	for (i = 0; i < num; i++, entry++, val += SZ_4K)
 		*entry = val;
+}
+
+void set_huge_pte_at(struct mm_struct *mm, unsigned long addr, pte_t *ptep,
+		     pte_t pte, unsigned long sz)
+{
+	pmd_t *pmdp = pmd_off(mm, addr);
+
+	pte = set_pte_filter(pte, addr);
+
+	if (sz == SZ_8M) { /* Flag both PMD entries as 8M and fill both page tables */
+		*pmdp = __pmd(pmd_val(*pmdp) | _PMD_PAGE_8M);
+		*(pmdp + 1) = __pmd(pmd_val(*(pmdp + 1)) | _PMD_PAGE_8M);
+
+		__set_huge_pte_at(pmdp, pte_offset_kernel(pmdp, 0), pte_val(pte));
+		__set_huge_pte_at(pmdp, pte_offset_kernel(pmdp + 1, 0), pte_val(pte) + SZ_4M);
+	} else {
+		__set_huge_pte_at(pmdp, ptep, pte_val(pte));
+	}
+}
+#else
+void set_huge_pte_at(struct mm_struct *mm, unsigned long addr, pte_t *ptep,
+		     pte_t pte, unsigned long sz)
+{
+	unsigned long pdsize;
+	int i;
+
+	pte = set_pte_filter(pte, addr);
+
+	/*
+	 * Make sure hardware valid bit is not set. We don't do
+	 * tlb flush for this update.
+	 */
+	VM_WARN_ON(pte_hw_valid(*ptep) && !pte_protnone(*ptep));
+
+	if (sz < PMD_SIZE)
+		pdsize = PAGE_SIZE;
+	else if (sz < PUD_SIZE)
+		pdsize = PMD_SIZE;
+	else if (sz < P4D_SIZE)
+		pdsize = PUD_SIZE;
+	else if (sz < PGDIR_SIZE)
+		pdsize = P4D_SIZE;
+	else
+		pdsize = PGDIR_SIZE;
+
+	for (i = 0; i < sz / pdsize; i++, ptep++, addr += pdsize) {
+		__set_pte_at(mm, addr, ptep, pte, 0);
+		pte = __pte(pte_val(pte) + ((unsigned long long)pdsize / PAGE_SIZE << PFN_PTE_SHIFT));
+	}
 }
 #endif
 #endif /* CONFIG_HUGETLB_PAGE */
@@ -370,11 +415,10 @@ unsigned long vmalloc_to_phys(void *va)
 EXPORT_SYMBOL_GPL(vmalloc_to_phys);
 
 /*
- * We have 4 cases for pgds and pmds:
+ * We have 3 cases for pgds and pmds:
  * (1) invalid (all zeroes)
  * (2) pointer to next table, as normal; bottom 6 bits == 0
  * (3) leaf pte for huge page _PAGE_PTE set
- * (4) hugepd pointer, _PAGE_PTE = 0 and bits [2..6] indicate size of table
  *
  * So long as we atomically load page table pointers we are safe against teardown,
  * we can follow the address down to the page and take a ref on it.
@@ -385,11 +429,12 @@ pte_t *__find_linux_pte(pgd_t *pgdir, unsigned long ea,
 			bool *is_thp, unsigned *hpage_shift)
 {
 	pgd_t *pgdp;
+#ifdef CONFIG_PPC64
 	p4d_t p4d, *p4dp;
 	pud_t pud, *pudp;
+#endif
 	pmd_t pmd, *pmdp;
 	pte_t *ret_pte;
-	hugepd_t *hpdp = NULL;
 	unsigned pdshift;
 
 	if (hpage_shift)
@@ -404,8 +449,12 @@ pte_t *__find_linux_pte(pgd_t *pgdir, unsigned long ea,
 	 * page fault or a page unmap. The return pte_t * is still not
 	 * stable. So should be checked there for above conditions.
 	 * Top level is an exception because it is folded into p4d.
+	 *
+	 * On PPC32, P4D/PUD/PMD are folded into PGD so go straight to
+	 * PMD level.
 	 */
 	pgdp = pgdir + pgd_index(ea);
+#ifdef CONFIG_PPC64
 	p4dp = p4d_offset(pgdp, ea);
 	p4d  = READ_ONCE(*p4dp);
 	pdshift = P4D_SHIFT;
@@ -413,14 +462,9 @@ pte_t *__find_linux_pte(pgd_t *pgdir, unsigned long ea,
 	if (p4d_none(p4d))
 		return NULL;
 
-	if (p4d_is_leaf(p4d)) {
+	if (p4d_leaf(p4d)) {
 		ret_pte = (pte_t *)p4dp;
 		goto out;
-	}
-
-	if (is_hugepd(__hugepd(p4d_val(p4d)))) {
-		hpdp = (hugepd_t *)&p4d;
-		goto out_huge;
 	}
 
 	/*
@@ -435,18 +479,16 @@ pte_t *__find_linux_pte(pgd_t *pgdir, unsigned long ea,
 	if (pud_none(pud))
 		return NULL;
 
-	if (pud_is_leaf(pud)) {
+	if (pud_leaf(pud)) {
 		ret_pte = (pte_t *)pudp;
 		goto out;
 	}
 
-	if (is_hugepd(__hugepd(pud_val(pud)))) {
-		hpdp = (hugepd_t *)&pud;
-		goto out_huge;
-	}
-
-	pdshift = PMD_SHIFT;
 	pmdp = pmd_offset(&pud, ea);
+#else
+	pmdp = pmd_offset(pud_offset(p4d_offset(pgdp, ea), ea), ea);
+#endif
+	pdshift = PMD_SHIFT;
 	pmd  = READ_ONCE(*pmdp);
 
 	/*
@@ -474,24 +516,13 @@ pte_t *__find_linux_pte(pgd_t *pgdir, unsigned long ea,
 		goto out;
 	}
 
-	if (pmd_is_leaf(pmd)) {
+	if (pmd_leaf(pmd)) {
 		ret_pte = (pte_t *)pmdp;
 		goto out;
 	}
 
-	if (is_hugepd(__hugepd(pmd_val(pmd)))) {
-		hpdp = (hugepd_t *)&pmd;
-		goto out_huge;
-	}
-
 	return pte_offset_kernel(&pmd, ea);
 
-out_huge:
-	if (!hpdp)
-		return NULL;
-
-	ret_pte = hugepte_offset(*hpdp, ea, pdshift);
-	pdshift = hugepd_shift(*hpdp);
 out:
 	if (hpage_shift)
 		*hpage_shift = pdshift;
@@ -505,7 +536,7 @@ const pgprot_t protection_map[16] = {
 	[VM_READ]					= PAGE_READONLY,
 	[VM_WRITE]					= PAGE_COPY,
 	[VM_WRITE | VM_READ]				= PAGE_COPY,
-	[VM_EXEC]					= PAGE_READONLY_X,
+	[VM_EXEC]					= PAGE_EXECONLY_X,
 	[VM_EXEC | VM_READ]				= PAGE_READONLY_X,
 	[VM_EXEC | VM_WRITE]				= PAGE_COPY_X,
 	[VM_EXEC | VM_WRITE | VM_READ]			= PAGE_COPY_X,
@@ -513,7 +544,7 @@ const pgprot_t protection_map[16] = {
 	[VM_SHARED | VM_READ]				= PAGE_READONLY,
 	[VM_SHARED | VM_WRITE]				= PAGE_SHARED,
 	[VM_SHARED | VM_WRITE | VM_READ]		= PAGE_SHARED,
-	[VM_SHARED | VM_EXEC]				= PAGE_READONLY_X,
+	[VM_SHARED | VM_EXEC]				= PAGE_EXECONLY_X,
 	[VM_SHARED | VM_EXEC | VM_READ]			= PAGE_READONLY_X,
 	[VM_SHARED | VM_EXEC | VM_WRITE]		= PAGE_SHARED_X,
 	[VM_SHARED | VM_EXEC | VM_WRITE | VM_READ]	= PAGE_SHARED_X

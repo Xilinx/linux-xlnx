@@ -283,7 +283,7 @@ void flush_cache_pages(struct vm_area_struct *vma, unsigned long user_addr,
  * flush_dcache_page is used when the kernel has written to the page
  * cache page at virtual address page->virtual.
  *
- * If this page isn't mapped (ie, page_mapping == NULL), or it might
+ * If this page isn't mapped (ie, folio_mapping == NULL), or it might
  * have userspace mappings, then we _must_ always clean + invalidate
  * the dcache entries associated with the kernel mapping.
  *
@@ -339,6 +339,8 @@ static inline void flush_cache_vmap(unsigned long start, unsigned long end)
 		 */
 		dsb(ishst);
 }
+
+#define flush_cache_vmap_early(start, end)	do { } while (0)
 
 static inline void flush_cache_vunmap(unsigned long start, unsigned long end)
 {

@@ -25,10 +25,6 @@
 #include <math.h>
 #include "pmu.h"
 
-#ifdef PARSER_DEBUG
-extern int expr_debug;
-#endif
-
 struct expr_id_data {
 	union {
 		struct {
@@ -500,7 +496,25 @@ double expr__has_event(const struct expr_parse_ctx *ctx, bool compute_ids, const
 	tmp = evlist__new();
 	if (!tmp)
 		return NAN;
-	ret = parse_event(tmp, id) ? 0 : 1;
+
+	if (strchr(id, '@')) {
+		char *tmp_id, *p;
+
+		tmp_id = strdup(id);
+		if (!tmp_id) {
+			ret = NAN;
+			goto out;
+		}
+		p = strchr(tmp_id, '@');
+		*p = '/';
+		p = strrchr(tmp_id, '@');
+		*p = '/';
+		ret = parse_event(tmp, tmp_id) ? 0 : 1;
+		free(tmp_id);
+	} else {
+		ret = parse_event(tmp, id) ? 0 : 1;
+	}
+out:
 	evlist__delete(tmp);
 	return ret;
 }
@@ -509,7 +523,7 @@ double expr__strcmp_cpuid_str(const struct expr_parse_ctx *ctx __maybe_unused,
 		       bool compute_ids __maybe_unused, const char *test_id)
 {
 	double ret;
-	struct perf_pmu *pmu = pmu__find_core_pmu();
+	struct perf_pmu *pmu = perf_pmus__find_core_pmu();
 	char *cpuid = perf_pmu__getcpuid(pmu);
 
 	if (!cpuid)

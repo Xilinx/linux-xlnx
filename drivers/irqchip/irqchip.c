@@ -111,19 +111,19 @@ int platform_irqchip_probe(struct platform_device *pdev)
 }
 EXPORT_SYMBOL_GPL(platform_irqchip_probe);
 
-int platform_irqchip_remove(struct platform_device *pdev)
+void platform_irqchip_remove(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct platform_irqchip_instance *irqchip = platform_get_drvdata(pdev);
 	struct device_node *par_np = irqchip->parent_node;
 
 	if (!irqchip->irq_remove_cb)
-		return -EINVAL;
+		return;
 
 	if (par_np == np)
 		par_np = NULL;
 
-	return irqchip->irq_remove_cb(np, par_np);
+	irqchip->irq_remove_cb(np, par_np);
 }
 EXPORT_SYMBOL_GPL(platform_irqchip_remove);
 #endif

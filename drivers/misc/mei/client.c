@@ -48,9 +48,9 @@ struct mei_me_client *mei_me_cl_get(struct mei_me_client *me_cl)
 /**
  * mei_me_cl_release - free me client
  *
- * Locking: called under "dev->device_lock" lock
- *
  * @ref: me_client refcount
+ *
+ * Locking: called under "dev->device_lock" lock
  */
 static void mei_me_cl_release(struct kref *ref)
 {
@@ -63,9 +63,9 @@ static void mei_me_cl_release(struct kref *ref)
 /**
  * mei_me_cl_put - decrease me client refcount and free client if necessary
  *
- * Locking: called under "dev->device_lock" lock
- *
  * @me_cl: me client
+ *
+ * Locking: called under "dev->device_lock" lock
  */
 void mei_me_cl_put(struct mei_me_client *me_cl)
 {
@@ -321,7 +321,7 @@ void mei_io_cb_free(struct mei_cl_cb *cb)
 		return;
 
 	list_del(&cb->list);
-	kfree(cb->buf.data);
+	kvfree(cb->buf.data);
 	kfree(cb->ext_hdr);
 	kfree(cb);
 }
@@ -329,10 +329,10 @@ void mei_io_cb_free(struct mei_cl_cb *cb)
 /**
  * mei_tx_cb_enqueue - queue tx callback
  *
- * Locking: called under "dev->device_lock" lock
- *
  * @cb: mei callback struct
  * @head: an instance of list to queue on
+ *
+ * Locking: called under "dev->device_lock" lock
  */
 static inline void mei_tx_cb_enqueue(struct mei_cl_cb *cb,
 				     struct list_head *head)
@@ -344,9 +344,9 @@ static inline void mei_tx_cb_enqueue(struct mei_cl_cb *cb,
 /**
  * mei_tx_cb_dequeue - dequeue tx callback
  *
- * Locking: called under "dev->device_lock" lock
- *
  * @cb: mei callback struct to dequeue and free
+ *
+ * Locking: called under "dev->device_lock" lock
  */
 static inline void mei_tx_cb_dequeue(struct mei_cl_cb *cb)
 {
@@ -359,10 +359,10 @@ static inline void mei_tx_cb_dequeue(struct mei_cl_cb *cb)
 /**
  * mei_cl_set_read_by_fp - set pending_read flag to vtag struct for given fp
  *
- * Locking: called under "dev->device_lock" lock
- *
  * @cl: mei client
  * @fp: pointer to file structure
+ *
+ * Locking: called under "dev->device_lock" lock
  */
 static void mei_cl_set_read_by_fp(const struct mei_cl *cl,
 				  const struct file *fp)
@@ -497,7 +497,7 @@ struct mei_cl_cb *mei_cl_alloc_cb(struct mei_cl *cl, size_t length,
 	if (length == 0)
 		return cb;
 
-	cb->buf.data = kmalloc(roundup(length, MEI_SLOT_SIZE), GFP_KERNEL);
+	cb->buf.data = kvmalloc(roundup(length, MEI_SLOT_SIZE), GFP_KERNEL);
 	if (!cb->buf.data) {
 		mei_io_cb_free(cb);
 		return NULL;
@@ -2011,7 +2011,7 @@ ssize_t mei_cl_write(struct mei_cl *cl, struct mei_cl_cb *cb, unsigned long time
 
 	mei_hdr = mei_msg_hdr_init(cb);
 	if (IS_ERR(mei_hdr)) {
-		rets = -PTR_ERR(mei_hdr);
+		rets = PTR_ERR(mei_hdr);
 		mei_hdr = NULL;
 		goto err;
 	}
@@ -2032,7 +2032,7 @@ ssize_t mei_cl_write(struct mei_cl *cl, struct mei_cl_cb *cb, unsigned long time
 
 	hbuf_slots = mei_hbuf_empty_slots(dev);
 	if (hbuf_slots < 0) {
-		rets = -EOVERFLOW;
+		buf_len = -EOVERFLOW;
 		goto out;
 	}
 

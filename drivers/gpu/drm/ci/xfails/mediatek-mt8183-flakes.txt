@@ -1,14 +1,20 @@
-core_setmaster_vs_auth
-kms_bw@linear-tiling-1-displays-1920x1080p
-kms_bw@linear-tiling-1-displays-3840x2160p
-kms_bw@linear-tiling-3-displays-1920x1080p
-kms_cursor_legacy@cursor-vs-flip-atomic
-kms_plane_scaling@invalid-num-scalers
-kms_plane_scaling@planes-upscale-20x20
-kms_plane_scaling@planes-upscale-20x20-downscale-factor-0-5
-kms_plane_scaling@upscale-with-modifier-20x20
-kms_plane_scaling@upscale-with-pixel-format-20x20
-kms_prop_blob@invalid-set-prop-any
-kms_properties@get_properties-sanity-atomic
-kms_properties@plane-properties-atomic
-kms_properties@plane-properties-legacy
+# Board Name: mt8183-kukui-jacuzzi-juniper-sku16
+# Bug Report: https://lore.kernel.org/linux-mediatek/0b2a1899-15dd-42fa-8f63-ea0ca28dbb17@collabora.com/T/#u
+# Failure Rate: 100
+# IGT Version: 1.28-gf13702b8e
+# Linux Version: 6.10.0-rc5
+kms_bw@linear-tiling-1-displays-2560x1440p
+
+# Board Name: mt8183-kukui-jacuzzi-juniper-sku16
+# Bug Report: https://lore.kernel.org/linux-mediatek/0b2a1899-15dd-42fa-8f63-ea0ca28dbb17@collabora.com/T/#u
+# Failure Rate: 100
+# IGT Version: 1.28-gf13702b8e
+# Linux Version: 6.10.0-rc5
+kms_cursor_legacy@cursor-vs-flip-atomic-transitions
+
+# Board Name: mt8183-kukui-jacuzzi-juniper-sku16
+# Bug Report: https://lore.kernel.org/linux-mediatek/0b2a1899-15dd-42fa-8f63-ea0ca28dbb17@collabora.com/T/#u
+# Failure Rate: 100
+# IGT Version: 1.28-gf13702b8e
+# Linux Version: 6.10.0-rc5
+fbdev@write

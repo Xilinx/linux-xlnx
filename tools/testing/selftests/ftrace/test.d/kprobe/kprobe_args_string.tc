@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-2.0
 # description: Kprobe event string type argument
-# requires: kprobe_events
+# requires: kprobe_events available_filter_functions
 
 case `uname -m` in
 x86_64)
@@ -31,13 +31,18 @@ mips*)
 loongarch*)
   ARG1=%r4
 ;;
+riscv*)
+  ARG1=%a0
+;;
 *)
   echo "Please implement other architecture here"
   exit_untested
 esac
 
 : "Test get argument (1)"
-if grep -q eventfs_add_dir available_filter_functions; then
+if grep -q eventfs_create_dir available_filter_functions; then
+  DIR_NAME="eventfs_create_dir"
+elif grep -q eventfs_add_dir available_filter_functions; then
   DIR_NAME="eventfs_add_dir"
 else
   DIR_NAME="tracefs_create_dir"

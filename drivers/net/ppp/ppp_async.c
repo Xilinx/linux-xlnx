@@ -29,7 +29,7 @@
 #include <linux/interrupt.h>
 #include <linux/jiffies.h>
 #include <linux/slab.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <linux/uaccess.h>
 #include <asm/string.h>
 
@@ -87,6 +87,7 @@ struct asyncppp {
 static int flag_time = HZ;
 module_param(flag_time, int, 0);
 MODULE_PARM_DESC(flag_time, "ppp_async: interval between flagged packets (in clock ticks)");
+MODULE_DESCRIPTION("PPP async serial channel module");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS_LDISC(N_PPP);
 
@@ -460,6 +461,10 @@ ppp_async_ioctl(struct ppp_channel *chan, unsigned int cmd, unsigned long arg)
 	case PPPIOCSMRU:
 		if (get_user(val, p))
 			break;
+		if (val > U16_MAX) {
+			err = -EINVAL;
+			break;
+		}
 		if (val < PPP_MRU)
 			val = PPP_MRU;
 		ap->mru = val;
@@ -533,11 +538,11 @@ ppp_async_encode(struct asyncppp *ap)
 	proto = get_unaligned_be16(data);
 
 	/*
-	 * LCP packets with code values between 1 (configure-reqest)
+	 * LCP packets with code values between 1 (configure-request)
 	 * and 7 (code-reject) must be sent as though no options
 	 * had been negotiated.
 	 */
-	islcp = proto == PPP_LCP && 1 <= data[2] && data[2] <= 7;
+	islcp = proto == PPP_LCP && count >= 3 && 1 <= data[2] && data[2] <= 7;
 
 	if (i == 0) {
 		if (islcp)

@@ -1359,6 +1359,7 @@ static netdev_tx_t bcm_sysport_xmit(struct sk_buff *skb,
 		netif_err(priv, tx_err, dev, "DMA map failed at %p (len=%d)\n",
 			  skb->data, skb_len);
 		ret = NETDEV_TX_OK;
+		dev_kfree_skb_any(skb);
 		goto out;
 	}
 
@@ -2430,7 +2431,7 @@ static int bcm_sysport_netdevice_event(struct notifier_block *nb,
 		if (dev->netdev_ops != &bcm_sysport_netdev_ops)
 			return NOTIFY_DONE;
 
-		if (!dsa_slave_dev_check(info->upper_dev))
+		if (!dsa_user_dev_check(info->upper_dev))
 			return NOTIFY_DONE;
 
 		if (info->linking)
@@ -2648,7 +2649,7 @@ err_free_netdev:
 	return ret;
 }
 
-static int bcm_sysport_remove(struct platform_device *pdev)
+static void bcm_sysport_remove(struct platform_device *pdev)
 {
 	struct net_device *dev = dev_get_drvdata(&pdev->dev);
 	struct bcm_sysport_priv *priv = netdev_priv(dev);
@@ -2663,8 +2664,6 @@ static int bcm_sysport_remove(struct platform_device *pdev)
 		of_phy_deregister_fixed_link(dn);
 	free_netdev(dev);
 	dev_set_drvdata(&pdev->dev, NULL);
-
-	return 0;
 }
 
 static int bcm_sysport_suspend_to_wol(struct bcm_sysport_priv *priv)
@@ -2901,7 +2900,7 @@ static SIMPLE_DEV_PM_OPS(bcm_sysport_pm_ops,
 
 static struct platform_driver bcm_sysport_driver = {
 	.probe	= bcm_sysport_probe,
-	.remove	= bcm_sysport_remove,
+	.remove_new = bcm_sysport_remove,
 	.driver =  {
 		.name = "brcm-systemport",
 		.of_match_table = bcm_sysport_of_match,

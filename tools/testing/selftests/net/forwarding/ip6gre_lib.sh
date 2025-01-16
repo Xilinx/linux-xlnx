@@ -356,7 +356,7 @@ test_traffic_ip4ip6()
 		flower $TC_FLAG dst_ip 203.0.113.1 action pass
 
 	$MZ $h1 -c 1000 -p 64 -a $h1mac -b $ol1mac -A 198.51.100.1 \
-		-B 203.0.113.1 -t ip -q -d 1msec
+		-B 203.0.113.1 -t ip -q -d $MZ_DELAY
 
 	# Check ports after encap and after decap.
 	tc_check_at_least_x_packets "dev $ul1 egress" 101 1000
@@ -389,7 +389,7 @@ test_traffic_ip6ip6()
 		flower $TC_FLAG dst_ip 2001:db8:2::1 action pass
 
 	$MZ -6 $h1 -c 1000 -p 64 -a $h1mac -b $ol1mac -A 2001:db8:1::1 \
-		-B 2001:db8:2::1 -t ip -q -d 1msec
+		-B 2001:db8:2::1 -t ip -q -d $MZ_DELAY
 
 	# Check ports after encap and after decap.
 	tc_check_at_least_x_packets "dev $ul1 egress" 101 1000
@@ -435,4 +435,84 @@ test_mtu_change()
 	ping6_do $h1 2001:db8:2::1 "-s 1800 -w 3"
 	check_err $?
 	log_test "ping GRE IPv6, packet size 1800 after MTU change"
+}
+
+topo_flat_remote_change()
+{
+	local old1=$1; shift
+	local new1=$1; shift
+	local old2=$1; shift
+	local new2=$1; shift
+
+	ip link set dev g1a type ip6gre local $new1 remote $new2
+        __addr_add_del g1a add "$new1/128"
+        __addr_add_del g1a del "$old1/128"
+	ip -6 route add $new2/128 via 2001:db8:10::2
+	ip -6 route del $old2/128
+
+	ip link set dev g2a type ip6gre local $new2 remote $new1
+        __addr_add_del g2a add "$new2/128"
+        __addr_add_del g2a del "$old2/128"
+	ip -6 route add vrf v$ol2 $new1/128 via 2001:db8:10::1
+	ip -6 route del vrf v$ol2 $old1/128
+}
+
+flat_remote_change()
+{
+	local old1=2001:db8:3::1
+	local new1=2001:db8:3::10
+	local old2=2001:db8:3::2
+	local new2=2001:db8:3::20
+
+	topo_flat_remote_change $old1 $new1 $old2 $new2
+}
+
+flat_remote_restore()
+{
+	local old1=2001:db8:3::10
+	local new1=2001:db8:3::1
+	local old2=2001:db8:3::20
+	local new2=2001:db8:3::2
+
+	topo_flat_remote_change $old1 $new1 $old2 $new2
+}
+
+topo_hier_remote_change()
+{
+	local old1=$1; shift
+	local new1=$1; shift
+	local old2=$1; shift
+	local new2=$1; shift
+
+        __addr_add_del dummy1 del "$old1/64"
+        __addr_add_del dummy1 add "$new1/64"
+	ip link set dev g1a type ip6gre local $new1 remote $new2
+	ip -6 route add vrf v$ul1 $new2/128 via 2001:db8:10::2
+	ip -6 route del vrf v$ul1 $old2/128
+
+        __addr_add_del dummy2 del "$old2/64"
+        __addr_add_del dummy2 add "$new2/64"
+	ip link set dev g2a type ip6gre local $new2 remote $new1
+	ip -6 route add vrf v$ul2 $new1/128 via 2001:db8:10::1
+	ip -6 route del vrf v$ul2 $old1/128
+}
+
+hier_remote_change()
+{
+	local old1=2001:db8:3::1
+	local new1=2001:db8:3::10
+	local old2=2001:db8:3::2
+	local new2=2001:db8:3::20
+
+	topo_hier_remote_change $old1 $new1 $old2 $new2
+}
+
+hier_remote_restore()
+{
+	local old1=2001:db8:3::10
+	local new1=2001:db8:3::1
+	local old2=2001:db8:3::20
+	local new2=2001:db8:3::2
+
+	topo_hier_remote_change $old1 $new1 $old2 $new2
 }

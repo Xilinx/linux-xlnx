@@ -25,7 +25,7 @@
 #include <linux/configfs.h>
 #include <linux/kernel.h>
 #include <linux/ctype.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <scsi/libfc.h>
 
 #include <target/target_core_base.h>
@@ -432,6 +432,9 @@ static const struct target_core_fabric_ops ft_fabric_ops = {
 
 	.tfc_wwn_attrs			= ft_wwn_attrs,
 	.tfc_tpg_nacl_base_attrs	= ft_nacl_base_attrs,
+
+	.default_submit_type		= TARGET_DIRECT_SUBMIT,
+	.direct_submit_supp		= 1,
 };
 
 static struct notifier_block ft_notifier = {

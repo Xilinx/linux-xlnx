@@ -248,6 +248,7 @@ static int wm8505fb_blank(int blank, struct fb_info *info)
 
 static const struct fb_ops wm8505fb_ops = {
 	.owner		= THIS_MODULE,
+	__FB_DEFAULT_DMAMEM_OPS_RDWR,
 	.fb_set_par	= wm8505fb_set_par,
 	.fb_setcolreg	= wm8505fb_setcolreg,
 	.fb_fillrect	= wmt_ge_fillrect,
@@ -256,6 +257,7 @@ static const struct fb_ops wm8505fb_ops = {
 	.fb_sync	= wmt_ge_sync,
 	.fb_pan_display	= wm8505fb_pan_display,
 	.fb_blank	= wm8505fb_blank,
+	__FB_DEFAULT_IOMEM_OPS_MMAP,
 };
 
 static int wm8505fb_probe(struct platform_device *pdev)
@@ -390,7 +392,7 @@ static const struct of_device_id wmt_dt_ids[] = {
 
 static struct platform_driver wm8505fb_driver = {
 	.probe		= wm8505fb_probe,
-	.remove_new	= wm8505fb_remove,
+	.remove		= wm8505fb_remove,
 	.driver		= {
 		.name	= DRIVER_NAME,
 		.of_match_table = wmt_dt_ids,

@@ -645,7 +645,6 @@ static int dp83869_configure_fiber(struct phy_device *phydev,
 		     phydev->supported);
 
 	linkmode_set_bit(ETHTOOL_LINK_MODE_FIBRE_BIT, phydev->supported);
-	linkmode_set_bit(ADVERTISED_FIBRE, phydev->advertising);
 
 	if (dp83869->mode == DP83869_RGMII_1000_BASE) {
 		linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseX_Full_BIT,
@@ -695,7 +694,8 @@ static int dp83869_configure_mode(struct phy_device *phydev,
 	phy_ctrl_val = dp83869->mode;
 	if (phydev->interface == PHY_INTERFACE_MODE_MII) {
 		if (dp83869->mode == DP83869_100M_MEDIA_CONVERT ||
-		    dp83869->mode == DP83869_RGMII_100_BASE) {
+		    dp83869->mode == DP83869_RGMII_100_BASE ||
+		    dp83869->mode == DP83869_RGMII_COPPER_ETHERNET) {
 			phy_ctrl_val |= DP83869_OP_MODE_MII;
 		} else {
 			phydev_err(phydev, "selected op-mode is not valid with MII mode\n");

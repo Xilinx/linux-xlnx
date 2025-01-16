@@ -180,27 +180,7 @@ this correctly. There is only **one** head ``struct page``, the tail
 ``struct page`` with ``PG_head`` are fake head ``struct page``.  We need an
 approach to distinguish between those two different types of ``struct page`` so
 that ``compound_head()`` can return the real head ``struct page`` when the
-parameter is the tail ``struct page`` but with ``PG_head``. The following code
-snippet describes how to distinguish between real and fake head ``struct page``.
-
-.. code-block:: c
-
-	if (test_bit(PG_head, &page->flags)) {
-		unsigned long head = READ_ONCE(page[1].compound_head);
-
-		if (head & 1) {
-			if (head == (unsigned long)page + 1)
-				/* head struct page */
-			else
-				/* tail struct page */
-		} else {
-			/* head struct page */
-		}
-	}
-
-We can safely access the field of the **page[1]** with ``PG_head`` because the
-page is a compound page composed with at least two contiguous pages.
-The implementation refers to ``page_fixed_fake_head()``.
+parameter is the tail ``struct page`` but with ``PG_head``.
 
 Device DAX
 ==========
@@ -211,7 +191,7 @@ the device (altmap).
 
 The following page sizes are supported in DAX: PAGE_SIZE (4K on x86_64),
 PMD_SIZE (2M on x86_64) and PUD_SIZE (1G on x86_64).
-For powerpc equivalent details see Documentation/powerpc/vmemmap_dedup.rst
+For powerpc equivalent details see Documentation/arch/powerpc/vmemmap_dedup.rst
 
 The differences with HugeTLB are relatively minor.
 

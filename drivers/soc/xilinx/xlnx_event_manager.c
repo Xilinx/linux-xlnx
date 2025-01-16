@@ -3,7 +3,7 @@
  * Xilinx Event Management Driver
  *
  *  Copyright (C) 2021 Xilinx, Inc.
- *  Copyright (C) 2023 - 2024 Advanced Micro Devices, Inc.
+ *  Copyright (C) 2024 Advanced Micro Devices, Inc.
  *
  *  Abhyuday Godhasara <abhyuday.godhasara@xilinx.com>
  */
@@ -26,7 +26,6 @@ static DEFINE_PER_CPU_READ_MOSTLY(int, dummy_cpu_number);
 
 static int virq_sgi;
 static int event_manager_availability = -EACCES;
-static u32 pm_sub_family_code;
 
 /* SGI number used for Event management driver */
 #define XLNX_EVENT_SGI_NUM	(15)
@@ -80,6 +79,10 @@ struct registered_event_data {
 
 static bool xlnx_is_error_event(const u32 node_id)
 {
+	u32 pm_family_code, pm_sub_family_code;
+
+	zynqmp_pm_get_family_info(&pm_family_code, &pm_sub_family_code);
+
 	if (pm_sub_family_code == VERSAL_SUB_FAMILY_CODE) {
 		if (node_id == VERSAL_EVENT_ERROR_PMC_ERR1 ||
 		    node_id == VERSAL_EVENT_ERROR_PMC_ERR2 ||
@@ -189,8 +192,10 @@ static int xlnx_add_cb_for_suspend(event_cb_func_t cb_fun, void *data)
 	INIT_LIST_HEAD(&eve_data->cb_list_head);
 
 	cb_data = kmalloc(sizeof(*cb_data), GFP_KERNEL);
-	if (!cb_data)
+	if (!cb_data) {
+		kfree(eve_data);
 		return -ENOMEM;
+	}
 	cb_data->eve_cb = cb_fun;
 	cb_data->agent_data = data;
 
@@ -636,7 +641,6 @@ static void xlnx_event_cleanup_sgi(struct platform_device *pdev)
 static int xlnx_event_manager_probe(struct platform_device *pdev)
 {
 	int ret;
-	u32 *platform_data;
 
 	ret = zynqmp_pm_feature(PM_REGISTER_NOTIFIER);
 	if (ret < 0) {
@@ -675,8 +679,6 @@ static int xlnx_event_manager_probe(struct platform_device *pdev)
 	}
 
 	event_manager_availability = 0;
-	platform_data = (u32 *)dev_get_platdata((const struct device *)&pdev->dev);
-	pm_sub_family_code = *platform_data;
 
 	dev_info(&pdev->dev, "SGI %d Registered over TF-A\n", sgi_num);
 	dev_info(&pdev->dev, "Xilinx Event Management driver probed\n");

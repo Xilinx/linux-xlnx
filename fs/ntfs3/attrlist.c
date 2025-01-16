@@ -29,7 +29,7 @@ static inline bool al_is_valid_le(const struct ntfs_inode *ni,
 void al_destroy(struct ntfs_inode *ni)
 {
 	run_close(&ni->attr_list.run);
-	kfree(ni->attr_list.le);
+	kvfree(ni->attr_list.le);
 	ni->attr_list.le = NULL;
 	ni->attr_list.size = 0;
 	ni->attr_list.dirty = false;
@@ -127,12 +127,13 @@ struct ATTR_LIST_ENTRY *al_enumerate(struct ntfs_inode *ni,
 {
 	size_t off;
 	u16 sz;
+	const unsigned le_min_size = le_size(0);
 
 	if (!le) {
 		le = ni->attr_list.le;
 	} else {
 		sz = le16_to_cpu(le->size);
-		if (sz < sizeof(struct ATTR_LIST_ENTRY)) {
+		if (sz < le_min_size) {
 			/* Impossible 'cause we should not return such le. */
 			return NULL;
 		}
@@ -141,7 +142,7 @@ struct ATTR_LIST_ENTRY *al_enumerate(struct ntfs_inode *ni,
 
 	/* Check boundary. */
 	off = PtrOffset(ni->attr_list.le, le);
-	if (off + sizeof(struct ATTR_LIST_ENTRY) > ni->attr_list.size) {
+	if (off + le_min_size > ni->attr_list.size) {
 		/* The regular end of list. */
 		return NULL;
 	}
@@ -149,8 +150,7 @@ struct ATTR_LIST_ENTRY *al_enumerate(struct ntfs_inode *ni,
 	sz = le16_to_cpu(le->size);
 
 	/* Check le for errors. */
-	if (sz < sizeof(struct ATTR_LIST_ENTRY) ||
-	    off + sz > ni->attr_list.size ||
+	if (sz < le_min_size || off + sz > ni->attr_list.size ||
 	    sz < le->name_off + le->name_len * sizeof(short)) {
 		return NULL;
 	}
@@ -318,7 +318,7 @@ int al_add_le(struct ntfs_inode *ni, enum ATTR_TYPE type, const __le16 *name,
 		memcpy(ptr, al->le, off);
 		memcpy(Add2Ptr(ptr, off + sz), le, old_size - off);
 		le = Add2Ptr(ptr, off);
-		kfree(al->le);
+		kvfree(al->le);
 		al->le = ptr;
 	} else {
 		memmove(Add2Ptr(le, sz), le, old_size - off);
@@ -374,59 +374,6 @@ bool al_remove_le(struct ntfs_inode *ni, struct ATTR_LIST_ENTRY *le)
 	size = le16_to_cpu(le->size);
 	off = PtrOffset(al->le, le);
 
-	memmove(le, Add2Ptr(le, size), al->size - (off + size));
-
-	al->size -= size;
-	al->dirty = true;
-
-	return true;
-}
-
-/*
- * al_delete_le - Delete first le from the list which matches its parameters.
- */
-bool al_delete_le(struct ntfs_inode *ni, enum ATTR_TYPE type, CLST vcn,
-		  const __le16 *name, u8 name_len, const struct MFT_REF *ref)
-{
-	u16 size;
-	struct ATTR_LIST_ENTRY *le;
-	size_t off;
-	typeof(ni->attr_list) *al = &ni->attr_list;
-
-	/* Scan forward to the first le that matches the input. */
-	le = al_find_ex(ni, NULL, type, name, name_len, &vcn);
-	if (!le)
-		return false;
-
-	off = PtrOffset(al->le, le);
-
-next:
-	if (off >= al->size)
-		return false;
-	if (le->type != type)
-		return false;
-	if (le->name_len != name_len)
-		return false;
-	if (name_len && ntfs_cmp_names(le_name(le), name_len, name, name_len,
-				       ni->mi.sbi->upcase, true))
-		return false;
-	if (le64_to_cpu(le->vcn) != vcn)
-		return false;
-
-	/*
-	 * The caller specified a segment reference, so we have to
-	 * scan through the matching entries until we find that segment
-	 * reference or we run of matching entries.
-	 */
-	if (ref && memcmp(ref, &le->ref, sizeof(*ref))) {
-		off += le16_to_cpu(le->size);
-		le = Add2Ptr(al->le, off);
-		goto next;
-	}
-
-	/* Save on stack the size of 'le'. */
-	size = le16_to_cpu(le->size);
-	/* Delete the le. */
 	memmove(le, Add2Ptr(le, size), al->size - (off + size));
 
 	al->size -= size;

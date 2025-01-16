@@ -16,6 +16,7 @@
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/kernel.h>
 #include <linux/of_device.h>
+#include <linux/platform_device.h>
 #include "xilinx_ecdsasig.asn1.h"
 
 /* PLM supports 32-bit addresses only */
@@ -454,7 +455,7 @@ crypto_engine_cleanup:
 	return ret;
 }
 
-static int xilinx_ecdsa_remove(struct platform_device *pdev)
+static void xilinx_ecdsa_remove(struct platform_device *pdev)
 {
 	struct xilinx_ecdsa_drv_ctx *ecdsa_drv_ctx;
 
@@ -462,8 +463,6 @@ static int xilinx_ecdsa_remove(struct platform_device *pdev)
 
 	for (int i = 0; i < ARRAY_SIZE(versal_ecdsa_drv_ctx); i++)
 		crypto_engine_unregister_akcipher(&ecdsa_drv_ctx[i].alg);
-
-	return 0;
 }
 
 static struct platform_driver xilinx_ecdsa_driver = {

@@ -243,7 +243,6 @@ static int vtpm_proxy_fops_release(struct inode *inode, struct file *filp)
 
 static const struct file_operations vtpm_proxy_fops = {
 	.owner = THIS_MODULE,
-	.llseek = no_llseek,
 	.read = vtpm_proxy_fops_read,
 	.write = vtpm_proxy_fops_write,
 	.poll = vtpm_proxy_fops_poll,
@@ -711,7 +710,7 @@ static void __exit vtpm_module_exit(void)
 module_init(vtpm_module_init);
 module_exit(vtpm_module_exit);
 
-MODULE_AUTHOR("Stefan Berger (stefanb@us.ibm.com)");
+MODULE_AUTHOR("Stefan Berger <stefanb@us.ibm.com>");
 MODULE_DESCRIPTION("vTPM Driver");
 MODULE_VERSION("0.1");
 MODULE_LICENSE("GPL");

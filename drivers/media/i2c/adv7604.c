@@ -1557,8 +1557,8 @@ static unsigned int adv76xx_read_hdmi_pixelclock(struct v4l2_subdev *sd)
 	return freq;
 }
 
-static int adv76xx_query_dv_timings(struct v4l2_subdev *sd,
-			struct v4l2_dv_timings *timings)
+static int adv76xx_query_dv_timings(struct v4l2_subdev *sd, unsigned int pad,
+				    struct v4l2_dv_timings *timings)
 {
 	struct adv76xx_state *state = to_state(sd);
 	const struct adv76xx_chip_info *info = state->info;
@@ -1687,8 +1687,8 @@ found:
 	return 0;
 }
 
-static int adv76xx_s_dv_timings(struct v4l2_subdev *sd,
-		struct v4l2_dv_timings *timings)
+static int adv76xx_s_dv_timings(struct v4l2_subdev *sd, unsigned int pad,
+				struct v4l2_dv_timings *timings)
 {
 	struct adv76xx_state *state = to_state(sd);
 	struct v4l2_bt_timings *bt;
@@ -1730,8 +1730,8 @@ static int adv76xx_s_dv_timings(struct v4l2_subdev *sd,
 	return 0;
 }
 
-static int adv76xx_g_dv_timings(struct v4l2_subdev *sd,
-		struct v4l2_dv_timings *timings)
+static int adv76xx_g_dv_timings(struct v4l2_subdev *sd, unsigned int pad,
+				struct v4l2_dv_timings *timings)
 {
 	struct adv76xx_state *state = to_state(sd);
 
@@ -1929,7 +1929,7 @@ static int adv76xx_get_format(struct v4l2_subdev *sd,
 	if (format->which == V4L2_SUBDEV_FORMAT_TRY) {
 		struct v4l2_mbus_framefmt *fmt;
 
-		fmt = v4l2_subdev_get_try_format(sd, sd_state, format->pad);
+		fmt = v4l2_subdev_state_get_format(sd_state, format->pad);
 		format->format.code = fmt->code;
 	} else {
 		format->format.code = state->format->code;
@@ -1978,7 +1978,7 @@ static int adv76xx_set_format(struct v4l2_subdev *sd,
 	if (format->which == V4L2_SUBDEV_FORMAT_TRY) {
 		struct v4l2_mbus_framefmt *fmt;
 
-		fmt = v4l2_subdev_get_try_format(sd, sd_state, format->pad);
+		fmt = v4l2_subdev_state_get_format(sd_state, format->pad);
 		fmt->code = format->format.code;
 	} else {
 		state->format = info;
@@ -2519,10 +2519,10 @@ static int adv76xx_log_status(struct v4l2_subdev *sd)
 	const struct adv76xx_chip_info *info = state->info;
 	struct v4l2_dv_timings timings;
 	struct stdi_readback stdi;
-	u8 reg_io_0x02 = io_read(sd, 0x02);
+	int ret;
+	u8 reg_io_0x02;
 	u8 edid_enabled;
 	u8 cable_det;
-
 	static const char * const csc_coeff_sel_rb[16] = {
 		"bypassed", "YPbPr601 -> RGB", "reserved", "YPbPr709 -> RGB",
 		"reserved", "RGB -> YPbPr601", "reserved", "RGB -> YPbPr709",
@@ -2607,7 +2607,7 @@ static int adv76xx_log_status(struct v4l2_subdev *sd)
 				stdi.lcf, stdi.bl, stdi.lcvs,
 				stdi.interlaced ? "interlaced" : "progressive",
 				stdi.hs_pol, stdi.vs_pol);
-	if (adv76xx_query_dv_timings(sd, &timings))
+	if (adv76xx_query_dv_timings(sd, 0, &timings))
 		v4l2_info(sd, "No video detected\n");
 	else
 		v4l2_print_dv_timings(sd->name, "Detected format: ",
@@ -2621,13 +2621,21 @@ static int adv76xx_log_status(struct v4l2_subdev *sd)
 	v4l2_info(sd, "-----Color space-----\n");
 	v4l2_info(sd, "RGB quantization range ctrl: %s\n",
 			rgb_quantization_range_txt[state->rgb_quantization_range]);
-	v4l2_info(sd, "Input color space: %s\n",
-			input_color_space_txt[reg_io_0x02 >> 4]);
-	v4l2_info(sd, "Output color space: %s %s, alt-gamma %s\n",
-			(reg_io_0x02 & 0x02) ? "RGB" : "YCbCr",
-			(((reg_io_0x02 >> 2) & 0x01) ^ (reg_io_0x02 & 0x01)) ?
-				"(16-235)" : "(0-255)",
-			(reg_io_0x02 & 0x08) ? "enabled" : "disabled");
+
+	ret = io_read(sd, 0x02);
+	if (ret < 0) {
+		v4l2_info(sd, "Can't read Input/Output color space\n");
+	} else {
+		reg_io_0x02 = ret;
+
+		v4l2_info(sd, "Input color space: %s\n",
+				input_color_space_txt[reg_io_0x02 >> 4]);
+		v4l2_info(sd, "Output color space: %s %s, alt-gamma %s\n",
+				(reg_io_0x02 & 0x02) ? "RGB" : "YCbCr",
+				(((reg_io_0x02 >> 2) & 0x01) ^ (reg_io_0x02 & 0x01)) ?
+					"(16-235)" : "(0-255)",
+				(reg_io_0x02 & 0x08) ? "enabled" : "disabled");
+	}
 	v4l2_info(sd, "Color space conversion: %s\n",
 			csc_coeff_sel_rb[cp_read(sd, info->cp_csc) >> 4]);
 
@@ -2726,9 +2734,6 @@ static const struct v4l2_subdev_core_ops adv76xx_core_ops = {
 static const struct v4l2_subdev_video_ops adv76xx_video_ops = {
 	.s_routing = adv76xx_s_routing,
 	.g_input_status = adv76xx_g_input_status,
-	.s_dv_timings = adv76xx_s_dv_timings,
-	.g_dv_timings = adv76xx_g_dv_timings,
-	.query_dv_timings = adv76xx_query_dv_timings,
 };
 
 static const struct v4l2_subdev_pad_ops adv76xx_pad_ops = {
@@ -2738,6 +2743,9 @@ static const struct v4l2_subdev_pad_ops adv76xx_pad_ops = {
 	.set_fmt = adv76xx_set_format,
 	.get_edid = adv76xx_get_edid,
 	.set_edid = adv76xx_set_edid,
+	.s_dv_timings = adv76xx_s_dv_timings,
+	.g_dv_timings = adv76xx_g_dv_timings,
+	.query_dv_timings = adv76xx_query_dv_timings,
 	.dv_timings_cap = adv76xx_dv_timings_cap,
 	.enum_dv_timings = adv76xx_enum_dv_timings,
 };
@@ -3204,8 +3212,8 @@ static int adv76xx_parse_dt(struct adv76xx_state *state)
 
 	np = state->i2c_clients[ADV76XX_PAGE_IO]->dev.of_node;
 
-	/* Parse the endpoint. */
-	endpoint = of_graph_get_next_endpoint(np, NULL);
+	/* FIXME: Parse the endpoint. */
+	endpoint = of_graph_get_endpoint_by_regs(np, -1, -1);
 	if (!endpoint)
 		return -EINVAL;
 

@@ -40,6 +40,7 @@
 #include <linux/ethtool.h>
 #include <linux/iopoll.h>
 #include <linux/ptp_classify.h>
+#include <linux/platform_device.h>
 #include <linux/net_tstamp.h>
 #include <linux/random.h>
 #include <net/sock.h>
@@ -1501,7 +1502,7 @@ int axienet_ethtools_set_coalesce(struct net_device *ndev,
  * Return: 0, on success, Non-zero error value on failure.
  */
 static int axienet_ethtools_get_ts_info(struct net_device *ndev,
-					struct ethtool_ts_info *info)
+					struct kernel_ethtool_ts_info *info)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
 
@@ -1986,7 +1987,7 @@ free_netdev:
 	return ret;
 }
 
-static int axienet_remove(struct platform_device *pdev)
+static void axienet_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
 	struct axienet_local *lp = netdev_priv(ndev);
@@ -2012,8 +2013,6 @@ static int axienet_remove(struct platform_device *pdev)
 	lp->phy_node = NULL;
 
 	free_netdev(ndev);
-
-	return 0;
 }
 
 static void axienet_shutdown(struct platform_device *pdev)

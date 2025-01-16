@@ -51,12 +51,7 @@ enum regulator_detection_severity {
 
 /* Initialize struct linear_range for regulators */
 #define REGULATOR_LINEAR_RANGE(_min_uV, _min_sel, _max_sel, _step_uV)	\
-{									\
-	.min		= _min_uV,					\
-	.min_sel	= _min_sel,					\
-	.max_sel	= _max_sel,					\
-	.step		= _step_uV,					\
-}
+	LINEAR_RANGE(_min_uV, _min_sel, _max_sel, _step_uV)
 
 /**
  * struct regulator_ops - regulator operations.
@@ -304,6 +299,8 @@ enum regulator_type {
  * @vsel_range_reg: Register for range selector when using pickable ranges
  *		    and ``regulator_map_*_voltage_*_pickable`` functions.
  * @vsel_range_mask: Mask for register bitfield used for range selector
+ * @range_applied_by_vsel: A flag to indicate that changes to vsel_range_reg
+ *			   are only effective after vsel_reg is written
  * @vsel_reg: Register for selector when using ``regulator_map_*_voltage_*``
  * @vsel_mask: Mask for register bitfield used for selector
  * @vsel_step: Specify the resolution of selector stepping when setting
@@ -394,6 +391,7 @@ struct regulator_desc {
 
 	unsigned int vsel_range_reg;
 	unsigned int vsel_range_mask;
+	bool range_applied_by_vsel;
 	unsigned int vsel_reg;
 	unsigned int vsel_mask;
 	unsigned int vsel_step;

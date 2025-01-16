@@ -3,7 +3,7 @@
 // This file is provided under a dual BSD/GPLv2 license.  When using or
 // redistributing this file, you may do so under either license.
 //
-// Copyright(c) 2018-2021 Intel Corporation. All rights reserved.
+// Copyright(c) 2018-2021 Intel Corporation
 //
 // Author: Liam Girdwood <liam.r.girdwood@linux.intel.com>
 //
@@ -28,23 +28,23 @@ static const struct sof_dev_desc icl_desc = {
 	.resindex_imr_base      = -1,
 	.irqindex_host_ipc      = -1,
 	.chip_info = &icl_chip_info,
-	.ipc_supported_mask	= BIT(SOF_IPC) | BIT(SOF_INTEL_IPC4),
-	.ipc_default		= SOF_IPC,
+	.ipc_supported_mask	= BIT(SOF_IPC_TYPE_3) | BIT(SOF_IPC_TYPE_4),
+	.ipc_default		= SOF_IPC_TYPE_3,
 	.dspless_mode_supported	= true,		/* Only supported for HDaudio */
 	.default_fw_path = {
-		[SOF_IPC] = "intel/sof",
-		[SOF_INTEL_IPC4] = "intel/avs/icl",
+		[SOF_IPC_TYPE_3] = "intel/sof",
+		[SOF_IPC_TYPE_4] = "intel/avs/icl",
 	},
 	.default_lib_path = {
-		[SOF_INTEL_IPC4] = "intel/avs-lib/icl",
+		[SOF_IPC_TYPE_4] = "intel/avs-lib/icl",
 	},
 	.default_tplg_path = {
-		[SOF_IPC] = "intel/sof-tplg",
-		[SOF_INTEL_IPC4] = "intel/avs-tplg",
+		[SOF_IPC_TYPE_3] = "intel/sof-tplg",
+		[SOF_IPC_TYPE_4] = "intel/avs-tplg",
 	},
 	.default_fw_filename = {
-		[SOF_IPC] = "sof-icl.ri",
-		[SOF_INTEL_IPC4] = "dsp_basefw.bin",
+		[SOF_IPC_TYPE_3] = "sof-icl.ri",
+		[SOF_IPC_TYPE_4] = "dsp_basefw.bin",
 	},
 	.nocodec_tplg_filename = "sof-icl-nocodec.tplg",
 	.ops = &sof_icl_ops,
@@ -60,23 +60,23 @@ static const struct sof_dev_desc jsl_desc = {
 	.resindex_imr_base      = -1,
 	.irqindex_host_ipc      = -1,
 	.chip_info = &jsl_chip_info,
-	.ipc_supported_mask	= BIT(SOF_IPC) | BIT(SOF_INTEL_IPC4),
-	.ipc_default		= SOF_IPC,
+	.ipc_supported_mask	= BIT(SOF_IPC_TYPE_3) | BIT(SOF_IPC_TYPE_4),
+	.ipc_default		= SOF_IPC_TYPE_3,
 	.dspless_mode_supported	= true,		/* Only supported for HDaudio */
 	.default_fw_path = {
-		[SOF_IPC] = "intel/sof",
-		[SOF_INTEL_IPC4] = "intel/avs/jsl",
+		[SOF_IPC_TYPE_3] = "intel/sof",
+		[SOF_IPC_TYPE_4] = "intel/avs/jsl",
 	},
 	.default_lib_path = {
-		[SOF_INTEL_IPC4] = "intel/avs-lib/jsl",
+		[SOF_IPC_TYPE_4] = "intel/avs-lib/jsl",
 	},
 	.default_tplg_path = {
-		[SOF_IPC] = "intel/sof-tplg",
-		[SOF_INTEL_IPC4] = "intel/avs-tplg",
+		[SOF_IPC_TYPE_3] = "intel/sof-tplg",
+		[SOF_IPC_TYPE_4] = "intel/avs-tplg",
 	},
 	.default_fw_filename = {
-		[SOF_IPC] = "sof-jsl.ri",
-		[SOF_INTEL_IPC4] = "dsp_basefw.bin",
+		[SOF_IPC_TYPE_3] = "sof-jsl.ri",
+		[SOF_IPC_TYPE_4] = "dsp_basefw.bin",
 	},
 	.nocodec_tplg_filename = "sof-jsl-nocodec.tplg",
 	.ops = &sof_cnl_ops,
@@ -108,5 +108,8 @@ static struct pci_driver snd_sof_pci_intel_icl_driver = {
 module_pci_driver(snd_sof_pci_intel_icl_driver);
 
 MODULE_LICENSE("Dual BSD/GPL");
+MODULE_DESCRIPTION("SOF support for IceLake platforms");
+MODULE_IMPORT_NS(SND_SOC_SOF_INTEL_HDA_GENERIC);
 MODULE_IMPORT_NS(SND_SOC_SOF_INTEL_HDA_COMMON);
+MODULE_IMPORT_NS(SND_SOC_SOF_INTEL_CNL);
 MODULE_IMPORT_NS(SND_SOC_SOF_PCI_DEV);

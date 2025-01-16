@@ -80,11 +80,11 @@ static phys_addr_t mc_portal_base_phys_addr;
  *
  * Returns 1 on success, 0 otherwise.
  */
-static int fsl_mc_bus_match(struct device *dev, struct device_driver *drv)
+static int fsl_mc_bus_match(struct device *dev, const struct device_driver *drv)
 {
 	const struct fsl_mc_device_id *id;
 	struct fsl_mc_device *mc_dev = to_fsl_mc_device(dev);
-	struct fsl_mc_driver *mc_drv = to_fsl_mc_driver(drv);
+	const struct fsl_mc_driver *mc_drv = to_fsl_mc_driver(drv);
 	bool found = false;
 
 	/* When driver_override is set, only bind to the matching driver */
@@ -309,7 +309,7 @@ static struct attribute *fsl_mc_bus_attrs[] = {
 
 ATTRIBUTE_GROUPS(fsl_mc_bus);
 
-struct bus_type fsl_mc_bus_type = {
+const struct bus_type fsl_mc_bus_type = {
 	.name = "fsl-mc",
 	.match = fsl_mc_bus_match,
 	.uevent = fsl_mc_bus_uevent,
@@ -1167,13 +1167,10 @@ error_cleanup_mc_io:
  * fsl_mc_bus_remove - callback invoked when the root MC bus is being
  * removed
  */
-static int fsl_mc_bus_remove(struct platform_device *pdev)
+static void fsl_mc_bus_remove(struct platform_device *pdev)
 {
 	struct fsl_mc *mc = platform_get_drvdata(pdev);
 	struct fsl_mc_io *mc_io;
-
-	if (!fsl_mc_is_root_dprc(&mc->root_mc_bus_dev->dev))
-		return -EINVAL;
 
 	mc_io = mc->root_mc_bus_dev->mc_io;
 	fsl_mc_device_remove(mc->root_mc_bus_dev);
@@ -1190,13 +1187,6 @@ static int fsl_mc_bus_remove(struct platform_device *pdev)
 		       (GCR1_P1_STOP | GCR1_P2_STOP),
 		       mc->fsl_mc_regs + FSL_MC_GCR1);
 	}
-
-	return 0;
-}
-
-static void fsl_mc_bus_shutdown(struct platform_device *pdev)
-{
-	fsl_mc_bus_remove(pdev);
 }
 
 static const struct of_device_id fsl_mc_bus_match_table[] = {
@@ -1220,8 +1210,8 @@ static struct platform_driver fsl_mc_bus_driver = {
 		   .acpi_match_table = fsl_mc_bus_acpi_match_table,
 		   },
 	.probe = fsl_mc_bus_probe,
-	.remove = fsl_mc_bus_remove,
-	.shutdown = fsl_mc_bus_shutdown,
+	.remove_new = fsl_mc_bus_remove,
+	.shutdown = fsl_mc_bus_remove,
 };
 
 static int fsl_mc_bus_notifier(struct notifier_block *nb,

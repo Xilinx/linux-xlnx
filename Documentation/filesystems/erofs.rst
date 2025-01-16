@@ -75,7 +75,7 @@ Here are the main features of EROFS:
 
  - Support merging tail-end data into a special inode as fragments.
 
- - Support large folios for uncompressed files.
+ - Support large folios to make use of THPs (Transparent Hugepages);
 
  - Support direct I/O on uncompressed files to avoid double caching for loop
    devices;
@@ -90,6 +90,10 @@ development, such as a formatting tool (mkfs.erofs), an on-disk consistency &
 compatibility checking tool (fsck.erofs), and a debugging tool (dump.erofs):
 
 - git://git.kernel.org/pub/scm/linux/kernel/git/xiang/erofs-utils.git
+
+For more information, please also refer to the documentation site:
+
+- https://erofs.docs.kernel.org
 
 Bugs and patches are welcome, please kindly help us and send to the following
 linux-erofs mailing list:
@@ -199,7 +203,7 @@ may not. All metadatas can be now observed in two different spaces (views):
                                         |                  |
                                         |__________________| 64 bytes
 
-    Xattrs, extents, data inline are followed by the corresponding inode with
+    Xattrs, extents, data inline are placed after the corresponding inode with
     proper alignment, and they could be optional for different data mappings.
     _currently_ total 5 data layouts are supported:
 

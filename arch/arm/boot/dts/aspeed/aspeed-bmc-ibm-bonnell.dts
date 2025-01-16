@@ -34,6 +34,11 @@
 		#size-cells = <1>;
 		ranges;
 
+		event_log: tcg_event_log@b3d00000 {
+			no-map;
+			reg = <0xb3d00000 0x100000>;
+		};
+
 		ramoops@b3e00000 {
 			compatible = "ramoops";
 			reg = <0xb3e00000 0x200000>; /* 16 * (4 * 0x8000) */
@@ -454,8 +459,9 @@
 	status = "okay";
 
 	tpm@2e {
-		compatible = "nuvoton,npct75x";
+		compatible = "nuvoton,npct75x", "tcg,tpm-tis-i2c";
 		reg = <0x2e>;
+		memory-region = <&event_log>;
 	};
 
 	eeprom@50 {
@@ -482,7 +488,7 @@
 		#gpio-cells = <2>;
 
 		led@0 {
-			label = "nvme0";
+			label = "nvme3";
 			reg = <0>;
 			retain-state-shutdown;
 			default-state = "keep";
@@ -490,7 +496,7 @@
 		};
 
 		led@1 {
-			label = "nvme1";
+			label = "nvme2";
 			reg = <1>;
 			retain-state-shutdown;
 			default-state = "keep";
@@ -498,7 +504,7 @@
 		};
 
 		led@2 {
-			label = "nvme2";
+			label = "nvme1";
 			reg = <2>;
 			retain-state-shutdown;
 			default-state = "keep";
@@ -506,7 +512,7 @@
 		};
 
 		led@3 {
-			label = "nvme3";
+			label = "nvme0";
 			reg = <3>;
 			retain-state-shutdown;
 			default-state = "keep";
@@ -562,11 +568,6 @@
 
 &wdt2 {
 	status = "okay";
-};
-
-&xdma {
-	status = "okay";
-	memory-region = <&vga_memory>;
 };
 
 &kcs2 {

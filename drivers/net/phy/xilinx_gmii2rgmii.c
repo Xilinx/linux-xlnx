@@ -23,7 +23,7 @@
 
 struct gmii2rgmii {
 	struct phy_device *phy_dev;
-	struct phy_driver *phy_drv;
+	const struct phy_driver *phy_drv;
 	struct phy_driver conv_phy_drv;
 	struct mdio_device *mdio;
 };
@@ -92,10 +92,10 @@ static int xgmiitorgmii_probe(struct mdio_device *mdiodev)
 	if (!priv)
 		return -ENOMEM;
 
-	clkin = devm_clk_get_optional_enabled(dev, "clkin");
+	clkin = devm_clk_get_optional_enabled(dev, NULL);
 	if (IS_ERR(clkin))
 		return dev_err_probe(dev, PTR_ERR(clkin),
-					"Failed to get and enable clock_in from Device Tree\n");
+					"Failed to get and enable clock from Device Tree\n");
 
 	phy_node = of_parse_phandle(np, "phy-handle", 0);
 	if (!phy_node) {

@@ -21,6 +21,7 @@
 #include <linux/of_device.h>
 #include <linux/of_graph.h>
 #include <linux/phy/phy.h>
+#include <linux/platform_device.h>
 #include <media/hdr-ctrls.h>
 #include <video/videomode.h>
 #include "xlnx_sdi_modes.h"
@@ -1453,7 +1454,7 @@ err_disable_axi_clk:
 	return ret;
 }
 
-static int xlnx_sdi_remove(struct platform_device *pdev)
+static void xlnx_sdi_remove(struct platform_device *pdev)
 {
 	struct xlnx_sdi *sdi = platform_get_drvdata(pdev);
 
@@ -1461,8 +1462,6 @@ static int xlnx_sdi_remove(struct platform_device *pdev)
 	clk_disable_unprepare(sdi->vidin_clk);
 	clk_disable_unprepare(sdi->sditx_clk);
 	clk_disable_unprepare(sdi->axi_clk);
-
-	return 0;
 }
 
 static const struct of_device_id xlnx_sdi_of_match[] = {

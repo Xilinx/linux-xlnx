@@ -897,7 +897,7 @@ static int nbpf_config(struct dma_chan *dchan,
 	/*
 	 * We could check config->slave_id to match chan->terminal here,
 	 * but with DT they would be coming from the same source, so
-	 * such a check would be superflous
+	 * such a check would be superfluous
 	 */
 
 	chan->slave_dst_addr = config->dst_addr;
@@ -1454,7 +1454,7 @@ e_clk_off:
 	return ret;
 }
 
-static int nbpf_remove(struct platform_device *pdev)
+static void nbpf_remove(struct platform_device *pdev)
 {
 	struct nbpf_device *nbpf = platform_get_drvdata(pdev);
 	int i;
@@ -1472,8 +1472,6 @@ static int nbpf_remove(struct platform_device *pdev)
 	of_dma_controller_free(pdev->dev.of_node);
 	dma_async_device_unregister(&nbpf->dma_dev);
 	clk_disable_unprepare(nbpf->clk);
-
-	return 0;
 }
 
 static const struct platform_device_id nbpf_ids[] = {
@@ -1517,7 +1515,7 @@ static struct platform_driver nbpf_driver = {
 	},
 	.id_table = nbpf_ids,
 	.probe = nbpf_probe,
-	.remove = nbpf_remove,
+	.remove_new = nbpf_remove,
 };
 
 module_platform_driver(nbpf_driver);

@@ -254,6 +254,9 @@ struct usb_ctrlrequest {
 #define USB_DT_DEVICE_CAPABILITY	0x10
 #define USB_DT_WIRELESS_ENDPOINT_COMP	0x11
 #define USB_DT_WIRE_ADAPTER		0x21
+/* From USB Device Firmware Upgrade Specification, Revision 1.1 */
+#define USB_DT_DFU_FUNCTIONAL		0x21
+/* these are from the Wireless USB spec */
 #define USB_DT_RPIPE			0x22
 #define USB_DT_CS_RADIO_CONTROL		0x23
 /* From the T10 UAS specification */
@@ -329,9 +332,10 @@ struct usb_device_descriptor {
 #define USB_CLASS_USB_TYPE_C_BRIDGE	0x12
 #define USB_CLASS_MISC			0xef
 #define USB_CLASS_APP_SPEC		0xfe
-#define USB_CLASS_VENDOR_SPEC		0xff
+#define USB_SUBCLASS_DFU			0x01
 
-#define USB_SUBCLASS_VENDOR_SPEC	0xff
+#define USB_CLASS_VENDOR_SPEC		0xff
+#define USB_SUBCLASS_VENDOR_SPEC		0xff
 
 /*-------------------------------------------------------------------------*/
 
@@ -763,6 +767,8 @@ struct usb_otg20_descriptor {
 #define USB_OTG_SRP		(1 << 0)
 #define USB_OTG_HNP		(1 << 1)	/* swap host/device roles */
 #define USB_OTG_ADP		(1 << 2)	/* support ADP */
+/* OTG 3.0 */
+#define USB_OTG_RSP		(1 << 3)	/* support RSP */
 
 #define OTG_STS_SELECTOR	0xF000		/* OTG status selector */
 /*-------------------------------------------------------------------------*/

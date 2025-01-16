@@ -206,7 +206,7 @@ static void ext4_journal_abort_handle(const char *caller, unsigned int line,
 
 static void ext4_check_bdev_write_error(struct super_block *sb)
 {
-	struct address_space *mapping = sb->s_bdev->bd_inode->i_mapping;
+	struct address_space *mapping = sb->s_bdev->bd_mapping;
 	struct ext4_sb_info *sbi = EXT4_SB(sb);
 	int err;
 
@@ -235,8 +235,6 @@ int __ext4_journal_get_write_access(const char *where, unsigned int line,
 
 	might_sleep();
 
-	ext4_check_bdev_write_error(sb);
-
 	if (ext4_handle_valid(handle)) {
 		err = jbd2_journal_get_write_access(handle, bh);
 		if (err) {
@@ -244,7 +242,8 @@ int __ext4_journal_get_write_access(const char *where, unsigned int line,
 						  handle, err);
 			return err;
 		}
-	}
+	} else
+		ext4_check_bdev_write_error(sb);
 	if (trigger_type == EXT4_JTR_NONE || !ext4_has_metadata_csum(sb))
 		return 0;
 	BUG_ON(trigger_type >= EXT4_JOURNAL_TRIGGER_COUNT);

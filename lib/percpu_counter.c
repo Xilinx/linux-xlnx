@@ -73,16 +73,49 @@ void percpu_counter_set(struct percpu_counter *fbc, s64 amount)
 EXPORT_SYMBOL(percpu_counter_set);
 
 /*
- * local_irq_save() is needed to make the function irq safe:
- * - The slow path would be ok as protected by an irq-safe spinlock.
- * - this_cpu_add would be ok as it is irq-safe by definition.
- * But:
- * The decision slow path/fast path and the actual update must be atomic, too.
+ * Add to a counter while respecting batch size.
+ *
+ * There are 2 implementations, both dealing with the following problem:
+ *
+ * The decision slow path/fast path and the actual update must be atomic.
  * Otherwise a call in process context could check the current values and
  * decide that the fast path can be used. If now an interrupt occurs before
  * the this_cpu_add(), and the interrupt updates this_cpu(*fbc->counters),
  * then the this_cpu_add() that is executed after the interrupt has completed
  * can produce values larger than "batch" or even overflows.
+ */
+#ifdef CONFIG_HAVE_CMPXCHG_LOCAL
+/*
+ * Safety against interrupts is achieved in 2 ways:
+ * 1. the fast path uses local cmpxchg (note: no lock prefix)
+ * 2. the slow path operates with interrupts disabled
+ */
+void percpu_counter_add_batch(struct percpu_counter *fbc, s64 amount, s32 batch)
+{
+	s64 count;
+	unsigned long flags;
+
+	count = this_cpu_read(*fbc->counters);
+	do {
+		if (unlikely(abs(count + amount) >= batch)) {
+			raw_spin_lock_irqsave(&fbc->lock, flags);
+			/*
+			 * Note: by now we might have migrated to another CPU
+			 * or the value might have changed.
+			 */
+			count = __this_cpu_read(*fbc->counters);
+			fbc->count += count + amount;
+			__this_cpu_sub(*fbc->counters, count);
+			raw_spin_unlock_irqrestore(&fbc->lock, flags);
+			return;
+		}
+	} while (!this_cpu_try_cmpxchg(*fbc->counters, &count, count + amount));
+}
+#else
+/*
+ * local_irq_save() is used to make the function irq safe:
+ * - The slow path would be ok as protected by an irq-safe spinlock.
+ * - this_cpu_add would be ok as it is irq-safe by definition.
  */
 void percpu_counter_add_batch(struct percpu_counter *fbc, s64 amount, s32 batch)
 {
@@ -101,6 +134,7 @@ void percpu_counter_add_batch(struct percpu_counter *fbc, s64 amount, s32 batch)
 	}
 	local_irq_restore(flags);
 }
+#endif
 EXPORT_SYMBOL(percpu_counter_add_batch);
 
 /*
@@ -175,7 +209,7 @@ int __percpu_counter_init_many(struct percpu_counter *fbc, s64 amount,
 		INIT_LIST_HEAD(&fbc[i].list);
 #endif
 		fbc[i].count = amount;
-		fbc[i].counters = (void *)counters + (i * counter_size);
+		fbc[i].counters = (void __percpu *)counters + i * counter_size;
 
 		debug_percpu_counter_activate(&fbc[i]);
 	}
@@ -277,6 +311,85 @@ int __percpu_counter_compare(struct percpu_counter *fbc, s64 rhs, s32 batch)
 		return 0;
 }
 EXPORT_SYMBOL(__percpu_counter_compare);
+
+/*
+ * Compare counter, and add amount if total is: less than or equal to limit if
+ * amount is positive, or greater than or equal to limit if amount is negative.
+ * Return true if amount is added, or false if total would be beyond the limit.
+ *
+ * Negative limit is allowed, but unusual.
+ * When negative amounts (subs) are given to percpu_counter_limited_add(),
+ * the limit would most naturally be 0 - but other limits are also allowed.
+ *
+ * Overflow beyond S64_MAX is not allowed for: counter, limit and amount
+ * are all assumed to be sane (far from S64_MIN and S64_MAX).
+ */
+bool __percpu_counter_limited_add(struct percpu_counter *fbc,
+				  s64 limit, s64 amount, s32 batch)
+{
+	s64 count;
+	s64 unknown;
+	unsigned long flags;
+	bool good = false;
+
+	if (amount == 0)
+		return true;
+
+	local_irq_save(flags);
+	unknown = batch * num_online_cpus();
+	count = __this_cpu_read(*fbc->counters);
+
+	/* Skip taking the lock when safe */
+	if (abs(count + amount) <= batch &&
+	    ((amount > 0 && fbc->count + unknown <= limit) ||
+	     (amount < 0 && fbc->count - unknown >= limit))) {
+		this_cpu_add(*fbc->counters, amount);
+		local_irq_restore(flags);
+		return true;
+	}
+
+	raw_spin_lock(&fbc->lock);
+	count = fbc->count + amount;
+
+	/* Skip percpu_counter_sum() when safe */
+	if (amount > 0) {
+		if (count - unknown > limit)
+			goto out;
+		if (count + unknown <= limit)
+			good = true;
+	} else {
+		if (count + unknown < limit)
+			goto out;
+		if (count - unknown >= limit)
+			good = true;
+	}
+
+	if (!good) {
+		s32 *pcount;
+		int cpu;
+
+		for_each_cpu_or(cpu, cpu_online_mask, cpu_dying_mask) {
+			pcount = per_cpu_ptr(fbc->counters, cpu);
+			count += *pcount;
+		}
+		if (amount > 0) {
+			if (count > limit)
+				goto out;
+		} else {
+			if (count < limit)
+				goto out;
+		}
+		good = true;
+	}
+
+	count = __this_cpu_read(*fbc->counters);
+	fbc->count += count + amount;
+	__this_cpu_sub(*fbc->counters, count);
+out:
+	raw_spin_unlock(&fbc->lock);
+	local_irq_restore(flags);
+	return good;
+}
 
 static int __init percpu_counter_startup(void)
 {

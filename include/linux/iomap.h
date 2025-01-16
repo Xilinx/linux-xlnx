@@ -256,12 +256,41 @@ static inline const struct iomap *iomap_iter_srcmap(const struct iomap_iter *i)
 	return &i->iomap;
 }
 
-ssize_t iomap_file_buffered_write(struct kiocb *iocb, struct iov_iter *from,
-		const struct iomap_ops *ops);
-int iomap_file_buffered_write_punch_delalloc(struct inode *inode,
-		struct iomap *iomap, loff_t pos, loff_t length, ssize_t written,
-		int (*punch)(struct inode *inode, loff_t pos, loff_t length));
+/*
+ * Return the file offset for the first unchanged block after a short write.
+ *
+ * If nothing was written, round @pos down to point at the first block in
+ * the range, else round up to include the partially written block.
+ */
+static inline loff_t iomap_last_written_block(struct inode *inode, loff_t pos,
+		ssize_t written)
+{
+	if (unlikely(!written))
+		return round_down(pos, i_blocksize(inode));
+	return round_up(pos + written, i_blocksize(inode));
+}
 
+/*
+ * Check if the range needs to be unshared for a FALLOC_FL_UNSHARE_RANGE
+ * operation.
+ *
+ * Don't bother with blocks that are not shared to start with; or mappings that
+ * cannot be shared, such as inline data, delalloc reservations, holes or
+ * unwritten extents.
+ *
+ * Note that we use srcmap directly instead of iomap_iter_srcmap as unsharing
+ * requires providing a separate source map, and the presence of one is a good
+ * indicator that unsharing is needed, unlike IOMAP_F_SHARED which can be set
+ * for any data that goes into the COW fork for XFS.
+ */
+static inline bool iomap_want_unshare_iter(const struct iomap_iter *iter)
+{
+	return (iter->iomap.flags & IOMAP_F_SHARED) &&
+		iter->srcmap.type == IOMAP_MAPPED;
+}
+
+ssize_t iomap_file_buffered_write(struct kiocb *iocb, struct iov_iter *from,
+		const struct iomap_ops *ops, void *private);
 int iomap_read_folio(struct folio *folio, const struct iomap_ops *ops);
 void iomap_readahead(struct readahead_control *, const struct iomap_ops *ops);
 bool iomap_is_partially_uptodate(struct folio *, size_t from, size_t count);
@@ -277,6 +306,13 @@ int iomap_truncate_page(struct inode *inode, loff_t pos, bool *did_zero,
 		const struct iomap_ops *ops);
 vm_fault_t iomap_page_mkwrite(struct vm_fault *vmf,
 			const struct iomap_ops *ops);
+
+typedef void (*iomap_punch_t)(struct inode *inode, loff_t offset, loff_t length,
+		struct iomap *iomap);
+void iomap_write_delalloc_release(struct inode *inode, loff_t start_byte,
+		loff_t end_byte, unsigned flags, struct iomap *iomap,
+		iomap_punch_t punch);
+
 int iomap_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
 		u64 start, u64 len, const struct iomap_ops *ops);
 loff_t iomap_seek_hole(struct inode *inode, loff_t offset,
@@ -293,22 +329,32 @@ struct iomap_ioend {
 	struct list_head	io_list;	/* next ioend in chain */
 	u16			io_type;
 	u16			io_flags;	/* IOMAP_F_* */
-	u32			io_folios;	/* folios added to ioend */
 	struct inode		*io_inode;	/* file being written to */
 	size_t			io_size;	/* size of the extent */
 	loff_t			io_offset;	/* offset in the file */
 	sector_t		io_sector;	/* start sector of ioend */
-	struct bio		*io_bio;	/* bio being built */
-	struct bio		io_inline_bio;	/* MUST BE LAST! */
+	struct bio		io_bio;		/* MUST BE LAST! */
 };
+
+static inline struct iomap_ioend *iomap_ioend_from_bio(struct bio *bio)
+{
+	return container_of(bio, struct iomap_ioend, io_bio);
+}
 
 struct iomap_writeback_ops {
 	/*
 	 * Required, maps the blocks so that writeback can be performed on
 	 * the range starting at offset.
+	 *
+	 * Can return arbitrarily large regions, but we need to call into it at
+	 * least once per folio to allow the file systems to synchronize with
+	 * the write path that could be invalidating mappings.
+	 *
+	 * An existing mapping from a previous call to this method can be reused
+	 * by the file system if it is still valid.
 	 */
 	int (*map_blocks)(struct iomap_writepage_ctx *wpc, struct inode *inode,
-				loff_t offset);
+			  loff_t offset, unsigned len);
 
 	/*
 	 * Optional, allows the file systems to perform actions just before
@@ -329,6 +375,7 @@ struct iomap_writepage_ctx {
 	struct iomap		iomap;
 	struct iomap_ioend	*ioend;
 	const struct iomap_writeback_ops *ops;
+	u32			nr_folios;	/* folios added to the ioend */
 };
 
 void iomap_finish_ioends(struct iomap_ioend *ioend, int error);

@@ -35,7 +35,7 @@
 #include <linux/gfp.h>
 #include <net/protocol.h>
 #include <net/tcp.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 #include <net/ip_vs.h>
 
@@ -635,3 +635,4 @@ static void __exit ip_vs_ftp_exit(void)
 module_init(ip_vs_ftp_init);
 module_exit(ip_vs_ftp_exit);
 MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("ipvs ftp helper");

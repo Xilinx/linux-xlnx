@@ -133,6 +133,50 @@
         ]
     },
     {
+        "id": "6f62",
+        "name": "Add taprio Qdisc with too short interval",
+        "category": [
+            "qdisc",
+            "taprio"
+        ],
+        "plugins": {
+            "requires": "nsPlugin"
+        },
+        "setup": [
+            "echo \"1 1 8\" > /sys/bus/netdevsim/new_device"
+        ],
+        "cmdUnderTest": "$TC qdisc add dev $ETH root handle 1: taprio num_tc 2 queues 1@0 1@1 sched-entry S 01 300 sched-entry S 02 1700 clockid CLOCK_TAI",
+        "expExitCode": "2",
+        "verifyCmd": "$TC qdisc show dev $ETH",
+        "matchPattern": "qdisc taprio 1: root refcnt",
+        "matchCount": "0",
+        "teardown": [
+            "echo \"1\" > /sys/bus/netdevsim/del_device"
+        ]
+    },
+    {
+        "id": "831f",
+        "name": "Add taprio Qdisc with too short cycle-time",
+        "category": [
+            "qdisc",
+            "taprio"
+        ],
+        "plugins": {
+            "requires": "nsPlugin"
+        },
+        "setup": [
+            "echo \"1 1 8\" > /sys/bus/netdevsim/new_device"
+        ],
+        "cmdUnderTest": "$TC qdisc add dev $ETH root handle 1: taprio num_tc 2 queues 1@0 1@1 sched-entry S 01 200000 sched-entry S 02 200000 cycle-time 100 clockid CLOCK_TAI",
+        "expExitCode": "2",
+        "verifyCmd": "$TC qdisc show dev $ETH",
+        "matchPattern": "qdisc taprio 1: root refcnt",
+        "matchCount": "0",
+        "teardown": [
+            "echo \"1\" > /sys/bus/netdevsim/del_device"
+        ]
+    },
+    {
         "id": "3e1e",
         "name": "Add taprio Qdisc with an invalid cycle-time",
         "category": [
@@ -167,14 +211,15 @@
         "plugins": {
             "requires": "nsPlugin"
         },
+        "dependsOn": "echo '' | jq",
         "setup": [
             "echo \"1 1 8\" > /sys/bus/netdevsim/new_device",
             "$TC qdisc replace dev $ETH handle 8001: parent root stab overhead 24 taprio num_tc 8 map 0 1 2 3 4 5 6 7 queues 1@0 1@1 1@2 1@3 1@4 1@5 1@6 1@7 base-time 0 sched-entry S ff 20000000 clockid CLOCK_TAI",
-            "./taprio_wait_for_admin.sh $TC $ETH"
+            "./scripts/taprio_wait_for_admin.sh $TC $ETH"
         ],
         "cmdUnderTest": "$TC qdisc replace dev $ETH parent 8001:7 taprio num_tc 8 map 0 1 2 3 4 5 6 7 queues 1@0 1@1 1@2 1@3 1@4 1@5 1@6 1@7 base-time 200 sched-entry S ff 20000000 clockid CLOCK_TAI",
         "expExitCode": "2",
-        "verifyCmd": "bash -c \"./taprio_wait_for_admin.sh $TC $ETH && $TC -j qdisc show dev $ETH root | jq '.[].options.base_time'\"",
+        "verifyCmd": "bash -c \"./scripts/taprio_wait_for_admin.sh $TC $ETH && $TC -j qdisc show dev $ETH root | jq '.[].options.base_time'\"",
         "matchPattern": "0",
         "matchCount": "1",
         "teardown": [
@@ -192,14 +237,15 @@
         "plugins": {
             "requires": "nsPlugin"
         },
+        "dependsOn": "echo '' | jq",
         "setup": [
             "echo \"1 1 8\" > /sys/bus/netdevsim/new_device",
             "$TC qdisc replace dev $ETH handle 8001: parent root stab overhead 24 taprio num_tc 8 map 0 1 2 3 4 5 6 7 queues 1@0 1@1 1@2 1@3 1@4 1@5 1@6 1@7 base-time 0 sched-entry S ff 20000000 flags 0x2",
-            "./taprio_wait_for_admin.sh $TC $ETH"
+            "./scripts/taprio_wait_for_admin.sh $TC $ETH"
         ],
         "cmdUnderTest": "$TC qdisc replace dev $ETH parent 8001:7 taprio num_tc 8 map 0 1 2 3 4 5 6 7 queues 1@0 1@1 1@2 1@3 1@4 1@5 1@6 1@7 base-time 200 sched-entry S ff 20000000 flags 0x2",
         "expExitCode": "2",
-        "verifyCmd": "bash -c \"./taprio_wait_for_admin.sh $TC $ETH && $TC -j qdisc show dev $ETH root | jq '.[].options.base_time'\"",
+        "verifyCmd": "bash -c \"./scripts/taprio_wait_for_admin.sh $TC $ETH && $TC -j qdisc show dev $ETH root | jq '.[].options.base_time'\"",
         "matchPattern": "0",
         "matchCount": "1",
         "teardown": [

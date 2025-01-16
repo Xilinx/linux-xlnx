@@ -19,10 +19,7 @@
  *   - the arguments are cast to long and assigned into the target
  *     registers which are then simply passed as registers to the asm code,
  *     so that we don't have to experience issues with register constraints.
- *
- * On riscv, select() is not implemented so we have to use pselect6().
  */
-#define __ARCH_WANT_SYS_PSELECT6
 
 #define my_syscall0(num)                                                      \
 ({                                                                            \
@@ -143,7 +140,7 @@
 })
 
 /* startup code */
-void __attribute__((weak, noreturn, optimize("Os", "omit-frame-pointer"))) __no_stack_protector _start(void)
+void __attribute__((weak, noreturn)) __nolibc_entrypoint __no_stack_protector _start(void)
 {
 	__asm__ volatile (
 		".option push\n"
@@ -154,7 +151,7 @@ void __attribute__((weak, noreturn, optimize("Os", "omit-frame-pointer"))) __no_
 		"andi sp, a0, -16\n"      /* sp must be 16-byte aligned                    */
 		"call _start_c\n"         /* transfer to c runtime                         */
 	);
-	__builtin_unreachable();
+	__nolibc_entrypoint_epilogue();
 }
 
 #endif /* _NOLIBC_ARCH_RISCV_H */

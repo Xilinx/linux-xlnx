@@ -11,6 +11,8 @@ ALL_TESTS="
 
 lib_dir=$(dirname "$0")
 source ${lib_dir}/bond_topo_3d1c.sh
+c_maddr="33:33:00:00:00:10"
+g_maddr="33:33:00:00:02:54"
 
 skip_prio()
 {
@@ -45,14 +47,22 @@ skip_ns()
 }
 
 active_slave=""
+active_slave_changed()
+{
+	local old_active_slave=$1
+	local new_active_slave=$(cmd_jq "ip -n ${s_ns} -d -j link show bond0" \
+				".[].linkinfo.info_data.active_slave")
+	[ "$new_active_slave" != "$old_active_slave" -a "$new_active_slave" != "null" ]
+}
+
 check_active_slave()
 {
 	local target_active_slave=$1
+	slowwait 5 active_slave_changed $active_slave
 	active_slave=$(cmd_jq "ip -n ${s_ns} -d -j link show bond0" ".[].linkinfo.info_data.active_slave")
 	test "$active_slave" = "$target_active_slave"
 	check_err $? "Current active slave is $active_slave but not $target_active_slave"
 }
-
 
 # Test bonding prio option
 prio_test()
@@ -62,6 +72,8 @@ prio_test()
 
 	# create bond
 	bond_reset "${param}"
+	# set active_slave to primary eth1 specifically
+	ip -n ${s_ns} link set bond0 type bond active_slave eth1
 
 	# check bonding member prio value
 	ip -n ${s_ns} link set eth0 type bond_slave prio 0
@@ -84,13 +96,13 @@ prio_test()
 
 	# active slave should be the higher prio slave
 	ip -n ${s_ns} link set $active_slave down
-	bond_check_connection "fail over"
 	check_active_slave eth2
+	bond_check_connection "fail over"
 
 	# when only 1 slave is up
 	ip -n ${s_ns} link set $active_slave down
-	bond_check_connection "only 1 slave up"
 	check_active_slave eth0
+	bond_check_connection "only 1 slave up"
 
 	# when a higher prio slave change to up
 	ip -n ${s_ns} link set eth2 up
@@ -140,8 +152,8 @@ prio_test()
 		check_active_slave "eth1"
 
 		ip -n ${s_ns} link set $active_slave down
-		bond_check_connection "change slave prio"
 		check_active_slave "eth0"
+		bond_check_connection "change slave prio"
 	fi
 }
 
@@ -162,7 +174,7 @@ prio_arp()
 	local mode=$1
 
 	for primary_reselect in 0 1 2; do
-		prio_test "mode active-backup arp_interval 100 arp_ip_target ${g_ip4} primary eth1 primary_reselect $primary_reselect"
+		prio_test "mode $mode arp_interval 100 arp_ip_target ${g_ip4} primary eth1 primary_reselect $primary_reselect"
 		log_test "prio" "$mode arp_ip_target primary_reselect $primary_reselect"
 	done
 }
@@ -178,7 +190,7 @@ prio_ns()
 	fi
 
 	for primary_reselect in 0 1 2; do
-		prio_test "mode active-backup arp_interval 100 ns_ip6_target ${g_ip6} primary eth1 primary_reselect $primary_reselect"
+		prio_test "mode $mode arp_interval 100 ns_ip6_target ${g_ip6} primary eth1 primary_reselect $primary_reselect"
 		log_test "prio" "$mode ns_ip6_target primary_reselect $primary_reselect"
 	done
 }
@@ -194,9 +206,18 @@ prio()
 
 	for mode in $modes; do
 		prio_miimon $mode
-		prio_arp $mode
-		prio_ns $mode
 	done
+	prio_arp "active-backup"
+	prio_ns "active-backup"
+}
+
+wait_mii_up()
+{
+	for i in $(seq 0 2); do
+		mii_status=$(cmd_jq "ip -n ${s_ns} -j -d link show eth$i" ".[].linkinfo.info_slave_data.mii_status")
+		[ ${mii_status} != "UP" ] && return 1
+	done
+	return 0
 }
 
 arp_validate_test()
@@ -211,12 +232,60 @@ arp_validate_test()
 	[ $RET -ne 0 ] && log_test "arp_validate" "$retmsg"
 
 	# wait for a while to make sure the mii status stable
-	sleep 5
+	slowwait 5 wait_mii_up
 	for i in $(seq 0 2); do
 		mii_status=$(cmd_jq "ip -n ${s_ns} -j -d link show eth$i" ".[].linkinfo.info_slave_data.mii_status")
 		if [ ${mii_status} != "UP" ]; then
 			RET=1
 			log_test "arp_validate" "interface eth$i mii_status $mii_status"
+		fi
+	done
+}
+
+# Testing correct multicast groups are added to slaves for ns targets
+arp_validate_mcast()
+{
+	RET=0
+	local arp_valid=$(cmd_jq "ip -n ${s_ns} -j -d link show bond0" ".[].linkinfo.info_data.arp_validate")
+	local active_slave=$(cmd_jq "ip -n ${s_ns} -d -j link show bond0" ".[].linkinfo.info_data.active_slave")
+
+	for i in $(seq 0 2); do
+		maddr_list=$(ip -n ${s_ns} maddr show dev eth${i})
+
+		# arp_valid == 0 or active_slave should not join any maddrs
+		if { [ "$arp_valid" == "null" ] || [ "eth${i}" == ${active_slave} ]; } && \
+			echo "$maddr_list" | grep -qE "${c_maddr}|${g_maddr}"; then
+			RET=1
+			check_err 1 "arp_valid $arp_valid active_slave $active_slave, eth$i has mcast group"
+		# arp_valid != 0 and backup_slave should join both maddrs
+		elif [ "$arp_valid" != "null" ] && [ "eth${i}" != ${active_slave} ] && \
+		     ( ! echo "$maddr_list" | grep -q "${c_maddr}" || \
+		       ! echo "$maddr_list" | grep -q "${m_maddr}"); then
+			RET=1
+			check_err 1 "arp_valid $arp_valid active_slave $active_slave, eth$i has mcast group"
+		fi
+	done
+
+	# Do failover
+	ip -n ${s_ns} link set ${active_slave} down
+	# wait for active link change
+	slowwait 2 active_slave_changed $active_slave
+	active_slave=$(cmd_jq "ip -n ${s_ns} -d -j link show bond0" ".[].linkinfo.info_data.active_slave")
+
+	for i in $(seq 0 2); do
+		maddr_list=$(ip -n ${s_ns} maddr show dev eth${i})
+
+		# arp_valid == 0 or active_slave should not join any maddrs
+		if { [ "$arp_valid" == "null" ] || [ "eth${i}" == ${active_slave} ]; } && \
+			echo "$maddr_list" | grep -qE "${c_maddr}|${g_maddr}"; then
+			RET=1
+			check_err 1 "arp_valid $arp_valid active_slave $active_slave, eth$i has mcast group"
+		# arp_valid != 0 and backup_slave should join both maddrs
+		elif [ "$arp_valid" != "null" ] && [ "eth${i}" != ${active_slave} ] && \
+		     ( ! echo "$maddr_list" | grep -q "${c_maddr}" || \
+		       ! echo "$maddr_list" | grep -q "${m_maddr}"); then
+			RET=1
+			check_err 1 "arp_valid $arp_valid active_slave $active_slave, eth$i has mcast group"
 		fi
 	done
 }
@@ -242,8 +311,10 @@ arp_validate_ns()
 	fi
 
 	for val in $(seq 0 6); do
-		arp_validate_test "mode $mode arp_interval 100 ns_ip6_target ${g_ip6} arp_validate $val"
+		arp_validate_test "mode $mode arp_interval 100 ns_ip6_target ${g_ip6},${c_ip6} arp_validate $val"
 		log_test "arp_validate" "$mode ns_ip6_target arp_validate $val"
+		arp_validate_mcast
+		log_test "arp_validate" "join mcast group"
 	done
 }
 
@@ -276,10 +347,13 @@ garp_test()
 	active_slave=$(cmd_jq "ip -n ${s_ns} -d -j link show bond0" ".[].linkinfo.info_data.active_slave")
 	ip -n ${s_ns} link set ${active_slave} down
 
-	exp_num=$(echo "${param}" | cut -f6 -d ' ')
-	sleep $((exp_num + 2))
+	# wait for active link change
+	slowwait 2 active_slave_changed $active_slave
 
+	exp_num=$(echo "${param}" | cut -f6 -d ' ')
 	active_slave=$(cmd_jq "ip -n ${s_ns} -d -j link show bond0" ".[].linkinfo.info_data.active_slave")
+	slowwait_for_counter $((exp_num + 5)) $exp_num \
+		tc_rule_handle_stats_get "dev s${active_slave#eth} ingress" 101 ".packets" "-n ${g_ns}"
 
 	# check result
 	real_num=$(tc_rule_handle_stats_get "dev s${active_slave#eth} ingress" 101 ".packets" "-n ${g_ns}")
@@ -296,8 +370,8 @@ garp_test()
 num_grat_arp()
 {
 	local val
-	for val in 10 20 30 50; do
-		garp_test "mode active-backup miimon 100 num_grat_arp $val peer_notify_delay 1000"
+	for val in 10 20 30; do
+		garp_test "mode active-backup miimon 10 num_grat_arp $val peer_notify_delay 100"
 		log_test "num_grat_arp" "active-backup miimon num_grat_arp $val"
 	done
 }

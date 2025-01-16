@@ -91,15 +91,17 @@ static void tegra_tcu_write(struct tegra_tcu *tcu, const char *s,
 static void tegra_tcu_uart_start_tx(struct uart_port *port)
 {
 	struct tegra_tcu *tcu = port->private_data;
-	struct circ_buf *xmit = &port->state->xmit;
-	unsigned long count;
+	struct tty_port *tport = &port->state->port;
+	unsigned char *tail;
+	unsigned int count;
 
 	for (;;) {
-		count = CIRC_CNT_TO_END(xmit->head, xmit->tail, UART_XMIT_SIZE);
+		count = kfifo_out_linear_ptr(&tport->xmit_fifo, &tail,
+				UART_XMIT_SIZE);
 		if (!count)
 			break;
 
-		tegra_tcu_write(tcu, &xmit->buf[xmit->tail], count);
+		tegra_tcu_write(tcu, tail, count);
 		uart_xmit_advance(port, count);
 	}
 
@@ -266,7 +268,7 @@ free_tx:
 	return err;
 }
 
-static int tegra_tcu_remove(struct platform_device *pdev)
+static void tegra_tcu_remove(struct platform_device *pdev)
 {
 	struct tegra_tcu *tcu = platform_get_drvdata(pdev);
 
@@ -277,8 +279,6 @@ static int tegra_tcu_remove(struct platform_device *pdev)
 	uart_remove_one_port(&tcu->driver, &tcu->port);
 	uart_unregister_driver(&tcu->driver);
 	mbox_free_channel(tcu->tx);
-
-	return 0;
 }
 
 static const struct of_device_id tegra_tcu_match[] = {
@@ -293,7 +293,7 @@ static struct platform_driver tegra_tcu_driver = {
 		.of_match_table = tegra_tcu_match,
 	},
 	.probe = tegra_tcu_probe,
-	.remove = tegra_tcu_remove,
+	.remove_new = tegra_tcu_remove,
 };
 module_platform_driver(tegra_tcu_driver);
 

@@ -113,7 +113,7 @@ struct xvip_dma {
 	unsigned int align;
 	unsigned int width_align;
 	struct dma_interleaved_template xt;
-	struct data_chunk sgl[1];
+	struct data_chunk sgl;
 
 	u32 prev_fid;
 	u32 low_latency_cap;

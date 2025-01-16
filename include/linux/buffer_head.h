@@ -53,7 +53,7 @@ typedef void (bh_end_io_t)(struct buffer_head *bh, int uptodate);
  * filesystem and block layers.  Nowadays the basic I/O unit
  * is the bio, and buffer_heads are used for extracting block
  * mappings (via a get_block_t call), for tracking state within
- * a page (via a page_mapping) and for wrapping bio submission
+ * a folio (via a folio_mapping) and for wrapping bio submission
  * for backward compatibility reasons (e.g. submit_bh).
  */
 struct buffer_head {
@@ -198,16 +198,12 @@ void touch_buffer(struct buffer_head *bh);
 void folio_set_bh(struct buffer_head *bh, struct folio *folio,
 		  unsigned long offset);
 struct buffer_head *folio_alloc_buffers(struct folio *folio, unsigned long size,
-					bool retry);
-struct buffer_head *alloc_page_buffers(struct page *page, unsigned long size,
-		bool retry);
-void create_empty_buffers(struct page *, unsigned long,
-			unsigned long b_state);
-void folio_create_empty_buffers(struct folio *folio, unsigned long blocksize,
-				unsigned long b_state);
+					gfp_t gfp);
+struct buffer_head *alloc_page_buffers(struct page *page, unsigned long size);
+struct buffer_head *create_empty_buffers(struct folio *folio,
+		unsigned long blocksize, unsigned long b_state);
 void end_buffer_read_sync(struct buffer_head *bh, int uptodate);
 void end_buffer_write_sync(struct buffer_head *bh, int uptodate);
-void end_buffer_async_write(struct buffer_head *bh, int uptodate);
 
 /* Things to do with buffers at mapping->private_list */
 void mark_buffer_dirty_inode(struct buffer_head *bh, struct inode *inode);
@@ -227,8 +223,8 @@ void __wait_on_buffer(struct buffer_head *);
 wait_queue_head_t *bh_waitq_head(struct buffer_head *bh);
 struct buffer_head *__find_get_block(struct block_device *bdev, sector_t block,
 			unsigned size);
-struct buffer_head *__getblk_gfp(struct block_device *bdev, sector_t block,
-				  unsigned size, gfp_t gfp);
+struct buffer_head *bdev_getblk(struct block_device *bdev, sector_t block,
+		unsigned size, gfp_t gfp);
 void __brelse(struct buffer_head *);
 void __bforget(struct buffer_head *);
 void __breadahead(struct block_device *, sector_t block, unsigned int size);
@@ -254,27 +250,25 @@ void __bh_read_batch(int nr, struct buffer_head *bhs[],
  * address_spaces.
  */
 void block_invalidate_folio(struct folio *folio, size_t offset, size_t length);
-int block_write_full_page(struct page *page, get_block_t *get_block,
-				struct writeback_control *wbc);
+int block_write_full_folio(struct folio *folio, struct writeback_control *wbc,
+		void *get_block);
 int __block_write_full_folio(struct inode *inode, struct folio *folio,
-			get_block_t *get_block, struct writeback_control *wbc,
-			bh_end_io_t *handler);
+		get_block_t *get_block, struct writeback_control *wbc);
 int block_read_full_folio(struct folio *, get_block_t *);
 bool block_is_partially_uptodate(struct folio *, size_t from, size_t count);
 int block_write_begin(struct address_space *mapping, loff_t pos, unsigned len,
-		struct page **pagep, get_block_t *get_block);
-int __block_write_begin(struct page *page, loff_t pos, unsigned len,
+		struct folio **foliop, get_block_t *get_block);
+int __block_write_begin(struct folio *folio, loff_t pos, unsigned len,
 		get_block_t *get_block);
 int block_write_end(struct file *, struct address_space *,
-				loff_t, unsigned, unsigned,
-				struct page *, void *);
+				loff_t, unsigned len, unsigned copied,
+				struct folio *, void *);
 int generic_write_end(struct file *, struct address_space *,
-				loff_t, unsigned, unsigned,
-				struct page *, void *);
+				loff_t, unsigned len, unsigned copied,
+				struct folio *, void *);
 void folio_zero_new_buffers(struct folio *folio, size_t from, size_t to);
-void clean_page_buffers(struct page *page);
 int cont_write_begin(struct file *, struct address_space *, loff_t,
-			unsigned, struct page **, void **,
+			unsigned, struct folio **, void **,
 			get_block_t *, loff_t *);
 int generic_cont_expand_simple(struct inode *inode, loff_t size);
 void block_commit_write(struct page *page, unsigned int from, unsigned int to);
@@ -308,12 +302,38 @@ static inline void put_bh(struct buffer_head *bh)
         atomic_dec(&bh->b_count);
 }
 
+/**
+ * brelse - Release a buffer.
+ * @bh: The buffer to release.
+ *
+ * Decrement a buffer_head's reference count.  If @bh is NULL, this
+ * function is a no-op.
+ *
+ * If all buffers on a folio have zero reference count, are clean
+ * and unlocked, and if the folio is unlocked and not under writeback
+ * then try_to_free_buffers() may strip the buffers from the folio in
+ * preparation for freeing it (sometimes, rarely, buffers are removed
+ * from a folio but it ends up not being freed, and buffers may later
+ * be reattached).
+ *
+ * Context: Any context.
+ */
 static inline void brelse(struct buffer_head *bh)
 {
 	if (bh)
 		__brelse(bh);
 }
 
+/**
+ * bforget - Discard any dirty data in a buffer.
+ * @bh: The buffer to forget.
+ *
+ * Call this function instead of brelse() if the data written to a buffer
+ * no longer needs to be written back.  It will clear the buffer's dirty
+ * flag so writeback of this buffer will be skipped.
+ *
+ * Context: Any context.
+ */
 static inline void bforget(struct buffer_head *bh)
 {
 	if (bh)
@@ -338,17 +358,38 @@ sb_breadahead(struct super_block *sb, sector_t block)
 	__breadahead(sb->s_bdev, block, sb->s_blocksize);
 }
 
-static inline struct buffer_head *
-sb_getblk(struct super_block *sb, sector_t block)
+static inline struct buffer_head *getblk_unmovable(struct block_device *bdev,
+		sector_t block, unsigned size)
 {
-	return __getblk_gfp(sb->s_bdev, block, sb->s_blocksize, __GFP_MOVABLE);
+	gfp_t gfp;
+
+	gfp = mapping_gfp_constraint(bdev->bd_mapping, ~__GFP_FS);
+	gfp |= __GFP_NOFAIL;
+
+	return bdev_getblk(bdev, block, size, gfp);
 }
 
-
-static inline struct buffer_head *
-sb_getblk_gfp(struct super_block *sb, sector_t block, gfp_t gfp)
+static inline struct buffer_head *__getblk(struct block_device *bdev,
+		sector_t block, unsigned size)
 {
-	return __getblk_gfp(sb->s_bdev, block, sb->s_blocksize, gfp);
+	gfp_t gfp;
+
+	gfp = mapping_gfp_constraint(bdev->bd_mapping, ~__GFP_FS);
+	gfp |= __GFP_MOVABLE | __GFP_NOFAIL;
+
+	return bdev_getblk(bdev, block, size, gfp);
+}
+
+static inline struct buffer_head *sb_getblk(struct super_block *sb,
+		sector_t block)
+{
+	return __getblk(sb->s_bdev, block, sb->s_blocksize);
+}
+
+static inline struct buffer_head *sb_getblk_gfp(struct super_block *sb,
+		sector_t block, gfp_t gfp)
+{
+	return bdev_getblk(sb->s_bdev, block, sb->s_blocksize, gfp);
 }
 
 static inline struct buffer_head *
@@ -383,20 +424,6 @@ static inline void lock_buffer(struct buffer_head *bh)
 	might_sleep();
 	if (!trylock_buffer(bh))
 		__lock_buffer(bh);
-}
-
-static inline struct buffer_head *getblk_unmovable(struct block_device *bdev,
-						   sector_t block,
-						   unsigned size)
-{
-	return __getblk_gfp(bdev, block, size, 0);
-}
-
-static inline struct buffer_head *__getblk(struct block_device *bdev,
-					   sector_t block,
-					   unsigned size)
-{
-	return __getblk_gfp(bdev, block, size, __GFP_MOVABLE);
 }
 
 static inline void bh_readahead(struct buffer_head *bh, blk_opf_t op_flags)
@@ -435,19 +462,45 @@ static inline void bh_readahead_batch(int nr, struct buffer_head *bhs[],
 }
 
 /**
- *  __bread() - reads a specified block and returns the bh
- *  @bdev: the block_device to read from
- *  @block: number of block
- *  @size: size (in bytes) to read
+ * __bread() - Read a block.
+ * @bdev: The block device to read from.
+ * @block: Block number in units of block size.
+ * @size: The block size of this device in bytes.
  *
- *  Reads a specified block, and returns buffer head that contains it.
- *  The page cache is allocated from movable area so that it can be migrated.
- *  It returns NULL if the block was unreadable.
+ * Read a specified block, and return the buffer head that refers
+ * to it.  The memory is allocated from the movable area so that it can
+ * be migrated.  The returned buffer head has its refcount increased.
+ * The caller should call brelse() when it has finished with the buffer.
+ *
+ * Context: May sleep waiting for I/O.
+ * Return: NULL if the block was unreadable.
  */
-static inline struct buffer_head *
-__bread(struct block_device *bdev, sector_t block, unsigned size)
+static inline struct buffer_head *__bread(struct block_device *bdev,
+		sector_t block, unsigned size)
 {
 	return __bread_gfp(bdev, block, size, __GFP_MOVABLE);
+}
+
+/**
+ * get_nth_bh - Get a reference on the n'th buffer after this one.
+ * @bh: The buffer to start counting from.
+ * @count: How many buffers to skip.
+ *
+ * This is primarily useful for finding the nth buffer in a folio; in
+ * that case you pass the head buffer and the byte offset in the folio
+ * divided by the block size.  It can be used for other purposes, but
+ * it will wrap at the end of the folio rather than returning NULL or
+ * proceeding to the next folio for you.
+ *
+ * Return: The requested buffer with an elevated refcount.
+ */
+static inline __must_check
+struct buffer_head *get_nth_bh(struct buffer_head *bh, unsigned int count)
+{
+	while (count--)
+		bh = bh->b_this_page;
+	get_bh(bh);
+	return bh;
 }
 
 bool block_dirty_folio(struct address_space *mapping, struct folio *folio);

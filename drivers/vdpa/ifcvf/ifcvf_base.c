@@ -69,9 +69,12 @@ static int ifcvf_read_config_range(struct pci_dev *dev,
 	return 0;
 }
 
-static u16 ifcvf_get_vq_size(struct ifcvf_hw *hw, u16 qid)
+u16 ifcvf_get_vq_size(struct ifcvf_hw *hw, u16 qid)
 {
 	u16 queue_size;
+
+	if (qid >= hw->nr_vring)
+		return 0;
 
 	vp_iowrite16(qid, &hw->common_cfg->queue_select);
 	queue_size = vp_ioread16(&hw->common_cfg->queue_size);
@@ -79,10 +82,6 @@ static u16 ifcvf_get_vq_size(struct ifcvf_hw *hw, u16 qid)
 	return queue_size;
 }
 
-/* This function returns the max allowed safe size for
- * all virtqueues. It is the minimal size that can be
- * suppprted by all virtqueues.
- */
 u16 ifcvf_get_max_vq_size(struct ifcvf_hw *hw)
 {
 	u16 queue_size, max_size, qid;
@@ -94,7 +93,7 @@ u16 ifcvf_get_max_vq_size(struct ifcvf_hw *hw)
 		if (!queue_size)
 			continue;
 
-		max_size = min(queue_size, max_size);
+		max_size = max(queue_size, max_size);
 	}
 
 	return max_size;
@@ -109,7 +108,7 @@ int ifcvf_init_hw(struct ifcvf_hw *hw, struct pci_dev *pdev)
 	u32 i;
 
 	ret = pci_read_config_byte(pdev, PCI_CAPABILITY_LIST, &pos);
-	if (ret < 0) {
+	if (ret) {
 		IFCVF_ERR(pdev, "Failed to read PCI capability list\n");
 		return -EIO;
 	}

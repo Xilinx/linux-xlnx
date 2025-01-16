@@ -5,7 +5,7 @@
 
 #include <linux/module.h>
 #include <linux/of.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include "mt76x2.h"
 #include "eeprom.h"
 
@@ -506,4 +506,5 @@ int mt76x2_eeprom_init(struct mt76x02_dev *dev)
 }
 EXPORT_SYMBOL_GPL(mt76x2_eeprom_init);
 
+MODULE_DESCRIPTION("MediaTek MT76x2 EEPROM helpers");
 MODULE_LICENSE("Dual BSD/GPL");

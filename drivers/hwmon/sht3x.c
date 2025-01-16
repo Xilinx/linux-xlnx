@@ -10,6 +10,7 @@
 
 #include <asm/page.h>
 #include <linux/crc8.h>
+#include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/hwmon.h>
@@ -41,6 +42,9 @@ static const unsigned char sht3x_cmd_heater_off[]              = { 0x30, 0x66 };
 /* other commands */
 static const unsigned char sht3x_cmd_read_status_reg[]         = { 0xf3, 0x2d };
 static const unsigned char sht3x_cmd_clear_status_reg[]        = { 0x30, 0x41 };
+static const unsigned char sht3x_cmd_read_serial_number[]      = { 0x37, 0x80 };
+
+static struct dentry *debugfs;
 
 /* delays for single-shot mode i2c commands, both in us */
 #define SHT3X_SINGLE_WAIT_TIME_HPM  15000
@@ -163,12 +167,14 @@ struct sht3x_data {
 	enum sht3x_chips chip_id;
 	struct mutex i2c_lock; /* lock for sending i2c commands */
 	struct mutex data_lock; /* lock for updating driver data */
+	struct dentry *sensor_dir;
 
 	u8 mode;
 	const unsigned char *command;
 	u32 wait_time;			/* in us*/
 	unsigned long last_update;	/* last update in periodic mode*/
 	enum sht3x_repeatability repeatability;
+	u32 serial_number;
 
 	/*
 	 * cached values for temperature and humidity and limits
@@ -831,6 +837,40 @@ static int sht3x_write(struct device *dev, enum hwmon_sensor_types type,
 	}
 }
 
+static void sht3x_debugfs_init(struct sht3x_data *data)
+{
+	char name[32];
+
+	snprintf(name, sizeof(name), "i2c%u-%02x",
+		 data->client->adapter->nr, data->client->addr);
+	data->sensor_dir = debugfs_create_dir(name, debugfs);
+	debugfs_create_u32("serial_number", 0444,
+			   data->sensor_dir, &data->serial_number);
+}
+
+static void sht3x_debugfs_remove(void *sensor_dir)
+{
+	debugfs_remove_recursive(sensor_dir);
+}
+
+static int sht3x_serial_number_read(struct sht3x_data *data)
+{
+	int ret;
+	char buffer[SHT3X_RESPONSE_LENGTH];
+	struct i2c_client *client = data->client;
+
+	ret = sht3x_read_from_command(client, data,
+				      sht3x_cmd_read_serial_number,
+				      buffer,
+				      SHT3X_RESPONSE_LENGTH, 0);
+	if (ret)
+		return ret;
+
+	data->serial_number = (buffer[0] << 24) | (buffer[1] << 16) |
+			      (buffer[3] << 8) | buffer[4];
+	return ret;
+}
+
 static const struct hwmon_ops sht3x_ops = {
 	.is_visible = sht3x_is_visible,
 	.read = sht3x_read,
@@ -841,15 +881,6 @@ static const struct hwmon_chip_info sht3x_chip_info = {
 	.ops = &sht3x_ops,
 	.info = sht3x_channel_info,
 };
-
-/* device ID table */
-static const struct i2c_device_id sht3x_ids[] = {
-	{"sht3x", sht3x},
-	{"sts3x", sts3x},
-	{}
-};
-
-MODULE_DEVICE_TABLE(i2c, sht3x_ids);
 
 static int sht3x_probe(struct i2c_client *client)
 {
@@ -880,7 +911,7 @@ static int sht3x_probe(struct i2c_client *client)
 	data->mode = 0;
 	data->last_update = jiffies - msecs_to_jiffies(3000);
 	data->client = client;
-	data->chip_id = i2c_match_id(sht3x_ids, client)->driver_data;
+	data->chip_id = (uintptr_t)i2c_get_match_data(client);
 	crc8_populate_msb(sht3x_crc8_table, SHT3X_CRC8_POLYNOMIAL);
 
 	sht3x_select_command(data);
@@ -899,6 +930,18 @@ static int sht3x_probe(struct i2c_client *client)
 	if (ret)
 		return ret;
 
+	ret = sht3x_serial_number_read(data);
+	if (ret) {
+		dev_dbg(dev, "unable to read serial number\n");
+	} else {
+		sht3x_debugfs_init(data);
+		ret = devm_add_action_or_reset(dev,
+					       sht3x_debugfs_remove,
+					       data->sensor_dir);
+		if (ret)
+			return ret;
+	}
+
 	hwmon_dev = devm_hwmon_device_register_with_info(dev,
 							 client->name,
 							 data,
@@ -911,13 +954,34 @@ static int sht3x_probe(struct i2c_client *client)
 	return PTR_ERR_OR_ZERO(hwmon_dev);
 }
 
+/* device ID table */
+static const struct i2c_device_id sht3x_ids[] = {
+	{"sht3x", sht3x},
+	{"sts3x", sts3x},
+	{}
+};
+
+MODULE_DEVICE_TABLE(i2c, sht3x_ids);
+
 static struct i2c_driver sht3x_i2c_driver = {
 	.driver.name = "sht3x",
 	.probe       = sht3x_probe,
 	.id_table    = sht3x_ids,
 };
 
-module_i2c_driver(sht3x_i2c_driver);
+static int __init sht3x_init(void)
+{
+	debugfs = debugfs_create_dir("sht3x", NULL);
+	return i2c_add_driver(&sht3x_i2c_driver);
+}
+module_init(sht3x_init);
+
+static void __exit sht3x_cleanup(void)
+{
+	debugfs_remove_recursive(debugfs);
+	i2c_del_driver(&sht3x_i2c_driver);
+}
+module_exit(sht3x_cleanup);
 
 MODULE_AUTHOR("David Frey <david.frey@sensirion.com>");
 MODULE_AUTHOR("Pascal Sachs <pascal.sachs@sensirion.com>");

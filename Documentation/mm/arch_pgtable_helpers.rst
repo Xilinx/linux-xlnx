@@ -18,8 +18,6 @@ PTE Page Table Helpers
 +---------------------------+--------------------------------------------------+
 | pte_same                  | Tests whether both PTE entries are the same      |
 +---------------------------+--------------------------------------------------+
-| pte_bad                   | Tests a non-table mapped PTE                     |
-+---------------------------+--------------------------------------------------+
 | pte_present               | Tests a valid mapped PTE                         |
 +---------------------------+--------------------------------------------------+
 | pte_young                 | Tests a young PTE                                |
@@ -92,8 +90,6 @@ PMD Page Table Helpers
 +---------------------------+--------------------------------------------------+
 | pmd_leaf                  | Tests a leaf mapped PMD                          |
 +---------------------------+--------------------------------------------------+
-| pmd_huge                  | Tests a HugeTLB mapped PMD                       |
-+---------------------------+--------------------------------------------------+
 | pmd_trans_huge            | Tests a Transparent Huge Page (THP) at PMD       |
 +---------------------------+--------------------------------------------------+
 | pmd_present               | Tests whether pmd_page() points to valid memory  |
@@ -142,7 +138,8 @@ PMD Page Table Helpers
 +---------------------------+--------------------------------------------------+
 | pmd_swp_clear_soft_dirty  | Clears a soft dirty swapped PMD                  |
 +---------------------------+--------------------------------------------------+
-| pmd_mkinvalid             | Invalidates a mapped PMD [1]                     |
+| pmd_mkinvalid             | Invalidates a present PMD; do not call for       |
+|                           | non-present PMD [1]                              |
 +---------------------------+--------------------------------------------------+
 | pmd_set_huge              | Creates a PMD huge mapping                       |
 +---------------------------+--------------------------------------------------+
@@ -170,8 +167,6 @@ PUD Page Table Helpers
 +---------------------------+--------------------------------------------------+
 | pud_leaf                  | Tests a leaf mapped PUD                          |
 +---------------------------+--------------------------------------------------+
-| pud_huge                  | Tests a HugeTLB mapped PUD                       |
-+---------------------------+--------------------------------------------------+
 | pud_trans_huge            | Tests a Transparent Huge Page (THP) at PUD       |
 +---------------------------+--------------------------------------------------+
 | pud_present               | Tests a valid mapped PUD                         |
@@ -198,7 +193,8 @@ PUD Page Table Helpers
 +---------------------------+--------------------------------------------------+
 | pud_mkdevmap              | Creates a ZONE_DEVICE mapped PUD                 |
 +---------------------------+--------------------------------------------------+
-| pud_mkinvalid             | Invalidates a mapped PUD [1]                     |
+| pud_mkinvalid             | Invalidates a present PUD; do not call for       |
+|                           | non-present PUD [1]                              |
 +---------------------------+--------------------------------------------------+
 | pud_set_huge              | Creates a PUD huge mapping                       |
 +---------------------------+--------------------------------------------------+

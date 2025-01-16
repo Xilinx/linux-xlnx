@@ -69,7 +69,6 @@ static void omap_atomic_commit_tail(struct drm_atomic_state *old_state)
 {
 	struct drm_device *dev = old_state->dev;
 	struct omap_drm_private *priv = dev->dev_private;
-	bool fence_cookie = dma_fence_begin_signalling();
 
 	dispc_runtime_get(priv->dispc);
 
@@ -92,6 +91,8 @@ static void omap_atomic_commit_tail(struct drm_atomic_state *old_state)
 		omap_atomic_wait_for_completion(dev, old_state);
 
 		drm_atomic_helper_commit_planes(dev, old_state, 0);
+
+		drm_atomic_helper_commit_hw_done(old_state);
 	} else {
 		/*
 		 * OMAP3 DSS seems to have issues with the work-around above,
@@ -101,11 +102,9 @@ static void omap_atomic_commit_tail(struct drm_atomic_state *old_state)
 		drm_atomic_helper_commit_planes(dev, old_state, 0);
 
 		drm_atomic_helper_commit_modeset_enables(dev, old_state);
+
+		drm_atomic_helper_commit_hw_done(old_state);
 	}
-
-	drm_atomic_helper_commit_hw_done(old_state);
-
-	dma_fence_end_signalling(fence_cookie);
 
 	/*
 	 * Wait for completion of the page flips to ensure that old buffers
@@ -696,6 +695,10 @@ static int omapdrm_init(struct omap_drm_private *priv, struct device *dev)
 	soc = soc_device_match(omapdrm_soc_devices);
 	priv->omaprev = soc ? (uintptr_t)soc->data : 0;
 	priv->wq = alloc_ordered_workqueue("omapdrm", 0);
+	if (!priv->wq) {
+		ret = -ENOMEM;
+		goto err_alloc_workqueue;
+	}
 
 	mutex_init(&priv->list_lock);
 	INIT_LIST_HEAD(&priv->obj_list);
@@ -754,6 +757,7 @@ err_gem_deinit:
 	drm_mode_config_cleanup(ddev);
 	omap_gem_deinit(ddev);
 	destroy_workqueue(priv->wq);
+err_alloc_workqueue:
 	omap_disconnect_pipelines(ddev);
 	drm_dev_put(ddev);
 	return ret;
@@ -817,6 +821,13 @@ static void pdev_remove(struct platform_device *pdev)
 	kfree(priv);
 }
 
+static void pdev_shutdown(struct platform_device *pdev)
+{
+	struct omap_drm_private *priv = platform_get_drvdata(pdev);
+
+	drm_atomic_helper_shutdown(priv->ddev);
+}
+
 #ifdef CONFIG_PM_SLEEP
 static int omap_drm_suspend(struct device *dev)
 {
@@ -846,6 +857,7 @@ static struct platform_driver pdev = {
 	},
 	.probe = pdev_probe,
 	.remove_new = pdev_remove,
+	.shutdown = pdev_shutdown,
 };
 
 static struct platform_driver * const drivers[] = {

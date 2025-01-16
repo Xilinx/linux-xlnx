@@ -389,7 +389,7 @@ MODULE_DEVICE_TABLE(of, ulpi_phy_table);
 
 static struct platform_driver ulpi_phy_driver = {
 	.probe		= ulpi_phy_probe,
-	.remove_new	= ulpi_phy_remove,
+	.remove		= ulpi_phy_remove,
 	.driver		= {
 		.name	= "ulpi-phy",
 		.of_match_table = ulpi_phy_table,

@@ -48,6 +48,8 @@
  *  For case 2, force UDP packets to overflow fq limit. As long as kernel
  *  is not crashed, it is considered successful.
  */
+#define NETNS "ns_lwt_reroute"
+#include <netinet/in.h>
 #include "lwt_helpers.h"
 #include "network_helpers.h"
 #include <linux/net_tstamp.h>
@@ -63,7 +65,7 @@
 static void ping_once(const char *ip)
 {
 	/* We won't get a reply. Don't fail here */
-	SYS_NOFAIL("ping %s -c1 -W1 -s %d >/dev/null 2>&1",
+	SYS_NOFAIL("ping %s -c1 -W1 -s %d",
 		   ip, ICMP_PAYLOAD_SIZE);
 }
 

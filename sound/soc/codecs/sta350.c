@@ -22,8 +22,7 @@
 #include <linux/delay.h>
 #include <linux/pm.h>
 #include <linux/i2c.h>
-#include <linux/of_device.h>
-#include <linux/of_gpio.h>
+#include <linux/of.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
 #include <linux/gpio/consumer.h>
@@ -1239,7 +1238,7 @@ static void sta350_i2c_remove(struct i2c_client *client)
 {}
 
 static const struct i2c_device_id sta350_i2c_id[] = {
-	{ "sta350", 0 },
+	{ "sta350" },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, sta350_i2c_id);

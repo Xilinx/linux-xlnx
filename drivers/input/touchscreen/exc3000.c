@@ -22,7 +22,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/sizes.h>
 #include <linux/timer.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 #define EXC3000_NUM_SLOTS		10
 #define EXC3000_SLOTS_PER_FRAME		5
@@ -53,6 +53,7 @@ enum eeti_dev_id {
 	EETI_EXC3000,
 	EETI_EXC80H60,
 	EETI_EXC80H84,
+	EETI_EXC81W32,
 };
 
 static struct eeti_dev_info exc3000_info[] = {
@@ -66,6 +67,10 @@ static struct eeti_dev_info exc3000_info[] = {
 	},
 	[EETI_EXC80H84] = {
 		.name = "EETI EXC80H84 Touch Screen",
+		.max_xy = SZ_16K - 1,
+	},
+	[EETI_EXC81W32] = {
+		.name = "EETI EXC81W32 Touch Screen",
 		.max_xy = SZ_16K - 1,
 	},
 };
@@ -325,16 +330,13 @@ static ssize_t type_show(struct device *dev,
 }
 static DEVICE_ATTR_RO(type);
 
-static struct attribute *sysfs_attrs[] = {
+static struct attribute *exc3000_attrs[] = {
 	&dev_attr_fw_version.attr,
 	&dev_attr_model.attr,
 	&dev_attr_type.attr,
 	NULL
 };
-
-static struct attribute_group exc3000_attribute_group = {
-	.attrs = sysfs_attrs
-};
+ATTRIBUTE_GROUPS(exc3000);
 
 static int exc3000_probe(struct i2c_client *client)
 {
@@ -437,10 +439,6 @@ static int exc3000_probe(struct i2c_client *client)
 
 	i2c_set_clientdata(client, data);
 
-	error = devm_device_add_group(&client->dev, &exc3000_attribute_group);
-	if (error)
-		return error;
-
 	return 0;
 }
 
@@ -448,6 +446,7 @@ static const struct i2c_device_id exc3000_id[] = {
 	{ "exc3000", EETI_EXC3000 },
 	{ "exc80h60", EETI_EXC80H60 },
 	{ "exc80h84", EETI_EXC80H84 },
+	{ "exc81w32", EETI_EXC81W32 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, exc3000_id);
@@ -457,6 +456,7 @@ static const struct of_device_id exc3000_of_match[] = {
 	{ .compatible = "eeti,exc3000", .data = &exc3000_info[EETI_EXC3000] },
 	{ .compatible = "eeti,exc80h60", .data = &exc3000_info[EETI_EXC80H60] },
 	{ .compatible = "eeti,exc80h84", .data = &exc3000_info[EETI_EXC80H84] },
+	{ .compatible = "eeti,exc81w32", .data = &exc3000_info[EETI_EXC81W32] },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, exc3000_of_match);
@@ -473,6 +473,7 @@ MODULE_DEVICE_TABLE(acpi, exc3000_acpi_match);
 static struct i2c_driver exc3000_driver = {
 	.driver = {
 		.name	= "exc3000",
+		.dev_groups = exc3000_groups,
 		.of_match_table = of_match_ptr(exc3000_of_match),
 		.acpi_match_table = ACPI_PTR(exc3000_acpi_match),
 	},

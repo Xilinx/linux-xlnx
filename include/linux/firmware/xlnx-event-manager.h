@@ -1,4 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Xilinx Event Management Driver
+ *
+ * Copyright (C) 2024, Advanced Micro Devices, Inc.
+ */
 
 #ifndef _FIRMWARE_XLNX_EVENT_MANAGER_H_
 #define _FIRMWARE_XLNX_EVENT_MANAGER_H_

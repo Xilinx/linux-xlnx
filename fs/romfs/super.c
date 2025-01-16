@@ -101,19 +101,15 @@ static struct inode *romfs_iget(struct super_block *sb, unsigned long pos);
  */
 static int romfs_read_folio(struct file *file, struct folio *folio)
 {
-	struct page *page = &folio->page;
-	struct inode *inode = page->mapping->host;
+	struct inode *inode = folio->mapping->host;
 	loff_t offset, size;
 	unsigned long fillsize, pos;
 	void *buf;
 	int ret;
 
-	buf = kmap(page);
-	if (!buf)
-		return -ENOMEM;
+	buf = kmap_local_folio(folio, 0);
 
-	/* 32 bit warning -- but not for us :) */
-	offset = page_offset(page);
+	offset = folio_pos(folio);
 	size = i_size_read(inode);
 	fillsize = 0;
 	ret = 0;
@@ -125,20 +121,14 @@ static int romfs_read_folio(struct file *file, struct folio *folio)
 
 		ret = romfs_dev_read(inode->i_sb, pos, buf, fillsize);
 		if (ret < 0) {
-			SetPageError(page);
 			fillsize = 0;
 			ret = -EIO;
 		}
 	}
 
-	if (fillsize < PAGE_SIZE)
-		memset(buf + fillsize, 0, PAGE_SIZE - fillsize);
-	if (ret == 0)
-		SetPageUptodate(page);
-
-	flush_dcache_page(page);
-	kunmap(page);
-	unlock_page(page);
+	buf = folio_zero_tail(folio, fillsize, buf + fillsize);
+	kunmap_local(buf);
+	folio_end_read(folio, ret == 0);
 	return ret;
 }
 
@@ -322,7 +312,8 @@ static struct inode *romfs_iget(struct super_block *sb, unsigned long pos)
 
 	set_nlink(i, 1);		/* Hard to decide.. */
 	i->i_size = be32_to_cpu(ri.size);
-	i->i_mtime = i->i_atime = inode_set_ctime(i, 0, 0);
+	inode_set_mtime_to_ts(i,
+			      inode_set_atime_to_ts(i, inode_set_ctime(i, 0, 0)));
 
 	/* set up mode and ops */
 	mode = romfs_modemap[nextfh & ROMFH_TYPE];
@@ -593,7 +584,7 @@ static void romfs_kill_sb(struct super_block *sb)
 #ifdef CONFIG_ROMFS_ON_BLOCK
 	if (sb->s_bdev) {
 		sync_blockdev(sb->s_bdev);
-		blkdev_put(sb->s_bdev, sb);
+		bdev_fput(sb->s_bdev_file);
 	}
 #endif
 }
@@ -629,8 +620,8 @@ static int __init init_romfs_fs(void)
 	romfs_inode_cachep =
 		kmem_cache_create("romfs_i",
 				  sizeof(struct romfs_inode_info), 0,
-				  SLAB_RECLAIM_ACCOUNT | SLAB_MEM_SPREAD |
-				  SLAB_ACCOUNT, romfs_i_init_once);
+				  SLAB_RECLAIM_ACCOUNT | SLAB_ACCOUNT,
+				  romfs_i_init_once);
 
 	if (!romfs_inode_cachep) {
 		pr_err("Failed to initialise inode cache\n");

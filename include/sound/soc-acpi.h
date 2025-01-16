@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only
  *
- * Copyright (C) 2013-15, Intel Corporation. All rights reserved.
+ * Copyright (C) 2013-15, Intel Corporation
  */
 
 #ifndef __LINUX_SND_SOC_ACPI_H
@@ -62,24 +62,33 @@ static inline struct snd_soc_acpi_mach *snd_soc_acpi_codec_list(void *arg)
  * @platform: string used for HDAudio codec support
  * @codec_mask: used for HDAudio support
  * @dmic_num: number of SoC- or chipset-attached PDM digital microphones
- * @common_hdmi_codec_drv: use commom HDAudio HDMI codec driver
  * @link_mask: SoundWire links enabled on the board
  * @links: array of SoundWire link _ADR descriptors, null terminated
  * @i2s_link_mask: I2S/TDM links enabled on the board
  * @num_dai_drivers: number of elements in @dai_drivers
  * @dai_drivers: pointer to dai_drivers, used e.g. in nocodec mode
+ * @subsystem_vendor: optional PCI SSID vendor value
+ * @subsystem_device: optional PCI SSID device value
+ * @subsystem_rev: optional PCI SSID revision value
+ * @subsystem_id_set: true if a value has been written to
+ *		      subsystem_vendor and subsystem_device.
+ * @bt_link_mask: BT offload link enabled on the board
  */
 struct snd_soc_acpi_mach_params {
 	u32 acpi_ipc_irq_index;
 	const char *platform;
 	u32 codec_mask;
 	u32 dmic_num;
-	bool common_hdmi_codec_drv;
 	u32 link_mask;
 	const struct snd_soc_acpi_link_adr *links;
 	u32 i2s_link_mask;
 	u32 num_dai_drivers;
 	struct snd_soc_dai_driver *dai_drivers;
+	unsigned short subsystem_vendor;
+	unsigned short subsystem_device;
+	unsigned short subsystem_rev;
+	bool subsystem_id_set;
+	u32 bt_link_mask;
 };
 
 /**
@@ -143,6 +152,18 @@ struct snd_soc_acpi_link_adr {
  * BIOS or DMI information
  */
 #define SND_SOC_ACPI_TPLG_INTEL_DMIC_NUMBER BIT(2)
+
+/*
+ * when set the speaker amplifier name suffix (i.e. "-max98360a") will be
+ * appended to topology file name
+ */
+#define SND_SOC_ACPI_TPLG_INTEL_AMP_NAME BIT(3)
+
+/*
+ * when set the headphone codec name suffix (i.e. "-rt5682") will be appended to
+ * topology file name
+ */
+#define SND_SOC_ACPI_TPLG_INTEL_CODEC_NAME BIT(4)
 
 /**
  * snd_soc_acpi_mach: ACPI-based machine descriptor. Most of the fields are

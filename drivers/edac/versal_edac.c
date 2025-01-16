@@ -1241,7 +1241,7 @@ free_edac_mc:
 	return rc;
 }
 
-static int mc_remove(struct platform_device *pdev)
+static void mc_remove(struct platform_device *pdev)
 {
 	struct mem_ctl_info *mci = platform_get_drvdata(pdev);
 	struct edac_priv *priv = mci->pvt_info;
@@ -1257,8 +1257,6 @@ static int mc_remove(struct platform_device *pdev)
 			      XPM_VERSAL_EVENT_ERROR_MASK_DDRMC_NCR, err_callback, mci);
 	edac_mc_del_mc(&pdev->dev);
 	edac_mc_free(mci);
-
-	return 0;
 }
 
 static struct platform_driver xilinx_ddr_edac_mc_driver = {
@@ -1267,7 +1265,7 @@ static struct platform_driver xilinx_ddr_edac_mc_driver = {
 		.of_match_table = xlnx_edac_match,
 	},
 	.probe = mc_probe,
-	.remove = mc_remove,
+	.remove_new = mc_remove,
 };
 
 module_platform_driver(xilinx_ddr_edac_mc_driver);

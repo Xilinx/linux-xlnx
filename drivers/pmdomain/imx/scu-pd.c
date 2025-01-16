@@ -223,11 +223,6 @@ static const struct imx_sc_pd_range imx8qxp_scu_pd_ranges[] = {
 	{ "lvds1-pwm", IMX_SC_R_LVDS_1_PWM_0, 1, false, 0 },
 	{ "lvds1-lpi2c", IMX_SC_R_LVDS_1_I2C_0, 2, true, 0 },
 
-	{ "mipi1", IMX_SC_R_MIPI_1, 1, 0 },
-	{ "mipi1-pwm0", IMX_SC_R_MIPI_1_PWM_0, 1, 0 },
-	{ "mipi1-i2c", IMX_SC_R_MIPI_1_I2C_0, 2, 1 },
-	{ "lvds1", IMX_SC_R_LVDS_1, 1, 0 },
-
 	/* DC SS */
 	{ "dc0", IMX_SC_R_DC_0, 1, false, 0 },
 	{ "dc0-pll", IMX_SC_R_DC_0_PLL_0, 2, true, 0 },
@@ -393,7 +388,7 @@ static int imx_sc_pd_power_off(struct generic_pm_domain *domain)
 	return imx_sc_pd_power(domain, false);
 }
 
-static struct generic_pm_domain *imx_scu_pd_xlate(struct of_phandle_args *spec,
+static struct generic_pm_domain *imx_scu_pd_xlate(const struct of_phandle_args *spec,
 						  void *data)
 {
 	struct generic_pm_domain *domain = ERR_PTR(-ENOENT);

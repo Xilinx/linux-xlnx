@@ -23,10 +23,10 @@
  * @res: array of MMIO region entries
  * @res_count: number of valid MMIO regions
  * @req_id: Requestor ID associated with CDX device
- * @msi_dev_id: MSI device ID associated with CDX device
- * @num_msi: Number of MSI's supported by the device
  * @class: Class of the CDX Device
  * @revision: Revision of the CDX device
+ * @msi_dev_id: MSI device ID associated with CDX device
+ * @num_msi: Number of MSI's supported by the device
  */
 struct cdx_dev_params {
 	struct cdx_controller *cdx;
@@ -40,10 +40,10 @@ struct cdx_dev_params {
 	struct resource res[MAX_CDX_DEV_RESOURCES];
 	u8 res_count;
 	u32 req_id;
-	u32 msi_dev_id;
-	u32 num_msi;
 	u32 class;
 	u8 revision;
+	u32 msi_dev_id;
+	u32 num_msi;
 };
 
 /**
@@ -73,14 +73,6 @@ void cdx_unregister_controller(struct cdx_controller *cdx);
 int cdx_device_add(struct cdx_dev_params *dev_params);
 
 /**
- * cdx_msi_domain_init - Init the CDX bus MSI domain.
- * @dev: Device of the CDX bus controller
- *
- * Return: CDX MSI domain, NULL on failure
- */
-struct irq_domain *cdx_msi_domain_init(struct device *dev);
-
-/**
  * cdx_bus_add - Add a CDX bus. This function adds a bus on the CDX bus
  *		subsystem. It creates a CDX device for the corresponding bus and
  *		also registers an associated Linux generic device.
@@ -90,5 +82,13 @@ struct irq_domain *cdx_msi_domain_init(struct device *dev);
  * Return: associated Linux generic device pointer on success or NULL on failure.
  */
 struct device *cdx_bus_add(struct cdx_controller *cdx, u8 bus_num);
+
+/**
+ * cdx_msi_domain_init - Init the CDX bus MSI domain.
+ * @dev: Device of the CDX bus controller
+ *
+ * Return: CDX MSI domain, NULL on failure
+ */
+struct irq_domain *cdx_msi_domain_init(struct device *dev);
 
 #endif /* _CDX_H_ */

@@ -494,6 +494,21 @@ void ata_eh_release(struct ata_port *ap)
 	mutex_unlock(&ap->host->eh_mutex);
 }
 
+static void ata_eh_dev_disable(struct ata_device *dev)
+{
+	ata_acpi_on_disable(dev);
+	ata_down_xfermask_limit(dev, ATA_DNXFER_FORCE_PIO0 | ATA_DNXFER_QUIET);
+	dev->class++;
+
+	/*
+	 * From now till the next successful probe, ering is used to
+	 * track probe failures.  Clear accumulated device error info.
+	 */
+	ata_ering_clear(&dev->ering);
+
+	ata_dev_free_resources(dev);
+}
+
 static void ata_eh_unload(struct ata_port *ap)
 {
 	struct ata_link *link;
@@ -517,8 +532,8 @@ static void ata_eh_unload(struct ata_port *ap)
 	 */
 	ata_for_each_link(link, ap, PMP_FIRST) {
 		sata_scr_write(link, SCR_CONTROL, link->saved_scontrol & 0xff0);
-		ata_for_each_dev(dev, link, ALL)
-			ata_dev_disable(dev);
+		ata_for_each_dev(dev, link, ENABLED)
+			ata_eh_dev_disable(dev);
 	}
 
 	/* freeze and set UNLOADED */
@@ -618,6 +633,14 @@ void ata_scsi_cmd_error_handler(struct Scsi_Host *host, struct ata_port *ap,
 	list_for_each_entry_safe(scmd, tmp, eh_work_q, eh_entry) {
 		struct ata_queued_cmd *qc;
 
+		/*
+		 * If the scmd was added to EH, via ata_qc_schedule_eh() ->
+		 * scsi_timeout() -> scsi_eh_scmd_add(), scsi_timeout() will
+		 * have set DID_TIME_OUT (since libata does not have an abort
+		 * handler). Thus, to clear DID_TIME_OUT, clear the host byte.
+		 */
+		set_host_byte(scmd, DID_OK);
+
 		ata_qc_for_each_raw(ap, qc, i) {
 			if (qc->flags & ATA_QCFLAG_ACTIVE &&
 			    qc->scsicmd == scmd)
@@ -628,6 +651,7 @@ void ata_scsi_cmd_error_handler(struct Scsi_Host *host, struct ata_port *ap,
 			/* the scmd has an associated qc */
 			if (!(qc->flags & ATA_QCFLAG_EH)) {
 				/* which hasn't failed yet, timeout */
+				set_host_byte(scmd, DID_TIME_OUT);
 				qc->err_mask |= AC_ERR_TIMEOUT;
 				qc->flags |= ATA_QCFLAG_EH;
 				nr_timedout++;
@@ -700,8 +724,10 @@ void ata_scsi_port_error_handler(struct Scsi_Host *host, struct ata_port *ap)
 				ehc->saved_ncq_enabled |= 1 << devno;
 
 			/* If we are resuming, wake up the device */
-			if (ap->pflags & ATA_PFLAG_RESUMING)
+			if (ap->pflags & ATA_PFLAG_RESUMING) {
+				dev->flags |= ATA_DFLAG_RESUMING;
 				ehc->i.dev_action[devno] |= ATA_EH_SET_ACTIVE;
+			}
 		}
 	}
 
@@ -1211,14 +1237,8 @@ void ata_dev_disable(struct ata_device *dev)
 		return;
 
 	ata_dev_warn(dev, "disable device\n");
-	ata_acpi_on_disable(dev);
-	ata_down_xfermask_limit(dev, ATA_DNXFER_FORCE_PIO0 | ATA_DNXFER_QUIET);
-	dev->class++;
 
-	/* From now till the next successful probe, ering is used to
-	 * track probe failures.  Clear accumulated device error info.
-	 */
-	ata_ering_clear(&dev->ering);
+	ata_eh_dev_disable(dev);
 }
 EXPORT_SYMBOL_GPL(ata_dev_disable);
 
@@ -1240,12 +1260,12 @@ void ata_eh_detach_dev(struct ata_device *dev)
 
 	/*
 	 * If the device is still enabled, transition it to standby power mode
-	 * (i.e. spin down HDDs).
+	 * (i.e. spin down HDDs) and disable it.
 	 */
-	if (ata_dev_enabled(dev))
+	if (ata_dev_enabled(dev)) {
 		ata_dev_power_set_standby(dev);
-
-	ata_dev_disable(dev);
+		ata_eh_dev_disable(dev);
+	}
 
 	spin_lock_irqsave(ap->lock, flags);
 
@@ -1391,6 +1411,43 @@ unsigned int atapi_eh_tur(struct ata_device *dev, u8 *r_sense_key)
 	if (err_mask == AC_ERR_DEV)
 		*r_sense_key = tf.error >> 4;
 	return err_mask;
+}
+
+/**
+ *	ata_eh_decide_disposition - Disposition a qc based on sense data
+ *	@qc: qc to examine
+ *
+ *	For a regular SCSI command, the SCSI completion callback (scsi_done())
+ *	will call scsi_complete(), which will call scsi_decide_disposition(),
+ *	which will call scsi_check_sense(). scsi_complete() finally calls
+ *	scsi_finish_command(). This is fine for SCSI, since any eventual sense
+ *	data is usually returned in the completion itself (without invoking SCSI
+ *	EH). However, for a QC, we always need to fetch the sense data
+ *	explicitly using SCSI EH.
+ *
+ *	A command that is completed via SCSI EH will instead be completed using
+ *	scsi_eh_flush_done_q(), which will call scsi_finish_command() directly
+ *	(without ever calling scsi_check_sense()).
+ *
+ *	For a command that went through SCSI EH, it is the responsibility of the
+ *	SCSI EH strategy handler to call scsi_decide_disposition(), see e.g. how
+ *	scsi_eh_get_sense() calls scsi_decide_disposition() for SCSI LLDDs that
+ *	do not get the sense data as part of the completion.
+ *
+ *	Thus, for QC commands that went via SCSI EH, we need to call
+ *	scsi_check_sense() ourselves, similar to how scsi_eh_get_sense() calls
+ *	scsi_decide_disposition(), which calls scsi_check_sense(), in order to
+ *	set the correct SCSI ML byte (if any).
+ *
+ *	LOCKING:
+ *	EH context.
+ *
+ *	RETURNS:
+ *	SUCCESS or FAILED or NEEDS_RETRY or ADD_TO_MLQUEUE
+ */
+enum scsi_disposition ata_eh_decide_disposition(struct ata_queued_cmd *qc)
+{
+	return scsi_check_sense(qc->scsicmd);
 }
 
 /**
@@ -1619,7 +1676,8 @@ static unsigned int ata_eh_analyze_tf(struct ata_queued_cmd *qc)
 	}
 
 	if (qc->flags & ATA_QCFLAG_SENSE_VALID) {
-		enum scsi_disposition ret = scsi_check_sense(qc->scsicmd);
+		enum scsi_disposition ret = ata_eh_decide_disposition(qc);
+
 		/*
 		 * SUCCESS here means that the sense code could be
 		 * evaluated and should be passed to the upper layers
@@ -1916,7 +1974,7 @@ static inline bool ata_eh_quiet(struct ata_queued_cmd *qc)
 	return qc->flags & ATA_QCFLAG_QUIET;
 }
 
-static int ata_eh_read_sense_success_non_ncq(struct ata_link *link)
+static int ata_eh_get_non_ncq_success_sense(struct ata_link *link)
 {
 	struct ata_port *ap = link->ap;
 	struct ata_queued_cmd *qc;
@@ -1934,11 +1992,10 @@ static int ata_eh_read_sense_success_non_ncq(struct ata_link *link)
 		return -EIO;
 
 	/*
-	 * If we have sense data, call scsi_check_sense() in order to set the
-	 * correct SCSI ML byte (if any). No point in checking the return value,
-	 * since the command has already completed successfully.
+	 * No point in checking the return value, since the command has already
+	 * completed successfully.
 	 */
-	scsi_check_sense(qc->scsicmd);
+	ata_eh_decide_disposition(qc);
 
 	return 0;
 }
@@ -1968,9 +2025,9 @@ static void ata_eh_get_success_sense(struct ata_link *link)
 	 * request sense ext command to retrieve the sense data.
 	 */
 	if (link->sactive)
-		ret = ata_eh_read_sense_success_ncq_log(link);
+		ret = ata_eh_get_ncq_success_sense(link);
 	else
-		ret = ata_eh_read_sense_success_non_ncq(link);
+		ret = ata_eh_get_non_ncq_success_sense(link);
 	if (ret)
 		goto out;
 
@@ -2909,6 +2966,8 @@ int ata_eh_reset(struct ata_link *link, int classify,
 		 */
 		if (ata_is_host_link(link))
 			ata_eh_thaw_port(ap);
+		ata_link_warn(link, "%s failed\n",
+			      reset == hardreset ? "hardreset" : "softreset");
 		goto out;
 	}
 
@@ -3043,15 +3102,6 @@ static int ata_eh_revalidate_and_attach(struct ata_link *link,
 		if (ehc->i.flags & ATA_EHI_DID_RESET)
 			readid_flags |= ATA_READID_POSTRESET;
 
-		/*
-		 * When resuming, before executing any command, make sure to
-		 * transition the device to the active power mode.
-		 */
-		if ((action & ATA_EH_SET_ACTIVE) && ata_dev_enabled(dev)) {
-			ata_dev_power_set_active(dev);
-			ata_eh_done(link, dev, ATA_EH_SET_ACTIVE);
-		}
-
 		if ((action & ATA_EH_REVALIDATE) && ata_dev_enabled(dev)) {
 			WARN_ON(dev->class == ATA_DEV_PMP);
 
@@ -3170,6 +3220,7 @@ static int ata_eh_revalidate_and_attach(struct ata_link *link,
 	return 0;
 
  err:
+	dev->flags &= ~ATA_DFLAG_RESUMING;
 	*r_failed_dev = dev;
 	return rc;
 }
@@ -3245,7 +3296,7 @@ static int atapi_eh_clear_ua(struct ata_device *dev)
 	int i;
 
 	for (i = 0; i < ATA_EH_UA_TRIES; i++) {
-		u8 *sense_buffer = dev->link->ap->sector_buf;
+		u8 *sense_buffer = dev->sector_buf;
 		u8 sense_key = 0;
 		unsigned int err_mask;
 
@@ -3848,6 +3899,17 @@ int ata_eh_recover(struct ata_port *ap, ata_prereset_fn_t prereset,
 			}
 		}
 
+		/*
+		 * Make sure to transition devices to the active power mode
+		 * if needed (e.g. if we were scheduled on system resume).
+		 */
+		ata_for_each_dev(dev, link, ENABLED) {
+			if (ehc->i.dev_action[dev->devno] & ATA_EH_SET_ACTIVE) {
+				ata_dev_power_set_active(dev);
+				ata_eh_done(link, dev, ATA_EH_SET_ACTIVE);
+			}
+		}
+
 		/* retry flush if necessary */
 		ata_for_each_dev(dev, link, ALL) {
 			if (dev->class != ATA_DEV_ATA &&
@@ -4038,10 +4100,20 @@ static void ata_eh_handle_port_suspend(struct ata_port *ap)
 
 	WARN_ON(ap->pflags & ATA_PFLAG_SUSPENDED);
 
-	/* Set all devices attached to the port in standby mode */
-	ata_for_each_link(link, ap, HOST_FIRST) {
-		ata_for_each_dev(dev, link, ENABLED)
-			ata_dev_power_set_standby(dev);
+	/*
+	 * We will reach this point for all of the PM events:
+	 * PM_EVENT_SUSPEND (if runtime pm, PM_EVENT_AUTO will also be set)
+	 * PM_EVENT_FREEZE, and PM_EVENT_HIBERNATE.
+	 *
+	 * We do not want to perform disk spin down for PM_EVENT_FREEZE.
+	 * (Spin down will be performed by the subsequent PM_EVENT_HIBERNATE.)
+	 */
+	if (!(ap->pm_mesg.event & PM_EVENT_FREEZE)) {
+		/* Set all devices attached to the port in standby mode */
+		ata_for_each_link(link, ap, HOST_FIRST) {
+			ata_for_each_dev(dev, link, ENABLED)
+				ata_dev_power_set_standby(dev);
+		}
 	}
 
 	/*

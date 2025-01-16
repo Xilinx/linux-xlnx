@@ -14,7 +14,6 @@
 #include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <linux/workqueue.h>
-#include <linux/gpio.h>
 #include <linux/i2c.h>
 #include <linux/input.h>
 #include <linux/tca6416_keypad.h>
@@ -33,11 +32,6 @@ static const struct i2c_device_id tca6416_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, tca6416_id);
 
-struct tca6416_drv_data {
-	struct input_dev *input;
-	struct tca6416_button data[];
-};
-
 struct tca6416_keypad_chip {
 	uint16_t reg_output;
 	uint16_t reg_direction;
@@ -46,7 +40,6 @@ struct tca6416_keypad_chip {
 	struct i2c_client *client;
 	struct input_dev *input;
 	int io_size;
-	int irqnum;
 	u16 pinmask;
 	bool use_polling;
 	struct tca6416_button buttons[];

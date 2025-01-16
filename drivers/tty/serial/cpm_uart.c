@@ -569,7 +569,7 @@ static void cpm_uart_set_termios(struct uart_port *port,
 	if ((termios->c_cflag & CREAD) == 0)
 		port->read_status_mask &= ~BD_SC_EMPTY;
 
-	spin_lock_irqsave(&port->lock, flags);
+	uart_port_lock_irqsave(port, &flags);
 
 	if (IS_SMC(pinfo)) {
 		unsigned int bits = tty_get_frame_size(termios->c_cflag);
@@ -609,7 +609,7 @@ static void cpm_uart_set_termios(struct uart_port *port,
 		clk_set_rate(pinfo->clk, baud);
 	else
 		cpm_setbrg(pinfo->brg - 1, baud);
-	spin_unlock_irqrestore(&port->lock, flags);
+	uart_port_unlock_irqrestore(port, flags);
 }
 
 static const char *cpm_uart_type(struct uart_port *port)
@@ -648,7 +648,7 @@ static int cpm_uart_tx_pump(struct uart_port *port)
 	int count;
 	struct uart_cpm_port *pinfo =
 		container_of(port, struct uart_cpm_port, port);
-	struct circ_buf *xmit = &port->state->xmit;
+	struct tty_port *tport = &port->state->port;
 
 	/* Handle xon/xoff */
 	if (port->x_char) {
@@ -673,7 +673,7 @@ static int cpm_uart_tx_pump(struct uart_port *port)
 		return 1;
 	}
 
-	if (uart_circ_empty(xmit) || uart_tx_stopped(port)) {
+	if (kfifo_is_empty(&tport->xmit_fifo) || uart_tx_stopped(port)) {
 		cpm_uart_stop_tx(port);
 		return 0;
 	}
@@ -681,16 +681,10 @@ static int cpm_uart_tx_pump(struct uart_port *port)
 	/* Pick next descriptor and fill from buffer */
 	bdp = pinfo->tx_cur;
 
-	while (!(in_be16(&bdp->cbd_sc) & BD_SC_READY) && !uart_circ_empty(xmit)) {
-		count = 0;
+	while (!(in_be16(&bdp->cbd_sc) & BD_SC_READY) &&
+			!kfifo_is_empty(&tport->xmit_fifo)) {
 		p = cpm2cpu_addr(in_be32(&bdp->cbd_bufaddr), pinfo);
-		while (count < pinfo->tx_fifosize) {
-			*p++ = xmit->buf[xmit->tail];
-			uart_xmit_advance(port, 1);
-			count++;
-			if (uart_circ_empty(xmit))
-				break;
-		}
+		count = uart_fifo_out(port, p, pinfo->tx_fifosize);
 		out_be16(&bdp->cbd_datlen, count);
 		setbits16(&bdp->cbd_sc, BD_SC_READY);
 		/* Get next BD. */
@@ -701,10 +695,10 @@ static int cpm_uart_tx_pump(struct uart_port *port)
 	}
 	pinfo->tx_cur = bdp;
 
-	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
+	if (kfifo_len(&tport->xmit_fifo) < WAKEUP_CHARS)
 		uart_write_wakeup(port);
 
-	if (uart_circ_empty(xmit)) {
+	if (kfifo_is_empty(&tport->xmit_fifo)) {
 		cpm_uart_stop_tx(port);
 		return 0;
 	}
@@ -1386,9 +1380,9 @@ static void cpm_uart_console_write(struct console *co, const char *s,
 		cpm_uart_early_write(pinfo, s, count, true);
 		local_irq_restore(flags);
 	} else {
-		spin_lock_irqsave(&pinfo->port.lock, flags);
+		uart_port_lock_irqsave(&pinfo->port, &flags);
 		cpm_uart_early_write(pinfo, s, count, true);
-		spin_unlock_irqrestore(&pinfo->port.lock, flags);
+		uart_port_unlock_irqrestore(&pinfo->port, flags);
 	}
 }
 
@@ -1549,13 +1543,11 @@ static int cpm_uart_probe(struct platform_device *ofdev)
 	return ret;
 }
 
-static int cpm_uart_remove(struct platform_device *ofdev)
+static void cpm_uart_remove(struct platform_device *ofdev)
 {
 	struct uart_cpm_port *pinfo = platform_get_drvdata(ofdev);
 
 	uart_remove_one_port(&cpm_reg, &pinfo->port);
-
-	return 0;
 }
 
 static const struct of_device_id cpm_uart_match[] = {
@@ -1581,7 +1573,7 @@ static struct platform_driver cpm_uart_driver = {
 		.of_match_table = cpm_uart_match,
 	},
 	.probe = cpm_uart_probe,
-	.remove = cpm_uart_remove,
+	.remove_new = cpm_uart_remove,
  };
 
 static int __init cpm_uart_init(void)

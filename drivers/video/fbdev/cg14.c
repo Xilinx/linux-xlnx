@@ -31,10 +31,10 @@
 
 static int cg14_setcolreg(unsigned, unsigned, unsigned, unsigned,
 			 unsigned, struct fb_info *);
-
-static int cg14_mmap(struct fb_info *, struct vm_area_struct *);
-static int cg14_ioctl(struct fb_info *, unsigned int, unsigned long);
 static int cg14_pan_display(struct fb_var_screeninfo *, struct fb_info *);
+
+static int cg14_sbusfb_mmap(struct fb_info *info, struct vm_area_struct *vma);
+static int cg14_sbusfb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg);
 
 /*
  *  Frame buffer operations
@@ -42,16 +42,9 @@ static int cg14_pan_display(struct fb_var_screeninfo *, struct fb_info *);
 
 static const struct fb_ops cg14_ops = {
 	.owner			= THIS_MODULE,
+	FB_DEFAULT_SBUS_OPS(cg14),
 	.fb_setcolreg		= cg14_setcolreg,
 	.fb_pan_display		= cg14_pan_display,
-	.fb_fillrect		= cfb_fillrect,
-	.fb_copyarea		= cfb_copyarea,
-	.fb_imageblit		= cfb_imageblit,
-	.fb_mmap		= cg14_mmap,
-	.fb_ioctl		= cg14_ioctl,
-#ifdef CONFIG_COMPAT
-	.fb_compat_ioctl	= sbusfb_compat_ioctl,
-#endif
 };
 
 #define CG14_MCR_INTENABLE_SHIFT	7
@@ -265,7 +258,7 @@ static int cg14_setcolreg(unsigned regno,
 	return 0;
 }
 
-static int cg14_mmap(struct fb_info *info, struct vm_area_struct *vma)
+static int cg14_sbusfb_mmap(struct fb_info *info, struct vm_area_struct *vma)
 {
 	struct cg14_par *par = (struct cg14_par *) info->par;
 
@@ -274,7 +267,7 @@ static int cg14_mmap(struct fb_info *info, struct vm_area_struct *vma)
 				  par->iospace, vma);
 }
 
-static int cg14_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
+static int cg14_sbusfb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
 {
 	struct cg14_par *par = (struct cg14_par *) info->par;
 	struct cg14_regs __iomem *regs = par->regs;
@@ -367,7 +360,7 @@ static void cg14_init_fix(struct fb_info *info, int linebytes,
 	info->fix.accel = FB_ACCEL_SUN_CG14;
 }
 
-static struct sbus_mmap_map __cg14_mmap_map[CG14_MMAP_ENTRIES] = {
+static const struct sbus_mmap_map __cg14_mmap_map[CG14_MMAP_ENTRIES] = {
 	{
 		.voff	= CG14_REGS,
 		.poff	= 0x80000000,
@@ -597,7 +590,7 @@ static struct platform_driver cg14_driver = {
 		.of_match_table = cg14_match,
 	},
 	.probe		= cg14_probe,
-	.remove_new	= cg14_remove,
+	.remove		= cg14_remove,
 };
 
 static int __init cg14_init(void)

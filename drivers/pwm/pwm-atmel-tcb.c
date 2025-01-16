@@ -47,7 +47,6 @@ struct atmel_tcb_channel {
 };
 
 struct atmel_tcb_pwm_chip {
-	struct pwm_chip chip;
 	spinlock_t lock;
 	u8 channel;
 	u8 width;
@@ -63,7 +62,7 @@ static const u8 atmel_tcb_divisors[] = { 2, 8, 32, 128, 0, };
 
 static inline struct atmel_tcb_pwm_chip *to_tcb_chip(struct pwm_chip *chip)
 {
-	return container_of(chip, struct atmel_tcb_pwm_chip, chip);
+	return pwmchip_get_drvdata(chip);
 }
 
 static int atmel_tcb_pwm_request(struct pwm_chip *chip,
@@ -82,7 +81,8 @@ static int atmel_tcb_pwm_request(struct pwm_chip *chip,
 	tcbpwm->period = 0;
 	tcbpwm->div = 0;
 
-	spin_lock(&tcbpwmc->lock);
+	guard(spinlock)(&tcbpwmc->lock);
+
 	regmap_read(tcbpwmc->regmap, ATMEL_TC_REG(tcbpwmc->channel, CMR), &cmr);
 	/*
 	 * Get init config from Timer Counter registers if
@@ -108,7 +108,6 @@ static int atmel_tcb_pwm_request(struct pwm_chip *chip,
 
 	cmr |= ATMEL_TC_WAVE | ATMEL_TC_WAVESEL_UP_AUTO | ATMEL_TC_EEVT_XC0;
 	regmap_write(tcbpwmc->regmap, ATMEL_TC_REG(tcbpwmc->channel, CMR), cmr);
-	spin_unlock(&tcbpwmc->lock);
 
 	return 0;
 }
@@ -138,7 +137,6 @@ static void atmel_tcb_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm,
 	if (tcbpwm->duty == 0)
 		polarity = !polarity;
 
-	spin_lock(&tcbpwmc->lock);
 	regmap_read(tcbpwmc->regmap, ATMEL_TC_REG(tcbpwmc->channel, CMR), &cmr);
 
 	/* flush old setting and set the new one */
@@ -173,8 +171,6 @@ static void atmel_tcb_pwm_disable(struct pwm_chip *chip, struct pwm_device *pwm,
 			     ATMEL_TC_SWTRG);
 		tcbpwmc->bkup.enabled = 0;
 	}
-
-	spin_unlock(&tcbpwmc->lock);
 }
 
 static int atmel_tcb_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm,
@@ -195,7 +191,6 @@ static int atmel_tcb_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm,
 	if (tcbpwm->duty == 0)
 		polarity = !polarity;
 
-	spin_lock(&tcbpwmc->lock);
 	regmap_read(tcbpwmc->regmap, ATMEL_TC_REG(tcbpwmc->channel, CMR), &cmr);
 
 	/* flush old setting and set the new one */
@@ -257,7 +252,6 @@ static int atmel_tcb_pwm_enable(struct pwm_chip *chip, struct pwm_device *pwm,
 	regmap_write(tcbpwmc->regmap, ATMEL_TC_REG(tcbpwmc->channel, CCR),
 		     ATMEL_TC_SWTRG | ATMEL_TC_CLKEN);
 	tcbpwmc->bkup.enabled = 1;
-	spin_unlock(&tcbpwmc->lock);
 	return 0;
 }
 
@@ -266,7 +260,8 @@ static int atmel_tcb_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 {
 	struct atmel_tcb_pwm_chip *tcbpwmc = to_tcb_chip(chip);
 	struct atmel_tcb_pwm_device *tcbpwm = &tcbpwmc->pwms[pwm->hwpwm];
-	struct atmel_tcb_pwm_device *atcbpwm = NULL;
+	/* companion PWM sharing register values period and div */
+	struct atmel_tcb_pwm_device *atcbpwm = &tcbpwmc->pwms[pwm->hwpwm ^ 1];
 	int i = 0;
 	int slowclk = 0;
 	unsigned period;
@@ -311,11 +306,6 @@ static int atmel_tcb_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 	duty = div_u64(duty_ns, min);
 	period = div_u64(period_ns, min);
 
-	if (pwm->hwpwm == 0)
-		atcbpwm = &tcbpwmc->pwms[1];
-	else
-		atcbpwm = &tcbpwmc->pwms[0];
-
 	/*
 	 * PWM devices provided by the TCB driver are grouped by 2.
 	 * PWM devices in a given group must be configured with the
@@ -324,10 +314,9 @@ static int atmel_tcb_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 	 * We're checking the period value of the second PWM device
 	 * in this group before applying the new config.
 	 */
-	if ((atcbpwm && atcbpwm->duty > 0 &&
-			atcbpwm->duty != atcbpwm->period) &&
+	if ((atcbpwm->duty > 0 && atcbpwm->duty != atcbpwm->period) &&
 		(atcbpwm->div != i || atcbpwm->period != period)) {
-		dev_err(chip->dev,
+		dev_err(pwmchip_parent(chip),
 			"failed to configure period_ns: PWM group already configured with a different value\n");
 		return -EINVAL;
 	}
@@ -342,8 +331,11 @@ static int atmel_tcb_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 static int atmel_tcb_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 			       const struct pwm_state *state)
 {
+	struct atmel_tcb_pwm_chip *tcbpwmc = to_tcb_chip(chip);
 	int duty_cycle, period;
 	int ret;
+
+	guard(spinlock)(&tcbpwmc->lock);
 
 	if (!state->enabled) {
 		atmel_tcb_pwm_disable(chip, pwm, state->polarity);
@@ -364,7 +356,6 @@ static const struct pwm_ops atmel_tcb_pwm_ops = {
 	.request = atmel_tcb_pwm_request,
 	.free = atmel_tcb_pwm_free,
 	.apply = atmel_tcb_pwm_apply,
-	.owner = THIS_MODULE,
 };
 
 static struct atmel_tcb_config tcb_rm9200_config = {
@@ -389,17 +380,19 @@ static const struct of_device_id atmel_tcb_of_match[] = {
 
 static int atmel_tcb_pwm_probe(struct platform_device *pdev)
 {
+	struct pwm_chip *chip;
 	const struct of_device_id *match;
-	struct atmel_tcb_pwm_chip *tcbpwm;
+	struct atmel_tcb_pwm_chip *tcbpwmc;
 	const struct atmel_tcb_config *config;
 	struct device_node *np = pdev->dev.of_node;
 	char clk_name[] = "t0_clk";
 	int err;
 	int channel;
 
-	tcbpwm = devm_kzalloc(&pdev->dev, sizeof(*tcbpwm), GFP_KERNEL);
-	if (tcbpwm == NULL)
-		return -ENOMEM;
+	chip = devm_pwmchip_alloc(&pdev->dev, NPWM, sizeof(*tcbpwmc));
+	if (IS_ERR(chip))
+		return PTR_ERR(chip);
+	tcbpwmc = to_tcb_chip(chip);
 
 	err = of_property_read_u32(np, "reg", &channel);
 	if (err < 0) {
@@ -409,20 +402,20 @@ static int atmel_tcb_pwm_probe(struct platform_device *pdev)
 		return err;
 	}
 
-	tcbpwm->regmap = syscon_node_to_regmap(np->parent);
-	if (IS_ERR(tcbpwm->regmap))
-		return PTR_ERR(tcbpwm->regmap);
+	tcbpwmc->regmap = syscon_node_to_regmap(np->parent);
+	if (IS_ERR(tcbpwmc->regmap))
+		return PTR_ERR(tcbpwmc->regmap);
 
-	tcbpwm->slow_clk = of_clk_get_by_name(np->parent, "slow_clk");
-	if (IS_ERR(tcbpwm->slow_clk))
-		return PTR_ERR(tcbpwm->slow_clk);
+	tcbpwmc->slow_clk = of_clk_get_by_name(np->parent, "slow_clk");
+	if (IS_ERR(tcbpwmc->slow_clk))
+		return PTR_ERR(tcbpwmc->slow_clk);
 
 	clk_name[1] += channel;
-	tcbpwm->clk = of_clk_get_by_name(np->parent, clk_name);
-	if (IS_ERR(tcbpwm->clk))
-		tcbpwm->clk = of_clk_get_by_name(np->parent, "t0_clk");
-	if (IS_ERR(tcbpwm->clk)) {
-		err = PTR_ERR(tcbpwm->clk);
+	tcbpwmc->clk = of_clk_get_by_name(np->parent, clk_name);
+	if (IS_ERR(tcbpwmc->clk))
+		tcbpwmc->clk = of_clk_get_by_name(np->parent, "t0_clk");
+	if (IS_ERR(tcbpwmc->clk)) {
+		err = PTR_ERR(tcbpwmc->clk);
 		goto err_slow_clk;
 	}
 
@@ -430,58 +423,57 @@ static int atmel_tcb_pwm_probe(struct platform_device *pdev)
 	config = match->data;
 
 	if (config->has_gclk) {
-		tcbpwm->gclk = of_clk_get_by_name(np->parent, "gclk");
-		if (IS_ERR(tcbpwm->gclk)) {
-			err = PTR_ERR(tcbpwm->gclk);
+		tcbpwmc->gclk = of_clk_get_by_name(np->parent, "gclk");
+		if (IS_ERR(tcbpwmc->gclk)) {
+			err = PTR_ERR(tcbpwmc->gclk);
 			goto err_clk;
 		}
 	}
 
-	tcbpwm->chip.dev = &pdev->dev;
-	tcbpwm->chip.ops = &atmel_tcb_pwm_ops;
-	tcbpwm->chip.npwm = NPWM;
-	tcbpwm->channel = channel;
-	tcbpwm->width = config->counter_width;
+	chip->ops = &atmel_tcb_pwm_ops;
+	tcbpwmc->channel = channel;
+	tcbpwmc->width = config->counter_width;
 
-	err = clk_prepare_enable(tcbpwm->slow_clk);
+	err = clk_prepare_enable(tcbpwmc->slow_clk);
 	if (err)
 		goto err_gclk;
 
-	spin_lock_init(&tcbpwm->lock);
+	spin_lock_init(&tcbpwmc->lock);
 
-	err = pwmchip_add(&tcbpwm->chip);
+	err = pwmchip_add(chip);
 	if (err < 0)
 		goto err_disable_clk;
 
-	platform_set_drvdata(pdev, tcbpwm);
+	platform_set_drvdata(pdev, chip);
 
 	return 0;
 
 err_disable_clk:
-	clk_disable_unprepare(tcbpwm->slow_clk);
+	clk_disable_unprepare(tcbpwmc->slow_clk);
 
 err_gclk:
-	clk_put(tcbpwm->gclk);
+	clk_put(tcbpwmc->gclk);
 
 err_clk:
-	clk_put(tcbpwm->clk);
+	clk_put(tcbpwmc->clk);
 
 err_slow_clk:
-	clk_put(tcbpwm->slow_clk);
+	clk_put(tcbpwmc->slow_clk);
 
 	return err;
 }
 
 static void atmel_tcb_pwm_remove(struct platform_device *pdev)
 {
-	struct atmel_tcb_pwm_chip *tcbpwm = platform_get_drvdata(pdev);
+	struct pwm_chip *chip = platform_get_drvdata(pdev);
+	struct atmel_tcb_pwm_chip *tcbpwmc = to_tcb_chip(chip);
 
-	pwmchip_remove(&tcbpwm->chip);
+	pwmchip_remove(chip);
 
-	clk_disable_unprepare(tcbpwm->slow_clk);
-	clk_put(tcbpwm->gclk);
-	clk_put(tcbpwm->clk);
-	clk_put(tcbpwm->slow_clk);
+	clk_disable_unprepare(tcbpwmc->slow_clk);
+	clk_put(tcbpwmc->gclk);
+	clk_put(tcbpwmc->clk);
+	clk_put(tcbpwmc->slow_clk);
 }
 
 static const struct of_device_id atmel_tcb_pwm_dt_ids[] = {
@@ -490,52 +482,52 @@ static const struct of_device_id atmel_tcb_pwm_dt_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, atmel_tcb_pwm_dt_ids);
 
-#ifdef CONFIG_PM_SLEEP
 static int atmel_tcb_pwm_suspend(struct device *dev)
 {
-	struct atmel_tcb_pwm_chip *tcbpwm = dev_get_drvdata(dev);
-	struct atmel_tcb_channel *chan = &tcbpwm->bkup;
-	unsigned int channel = tcbpwm->channel;
+	struct pwm_chip *chip = dev_get_drvdata(dev);
+	struct atmel_tcb_pwm_chip *tcbpwmc = to_tcb_chip(chip);
+	struct atmel_tcb_channel *chan = &tcbpwmc->bkup;
+	unsigned int channel = tcbpwmc->channel;
 
-	regmap_read(tcbpwm->regmap, ATMEL_TC_REG(channel, CMR), &chan->cmr);
-	regmap_read(tcbpwm->regmap, ATMEL_TC_REG(channel, RA), &chan->ra);
-	regmap_read(tcbpwm->regmap, ATMEL_TC_REG(channel, RB), &chan->rb);
-	regmap_read(tcbpwm->regmap, ATMEL_TC_REG(channel, RC), &chan->rc);
+	regmap_read(tcbpwmc->regmap, ATMEL_TC_REG(channel, CMR), &chan->cmr);
+	regmap_read(tcbpwmc->regmap, ATMEL_TC_REG(channel, RA), &chan->ra);
+	regmap_read(tcbpwmc->regmap, ATMEL_TC_REG(channel, RB), &chan->rb);
+	regmap_read(tcbpwmc->regmap, ATMEL_TC_REG(channel, RC), &chan->rc);
 
 	return 0;
 }
 
 static int atmel_tcb_pwm_resume(struct device *dev)
 {
-	struct atmel_tcb_pwm_chip *tcbpwm = dev_get_drvdata(dev);
-	struct atmel_tcb_channel *chan = &tcbpwm->bkup;
-	unsigned int channel = tcbpwm->channel;
+	struct pwm_chip *chip = dev_get_drvdata(dev);
+	struct atmel_tcb_pwm_chip *tcbpwmc = to_tcb_chip(chip);
+	struct atmel_tcb_channel *chan = &tcbpwmc->bkup;
+	unsigned int channel = tcbpwmc->channel;
 
-	regmap_write(tcbpwm->regmap, ATMEL_TC_REG(channel, CMR), chan->cmr);
-	regmap_write(tcbpwm->regmap, ATMEL_TC_REG(channel, RA), chan->ra);
-	regmap_write(tcbpwm->regmap, ATMEL_TC_REG(channel, RB), chan->rb);
-	regmap_write(tcbpwm->regmap, ATMEL_TC_REG(channel, RC), chan->rc);
+	regmap_write(tcbpwmc->regmap, ATMEL_TC_REG(channel, CMR), chan->cmr);
+	regmap_write(tcbpwmc->regmap, ATMEL_TC_REG(channel, RA), chan->ra);
+	regmap_write(tcbpwmc->regmap, ATMEL_TC_REG(channel, RB), chan->rb);
+	regmap_write(tcbpwmc->regmap, ATMEL_TC_REG(channel, RC), chan->rc);
 
 	if (chan->enabled)
-		regmap_write(tcbpwm->regmap,
+		regmap_write(tcbpwmc->regmap,
 			     ATMEL_TC_CLKEN | ATMEL_TC_SWTRG,
 			     ATMEL_TC_REG(channel, CCR));
 
 	return 0;
 }
-#endif
 
-static SIMPLE_DEV_PM_OPS(atmel_tcb_pwm_pm_ops, atmel_tcb_pwm_suspend,
-			 atmel_tcb_pwm_resume);
+static DEFINE_SIMPLE_DEV_PM_OPS(atmel_tcb_pwm_pm_ops, atmel_tcb_pwm_suspend,
+				atmel_tcb_pwm_resume);
 
 static struct platform_driver atmel_tcb_pwm_driver = {
 	.driver = {
 		.name = "atmel-tcb-pwm",
 		.of_match_table = atmel_tcb_pwm_dt_ids,
-		.pm = &atmel_tcb_pwm_pm_ops,
+		.pm = pm_ptr(&atmel_tcb_pwm_pm_ops),
 	},
 	.probe = atmel_tcb_pwm_probe,
-	.remove_new = atmel_tcb_pwm_remove,
+	.remove = atmel_tcb_pwm_remove,
 };
 module_platform_driver(atmel_tcb_pwm_driver);
 

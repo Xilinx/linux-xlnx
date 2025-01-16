@@ -22,7 +22,7 @@
 #include "xusb.h"
 
 static struct phy *tegra_xusb_pad_of_xlate(struct device *dev,
-					   struct of_phandle_args *args)
+					   const struct of_phandle_args *args)
 {
 	struct tegra_xusb_pad *pad = dev_get_drvdata(dev);
 	struct phy *phy = NULL;
@@ -699,6 +699,8 @@ static int tegra_xusb_setup_usb_role_switch(struct tegra_xusb_port *port)
 		return -ENOMEM;
 
 	lane = tegra_xusb_find_lane(port->padctl, "usb2", port->index);
+	if (IS_ERR(lane))
+		return PTR_ERR(lane);
 
 	/*
 	 * Assign phy dev to usb-phy dev. Host/device drivers can use phy
@@ -1530,6 +1532,19 @@ int tegra_xusb_padctl_get_usb3_companion(struct tegra_xusb_padctl *padctl,
 	return -ENODEV;
 }
 EXPORT_SYMBOL_GPL(tegra_xusb_padctl_get_usb3_companion);
+
+int tegra_xusb_padctl_get_port_number(struct phy *phy)
+{
+	struct tegra_xusb_lane *lane;
+
+	if (!phy)
+		return -ENODEV;
+
+	lane = phy_get_drvdata(phy);
+
+	return lane->index;
+}
+EXPORT_SYMBOL_GPL(tegra_xusb_padctl_get_port_number);
 
 MODULE_AUTHOR("Thierry Reding <treding@nvidia.com>");
 MODULE_DESCRIPTION("Tegra XUSB Pad Controller driver");

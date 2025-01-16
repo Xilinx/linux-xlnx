@@ -2,8 +2,7 @@
 /*
  * Zynq UltraScale+ MPSoC Divider support
  *
- * Copyright (C), 2016 - 2019 Xilinx
- * Copyright (C), 2023 - 2024 Advanced Micro Devices, Inc.
+ *  Copyright (C) 2016-2019 Xilinx
  *
  * Adjustable divider clock implementation
  */

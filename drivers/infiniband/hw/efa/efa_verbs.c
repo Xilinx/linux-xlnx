@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR Linux-OpenIB
 /*
- * Copyright 2018-2023 Amazon.com, Inc. or its affiliates. All rights reserved.
+ * Copyright 2018-2024 Amazon.com, Inc. or its affiliates. All rights reserved.
  */
 
 #include <linux/dma-buf.h>
@@ -13,6 +13,9 @@
 #include <rdma/ib_user_verbs.h>
 #include <rdma/ib_verbs.h>
 #include <rdma/uverbs_ioctl.h>
+#define UVERBS_MODULE_NAME efa_ib
+#include <rdma/uverbs_named_ioctl.h>
+#include <rdma/ib_user_ioctl_cmds.h>
 
 #include "efa.h"
 #include "efa_io_defs.h"
@@ -22,10 +25,6 @@ enum {
 	EFA_MMAP_IO_WC,
 	EFA_MMAP_IO_NC,
 };
-
-#define EFA_AENQ_ENABLED_GROUPS \
-	(BIT(EFA_ADMIN_FATAL_ERROR) | BIT(EFA_ADMIN_WARNING) | \
-	 BIT(EFA_ADMIN_NOTIFICATION) | BIT(EFA_ADMIN_KEEP_ALIVE))
 
 struct efa_user_mmap_entry {
 	struct rdma_user_mmap_entry rdma_entry;
@@ -259,6 +258,9 @@ int efa_query_device(struct ib_device *ibdev,
 
 		if (EFA_DEV_CAP(dev, RDMA_WRITE))
 			resp.device_caps |= EFA_QUERY_DEVICE_CAPS_RDMA_WRITE;
+
+		if (EFA_DEV_CAP(dev, UNSOLICITED_WRITE_RECV))
+			resp.device_caps |= EFA_QUERY_DEVICE_CAPS_UNSOLICITED_WRITE_RECV;
 
 		if (dev->neqs)
 			resp.device_caps |= EFA_QUERY_DEVICE_CAPS_CQ_NOTIFICATIONS;
@@ -518,7 +520,7 @@ static int qp_mmap_entries_setup(struct efa_qp *qp,
 
 	address = dev->mem_bar_addr + resp->llq_desc_offset;
 	length = PAGE_ALIGN(params->sq_ring_size_in_bytes +
-			    (resp->llq_desc_offset & ~PAGE_MASK));
+			    offset_in_page(resp->llq_desc_offset));
 
 	qp->llq_desc_mmap_entry =
 		efa_user_mmap_entry_insert(&ucontext->ibucontext,
@@ -636,6 +638,7 @@ int efa_create_qp(struct ib_qp *ibqp, struct ib_qp_init_attr *init_attr,
 	struct efa_ibv_create_qp cmd = {};
 	struct efa_qp *qp = to_eqp(ibqp);
 	struct efa_ucontext *ucontext;
+	u16 supported_efa_flags = 0;
 	int err;
 
 	ucontext = rdma_udata_to_drv_context(udata, struct efa_ucontext,
@@ -673,10 +676,20 @@ int efa_create_qp(struct ib_qp *ibqp, struct ib_qp_init_attr *init_attr,
 		goto err_out;
 	}
 
-	if (cmd.comp_mask) {
+	if (cmd.comp_mask || !is_reserved_cleared(cmd.reserved_90)) {
 		ibdev_dbg(&dev->ibdev,
 			  "Incompatible ABI params, unknown fields in udata\n");
 		err = -EINVAL;
+		goto err_out;
+	}
+
+	if (EFA_DEV_CAP(dev, UNSOLICITED_WRITE_RECV))
+		supported_efa_flags |= EFA_CREATE_QP_WITH_UNSOLICITED_WRITE_RECV;
+
+	if (cmd.flags & ~supported_efa_flags) {
+		ibdev_dbg(&dev->ibdev, "Unsupported EFA QP create flags[%#x], supported[%#x]\n",
+			  cmd.flags, supported_efa_flags);
+		err = -EOPNOTSUPP;
 		goto err_out;
 	}
 
@@ -718,6 +731,9 @@ int efa_create_qp(struct ib_qp *ibqp, struct ib_qp_init_attr *init_attr,
 			  qp->rq_cpu_addr, qp->rq_size, &qp->rq_dma_addr);
 		create_qp_params.rq_base_addr = qp->rq_dma_addr;
 	}
+
+	if (cmd.flags & EFA_CREATE_QP_WITH_UNSOLICITED_WRITE_RECV)
+		create_qp_params.unsolicited_write_recv = true;
 
 	err = efa_com_create_qp(&dev->edev, &create_qp_params,
 				&create_qp_resp);
@@ -1064,8 +1080,9 @@ static int cq_mmap_entries_setup(struct efa_dev *dev, struct efa_cq *cq,
 }
 
 int efa_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr,
-		  struct ib_udata *udata)
+		  struct uverbs_attr_bundle *attrs)
 {
+	struct ib_udata *udata = &attrs->driver_udata;
 	struct efa_ucontext *ucontext = rdma_udata_to_drv_context(
 		udata, struct efa_ucontext, ibucontext);
 	struct efa_com_create_cq_params params = {};
@@ -1653,6 +1670,12 @@ static int efa_register_mr(struct ib_pd *ibpd, struct efa_mr *mr, u64 start,
 	mr->ibmr.lkey = result.l_key;
 	mr->ibmr.rkey = result.r_key;
 	mr->ibmr.length = length;
+	mr->ic_info.recv_ic_id = result.ic_info.recv_ic_id;
+	mr->ic_info.rdma_read_ic_id = result.ic_info.rdma_read_ic_id;
+	mr->ic_info.rdma_recv_ic_id = result.ic_info.rdma_recv_ic_id;
+	mr->ic_info.recv_ic_id_valid = result.ic_info.recv_ic_id_valid;
+	mr->ic_info.rdma_read_ic_id_valid = result.ic_info.rdma_read_ic_id_valid;
+	mr->ic_info.rdma_recv_ic_id_valid = result.ic_info.rdma_recv_ic_id_valid;
 	ibdev_dbg(&dev->ibdev, "Registered mr[%d]\n", mr->ibmr.lkey);
 
 	return 0;
@@ -1661,14 +1684,14 @@ static int efa_register_mr(struct ib_pd *ibpd, struct efa_mr *mr, u64 start,
 struct ib_mr *efa_reg_user_mr_dmabuf(struct ib_pd *ibpd, u64 start,
 				     u64 length, u64 virt_addr,
 				     int fd, int access_flags,
-				     struct ib_udata *udata)
+				     struct uverbs_attr_bundle *attrs)
 {
 	struct efa_dev *dev = to_edev(ibpd->device);
 	struct ib_umem_dmabuf *umem_dmabuf;
 	struct efa_mr *mr;
 	int err;
 
-	mr = efa_alloc_mr(ibpd, access_flags, udata);
+	mr = efa_alloc_mr(ibpd, access_flags, &attrs->driver_udata);
 	if (IS_ERR(mr)) {
 		err = PTR_ERR(mr);
 		goto err_out;
@@ -1733,6 +1756,39 @@ err_free:
 err_out:
 	atomic64_inc(&dev->stats.reg_mr_err);
 	return ERR_PTR(err);
+}
+
+static int UVERBS_HANDLER(EFA_IB_METHOD_MR_QUERY)(struct uverbs_attr_bundle *attrs)
+{
+	struct ib_mr *ibmr = uverbs_attr_get_obj(attrs, EFA_IB_ATTR_QUERY_MR_HANDLE);
+	struct efa_mr *mr = to_emr(ibmr);
+	u16 ic_id_validity = 0;
+	int ret;
+
+	ret = uverbs_copy_to(attrs, EFA_IB_ATTR_QUERY_MR_RESP_RECV_IC_ID,
+			     &mr->ic_info.recv_ic_id, sizeof(mr->ic_info.recv_ic_id));
+	if (ret)
+		return ret;
+
+	ret = uverbs_copy_to(attrs, EFA_IB_ATTR_QUERY_MR_RESP_RDMA_READ_IC_ID,
+			     &mr->ic_info.rdma_read_ic_id, sizeof(mr->ic_info.rdma_read_ic_id));
+	if (ret)
+		return ret;
+
+	ret = uverbs_copy_to(attrs, EFA_IB_ATTR_QUERY_MR_RESP_RDMA_RECV_IC_ID,
+			     &mr->ic_info.rdma_recv_ic_id, sizeof(mr->ic_info.rdma_recv_ic_id));
+	if (ret)
+		return ret;
+
+	if (mr->ic_info.recv_ic_id_valid)
+		ic_id_validity |= EFA_QUERY_MR_VALIDITY_RECV_IC_ID;
+	if (mr->ic_info.rdma_read_ic_id_valid)
+		ic_id_validity |= EFA_QUERY_MR_VALIDITY_RDMA_READ_IC_ID;
+	if (mr->ic_info.rdma_recv_ic_id_valid)
+		ic_id_validity |= EFA_QUERY_MR_VALIDITY_RDMA_RECV_IC_ID;
+
+	return uverbs_copy_to(attrs, EFA_IB_ATTR_QUERY_MR_RESP_IC_ID_VALIDITY,
+			      &ic_id_validity, sizeof(ic_id_validity));
 }
 
 int efa_dereg_mr(struct ib_mr *ibmr, struct ib_udata *udata)
@@ -2157,3 +2213,30 @@ enum rdma_link_layer efa_port_link_layer(struct ib_device *ibdev,
 	return IB_LINK_LAYER_UNSPECIFIED;
 }
 
+DECLARE_UVERBS_NAMED_METHOD(EFA_IB_METHOD_MR_QUERY,
+			    UVERBS_ATTR_IDR(EFA_IB_ATTR_QUERY_MR_HANDLE,
+					    UVERBS_OBJECT_MR,
+					    UVERBS_ACCESS_READ,
+					    UA_MANDATORY),
+			    UVERBS_ATTR_PTR_OUT(EFA_IB_ATTR_QUERY_MR_RESP_IC_ID_VALIDITY,
+						UVERBS_ATTR_TYPE(u16),
+						UA_MANDATORY),
+			    UVERBS_ATTR_PTR_OUT(EFA_IB_ATTR_QUERY_MR_RESP_RECV_IC_ID,
+						UVERBS_ATTR_TYPE(u16),
+						UA_MANDATORY),
+			    UVERBS_ATTR_PTR_OUT(EFA_IB_ATTR_QUERY_MR_RESP_RDMA_READ_IC_ID,
+						UVERBS_ATTR_TYPE(u16),
+						UA_MANDATORY),
+			    UVERBS_ATTR_PTR_OUT(EFA_IB_ATTR_QUERY_MR_RESP_RDMA_RECV_IC_ID,
+						UVERBS_ATTR_TYPE(u16),
+						UA_MANDATORY));
+
+ADD_UVERBS_METHODS(efa_mr,
+		   UVERBS_OBJECT_MR,
+		   &UVERBS_METHOD(EFA_IB_METHOD_MR_QUERY));
+
+const struct uapi_definition efa_uapi_defs[] = {
+	UAPI_DEF_CHAIN_OBJ_TREE(UVERBS_OBJECT_MR,
+				&efa_mr),
+	{},
+};

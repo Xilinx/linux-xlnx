@@ -25,12 +25,16 @@
 #include "amdgpu_jpeg.h"
 #include "soc15.h"
 #include "soc15d.h"
+#include "jpeg_v2_0.h"
 #include "jpeg_v4_0_3.h"
 #include "mmsch_v4_0_3.h"
 
 #include "vcn/vcn_4_0_3_offset.h"
 #include "vcn/vcn_4_0_3_sh_mask.h"
 #include "ivsrcid/vcn/irqsrcs_vcn_4_0.h"
+
+#define NORMALIZE_JPEG_REG_OFFSET(offset) \
+		(offset & 0x1FFFF)
 
 enum jpeg_engin_status {
 	UVD_PGFSM_STATUS__UVDJ_PWR_ON  = 0,
@@ -54,6 +58,12 @@ static int amdgpu_ih_srcid_jpeg[] = {
 	VCN_4_0__SRCID__JPEG6_DECODE,
 	VCN_4_0__SRCID__JPEG7_DECODE
 };
+
+static inline bool jpeg_v4_0_3_normalizn_reqd(struct amdgpu_device *adev)
+{
+	return amdgpu_sriov_vf(adev) ||
+	       (amdgpu_ip_version(adev, GC_HWIP, 0) == IP_VERSION(9, 4, 4));
+}
 
 /**
  * jpeg_v4_0_3_early_init - set function pointers
@@ -341,7 +351,6 @@ static int jpeg_v4_0_3_hw_init(void *handle)
 			}
 		}
 	}
-	DRM_DEV_INFO(adev->dev, "JPEG decode initialized successfully.\n");
 
 	return 0;
 }
@@ -622,6 +631,13 @@ static uint64_t jpeg_v4_0_3_dec_ring_get_wptr(struct amdgpu_ring *ring)
 			ring->pipe ? (0x40 * ring->pipe - 0xc80) : 0);
 }
 
+static void jpeg_v4_0_3_ring_emit_hdp_flush(struct amdgpu_ring *ring)
+{
+	/* JPEG engine access for HDP flush doesn't work when RRMT is enabled.
+	 * This is a workaround to avoid any HDP flush through JPEG ring.
+	 */
+}
+
 /**
  * jpeg_v4_0_3_dec_ring_set_wptr - set write pointer
  *
@@ -652,11 +668,13 @@ static void jpeg_v4_0_3_dec_ring_set_wptr(struct amdgpu_ring *ring)
  *
  * Write a start command to the ring.
  */
-static void jpeg_v4_0_3_dec_ring_insert_start(struct amdgpu_ring *ring)
+void jpeg_v4_0_3_dec_ring_insert_start(struct amdgpu_ring *ring)
 {
-	amdgpu_ring_write(ring, PACKETJ(regUVD_JRBC_EXTERNAL_REG_INTERNAL_OFFSET,
-		0, 0, PACKETJ_TYPE0));
-	amdgpu_ring_write(ring, 0x62a04); /* PCTL0_MMHUB_DEEPSLEEP_IB */
+	if (!amdgpu_sriov_vf(ring->adev)) {
+		amdgpu_ring_write(ring, PACKETJ(regUVD_JRBC_EXTERNAL_REG_INTERNAL_OFFSET,
+			0, 0, PACKETJ_TYPE0));
+		amdgpu_ring_write(ring, 0x62a04); /* PCTL0_MMHUB_DEEPSLEEP_IB */
+	}
 
 	amdgpu_ring_write(ring, PACKETJ(JRBC_DEC_EXTERNAL_REG_WRITE_ADDR,
 		0, 0, PACKETJ_TYPE0));
@@ -670,11 +688,13 @@ static void jpeg_v4_0_3_dec_ring_insert_start(struct amdgpu_ring *ring)
  *
  * Write a end command to the ring.
  */
-static void jpeg_v4_0_3_dec_ring_insert_end(struct amdgpu_ring *ring)
+void jpeg_v4_0_3_dec_ring_insert_end(struct amdgpu_ring *ring)
 {
-	amdgpu_ring_write(ring, PACKETJ(regUVD_JRBC_EXTERNAL_REG_INTERNAL_OFFSET,
-		0, 0, PACKETJ_TYPE0));
-	amdgpu_ring_write(ring, 0x62a04);
+	if (!amdgpu_sriov_vf(ring->adev)) {
+		amdgpu_ring_write(ring, PACKETJ(regUVD_JRBC_EXTERNAL_REG_INTERNAL_OFFSET,
+			0, 0, PACKETJ_TYPE0));
+		amdgpu_ring_write(ring, 0x62a04);
+	}
 
 	amdgpu_ring_write(ring, PACKETJ(JRBC_DEC_EXTERNAL_REG_WRITE_ADDR,
 		0, 0, PACKETJ_TYPE0));
@@ -691,7 +711,7 @@ static void jpeg_v4_0_3_dec_ring_insert_end(struct amdgpu_ring *ring)
  *
  * Write a fence and a trap command to the ring.
  */
-static void jpeg_v4_0_3_dec_ring_emit_fence(struct amdgpu_ring *ring, u64 addr, u64 seq,
+void jpeg_v4_0_3_dec_ring_emit_fence(struct amdgpu_ring *ring, u64 addr, u64 seq,
 				unsigned int flags)
 {
 	WARN_ON(flags & AMDGPU_FENCE_FLAG_64BIT);
@@ -720,31 +740,19 @@ static void jpeg_v4_0_3_dec_ring_emit_fence(struct amdgpu_ring *ring, u64 addr, 
 		0, PACKETJ_CONDITION_CHECK0, PACKETJ_TYPE4));
 	amdgpu_ring_write(ring, 0);
 
-	if (ring->adev->jpeg.inst[ring->me].aid_id) {
-		amdgpu_ring_write(ring, PACKETJ(regUVD_JRBC_EXTERNAL_MCM_ADDR_INTERNAL_OFFSET,
-			0, PACKETJ_CONDITION_CHECK0, PACKETJ_TYPE0));
-		amdgpu_ring_write(ring, 0x4);
-	} else {
-		amdgpu_ring_write(ring, PACKETJ(0, 0, 0, PACKETJ_TYPE6));
-		amdgpu_ring_write(ring, 0);
-	}
+	amdgpu_ring_write(ring, PACKETJ(0, 0, 0, PACKETJ_TYPE6));
+	amdgpu_ring_write(ring, 0);
 
 	amdgpu_ring_write(ring,	PACKETJ(regUVD_JRBC_EXTERNAL_REG_INTERNAL_OFFSET,
 		0, 0, PACKETJ_TYPE0));
 	amdgpu_ring_write(ring, 0x3fbc);
 
-	if (ring->adev->jpeg.inst[ring->me].aid_id) {
-		amdgpu_ring_write(ring, PACKETJ(regUVD_JRBC_EXTERNAL_MCM_ADDR_INTERNAL_OFFSET,
-			0, PACKETJ_CONDITION_CHECK0, PACKETJ_TYPE0));
-		amdgpu_ring_write(ring, 0x0);
-	} else {
-		amdgpu_ring_write(ring, PACKETJ(0, 0, 0, PACKETJ_TYPE6));
-		amdgpu_ring_write(ring, 0);
-	}
-
 	amdgpu_ring_write(ring, PACKETJ(JRBC_DEC_EXTERNAL_REG_WRITE_ADDR,
 		0, 0, PACKETJ_TYPE0));
 	amdgpu_ring_write(ring, 0x1);
+
+	amdgpu_ring_write(ring, PACKETJ(0, 0, 0, PACKETJ_TYPE6));
+	amdgpu_ring_write(ring, 0);
 
 	amdgpu_ring_write(ring, PACKETJ(0, 0, 0, PACKETJ_TYPE7));
 	amdgpu_ring_write(ring, 0);
@@ -760,7 +768,7 @@ static void jpeg_v4_0_3_dec_ring_emit_fence(struct amdgpu_ring *ring, u64 addr, 
  *
  * Write ring commands to execute the indirect buffer.
  */
-static void jpeg_v4_0_3_dec_ring_emit_ib(struct amdgpu_ring *ring,
+void jpeg_v4_0_3_dec_ring_emit_ib(struct amdgpu_ring *ring,
 				struct amdgpu_job *job,
 				struct amdgpu_ib *ib,
 				uint32_t flags)
@@ -769,11 +777,15 @@ static void jpeg_v4_0_3_dec_ring_emit_ib(struct amdgpu_ring *ring,
 
 	amdgpu_ring_write(ring, PACKETJ(regUVD_LMI_JRBC_IB_VMID_INTERNAL_OFFSET,
 		0, 0, PACKETJ_TYPE0));
-	amdgpu_ring_write(ring, (vmid | (vmid << 4)));
+
+	if (ring->funcs->parse_cs)
+		amdgpu_ring_write(ring, 0);
+	else
+		amdgpu_ring_write(ring, (vmid | (vmid << 4) | (vmid << 8)));
 
 	amdgpu_ring_write(ring, PACKETJ(regUVD_LMI_JPEG_VMID_INTERNAL_OFFSET,
 		0, 0, PACKETJ_TYPE0));
-	amdgpu_ring_write(ring, (vmid | (vmid << 4)));
+	amdgpu_ring_write(ring, (vmid | (vmid << 4) | (vmid << 8)));
 
 	amdgpu_ring_write(ring,	PACKETJ(regUVD_LMI_JRBC_IB_64BIT_BAR_LOW_INTERNAL_OFFSET,
 		0, 0, PACKETJ_TYPE0));
@@ -811,10 +823,16 @@ static void jpeg_v4_0_3_dec_ring_emit_ib(struct amdgpu_ring *ring,
 	amdgpu_ring_write(ring, 0x2);
 }
 
-static void jpeg_v4_0_3_dec_ring_emit_reg_wait(struct amdgpu_ring *ring, uint32_t reg,
+void jpeg_v4_0_3_dec_ring_emit_reg_wait(struct amdgpu_ring *ring, uint32_t reg,
 				uint32_t val, uint32_t mask)
 {
-	uint32_t reg_offset = (reg << 2);
+	uint32_t reg_offset;
+
+	/* Use normalized offsets if required */
+	if (jpeg_v4_0_3_normalizn_reqd(ring->adev))
+		reg = NORMALIZE_JPEG_REG_OFFSET(reg);
+
+	reg_offset = (reg << 2);
 
 	amdgpu_ring_write(ring, PACKETJ(regUVD_JRBC_RB_COND_RD_TIMER_INTERNAL_OFFSET,
 		0, 0, PACKETJ_TYPE0));
@@ -838,7 +856,7 @@ static void jpeg_v4_0_3_dec_ring_emit_reg_wait(struct amdgpu_ring *ring, uint32_
 	amdgpu_ring_write(ring, mask);
 }
 
-static void jpeg_v4_0_3_dec_ring_emit_vm_flush(struct amdgpu_ring *ring,
+void jpeg_v4_0_3_dec_ring_emit_vm_flush(struct amdgpu_ring *ring,
 				unsigned int vmid, uint64_t pd_addr)
 {
 	struct amdgpu_vmhub *hub = &ring->adev->vmhub[ring->vm_hub];
@@ -853,9 +871,15 @@ static void jpeg_v4_0_3_dec_ring_emit_vm_flush(struct amdgpu_ring *ring,
 	jpeg_v4_0_3_dec_ring_emit_reg_wait(ring, data0, data1, mask);
 }
 
-static void jpeg_v4_0_3_dec_ring_emit_wreg(struct amdgpu_ring *ring, uint32_t reg, uint32_t val)
+void jpeg_v4_0_3_dec_ring_emit_wreg(struct amdgpu_ring *ring, uint32_t reg, uint32_t val)
 {
-	uint32_t reg_offset = (reg << 2);
+	uint32_t reg_offset;
+
+	/* Use normalized offsets if required */
+	if (jpeg_v4_0_3_normalizn_reqd(ring->adev))
+		reg = NORMALIZE_JPEG_REG_OFFSET(reg);
+
+	reg_offset = (reg << 2);
 
 	amdgpu_ring_write(ring,	PACKETJ(regUVD_JRBC_EXTERNAL_REG_INTERNAL_OFFSET,
 		0, 0, PACKETJ_TYPE0));
@@ -871,7 +895,7 @@ static void jpeg_v4_0_3_dec_ring_emit_wreg(struct amdgpu_ring *ring, uint32_t re
 	amdgpu_ring_write(ring, val);
 }
 
-static void jpeg_v4_0_3_dec_ring_nop(struct amdgpu_ring *ring, uint32_t count)
+void jpeg_v4_0_3_dec_ring_nop(struct amdgpu_ring *ring, uint32_t count)
 {
 	int i;
 
@@ -949,6 +973,11 @@ static int jpeg_v4_0_3_set_powergating_state(void *handle,
 {
 	struct amdgpu_device *adev = (struct amdgpu_device *)handle;
 	int ret;
+
+	if (amdgpu_sriov_vf(adev)) {
+		adev->jpeg.cur_state = AMD_PG_STATE_UNGATE;
+		return 0;
+	}
 
 	if (state == adev->jpeg.cur_state)
 		return 0;
@@ -1044,6 +1073,8 @@ static const struct amd_ip_funcs jpeg_v4_0_3_ip_funcs = {
 	.post_soft_reset = NULL,
 	.set_clockgating_state = jpeg_v4_0_3_set_clockgating_state,
 	.set_powergating_state = jpeg_v4_0_3_set_powergating_state,
+	.dump_ip_state = NULL,
+	.print_ip_state = NULL,
 };
 
 static const struct amdgpu_ring_funcs jpeg_v4_0_3_dec_ring_vm_funcs = {
@@ -1052,6 +1083,7 @@ static const struct amdgpu_ring_funcs jpeg_v4_0_3_dec_ring_vm_funcs = {
 	.get_rptr = jpeg_v4_0_3_dec_ring_get_rptr,
 	.get_wptr = jpeg_v4_0_3_dec_ring_get_wptr,
 	.set_wptr = jpeg_v4_0_3_dec_ring_set_wptr,
+	.parse_cs = jpeg_v2_dec_ring_parse_cs,
 	.emit_frame_size =
 		SOC15_FLUSH_GPU_TLB_NUM_WREG * 6 +
 		SOC15_FLUSH_GPU_TLB_NUM_REG_WAIT * 8 +
@@ -1062,6 +1094,7 @@ static const struct amdgpu_ring_funcs jpeg_v4_0_3_dec_ring_vm_funcs = {
 	.emit_ib = jpeg_v4_0_3_dec_ring_emit_ib,
 	.emit_fence = jpeg_v4_0_3_dec_ring_emit_fence,
 	.emit_vm_flush = jpeg_v4_0_3_dec_ring_emit_vm_flush,
+	.emit_hdp_flush = jpeg_v4_0_3_ring_emit_hdp_flush,
 	.test_ring = amdgpu_jpeg_dec_ring_test_ring,
 	.test_ib = amdgpu_jpeg_dec_ring_test_ib,
 	.insert_nop = jpeg_v4_0_3_dec_ring_nop,
@@ -1089,7 +1122,6 @@ static void jpeg_v4_0_3_set_dec_ring_funcs(struct amdgpu_device *adev)
 		adev->jpeg.inst[i].aid_id =
 			jpeg_inst / adev->jpeg.num_inst_per_aid;
 	}
-	DRM_DEV_INFO(adev->dev, "JPEG decode is enabled in VM mode\n");
 }
 
 static const struct amdgpu_irq_src_funcs jpeg_v4_0_3_irq_funcs = {

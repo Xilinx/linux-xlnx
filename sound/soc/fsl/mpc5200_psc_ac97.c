@@ -5,9 +5,8 @@
 // Copyright (C) 2009 Jon Smirl, Digispeaker
 // Author: Jon Smirl <jonsmirl@gmail.com>
 
+#include <linux/mod_devicetable.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
-#include <linux/of_platform.h>
 #include <linux/delay.h>
 #include <linux/time.h>
 
@@ -328,7 +327,7 @@ MODULE_DEVICE_TABLE(of, psc_ac97_match);
 
 static struct platform_driver psc_ac97_driver = {
 	.probe = psc_ac97_of_probe,
-	.remove_new = psc_ac97_of_remove,
+	.remove = psc_ac97_of_remove,
 	.driver = {
 		.name = "mpc5200-psc-ac97",
 		.of_match_table = psc_ac97_match,

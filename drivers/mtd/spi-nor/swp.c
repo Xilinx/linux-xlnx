@@ -36,10 +36,15 @@ static u8 spi_nor_get_sr_tb_mask(struct spi_nor *nor)
 
 static u64 spi_nor_get_min_prot_length_sr(struct spi_nor *nor)
 {
+	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
 	unsigned int bp_slots, bp_slots_needed;
+	/*
+	 * sector_size will eventually be replaced with the max erase size of
+	 * the flash. For now, we need to have that ugly default.
+	 */
+	unsigned int sector_size = nor->info->sector_size ?: SPI_NOR_DEFAULT_SECTOR_SIZE;
+	u64 n_sectors = div_u64(params->size, sector_size);
 	u8 mask = spi_nor_get_sr_bp_mask(nor);
-	u32 n_sectors = nor->info->n_sectors;
-	u32 sector_size = nor->info->sector_size;
 
 	if (nor->flags & SNOR_F_HAS_STACKED)
 		n_sectors <<= 1;
@@ -52,14 +57,13 @@ static u64 spi_nor_get_min_prot_length_sr(struct spi_nor *nor)
 	bp_slots_needed = ilog2(n_sectors);
 
 	if (bp_slots_needed > bp_slots)
-		return sector_size <<
-			(bp_slots_needed - bp_slots);
-
-	return sector_size;
+		return sector_size << (bp_slots_needed - bp_slots);
+	else
+		return sector_size;
 }
 
 static void spi_nor_get_locked_range_sr(struct spi_nor *nor, u8 sr, loff_t *ofs,
-					uint64_t *len)
+					u64 *len)
 {
 	struct mtd_info *mtd = &nor->mtd;
 	u64 min_prot_len;
@@ -96,10 +100,10 @@ static void spi_nor_get_locked_range_sr(struct spi_nor *nor, u8 sr, loff_t *ofs,
  * (if @locked is false); false otherwise.
  */
 static bool spi_nor_check_lock_status_sr(struct spi_nor *nor, loff_t ofs,
-					 uint64_t len, u8 sr, bool locked)
+					 u64 len, u8 sr, bool locked)
 {
 	loff_t lock_offs, lock_offs_max, offs_max;
-	uint64_t lock_len;
+	u64 lock_len;
 
 	if (!len)
 		return true;
@@ -117,14 +121,13 @@ static bool spi_nor_check_lock_status_sr(struct spi_nor *nor, loff_t ofs,
 		return (ofs >= lock_offs_max) || (offs_max <= lock_offs);
 }
 
-static bool spi_nor_is_locked_sr(struct spi_nor *nor, loff_t ofs, uint64_t len,
-				 u8 sr)
+static bool spi_nor_is_locked_sr(struct spi_nor *nor, loff_t ofs, u64 len, u8 sr)
 {
 	return spi_nor_check_lock_status_sr(nor, ofs, len, sr, true);
 }
 
-static bool spi_nor_is_unlocked_sr(struct spi_nor *nor, loff_t ofs,
-				   uint64_t len, u8 sr)
+static bool spi_nor_is_unlocked_sr(struct spi_nor *nor, loff_t ofs, u64 len,
+				   u8 sr)
 {
 	return spi_nor_check_lock_status_sr(nor, ofs, len, sr, false);
 }
@@ -162,7 +165,7 @@ static bool spi_nor_is_unlocked_sr(struct spi_nor *nor, loff_t ofs,
  *
  * Returns negative on errors, 0 on success.
  */
-static int spi_nor_sr_lock(struct spi_nor *nor, loff_t ofs, uint64_t len)
+static int spi_nor_sr_lock(struct spi_nor *nor, loff_t ofs, u64 len)
 {
 	struct mtd_info *mtd = &nor->mtd;
 	u64 min_prot_len;
@@ -275,7 +278,7 @@ static bool spi_nor_is_upper_area(struct spi_nor *nor, loff_t ofs, uint64_t len)
  *
  * Returns negative on errors, 0 on success.
  */
-static int spi_nor_sr_unlock(struct spi_nor *nor, loff_t ofs, uint64_t len)
+static int spi_nor_sr_unlock(struct spi_nor *nor, loff_t ofs, u64 len)
 {
 	struct mtd_info *mtd = &nor->mtd;
 	u64 min_prot_len;
@@ -364,7 +367,7 @@ static int spi_nor_sr_unlock(struct spi_nor *nor, loff_t ofs, uint64_t len)
  * Returns 1 if entire region is locked, 0 if any portion is unlocked, and
  * negative on errors.
  */
-static int spi_nor_sr_is_locked(struct spi_nor *nor, loff_t ofs, uint64_t len)
+static int spi_nor_sr_is_locked(struct spi_nor *nor, loff_t ofs, u64 len)
 {
 	int ret;
 
@@ -398,9 +401,9 @@ static inline u16 min_lockable_sectors(struct spi_nor *nor,
 	 * protected area table is similar to that of spansion.
 	 */
 	lock_granularity = max(1, n_sectors / M25P_MAX_LOCKABLE_SECTORS);
-	if (nor->info->id[0] == CFI_MFR_ST ||	/* Micron */
-	    nor->info->id[0] == CFI_MFR_PMC ||	/* ISSI */
-	    nor->info->id[0] == CFI_MFR_MACRONIX)	/* Macronix */
+	if (nor->info->id->bytes[0] == CFI_MFR_ST ||	/* Micron */
+	    nor->info->id->bytes[0] == CFI_MFR_PMC ||	/* ISSI */
+	    nor->info->id->bytes[0] == CFI_MFR_MACRONIX)	/* Macronix */
 		lock_granularity = 1;
 
 	return lock_granularity;
@@ -414,7 +417,7 @@ static inline uint32_t get_protected_area_start(struct spi_nor *nor,
 	u16 n_sectors;
 	u64 mtd_size;
 
-	n_sectors = nor->info->n_sectors;
+	n_sectors = nor->info->size / nor->info->sector_size;
 	sector_size = nor->info->sector_size;
 	mtd_size = mtd->size;
 
@@ -423,7 +426,7 @@ static inline uint32_t get_protected_area_start(struct spi_nor *nor,
 		mtd_size = (mtd->size >> 1);
 	}
 	if (nor->flags & SNOR_F_HAS_STACKED) {
-		n_sectors = (nor->info->n_sectors >> 1);
+		n_sectors >>= 1;
 		mtd_size = (mtd->size >> 1);
 	}
 
@@ -472,7 +475,7 @@ err:
 	return ret;
 }
 
-static int spi_nor_unlock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
+static int spi_nor_unlock(struct mtd_info *mtd, loff_t ofs, u64 len)
 {
 	struct spi_nor_flash_parameter *params;
 	struct spi_nor *nor = mtd_to_spi_nor(mtd);
@@ -513,7 +516,7 @@ err:
 	return ret;
 }
 
-static int spi_nor_is_locked(struct mtd_info *mtd, loff_t ofs, uint64_t len)
+static int spi_nor_is_locked(struct mtd_info *mtd, loff_t ofs, u64 len)
 {
 	struct spi_nor_flash_parameter *params;
 	struct spi_nor *nor = mtd_to_spi_nor(mtd);
@@ -573,16 +576,16 @@ void spi_nor_try_unlock_all(struct spi_nor *nor)
 
 	dev_dbg(nor->dev, "Unprotecting entire flash array\n");
 
-	if (nor->info->id[0] == CFI_MFR_ATMEL ||
-	    nor->info->id[0] == CFI_MFR_INTEL ||
-	    nor->info->id[0] == CFI_MFR_SST ||
+	if (nor->info->id->bytes[0] == CFI_MFR_ATMEL ||
+	    nor->info->id->bytes[0] == CFI_MFR_INTEL ||
+	    nor->info->id->bytes[0] == CFI_MFR_SST ||
 	    nor->flags & SNOR_F_HAS_LOCK) {
 		if (info->flags & SST_GLOBAL_PROT_UNLK) {
 			spi_nor_prot_unlock(nor);
 		} else {
 			ret = spi_nor_unlock(&nor->mtd, 0, params->size);
-				if (ret)
-					dev_dbg(nor->dev, "Failed to unlock the entire flash memory array\n");
+			if (ret)
+				dev_dbg(nor->dev, "Failed to unlock the entire flash memory array\n");
 		}
 	}
 }

@@ -150,6 +150,7 @@ struct devlink_port {
 
 	struct devlink_rate *devlink_rate;
 	struct devlink_linecard *linecard;
+	u32 rel_index;
 };
 
 struct devlink_port_new_attrs {
@@ -351,7 +352,7 @@ struct devlink_dpipe_table {
 	bool resource_valid;
 	u64 resource_id;
 	u64 resource_units;
-	struct devlink_dpipe_table_ops *table_ops;
+	const struct devlink_dpipe_table_ops *table_ops;
 	struct rcu_head rcu;
 };
 
@@ -482,7 +483,8 @@ struct devlink_param {
 	int (*get)(struct devlink *devlink, u32 id,
 		   struct devlink_param_gset_ctx *ctx);
 	int (*set)(struct devlink *devlink, u32 id,
-		   struct devlink_param_gset_ctx *ctx);
+		   struct devlink_param_gset_ctx *ctx,
+		   struct netlink_ext_ack *extack);
 	int (*validate)(struct devlink *devlink, u32 id,
 			union devlink_param_value val,
 			struct netlink_ext_ack *extack);
@@ -598,12 +600,14 @@ enum devlink_param_generic_id {
 	.validate = _validate,						\
 }
 
-/* Part number, identifier of board design */
+/* Identifier of board design */
 #define DEVLINK_INFO_VERSION_GENERIC_BOARD_ID	"board.id"
 /* Revision of board design */
 #define DEVLINK_INFO_VERSION_GENERIC_BOARD_REV	"board.rev"
 /* Maker of the board */
 #define DEVLINK_INFO_VERSION_GENERIC_BOARD_MANUFACTURE	"board.manufacture"
+/* Part number of the board and its components */
+#define DEVLINK_INFO_VERSION_GENERIC_BOARD_PART_NUMBER	"board.part_number"
 
 /* Part number, identifier of asic design */
 #define DEVLINK_INFO_VERSION_GENERIC_ASIC_ID	"asic.id"
@@ -1601,6 +1605,14 @@ void devlink_free(struct devlink *devlink);
  *			      capability. Should be used by device drivers to
  *			      enable/disable ipsec_packet capability of a
  *			      function managed by the devlink port.
+ * @port_fn_max_io_eqs_get: Callback used to get port function's maximum number
+ *			    of event queues. Should be used by device drivers to
+ *			    report the maximum event queues of a function
+ *			    managed by the devlink port.
+ * @port_fn_max_io_eqs_set: Callback used to set port function's maximum number
+ *			    of event queues. Should be used by device drivers to
+ *			    configure maximum number of event queues
+ *			    of a function managed by the devlink port.
  *
  * Note: Driver should return -EOPNOTSUPP if it doesn't support
  * port function (@port_fn_*) handling for a particular port.
@@ -1650,6 +1662,12 @@ struct devlink_port_ops {
 	int (*port_fn_ipsec_packet_set)(struct devlink_port *devlink_port,
 					bool enable,
 					struct netlink_ext_ack *extack);
+	int (*port_fn_max_io_eqs_get)(struct devlink_port *devlink_port,
+				      u32 *max_eqs,
+				      struct netlink_ext_ack *extack);
+	int (*port_fn_max_io_eqs_set)(struct devlink_port *devlink_port,
+				      u32 max_eqs,
+				      struct netlink_ext_ack *extack);
 };
 
 void devlink_port_init(struct devlink *devlink,
@@ -1697,6 +1715,8 @@ void devlink_port_attrs_pci_vf_set(struct devlink_port *devlink_port, u32 contro
 void devlink_port_attrs_pci_sf_set(struct devlink_port *devlink_port,
 				   u32 controller, u16 pf, u32 sf,
 				   bool external);
+int devl_port_fn_devlink_set(struct devlink_port *devlink_port,
+			     struct devlink *fn_devlink);
 struct devlink_rate *
 devl_rate_node_create(struct devlink *devlink, void *priv, char *node_name,
 		      struct devlink_rate *parent);
@@ -1717,8 +1737,8 @@ void devlink_linecard_provision_clear(struct devlink_linecard *linecard);
 void devlink_linecard_provision_fail(struct devlink_linecard *linecard);
 void devlink_linecard_activate(struct devlink_linecard *linecard);
 void devlink_linecard_deactivate(struct devlink_linecard *linecard);
-void devlink_linecard_nested_dl_set(struct devlink_linecard *linecard,
-				    struct devlink *nested_devlink);
+int devlink_linecard_nested_dl_set(struct devlink_linecard *linecard,
+				   struct devlink *nested_devlink);
 int devl_sb_register(struct devlink *devlink, unsigned int sb_index,
 		     u32 size, u16 ingress_pools_count,
 		     u16 egress_pools_count, u16 ingress_tc_count,
@@ -1731,7 +1751,7 @@ void devl_sb_unregister(struct devlink *devlink, unsigned int sb_index);
 void devlink_sb_unregister(struct devlink *devlink, unsigned int sb_index);
 int devl_dpipe_table_register(struct devlink *devlink,
 			      const char *table_name,
-			      struct devlink_dpipe_table_ops *table_ops,
+			      const struct devlink_dpipe_table_ops *table_ops,
 			      void *priv, bool counter_control_extern);
 void devl_dpipe_table_unregister(struct devlink *devlink,
 				 const char *table_name);
@@ -1851,36 +1871,36 @@ int devlink_info_version_running_put_ext(struct devlink_info_req *req,
 					 const char *version_value,
 					 enum devlink_info_version_type version_type);
 
-int devlink_fmsg_obj_nest_start(struct devlink_fmsg *fmsg);
-int devlink_fmsg_obj_nest_end(struct devlink_fmsg *fmsg);
+void devlink_fmsg_obj_nest_start(struct devlink_fmsg *fmsg);
+void devlink_fmsg_obj_nest_end(struct devlink_fmsg *fmsg);
 
-int devlink_fmsg_pair_nest_start(struct devlink_fmsg *fmsg, const char *name);
-int devlink_fmsg_pair_nest_end(struct devlink_fmsg *fmsg);
+void devlink_fmsg_pair_nest_start(struct devlink_fmsg *fmsg, const char *name);
+void devlink_fmsg_pair_nest_end(struct devlink_fmsg *fmsg);
 
-int devlink_fmsg_arr_pair_nest_start(struct devlink_fmsg *fmsg,
-				     const char *name);
-int devlink_fmsg_arr_pair_nest_end(struct devlink_fmsg *fmsg);
-int devlink_fmsg_binary_pair_nest_start(struct devlink_fmsg *fmsg,
-					const char *name);
-int devlink_fmsg_binary_pair_nest_end(struct devlink_fmsg *fmsg);
+void devlink_fmsg_arr_pair_nest_start(struct devlink_fmsg *fmsg,
+				      const char *name);
+void devlink_fmsg_arr_pair_nest_end(struct devlink_fmsg *fmsg);
+void devlink_fmsg_binary_pair_nest_start(struct devlink_fmsg *fmsg,
+					 const char *name);
+void devlink_fmsg_binary_pair_nest_end(struct devlink_fmsg *fmsg);
 
-int devlink_fmsg_u32_put(struct devlink_fmsg *fmsg, u32 value);
-int devlink_fmsg_string_put(struct devlink_fmsg *fmsg, const char *value);
-int devlink_fmsg_binary_put(struct devlink_fmsg *fmsg, const void *value,
-			    u16 value_len);
+void devlink_fmsg_u32_put(struct devlink_fmsg *fmsg, u32 value);
+void devlink_fmsg_string_put(struct devlink_fmsg *fmsg, const char *value);
+void devlink_fmsg_binary_put(struct devlink_fmsg *fmsg, const void *value,
+			     u16 value_len);
 
-int devlink_fmsg_bool_pair_put(struct devlink_fmsg *fmsg, const char *name,
-			       bool value);
-int devlink_fmsg_u8_pair_put(struct devlink_fmsg *fmsg, const char *name,
-			     u8 value);
-int devlink_fmsg_u32_pair_put(struct devlink_fmsg *fmsg, const char *name,
-			      u32 value);
-int devlink_fmsg_u64_pair_put(struct devlink_fmsg *fmsg, const char *name,
-			      u64 value);
-int devlink_fmsg_string_pair_put(struct devlink_fmsg *fmsg, const char *name,
-				 const char *value);
-int devlink_fmsg_binary_pair_put(struct devlink_fmsg *fmsg, const char *name,
-				 const void *value, u32 value_len);
+void devlink_fmsg_bool_pair_put(struct devlink_fmsg *fmsg, const char *name,
+				bool value);
+void devlink_fmsg_u8_pair_put(struct devlink_fmsg *fmsg, const char *name,
+			      u8 value);
+void devlink_fmsg_u32_pair_put(struct devlink_fmsg *fmsg, const char *name,
+			       u32 value);
+void devlink_fmsg_u64_pair_put(struct devlink_fmsg *fmsg, const char *name,
+			       u64 value);
+void devlink_fmsg_string_pair_put(struct devlink_fmsg *fmsg, const char *name,
+				  const char *value);
+void devlink_fmsg_binary_pair_put(struct devlink_fmsg *fmsg, const char *name,
+				  const void *value, u32 value_len);
 
 struct devlink_health_reporter *
 devl_port_health_reporter_create(struct devlink_port *port,
@@ -1918,6 +1938,8 @@ devlink_health_reporter_state_update(struct devlink_health_reporter *reporter,
 void
 devlink_health_reporter_recovery_done(struct devlink_health_reporter *reporter);
 
+int devl_nested_devlink_set(struct devlink *devlink,
+			    struct devlink *nested_devlink);
 bool devlink_is_reload_failed(const struct devlink *devlink);
 void devlink_remote_reload_actions_performed(struct devlink *devlink,
 					     enum devlink_reload_limit limit,

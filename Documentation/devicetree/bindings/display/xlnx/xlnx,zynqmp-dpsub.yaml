@@ -49,18 +49,13 @@ properties:
     const: xlnx,zynqmp-dpsub-1.7
 
   reg:
-    maxItems: 3
+    maxItems: 4
   reg-names:
     items:
       - const: dp
       - const: blend
       - const: av_buf
-
-  xlnx,dpaud-reg:
-    description:
-      A phandle to a syscon device, used to access
-      dp audio cfg registers.
-    $ref: /schemas/types.yaml#/definitions/phandle
+      - const: aud
 
   interrupts:
     maxItems: 1
@@ -105,12 +100,16 @@ properties:
       - description: Video layer, plane 1 (U/V or U)
       - description: Video layer, plane 2 (V)
       - description: Graphics layer
+      - description: Audio channel 0
+      - description: Audio channel 1
   dma-names:
     items:
       - const: vid0
       - const: vid1
       - const: vid2
       - const: gfx0
+      - const: aud0
+      - const: aud1
 
   phys:
     description: PHYs for the DP data lanes
@@ -165,7 +164,6 @@ required:
   - compatible
   - reg
   - reg-names
-  - xlnx,dpaud-reg
   - interrupts
   - clocks
   - clock-names
@@ -188,9 +186,9 @@ examples:
         compatible = "xlnx,zynqmp-dpsub-1.7";
         reg = <0xfd4a0000 0x1000>,
               <0xfd4aa000 0x1000>,
-              <0xfd4ab000 0x1000>;
-        reg-names = "dp", "blend", "av_buf";
-        xlnx,dpaud-reg = <&dp_aud>;
+              <0xfd4ab000 0x1000>,
+              <0xfd4ac000 0x1000>;
+        reg-names = "dp", "blend", "av_buf", "aud";
         interrupts = <0 119 4>;
         interrupt-parent = <&gic>;
 
@@ -200,11 +198,13 @@ examples:
         power-domains = <&pd_dp>;
         resets = <&reset ZYNQMP_RESET_DP>;
 
-        dma-names = "vid0", "vid1", "vid2", "gfx0";
+        dma-names = "vid0", "vid1", "vid2", "gfx0", "aud0", "aud1";
         dmas = <&xlnx_dpdma 0>,
                <&xlnx_dpdma 1>,
                <&xlnx_dpdma 2>,
-               <&xlnx_dpdma 3>;
+               <&xlnx_dpdma 3>,
+               <&xlnx_dpdma 4>,
+               <&xlnx_dpdma 5>;
 
         phys = <&psgtr 1 PHY_TYPE_DP 0 3>,
                <&psgtr 0 PHY_TYPE_DP 1 3>;

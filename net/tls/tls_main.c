@@ -59,7 +59,8 @@ enum {
 };
 
 #define CHECK_CIPHER_DESC(cipher,ci)				\
-	static_assert(cipher ## _IV_SIZE <= MAX_IV_SIZE);		\
+	static_assert(cipher ## _IV_SIZE <= TLS_MAX_IV_SIZE);		\
+	static_assert(cipher ## _SALT_SIZE <= TLS_MAX_SALT_SIZE);		\
 	static_assert(cipher ## _REC_SEQ_SIZE <= TLS_MAX_REC_SEQ_SIZE);	\
 	static_assert(cipher ## _TAG_SIZE == TLS_TAG_SIZE);		\
 	static_assert(sizeof_field(struct ci, iv) == cipher ## _IV_SIZE);	\
@@ -348,8 +349,6 @@ static void tls_sk_proto_cleanup(struct sock *sk,
 
 	/* We need these for tls_sw_fallback handling of other packets */
 	if (ctx->tx_conf == TLS_SW) {
-		kfree(ctx->tx.rec_seq);
-		kfree(ctx->tx.iv);
 		tls_sw_release_resources_tx(sk);
 		TLS_DEC_STATS(sock_net(sk), LINUX_MIB_TLSCURRTXSW);
 	} else if (ctx->tx_conf == TLS_HW) {
@@ -585,6 +584,31 @@ static int tls_getsockopt(struct sock *sk, int level, int optname,
 	return do_tls_getsockopt(sk, optname, optval, optlen);
 }
 
+static int validate_crypto_info(const struct tls_crypto_info *crypto_info,
+				const struct tls_crypto_info *alt_crypto_info)
+{
+	if (crypto_info->version != TLS_1_2_VERSION &&
+	    crypto_info->version != TLS_1_3_VERSION)
+		return -EINVAL;
+
+	switch (crypto_info->cipher_type) {
+	case TLS_CIPHER_ARIA_GCM_128:
+	case TLS_CIPHER_ARIA_GCM_256:
+		if (crypto_info->version != TLS_1_2_VERSION)
+			return -EINVAL;
+		break;
+	}
+
+	/* Ensure that TLS version and ciphers are same in both directions */
+	if (TLS_CRYPTO_INFO_READY(alt_crypto_info)) {
+		if (alt_crypto_info->version != crypto_info->version ||
+		    alt_crypto_info->cipher_type != crypto_info->cipher_type)
+			return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int do_tls_setsockopt_conf(struct sock *sk, sockptr_t optval,
 				  unsigned int optlen, int tx)
 {
@@ -592,6 +616,7 @@ static int do_tls_setsockopt_conf(struct sock *sk, sockptr_t optval,
 	struct tls_crypto_info *alt_crypto_info;
 	struct tls_context *ctx = tls_get_ctx(sk);
 	const struct tls_cipher_desc *cipher_desc;
+	union tls_crypto_context *crypto_ctx;
 	int rc = 0;
 	int conf;
 
@@ -599,12 +624,14 @@ static int do_tls_setsockopt_conf(struct sock *sk, sockptr_t optval,
 		return -EINVAL;
 
 	if (tx) {
-		crypto_info = &ctx->crypto_send.info;
+		crypto_ctx = &ctx->crypto_send;
 		alt_crypto_info = &ctx->crypto_recv.info;
 	} else {
-		crypto_info = &ctx->crypto_recv.info;
+		crypto_ctx = &ctx->crypto_recv;
 		alt_crypto_info = &ctx->crypto_send.info;
 	}
+
+	crypto_info = &crypto_ctx->info;
 
 	/* Currently we don't support set crypto info more than one time */
 	if (TLS_CRYPTO_INFO_READY(crypto_info))
@@ -616,36 +643,14 @@ static int do_tls_setsockopt_conf(struct sock *sk, sockptr_t optval,
 		goto err_crypto_info;
 	}
 
-	/* check version */
-	if (crypto_info->version != TLS_1_2_VERSION &&
-	    crypto_info->version != TLS_1_3_VERSION) {
-		rc = -EINVAL;
+	rc = validate_crypto_info(crypto_info, alt_crypto_info);
+	if (rc)
 		goto err_crypto_info;
-	}
-
-	/* Ensure that TLS version and ciphers are same in both directions */
-	if (TLS_CRYPTO_INFO_READY(alt_crypto_info)) {
-		if (alt_crypto_info->version != crypto_info->version ||
-		    alt_crypto_info->cipher_type != crypto_info->cipher_type) {
-			rc = -EINVAL;
-			goto err_crypto_info;
-		}
-	}
 
 	cipher_desc = get_cipher_desc(crypto_info->cipher_type);
 	if (!cipher_desc) {
 		rc = -EINVAL;
 		goto err_crypto_info;
-	}
-
-	switch (crypto_info->cipher_type) {
-	case TLS_CIPHER_ARIA_GCM_128:
-	case TLS_CIPHER_ARIA_GCM_256:
-		if (crypto_info->version != TLS_1_2_VERSION) {
-			rc = -EINVAL;
-			goto err_crypto_info;
-		}
-		break;
 	}
 
 	if (optlen != cipher_desc->crypto_info) {
@@ -662,13 +667,13 @@ static int do_tls_setsockopt_conf(struct sock *sk, sockptr_t optval,
 	}
 
 	if (tx) {
-		rc = tls_set_device_offload(sk, ctx);
+		rc = tls_set_device_offload(sk);
 		conf = TLS_HW;
 		if (!rc) {
 			TLS_INC_STATS(sock_net(sk), LINUX_MIB_TLSTXDEVICE);
 			TLS_INC_STATS(sock_net(sk), LINUX_MIB_TLSCURRTXDEVICE);
 		} else {
-			rc = tls_set_sw_offload(sk, ctx, 1);
+			rc = tls_set_sw_offload(sk, 1);
 			if (rc)
 				goto err_crypto_info;
 			TLS_INC_STATS(sock_net(sk), LINUX_MIB_TLSTXSW);
@@ -682,7 +687,7 @@ static int do_tls_setsockopt_conf(struct sock *sk, sockptr_t optval,
 			TLS_INC_STATS(sock_net(sk), LINUX_MIB_TLSRXDEVICE);
 			TLS_INC_STATS(sock_net(sk), LINUX_MIB_TLSCURRRXDEVICE);
 		} else {
-			rc = tls_set_sw_offload(sk, ctx, 0);
+			rc = tls_set_sw_offload(sk, 0);
 			if (rc)
 				goto err_crypto_info;
 			TLS_INC_STATS(sock_net(sk), LINUX_MIB_TLSRXSW);
@@ -708,7 +713,7 @@ static int do_tls_setsockopt_conf(struct sock *sk, sockptr_t optval,
 	return 0;
 
 err_crypto_info:
-	memzero_explicit(crypto_info, sizeof(union tls_crypto_context));
+	memzero_explicit(crypto_ctx, sizeof(*crypto_ctx));
 	return rc;
 }
 
@@ -814,9 +819,17 @@ struct tls_context *tls_ctx_create(struct sock *sk)
 		return NULL;
 
 	mutex_init(&ctx->tx_lock);
-	rcu_assign_pointer(icsk->icsk_ulp_data, ctx);
 	ctx->sk_proto = READ_ONCE(sk->sk_prot);
 	ctx->sk = sk;
+	/* Release semantic of rcu_assign_pointer() ensures that
+	 * ctx->sk_proto is visible before changing sk->sk_prot in
+	 * update_sk_prot(), and prevents reading uninitialized value in
+	 * tls_{getsockopt, setsockopt}. Note that we do not need a
+	 * read barrier in tls_{getsockopt,setsockopt} as there is an
+	 * address dependency between sk->sk_proto->{getsockopt,setsockopt}
+	 * and ctx->sk_proto.
+	 */
+	rcu_assign_pointer(icsk->icsk_ulp_data, ctx);
 	return ctx;
 }
 
@@ -1001,7 +1014,7 @@ static u16 tls_user_config(struct tls_context *ctx, bool tx)
 	return 0;
 }
 
-static int tls_get_info(const struct sock *sk, struct sk_buff *skb)
+static int tls_get_info(struct sock *sk, struct sk_buff *skb)
 {
 	u16 version, cipher_type;
 	struct tls_context *ctx;

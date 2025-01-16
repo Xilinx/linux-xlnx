@@ -239,7 +239,7 @@ static int clk_wzrd_ver_dynamic_reconfig(struct clk_hw *hw, unsigned long rate,
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
 	void __iomem *div_addr = divider->base + divider->offset;
 	u32 value, regh, edged, p5en, p5fedge, regval, regval1;
-	unsigned long flags = 0;
+	unsigned long flags;
 	int err;
 
 	spin_lock_irqsave(divider->lock, flags);
@@ -286,7 +286,7 @@ static int clk_wzrd_dynamic_reconfig(struct clk_hw *hw, unsigned long rate,
 {
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
 	void __iomem *div_addr = divider->base + divider->offset;
-	unsigned long flags = 0;
+	unsigned long flags;
 	u32 value;
 	int err;
 
@@ -505,7 +505,7 @@ static int clk_wzrd_dynamic_all_nolock(struct clk_hw *hw, unsigned long rate,
 				       unsigned long parent_rate)
 {
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
-	void __iomem *div_addr = divider->base;
+	void __iomem *div_addr;
 	u32 reg;
 	int err;
 
@@ -530,7 +530,7 @@ static int clk_wzrd_dynamic_all(struct clk_hw *hw, unsigned long rate,
 				unsigned long parent_rate)
 {
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
-	unsigned long flags = 0;
+	unsigned long flags;
 	int ret;
 
 	spin_lock_irqsave(divider->lock, flags);
@@ -546,7 +546,7 @@ static int clk_wzrd_dynamic_all_ver(struct clk_hw *hw, unsigned long rate,
 				    unsigned long parent_rate)
 {
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
-	unsigned long flags = 0;
+	unsigned long flags;
 	int ret;
 
 	spin_lock_irqsave(divider->lock, flags);
@@ -990,7 +990,7 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 	unsigned long flags = 0;
 	void __iomem *ctrl_reg;
 	u32 reg, reg_f, mult;
-	bool is_versal = 0;
+	bool is_versal = false;
 	unsigned long rate;
 	int nr_outputs;
 	int i, ret;
@@ -1274,7 +1274,7 @@ static struct platform_driver clk_wzrd_driver = {
 		.pm = &clk_wzrd_dev_pm_ops,
 	},
 	.probe = clk_wzrd_probe,
-	.remove_new = clk_wzrd_remove,
+	.remove = clk_wzrd_remove,
 };
 module_platform_driver(clk_wzrd_driver);
 

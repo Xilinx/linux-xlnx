@@ -223,15 +223,13 @@ err_algs:
 	return ret;
 }
 
-static int zynqmp_rsa_remove(struct platform_device *pdev)
+static void zynqmp_rsa_remove(struct platform_device *pdev)
 {
 	struct zynqmp_rsa_dev *drv_ctx;
 
 	drv_ctx = platform_get_drvdata(pdev);
 
 	crypto_unregister_skcipher(drv_ctx->alg);
-
-	return 0;
 }
 
 static struct platform_driver xilinx_rsa_driver = {

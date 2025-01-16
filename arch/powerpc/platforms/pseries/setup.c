@@ -343,8 +343,8 @@ static int alloc_dispatch_log_kmem_cache(void)
 {
 	void (*ctor)(void *) = get_dtl_cache_ctor();
 
-	dtl_cache = kmem_cache_create("dtl", DISPATCH_LOG_BYTES,
-						DISPATCH_LOG_BYTES, 0, ctor);
+	dtl_cache = kmem_cache_create_usercopy("dtl", DISPATCH_LOG_BYTES,
+						DISPATCH_LOG_BYTES, 0, 0, DISPATCH_LOG_BYTES, ctor);
 	if (!dtl_cache) {
 		pr_warn("Failed to create dispatch trace log buffer cache\n");
 		pr_warn("Stolen time statistics will be unreliable\n");
@@ -1029,9 +1029,11 @@ static void __init pseries_add_hw_description(void)
 		return;
 	}
 
-	if (of_property_read_bool(of_root, "ibm,powervm-partition") ||
-	    of_property_read_bool(of_root, "ibm,fw-net-version"))
+	dn = of_find_node_by_path("/");
+	if (of_property_read_bool(dn, "ibm,powervm-partition") ||
+	    of_property_read_bool(dn, "ibm,fw-net-version"))
 		seq_buf_printf(&ppc_hw_desc, "hv:phyp ");
+	of_node_put(dn);
 }
 
 /*
@@ -1091,7 +1093,11 @@ static void pseries_power_off(void)
 
 static int __init pSeries_probe(void)
 {
-	if (!of_node_is_type(of_root, "chrp"))
+	struct device_node *root = of_find_node_by_path("/");
+	bool ret = of_node_is_type(root, "chrp");
+
+	of_node_put(root);
+	if (!ret)
 		return 0;
 
 	/* Cell blades firmware claims to be chrp while it's not. Until this
@@ -1153,7 +1159,6 @@ define_machine(pseries) {
 	.machine_check_exception = pSeries_machine_check_exception,
 	.machine_check_log_err	= pSeries_machine_check_log_err,
 #ifdef CONFIG_KEXEC_CORE
-	.machine_kexec          = pseries_machine_kexec,
 	.kexec_cpu_down         = pseries_kexec_cpu_down,
 #endif
 #ifdef CONFIG_MEMORY_HOTPLUG

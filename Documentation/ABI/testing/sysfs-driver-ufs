@@ -920,14 +920,16 @@ Description:	This file shows whether the configuration descriptor is locked.
 
 What:		/sys/bus/platform/drivers/ufshcd/*/attributes/max_number_of_rtt
 What:		/sys/bus/platform/devices/*.ufs/attributes/max_number_of_rtt
-Date:		February 2018
-Contact:	Stanislav Nijnikov <stanislav.nijnikov@wdc.com>
+Date:		May 2024
+Contact:	Avri Altman <avri.altman@wdc.com>
 Description:	This file provides the maximum current number of
-		outstanding RTTs in device that is allowed. The full
-		information about the attribute could be found at
-		UFS specifications 2.1.
+		outstanding RTTs in device that is allowed. bMaxNumOfRTT is a
+		read-write persistent attribute and is equal to two after device
+		manufacturing. It shall not be set to a value greater than
+		bDeviceRTTCap value, and it may be set only when the hw queues are
+		empty.
 
-		The file is read only.
+		The file is read write.
 
 What:		/sys/bus/platform/drivers/ufshcd/*/attributes/exception_event_control
 What:		/sys/bus/platform/devices/*.ufs/attributes/exception_event_control
@@ -1223,6 +1225,55 @@ Description:	This file shows the total latency (in micro seconds) of write
 
 		The file is read only.
 
+What:		/sys/bus/platform/drivers/ufshcd/*/power_info/lane
+What:		/sys/bus/platform/devices/*.ufs/power_info/lane
+Date:		September 2023
+Contact:	Can Guo <quic_cang@quicinc.com>
+Description:	This file shows how many lanes are enabled on the UFS link,
+		i.e., an output 2 means UFS link is operating with 2 lanes.
+
+		The file is read only.
+
+What:		/sys/bus/platform/drivers/ufshcd/*/power_info/mode
+What:		/sys/bus/platform/devices/*.ufs/power_info/mode
+Date:		September 2023
+Contact:	Can Guo <quic_cang@quicinc.com>
+Description:	This file shows the PA power mode of UFS.
+
+		The file is read only.
+
+What:		/sys/bus/platform/drivers/ufshcd/*/power_info/rate
+What:		/sys/bus/platform/devices/*.ufs/power_info/rate
+Date:		September 2023
+Contact:	Can Guo <quic_cang@quicinc.com>
+Description:	This file shows the speed rate of UFS link.
+
+		The file is read only.
+
+What:		/sys/bus/platform/drivers/ufshcd/*/power_info/gear
+What:		/sys/bus/platform/devices/*.ufs/power_info/gear
+Date:		September 2023
+Contact:	Can Guo <quic_cang@quicinc.com>
+Description:	This file shows the gear of UFS link.
+
+		The file is read only.
+
+What:		/sys/bus/platform/drivers/ufshcd/*/power_info/dev_pm
+What:		/sys/bus/platform/devices/*.ufs/power_info/dev_pm
+Date:		September 2023
+Contact:	Can Guo <quic_cang@quicinc.com>
+Description:	This file shows the UFS device power mode.
+
+		The file is read only.
+
+What:		/sys/bus/platform/drivers/ufshcd/*/power_info/link_state
+What:		/sys/bus/platform/devices/*.ufs/power_info/link_state
+Date:		September 2023
+Contact:	Can Guo <quic_cang@quicinc.com>
+Description:	This file shows the state of UFS link.
+
+		The file is read only.
+
 What:		/sys/bus/platform/drivers/ufshcd/*/device_descriptor/wb_presv_us_en
 What:		/sys/bus/platform/devices/*.ufs/device_descriptor/wb_presv_us_en
 Date:		June 2020
@@ -1474,3 +1525,37 @@ Description:	Indicates status of Write Booster.
 
 		The file is read only.
 
+What:		/sys/bus/platform/drivers/ufshcd/*/rtc_update_ms
+What:		/sys/bus/platform/devices/*.ufs/rtc_update_ms
+Date:		November 2023
+Contact:	Bean Huo <beanhuo@micron.com>
+Description:
+		rtc_update_ms indicates how often the host should synchronize or update the
+		UFS RTC. If set to 0, this will disable UFS RTC periodic update.
+
+What:		/sys/devices/platform/.../ufshci_capabilities/version
+Date:		August 2024
+Contact:	Avri Altman <avri.altman@wdc.com>
+Description:
+		Host Capabilities register group: UFS version register.
+		Symbol - VER.  This file shows the UFSHCD version.
+		Example: Version 3.12 would be represented as 0000_0312h.
+		The file is read only.
+
+What:		/sys/devices/platform/.../ufshci_capabilities/product_id
+Date:		August 2024
+Contact:	Avri Altman <avri.altman@wdc.com>
+Description:
+		Host Capabilities register group: product ID register.
+		Symbol - HCPID.  This file shows the UFSHCD product id.
+		The content of this register is vendor specific.
+		The file is read only.
+
+What:		/sys/devices/platform/.../ufshci_capabilities/man_id
+Date:		August 2024
+Contact:	Avri Altman <avri.altman@wdc.com>
+Description:
+		Host Capabilities register group: manufacturer ID register.
+		Symbol - HCMID. This file shows the UFSHCD manufacturer id.
+		The Manufacturer ID is defined by JEDEC in JEDEC-JEP106.
+		The file is read only.

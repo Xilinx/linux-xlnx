@@ -24,6 +24,7 @@
 #include <linux/gpio/consumer.h>
 #include <linux/io.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <uapi/linux/media-bus-format.h>
@@ -1951,14 +1952,13 @@ err_ctrl_clk:
 	return ret;
 }
 
-static int xilinx_scaler_remove(struct platform_device *pdev)
+static void xilinx_scaler_remove(struct platform_device *pdev)
 {
 	struct xilinx_scaler *scaler = platform_get_drvdata(pdev);
 
 	xlnx_bridge_unregister(&scaler->bridge);
 	clk_disable_unprepare(scaler->axis_clk);
 	clk_disable_unprepare(scaler->ctrl_clk);
-	return 0;
 }
 
 static struct platform_driver scaler_bridge_driver = {

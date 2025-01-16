@@ -61,109 +61,89 @@ struct xpuf_dev {
 	struct miscdevice	miscdev;
 };
 
-static int xlnx_puf_regis(struct xpuf_dev *puf, struct puf_usrparams *pufreq)
+static int xlnx_puf_cfg(struct xpuf_dev *puf, struct puf_usrparams *pufreq)
 {
-	dma_addr_t dma_addr_data;
-	struct puf_params *pufin;
 	struct pufdata *pufdat;
+	struct device *dev = puf->dev;
+	struct puf_params *pufin;
+	struct puf_helperdata *pufhd;
 	dma_addr_t dma_addr_in;
-	u32 buflen;
-	void *buf;
+	dma_addr_t dma_addr_data;
 	int ret;
 
-	if (pufreq->pufoperation != PUF_REGIS)
-		return -EINVAL;
-	buflen = sizeof(struct puf_params) + sizeof(struct pufdata);
-	buf = kmalloc(buflen, GFP_KERNEL);
-	if (!buf)
+	pufin = dma_alloc_coherent(dev, sizeof(struct puf_params), &dma_addr_in, GFP_KERNEL);
+	if (!pufin)
 		return -ENOMEM;
-	pufin = buf;
-	dma_addr_in = dma_map_single(puf->dev, buf, buflen, DMA_BIDIRECTIONAL);
-	if (dma_mapping_error(puf->dev, dma_addr_in)) {
-		ret = -ENOMEM;
-		goto cleanup;
-	}
+
 	pufin->pufoperation = pufreq->pufoperation;
 	pufin->globalvarfilter = pufreq->globalvarfilter;
 	pufin->shuttervalue = pufreq->shuttervalue;
+	if (pufin->pufoperation == PUF_REGIS) {
+		pufdat = dma_alloc_coherent(dev, sizeof(struct pufdata), &dma_addr_data,
+					    GFP_KERNEL);
+		if (!pufdat) {
+			ret = -ENOMEM;
+			goto cleanup_pufin;
+		}
+		pufin->readsyndromeaddr = (u64)(dma_addr_data);
+		pufin->chashaddr = (u64)(pufin->readsyndromeaddr + sizeof(pufdat->pufhd.syndata));
+		pufin->auxaddr = (u64)(pufin->chashaddr + sizeof(pufdat->pufhd.chash));
+		pufin->pufidaddr = (u64)(pufin->auxaddr + sizeof(pufdat->pufhd.aux));
+		pufin->trimsyndataaddr = (u64)(pufin->pufidaddr + sizeof(pufdat->pufid));
 
-	pufdat = buf + sizeof(struct puf_params);
-	dma_addr_data = dma_addr_in + sizeof(struct puf_params);
-	pufin->readsyndromeaddr = (u64)(dma_addr_data);
-	pufin->chashaddr = (u64)(pufin->readsyndromeaddr + sizeof(pufdat->pufhd.syndata));
-	pufin->auxaddr = (u64)(pufin->chashaddr + sizeof(pufdat->pufhd.chash));
-	pufin->pufidaddr = (u64)(pufin->auxaddr + sizeof(pufdat->pufhd.aux));
-	pufin->trimsyndataaddr = (u64)(pufin->pufidaddr + sizeof(pufdat->pufid));
-	dma_sync_single_for_device(puf->dev, dma_addr_in, buflen, DMA_BIDIRECTIONAL);
-	ret = versal_pm_puf_registration(dma_addr_in);
-	dma_unmap_single(puf->dev, dma_addr_in, buflen, DMA_BIDIRECTIONAL);
-	if (ret != 0)
-		goto cleanup;
-	if (copy_to_user((void *)pufreq->pufdataaddr, pufdat, sizeof(struct pufdata))) {
-		ret = -EFAULT;
-		goto cleanup;
-	}
-cleanup:
-	kfree(buf);
-	return ret;
-}
+		ret = versal_pm_puf_registration(dma_addr_in);
+		if (ret != 0)
+			goto cleanup_pufdata;
 
-static int xlnx_puf_regen_id(struct xpuf_dev *puf,
-			     struct puf_usrparams *pufreq)
-{
-	struct puf_helperdata *pufhd;
-	struct puf_params *pufin;
-	dma_addr_t dma_addr_data;
-	dma_addr_t dma_addr_in;
-	int ret = 0;
-	u32 buflen;
-	void *buf;
+		if (copy_to_user((void *)pufreq->pufdataaddr, pufdat, sizeof(struct pufdata))) {
+			ret = -EFAULT;
+			goto cleanup_pufdata;
+		}
+	} else if ((pufin->pufoperation == PUF_REGEN) || (pufin->pufoperation == PUF_REGEN_ID)) {
+		pufin->readoption = pufreq->readoption;
+		pufhd = dma_alloc_coherent(dev, (sizeof(struct puf_helperdata) +
+					   PUF_ID_LEN_IN_BYTES), &dma_addr_data,
+					   GFP_KERNEL);
+		if (!pufhd) {
+			ret = -ENOMEM;
+			goto cleanup_pufin;
+		}
 
-	if (pufreq->pufoperation != PUF_REGEN &&
-	    pufreq->pufoperation != PUF_REGEN_ID)
-		return -EINVAL;
-	buflen = sizeof(struct puf_params) + (sizeof(struct puf_helperdata) +
-		 PUF_ID_LEN_IN_BYTES);
-	buf = kmalloc(buflen, GFP_KERNEL);
-	if (!buf)
-		return -ENOMEM;
-	pufin = buf;
-	dma_addr_in = dma_map_single(puf->dev, buf, buflen, DMA_BIDIRECTIONAL);
-	if (dma_mapping_error(puf->dev, dma_addr_in)) {
-		ret = -ENOMEM;
-		goto cleanup;
-	}
-	pufin->pufoperation = pufreq->pufoperation;
-	pufin->globalvarfilter = pufreq->globalvarfilter;
-	pufin->shuttervalue = pufreq->shuttervalue;
-	pufin->readoption = pufreq->readoption;
-	pufhd = buf + sizeof(struct puf_params);
-	dma_addr_data = dma_addr_in + sizeof(struct puf_params);
-	if (copy_from_user(pufhd, (void *)pufreq->pufdataaddr,
-			   sizeof(struct puf_helperdata))) {
-		ret = -EFAULT;
-		dma_unmap_single(puf->dev, dma_addr_in, buflen, DMA_BIDIRECTIONAL);
-		goto cleanup;
+		if (copy_from_user(pufhd, (void *)pufreq->pufdataaddr,
+				   sizeof(struct puf_helperdata))) {
+			ret = -EFAULT;
+			goto cleanup_pufdata;
+		}
+
+		pufin->writesyndromeaddr = (u64)(dma_addr_data);
+		pufin->chashaddr = (u64)(pufin->writesyndromeaddr + sizeof(pufhd->syndata));
+		pufin->auxaddr = (u64)(pufin->chashaddr + sizeof(pufhd->chash));
+		pufin->pufidaddr = (u64)(pufin->auxaddr + sizeof(pufhd->aux));
+		ret = versal_pm_puf_regeneration(dma_addr_in);
+		if (ret != 0)
+			goto cleanup_pufdata;
+
+		if (copy_to_user((void *)pufreq->pufidaddr, ((char *)pufhd +
+				 sizeof(struct puf_helperdata)),
+				 PUF_ID_LEN_IN_BYTES)) {
+			ret = -EFAULT;
+			goto cleanup_pufdata;
+		}
+	} else {
+		ret = -EINVAL;
+		goto cleanup_pufin;
 	}
 
-	pufin->writesyndromeaddr = (u64)(dma_addr_data);
-	pufin->chashaddr = (u64)(pufin->writesyndromeaddr + sizeof(pufhd->syndata));
-	pufin->auxaddr = (u64)(pufin->chashaddr + sizeof(pufhd->chash));
-	pufin->pufidaddr = (u64)(pufin->auxaddr + sizeof(pufhd->aux));
-	dma_sync_single_for_device(puf->dev, dma_addr_in, buflen, DMA_BIDIRECTIONAL);
-	ret = versal_pm_puf_regeneration(dma_addr_in);
-	dma_unmap_single(puf->dev, dma_addr_in, buflen, DMA_BIDIRECTIONAL);
-	if (ret != 0)
-		goto cleanup;
+cleanup_pufdata:
+	if (pufin->pufoperation == PUF_REGIS)
+		dma_free_coherent(dev, sizeof(struct pufdata), pufdat, dma_addr_data);
+	else if (pufin->pufoperation == PUF_REGEN)
+		dma_free_coherent(dev, (sizeof(struct puf_helperdata) + PUF_ID_LEN_IN_BYTES),
+				  pufhd, dma_addr_data);
 
-	if (copy_to_user((void *)pufreq->pufidaddr, ((char *)pufhd +
-			 sizeof(struct puf_helperdata)),
-			 PUF_ID_LEN_IN_BYTES)) {
-		ret = -EFAULT;
-		goto cleanup;
-	}
-cleanup:
-	kfree(buf);
+cleanup_pufin:
+	dma_free_coherent(dev, sizeof(struct puf_params), pufin, dma_addr_in);
+
 	return ret;
 }
 
@@ -183,16 +163,16 @@ static long xlnx_puf_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 		if (!data)
 			return -EINVAL;
 	}
-	if (copy_from_user(&pufreq, data,
-			   sizeof(struct puf_usrparams)))
-		return -EINVAL;
+
 	switch (cmd) {
 	case PUF_REGISTRATION:
-		ret = xlnx_puf_regis(puf, &pufreq);
-	break;
 	case PUF_REGENERATION:
 	case PUF_REGEN_ID_ONLY:
-		ret = xlnx_puf_regen_id(puf, &pufreq);
+		if (copy_from_user(&pufreq, data,
+				   sizeof(struct puf_usrparams)))
+			return -EINVAL;
+
+		ret = xlnx_puf_cfg(puf, &pufreq);
 		break;
 	case PUF_CLEAR_ID:
 		if (!puf_clear) {
@@ -302,10 +282,8 @@ static int xlnx_puf_probe(struct platform_device *pdev)
 /**
  * xlnx_puf_remove - clean up structures
  * @pdev:	The structure containing the device's details
- *
- * Return: 0 on success.
  */
-static int xlnx_puf_remove(struct platform_device *pdev)
+static void xlnx_puf_remove(struct platform_device *pdev)
 {
 	struct xpuf_dev *xpuf = platform_get_drvdata(pdev);
 
@@ -313,8 +291,6 @@ static int xlnx_puf_remove(struct platform_device *pdev)
 	misc_deregister(&xpuf->miscdev);
 
 	dev_dbg(xpuf->dev, "device /dev/xpuf removed\n");
-
-	return 0;
 }
 
 static struct platform_driver xlnx_puf_drv = {

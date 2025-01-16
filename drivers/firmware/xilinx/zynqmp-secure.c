@@ -150,10 +150,9 @@ static int securefw_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int securefw_remove(struct platform_device *pdev)
+static void securefw_remove(struct platform_device *pdev)
 {
 	sysfs_remove_groups(&pdev->dev.kobj, securefw_groups);
-	return 0;
 }
 
 static struct platform_driver securefw_driver = {

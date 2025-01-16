@@ -411,13 +411,6 @@ static enum power_supply_property smb2_properties[] = {
 	POWER_SUPPLY_PROP_USB_TYPE,
 };
 
-static enum power_supply_usb_type smb2_usb_types[] = {
-	POWER_SUPPLY_USB_TYPE_UNKNOWN,
-	POWER_SUPPLY_USB_TYPE_SDP,
-	POWER_SUPPLY_USB_TYPE_DCP,
-	POWER_SUPPLY_USB_TYPE_CDP,
-};
-
 static int smb2_get_prop_usb_online(struct smb2_chip *chip, int *val)
 {
 	unsigned int stat;
@@ -775,8 +768,10 @@ static irqreturn_t smb2_handle_wdog_bark(int irq, void *data)
 static const struct power_supply_desc smb2_psy_desc = {
 	.name = "pmi8998_charger",
 	.type = POWER_SUPPLY_TYPE_USB,
-	.usb_types = smb2_usb_types,
-	.num_usb_types = ARRAY_SIZE(smb2_usb_types),
+	.usb_types = BIT(POWER_SUPPLY_USB_TYPE_SDP) |
+		     BIT(POWER_SUPPLY_USB_TYPE_CDP) |
+		     BIT(POWER_SUPPLY_USB_TYPE_DCP) |
+		     BIT(POWER_SUPPLY_USB_TYPE_UNKNOWN),
 	.properties = smb2_properties,
 	.num_properties = ARRAY_SIZE(smb2_properties),
 	.get_property = smb2_get_property,
@@ -915,8 +910,7 @@ static int smb2_init_irq(struct smb2_chip *chip, int *irq, const char *name,
 
 	irqnum = platform_get_irq_byname(to_platform_device(chip->dev), name);
 	if (irqnum < 0)
-		return dev_err_probe(chip->dev, irqnum,
-				     "Couldn't get irq %s byname\n", name);
+		return irqnum;
 
 	rc = devm_request_threaded_irq(chip->dev, irqnum, NULL, handler,
 				       IRQF_ONESHOT, name, chip);
@@ -973,10 +967,14 @@ static int smb2_probe(struct platform_device *pdev)
 	supply_config.of_node = pdev->dev.of_node;
 
 	desc = devm_kzalloc(chip->dev, sizeof(smb2_psy_desc), GFP_KERNEL);
+	if (!desc)
+		return -ENOMEM;
 	memcpy(desc, &smb2_psy_desc, sizeof(smb2_psy_desc));
 	desc->name =
 		devm_kasprintf(chip->dev, GFP_KERNEL, "%s-charger",
 			       (const char *)device_get_match_data(chip->dev));
+	if (!desc->name)
+		return -ENOMEM;
 
 	chip->chg_psy =
 		devm_power_supply_register(chip->dev, desc, &supply_config);

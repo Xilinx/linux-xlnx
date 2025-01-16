@@ -33,8 +33,7 @@
 #include "xsk.h"
 
 #define TX_BATCH_SIZE 32
-
-static DEFINE_PER_CPU(struct list_head, xskmap_flush_list);
+#define MAX_PER_SOCKET_BUDGET (TX_BATCH_SIZE)
 
 void xsk_set_rx_need_wakeup(struct xsk_buff_pool *pool)
 {
@@ -166,8 +165,10 @@ static int xsk_rcv_zc(struct xdp_sock *xs, struct xdp_buff *xdp, u32 len)
 		contd = XDP_PKT_CONTD;
 
 	err = __xsk_rcv_zc(xs, xskb, len, contd);
-	if (err || likely(!frags))
-		goto out;
+	if (err)
+		goto err;
+	if (likely(!frags))
+		return 0;
 
 	xskb_list = &xskb->pool->xskb_list;
 	list_for_each_entry_safe(pos, tmp, xskb_list, xskb_list_node) {
@@ -176,11 +177,13 @@ static int xsk_rcv_zc(struct xdp_sock *xs, struct xdp_buff *xdp, u32 len)
 		len = pos->xdp.data_end - pos->xdp.data;
 		err = __xsk_rcv_zc(xs, pos, len, contd);
 		if (err)
-			return err;
+			goto err;
 		list_del(&pos->xskb_list_node);
 	}
 
-out:
+	return 0;
+err:
+	xsk_buff_free(xdp);
 	return err;
 }
 
@@ -367,22 +370,23 @@ static int xsk_rcv(struct xdp_sock *xs, struct xdp_buff *xdp)
 
 int __xsk_map_redirect(struct xdp_sock *xs, struct xdp_buff *xdp)
 {
-	struct list_head *flush_list = this_cpu_ptr(&xskmap_flush_list);
 	int err;
 
 	err = xsk_rcv(xs, xdp);
 	if (err)
 		return err;
 
-	if (!xs->flush_node.prev)
+	if (!xs->flush_node.prev) {
+		struct list_head *flush_list = bpf_net_ctx_get_xskmap_flush_list();
+
 		list_add(&xs->flush_node, flush_list);
+	}
 
 	return 0;
 }
 
-void __xsk_map_flush(void)
+void __xsk_map_flush(struct list_head *flush_list)
 {
-	struct list_head *flush_list = this_cpu_ptr(&xskmap_flush_list);
 	struct xdp_sock *xs, *tmp;
 
 	list_for_each_entry_safe(xs, tmp, flush_list, flush_node) {
@@ -413,15 +417,24 @@ EXPORT_SYMBOL(xsk_tx_release);
 
 bool xsk_tx_peek_desc(struct xsk_buff_pool *pool, struct xdp_desc *desc)
 {
+	bool budget_exhausted = false;
 	struct xdp_sock *xs;
 
 	rcu_read_lock();
+again:
 	list_for_each_entry_rcu(xs, &pool->xsk_tx_list, tx_list) {
+		if (xs->tx_budget_spent >= MAX_PER_SOCKET_BUDGET) {
+			budget_exhausted = true;
+			continue;
+		}
+
 		if (!xskq_cons_peek_desc(xs->tx, desc, pool)) {
 			if (xskq_has_descs(xs->tx))
 				xskq_cons_release(xs->tx);
 			continue;
 		}
+
+		xs->tx_budget_spent++;
 
 		/* This is the backpressure mechanism for the Tx path.
 		 * Reserve space in the completion queue and only proceed
@@ -434,6 +447,14 @@ bool xsk_tx_peek_desc(struct xsk_buff_pool *pool, struct xdp_desc *desc)
 		xskq_cons_release(xs->tx);
 		rcu_read_unlock();
 		return true;
+	}
+
+	if (budget_exhausted) {
+		list_for_each_entry_rcu(xs, &pool->xsk_tx_list, tx_list)
+			xs->tx_budget_spent = 0;
+
+		budget_exhausted = false;
+		goto again;
 	}
 
 out:
@@ -543,6 +564,13 @@ static u32 xsk_get_num_desc(struct sk_buff *skb)
 
 static void xsk_destruct_skb(struct sk_buff *skb)
 {
+	struct xsk_tx_metadata_compl *compl = &skb_shinfo(skb)->xsk_meta;
+
+	if (compl->tx_timestamp) {
+		/* sw completion timestamp, not a real one */
+		*compl->tx_timestamp = ktime_get_tai_fast_ns();
+	}
+
 	xsk_cq_submit_locked(xdp_sk(skb->sk), xsk_get_num_desc(skb));
 	sock_wfree(skb);
 }
@@ -627,8 +655,10 @@ static struct sk_buff *xsk_build_skb_zerocopy(struct xdp_sock *xs,
 static struct sk_buff *xsk_build_skb(struct xdp_sock *xs,
 				     struct xdp_desc *desc)
 {
+	struct xsk_tx_metadata *meta = NULL;
 	struct net_device *dev = xs->dev;
 	struct sk_buff *skb = xs->skb;
+	bool first_frag = false;
 	int err;
 
 	if (dev->priv_flags & IFF_TX_SKB_NO_LINEAR) {
@@ -659,6 +689,8 @@ static struct sk_buff *xsk_build_skb(struct xdp_sock *xs,
 				kfree_skb(skb);
 				goto free_err;
 			}
+
+			first_frag = true;
 		} else {
 			int nr_frags = skb_shinfo(skb)->nr_frags;
 			struct page *page;
@@ -679,14 +711,48 @@ static struct sk_buff *xsk_build_skb(struct xdp_sock *xs,
 			memcpy(vaddr, buffer, len);
 			kunmap_local(vaddr);
 
-			skb_add_rx_frag(skb, nr_frags, page, 0, len, 0);
+			skb_add_rx_frag(skb, nr_frags, page, 0, len, PAGE_SIZE);
+			refcount_add(PAGE_SIZE, &xs->sk.sk_wmem_alloc);
+		}
+
+		if (first_frag && desc->options & XDP_TX_METADATA) {
+			if (unlikely(xs->pool->tx_metadata_len == 0)) {
+				err = -EINVAL;
+				goto free_err;
+			}
+
+			meta = buffer - xs->pool->tx_metadata_len;
+			if (unlikely(!xsk_buff_valid_tx_metadata(meta))) {
+				err = -EINVAL;
+				goto free_err;
+			}
+
+			if (meta->flags & XDP_TXMD_FLAGS_CHECKSUM) {
+				if (unlikely(meta->request.csum_start +
+					     meta->request.csum_offset +
+					     sizeof(__sum16) > len)) {
+					err = -EINVAL;
+					goto free_err;
+				}
+
+				skb->csum_start = hr + meta->request.csum_start;
+				skb->csum_offset = meta->request.csum_offset;
+				skb->ip_summed = CHECKSUM_PARTIAL;
+
+				if (unlikely(xs->pool->tx_sw_csum)) {
+					err = skb_checksum_help(skb);
+					if (err)
+						goto free_err;
+				}
+			}
 		}
 	}
 
 	skb->dev = dev;
-	skb->priority = xs->sk.sk_priority;
+	skb->priority = READ_ONCE(xs->sk.sk_priority);
 	skb->mark = READ_ONCE(xs->sk.sk_mark);
 	skb->destructor = xsk_destruct_skb;
+	xsk_tx_metadata_to_compl(meta, &skb_shinfo(skb)->xsk_meta);
 	xsk_set_destructor_arg(skb);
 
 	return skb;
@@ -919,7 +985,7 @@ static __poll_t xsk_poll(struct file *file, struct socket *sock,
 
 	rcu_read_lock();
 	if (xsk_check_common(xs))
-		goto skip_tx;
+		goto out;
 
 	pool = xs->pool;
 
@@ -931,12 +997,11 @@ static __poll_t xsk_poll(struct file *file, struct socket *sock,
 			xsk_generic_xmit(sk);
 	}
 
-skip_tx:
 	if (xs->rx && !xskq_prod_is_empty(xs->rx))
 		mask |= EPOLLIN | EPOLLRDNORM;
 	if (xs->tx && xsk_tx_writeable(xs))
 		mask |= EPOLLOUT | EPOLLWRNORM;
-
+out:
 	rcu_read_unlock();
 	return mask;
 }
@@ -1228,7 +1293,7 @@ static int xsk_bind(struct socket *sock, struct sockaddr *addr, int addr_len)
 
 	xs->dev = dev;
 	xs->zc = xs->umem->zc;
-	xs->sg = !!(flags & XDP_USE_SG);
+	xs->sg = !!(xs->umem->flags & XDP_UMEM_SG_FLAG);
 	xs->queue_id = qid;
 	xp_add_xsk(xs->pool, xs);
 
@@ -1301,6 +1366,17 @@ static int xsk_setsockopt(struct socket *sock, int level, int optname,
 		else if (optlen < sizeof(mr))
 			mr_size = sizeof(struct xdp_umem_reg_v1);
 
+		BUILD_BUG_ON(sizeof(struct xdp_umem_reg_v1) >= sizeof(struct xdp_umem_reg));
+
+		/* Make sure the last field of the struct doesn't have
+		 * uninitialized padding. All padding has to be explicit
+		 * and has to be set to zero by the userspace to make
+		 * struct xdp_umem_reg extensible in the future.
+		 */
+		BUILD_BUG_ON(offsetof(struct xdp_umem_reg, tx_metadata_len) +
+			     sizeof_field(struct xdp_umem_reg, tx_metadata_len) !=
+			     sizeof(struct xdp_umem_reg));
+
 		if (copy_from_sockptr(&mr, optval, mr_size))
 			return -EFAULT;
 
@@ -1328,6 +1404,8 @@ static int xsk_setsockopt(struct socket *sock, int level, int optname,
 		struct xsk_queue **q;
 		int entries;
 
+		if (optlen < sizeof(entries))
+			return -EINVAL;
 		if (copy_from_sockptr(&entries, optval, sizeof(entries)))
 			return -EFAULT;
 
@@ -1684,7 +1762,7 @@ static struct pernet_operations xsk_net_ops = {
 
 static int __init xsk_init(void)
 {
-	int err, cpu;
+	int err;
 
 	err = proto_register(&xsk_proto, 0 /* no slab */);
 	if (err)
@@ -1702,8 +1780,6 @@ static int __init xsk_init(void)
 	if (err)
 		goto out_pernet;
 
-	for_each_possible_cpu(cpu)
-		INIT_LIST_HEAD(&per_cpu(xskmap_flush_list, cpu));
 	return 0;
 
 out_pernet:

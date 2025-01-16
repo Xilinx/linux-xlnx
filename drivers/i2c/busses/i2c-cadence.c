@@ -636,17 +636,15 @@ static bool cdns_i2c_error_check(struct cdns_i2c *id)
 	cdns_i2c_writereg(isr_status & CDNS_I2C_IXR_ERR_INTR_MASK, CDNS_I2C_ISR_OFFSET);
 
 	id->err_status = isr_status & CDNS_I2C_IXR_ERR_INTR_MASK;
-	if (id->err_status)
-		return true;
 
-	return false;
+	return !!id->err_status;
 }
 
 static void cdns_i2c_mrecv_atomic(struct cdns_i2c *id)
 {
-	bool updatetx;
-
 	while (id->recv_count > 0) {
+		bool updatetx;
+
 		/*
 		 * Check if transfer size register needs to be updated again for a
 		 * large data receive operation.
@@ -655,14 +653,15 @@ static void cdns_i2c_mrecv_atomic(struct cdns_i2c *id)
 
 		while (id->curr_recv_count > 0) {
 			if (cdns_i2c_readreg(CDNS_I2C_SR_OFFSET) & CDNS_I2C_SR_RXDV) {
-				*id->p_recv_buf++ = cdns_i2c_readreg(CDNS_I2C_DATA_OFFSET);
+				*id->p_recv_buf = cdns_i2c_readreg(CDNS_I2C_DATA_OFFSET);
+				id->p_recv_buf++;
 				id->recv_count--;
 				id->curr_recv_count--;
 
 				/*
-				 * Clear hold bit that was set for FIFO control
-				 * if RX data left is less than or equal to
-				 * FIFO DEPTH unless repeated start is selected
+				 * Clear the hold bit that was set for FIFO control,
+				 * if the remaining RX data is less than or equal to
+				 * the FIFO depth, unless a repeated start is selected.
 				 */
 				if (id->recv_count <= id->fifo_depth && !id->bus_hold_flag)
 					cdns_i2c_clear_bus_hold(id);
@@ -674,7 +673,7 @@ static void cdns_i2c_mrecv_atomic(struct cdns_i2c *id)
 		}
 
 		/*
-		 * The controller sends NACK to the slave when transfer size
+		 * The controller sends NACK to the slave/target when transfer size
 		 * register reaches zero without considering the HOLD bit.
 		 * This workaround is implemented for large data transfers to
 		 * maintain transfer size non-zero while performing a large
@@ -690,7 +689,7 @@ static void cdns_i2c_mrecv_atomic(struct cdns_i2c *id)
 			 * Check number of bytes to be received against maximum
 			 * transfer size and update register accordingly.
 			 */
-			if (((int)(id->recv_count) - id->fifo_depth) >
+			if ((id->recv_count - id->fifo_depth) >
 			    id->transfer_size) {
 				cdns_i2c_writereg(id->transfer_size,
 						  CDNS_I2C_XFER_SIZE_OFFSET);
@@ -812,10 +811,10 @@ static void cdns_i2c_mrecv(struct cdns_i2c *id)
 
 static void cdns_i2c_msend_rem_atomic(struct cdns_i2c *id)
 {
-	unsigned int avail_bytes;
-	unsigned int bytes_to_send;
-
 	while (id->send_count) {
+		unsigned int avail_bytes;
+		unsigned int bytes_to_send;
+
 		avail_bytes = id->fifo_depth - cdns_i2c_readreg(CDNS_I2C_XFER_SIZE_OFFSET);
 		if (id->send_count > avail_bytes)
 			bytes_to_send = avail_bytes;
@@ -894,12 +893,10 @@ static void cdns_i2c_msend(struct cdns_i2c *id)
 	cdns_i2c_writereg(id->p_msg->addr & CDNS_I2C_ADDR_MASK,
 						CDNS_I2C_ADDR_OFFSET);
 
-	if (!id->atomic) {
+	if (!id->atomic)
 		cdns_i2c_writereg(CDNS_I2C_ENABLED_INTR_MASK, CDNS_I2C_IER_OFFSET);
-	} else {
-		if (id->send_count > 0)
-			cdns_i2c_msend_rem_atomic(id);
-	}
+	else if (id->send_count > 0)
+		cdns_i2c_msend_rem_atomic(id);
 }
 
 /**
@@ -962,7 +959,13 @@ static int cdns_i2c_process_msg(struct cdns_i2c *id, struct i2c_msg *msg,
 
 	/* Minimal time to execute this message */
 	msg_timeout = msecs_to_jiffies((1000 * msg->len * BITS_PER_BYTE) / id->i2c_clk);
-	/* Plus some wiggle room */
+
+	/*
+	 * Plus some wiggle room.
+	 * For non-atomic contexts, 500 ms is added to the timeout.
+	 * For atomic contexts, 2000 ms is added because transfers happen in polled
+	 * mode, requiring more time to account for the polling overhead.
+	 */
 	if (!id->atomic)
 		msg_timeout += msecs_to_jiffies(500);
 	else

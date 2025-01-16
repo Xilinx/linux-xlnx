@@ -36,7 +36,7 @@
 #include <linux/kernel.h>
 #include <linux/hid.h>
 #include <linux/mutex.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 #include <drm/drm_panel.h>
 
@@ -44,12 +44,13 @@
 #include "i2c-hid.h"
 
 /* quirks to control the device */
-#define I2C_HID_QUIRK_SET_PWR_WAKEUP_DEV	BIT(0)
-#define I2C_HID_QUIRK_NO_IRQ_AFTER_RESET	BIT(1)
-#define I2C_HID_QUIRK_BOGUS_IRQ			BIT(4)
-#define I2C_HID_QUIRK_RESET_ON_RESUME		BIT(5)
-#define I2C_HID_QUIRK_BAD_INPUT_SIZE		BIT(6)
-#define I2C_HID_QUIRK_NO_WAKEUP_AFTER_RESET	BIT(7)
+#define I2C_HID_QUIRK_NO_IRQ_AFTER_RESET	BIT(0)
+#define I2C_HID_QUIRK_BOGUS_IRQ			BIT(1)
+#define I2C_HID_QUIRK_RESET_ON_RESUME		BIT(2)
+#define I2C_HID_QUIRK_BAD_INPUT_SIZE		BIT(3)
+#define I2C_HID_QUIRK_NO_WAKEUP_AFTER_RESET	BIT(4)
+#define I2C_HID_QUIRK_NO_SLEEP_ON_SUSPEND	BIT(5)
+#define I2C_HID_QUIRK_DELAY_WAKEUP_AFTER_RESUME BIT(6)
 
 /* Command opcodes */
 #define I2C_HID_OPCODE_RESET			0x01
@@ -64,7 +65,6 @@
 /* flags */
 #define I2C_HID_STARTED		0
 #define I2C_HID_RESET_PENDING	1
-#define I2C_HID_READ_PENDING	2
 
 #define I2C_HID_PWR_ON		0x00
 #define I2C_HID_PWR_SLEEP	0x01
@@ -106,6 +106,7 @@ struct i2c_hid {
 
 	wait_queue_head_t	wait;		/* For waiting the interrupt */
 
+	struct mutex		cmd_lock;	/* protects cmdbuf and rawbuf */
 	struct mutex		reset_lock;
 
 	struct i2chid_ops	*ops;
@@ -120,8 +121,6 @@ static const struct i2c_hid_quirks {
 	__u16 idProduct;
 	__u32 quirks;
 } i2c_hid_quirks[] = {
-	{ USB_VENDOR_ID_WEIDA, HID_ANY_ID,
-		I2C_HID_QUIRK_SET_PWR_WAKEUP_DEV },
 	{ I2C_VENDOR_ID_HANTICK, I2C_PRODUCT_ID_HANTICK_5288,
 		I2C_HID_QUIRK_NO_IRQ_AFTER_RESET },
 	{ I2C_VENDOR_ID_ITE, I2C_DEVICE_ID_ITE_VOYO_WINPAD_A15,
@@ -134,12 +133,16 @@ static const struct i2c_hid_quirks {
 		 I2C_HID_QUIRK_RESET_ON_RESUME },
 	{ USB_VENDOR_ID_ITE, I2C_DEVICE_ID_ITE_LENOVO_LEGION_Y720,
 		I2C_HID_QUIRK_BAD_INPUT_SIZE },
+	{ I2C_VENDOR_ID_CIRQUE, I2C_PRODUCT_ID_CIRQUE_1063,
+		I2C_HID_QUIRK_NO_SLEEP_ON_SUSPEND },
 	/*
 	 * Sending the wakeup after reset actually break ELAN touchscreen controller
 	 */
 	{ USB_VENDOR_ID_ELAN, HID_ANY_ID,
 		 I2C_HID_QUIRK_NO_WAKEUP_AFTER_RESET |
 		 I2C_HID_QUIRK_BOGUS_IRQ },
+	{ I2C_VENDOR_ID_GOODIX, I2C_DEVICE_ID_GOODIX_0D42,
+		 I2C_HID_QUIRK_DELAY_WAKEUP_AFTER_RESUME },
 	{ 0, 0 }
 };
 
@@ -162,6 +165,24 @@ static u32 i2c_hid_lookup_quirk(const u16 idVendor, const u16 idProduct)
 			quirks = i2c_hid_quirks[n].quirks;
 
 	return quirks;
+}
+
+static int i2c_hid_probe_address(struct i2c_hid *ihid)
+{
+	int ret;
+
+	/*
+	 * Some STM-based devices need 400µs after a rising clock edge to wake
+	 * from deep sleep, in which case the first read will fail. Try after a
+	 * short sleep to see if the device came alive on the bus. Certain
+	 * Weida Tech devices also need this.
+	 */
+	ret = i2c_smbus_read_byte(ihid->client);
+	if (ret < 0) {
+		usleep_range(400, 500);
+		ret = i2c_smbus_read_byte(ihid->client);
+	}
+	return ret < 0 ? ret : 0;
 }
 
 static int i2c_hid_xfer(struct i2c_hid *ihid,
@@ -190,14 +211,9 @@ static int i2c_hid_xfer(struct i2c_hid *ihid,
 		msgs[n].len = recv_len;
 		msgs[n].buf = recv_buf;
 		n++;
-
-		set_bit(I2C_HID_READ_PENDING, &ihid->flags);
 	}
 
 	ret = i2c_transfer(client->adapter, msgs, n);
-
-	if (recv_len)
-		clear_bit(I2C_HID_READ_PENDING, &ihid->flags);
 
 	if (ret != n)
 		return ret < 0 ? ret : -EIO;
@@ -208,6 +224,8 @@ static int i2c_hid_xfer(struct i2c_hid *ihid,
 static int i2c_hid_read_register(struct i2c_hid *ihid, __le16 reg,
 				 void *buf, size_t len)
 {
+	guard(mutex)(&ihid->cmd_lock);
+
 	*(__le16 *)ihid->cmdbuf = reg;
 
 	return i2c_hid_xfer(ihid, ihid->cmdbuf, sizeof(__le16), buf, len);
@@ -239,6 +257,8 @@ static int i2c_hid_get_report(struct i2c_hid *ihid,
 	int error;
 
 	i2c_hid_dbg(ihid, "%s\n", __func__);
+
+	guard(mutex)(&ihid->cmd_lock);
 
 	/* Command register goes first */
 	*(__le16 *)ihid->cmdbuf = ihid->hdesc.wCommandRegister;
@@ -330,6 +350,8 @@ static int i2c_hid_set_or_send_report(struct i2c_hid *ihid,
 	if (!do_set && le16_to_cpu(ihid->hdesc.wMaxOutputLength) == 0)
 		return -ENOSYS;
 
+	guard(mutex)(&ihid->cmd_lock);
+
 	if (do_set) {
 		/* Command register goes first */
 		*(__le16 *)ihid->cmdbuf = ihid->hdesc.wCommandRegister;
@@ -372,6 +394,8 @@ static int i2c_hid_set_power_command(struct i2c_hid *ihid, int power_state)
 {
 	size_t length;
 
+	guard(mutex)(&ihid->cmd_lock);
+
 	/* SET_POWER uses command register */
 	*(__le16 *)ihid->cmdbuf = ihid->hdesc.wCommandRegister;
 	length = sizeof(__le16);
@@ -390,26 +414,10 @@ static int i2c_hid_set_power(struct i2c_hid *ihid, int power_state)
 
 	i2c_hid_dbg(ihid, "%s\n", __func__);
 
-	/*
-	 * Some devices require to send a command to wakeup before power on.
-	 * The call will get a return value (EREMOTEIO) but device will be
-	 * triggered and activated. After that, it goes like a normal device.
-	 */
-	if (power_state == I2C_HID_PWR_ON &&
-	    ihid->quirks & I2C_HID_QUIRK_SET_PWR_WAKEUP_DEV) {
-		ret = i2c_hid_set_power_command(ihid, I2C_HID_PWR_ON);
-
-		/* Device was already activated */
-		if (!ret)
-			goto set_pwr_exit;
-	}
-
 	ret = i2c_hid_set_power_command(ihid, power_state);
 	if (ret)
 		dev_err(&ihid->client->dev,
 			"failed to change power setting.\n");
-
-set_pwr_exit:
 
 	/*
 	 * The HID over I2C specification states that if a DEVICE needs time
@@ -426,49 +434,9 @@ set_pwr_exit:
 	return ret;
 }
 
-static int i2c_hid_execute_reset(struct i2c_hid *ihid)
+static int i2c_hid_start_hwreset(struct i2c_hid *ihid)
 {
 	size_t length = 0;
-	int ret;
-
-	i2c_hid_dbg(ihid, "resetting...\n");
-
-	/* Prepare reset command. Command register goes first. */
-	*(__le16 *)ihid->cmdbuf = ihid->hdesc.wCommandRegister;
-	length += sizeof(__le16);
-	/* Next is RESET command itself */
-	length += i2c_hid_encode_command(ihid->cmdbuf + length,
-					 I2C_HID_OPCODE_RESET, 0, 0);
-
-	set_bit(I2C_HID_RESET_PENDING, &ihid->flags);
-
-	ret = i2c_hid_xfer(ihid, ihid->cmdbuf, length, NULL, 0);
-	if (ret) {
-		dev_err(&ihid->client->dev, "failed to reset device.\n");
-		goto out;
-	}
-
-	if (ihid->quirks & I2C_HID_QUIRK_NO_IRQ_AFTER_RESET) {
-		msleep(100);
-		goto out;
-	}
-
-	i2c_hid_dbg(ihid, "%s: waiting...\n", __func__);
-	if (!wait_event_timeout(ihid->wait,
-				!test_bit(I2C_HID_RESET_PENDING, &ihid->flags),
-				msecs_to_jiffies(5000))) {
-		ret = -ENODATA;
-		goto out;
-	}
-	i2c_hid_dbg(ihid, "%s: finished.\n", __func__);
-
-out:
-	clear_bit(I2C_HID_RESET_PENDING, &ihid->flags);
-	return ret;
-}
-
-static int i2c_hid_hwreset(struct i2c_hid *ihid)
-{
 	int ret;
 
 	i2c_hid_dbg(ihid, "%s\n", __func__);
@@ -478,26 +446,59 @@ static int i2c_hid_hwreset(struct i2c_hid *ihid)
 	 * being reset. Otherwise we may lose the reset complete
 	 * interrupt.
 	 */
-	mutex_lock(&ihid->reset_lock);
+	lockdep_assert_held(&ihid->reset_lock);
 
 	ret = i2c_hid_set_power(ihid, I2C_HID_PWR_ON);
 	if (ret)
-		goto out_unlock;
+		return ret;
 
-	ret = i2c_hid_execute_reset(ihid);
-	if (ret) {
-		dev_err(&ihid->client->dev,
-			"failed to reset device: %d\n", ret);
-		i2c_hid_set_power(ihid, I2C_HID_PWR_SLEEP);
-		goto out_unlock;
+	scoped_guard(mutex, &ihid->cmd_lock) {
+		/* Prepare reset command. Command register goes first. */
+		*(__le16 *)ihid->cmdbuf = ihid->hdesc.wCommandRegister;
+		length += sizeof(__le16);
+		/* Next is RESET command itself */
+		length += i2c_hid_encode_command(ihid->cmdbuf + length,
+						 I2C_HID_OPCODE_RESET, 0, 0);
+
+		set_bit(I2C_HID_RESET_PENDING, &ihid->flags);
+
+		ret = i2c_hid_xfer(ihid, ihid->cmdbuf, length, NULL, 0);
+		if (ret) {
+			dev_err(&ihid->client->dev,
+				"failed to reset device: %d\n", ret);
+			break;
+		}
+
+		return 0;
 	}
+
+	/* Clean up if sending reset command failed */
+	clear_bit(I2C_HID_RESET_PENDING, &ihid->flags);
+	i2c_hid_set_power(ihid, I2C_HID_PWR_SLEEP);
+	return ret;
+}
+
+static int i2c_hid_finish_hwreset(struct i2c_hid *ihid)
+{
+	int ret = 0;
+
+	i2c_hid_dbg(ihid, "%s: waiting...\n", __func__);
+
+	if (ihid->quirks & I2C_HID_QUIRK_NO_IRQ_AFTER_RESET) {
+		msleep(100);
+		clear_bit(I2C_HID_RESET_PENDING, &ihid->flags);
+	} else if (!wait_event_timeout(ihid->wait,
+				       !test_bit(I2C_HID_RESET_PENDING, &ihid->flags),
+				       msecs_to_jiffies(1000))) {
+		dev_warn(&ihid->client->dev, "device did not ack reset within 1000 ms\n");
+		clear_bit(I2C_HID_RESET_PENDING, &ihid->flags);
+	}
+	i2c_hid_dbg(ihid, "%s: finished.\n", __func__);
 
 	/* At least some SIS devices need this after reset */
 	if (!(ihid->quirks & I2C_HID_QUIRK_NO_WAKEUP_AFTER_RESET))
 		ret = i2c_hid_set_power(ihid, I2C_HID_PWR_ON);
 
-out_unlock:
-	mutex_unlock(&ihid->reset_lock);
 	return ret;
 }
 
@@ -565,9 +566,6 @@ static void i2c_hid_get_input(struct i2c_hid *ihid)
 static irqreturn_t i2c_hid_irq(int irq, void *dev_id)
 {
 	struct i2c_hid *ihid = dev_id;
-
-	if (test_bit(I2C_HID_READ_PENDING, &ihid->flags))
-		return IRQ_HANDLED;
 
 	i2c_hid_get_input(ihid);
 
@@ -729,11 +727,10 @@ static int i2c_hid_parse(struct hid_device *hid)
 	struct i2c_client *client = hid->driver_data;
 	struct i2c_hid *ihid = i2c_get_clientdata(client);
 	struct i2c_hid_desc *hdesc = &ihid->hdesc;
+	char *rdesc = NULL, *use_override = NULL;
 	unsigned int rsize;
-	char *rdesc;
 	int ret;
 	int tries = 3;
-	char *use_override;
 
 	i2c_hid_dbg(ihid, "entering %s\n", __func__);
 
@@ -743,11 +740,15 @@ static int i2c_hid_parse(struct hid_device *hid)
 		return -EINVAL;
 	}
 
+	mutex_lock(&ihid->reset_lock);
 	do {
-		ret = i2c_hid_hwreset(ihid);
-		if (ret)
+		ret = i2c_hid_start_hwreset(ihid);
+		if (ret == 0)
+			ret = i2c_hid_finish_hwreset(ihid);
+		else
 			msleep(1000);
 	} while (tries-- > 0 && ret);
+	mutex_unlock(&ihid->reset_lock);
 
 	if (ret)
 		return ret;
@@ -760,11 +761,8 @@ static int i2c_hid_parse(struct hid_device *hid)
 		i2c_hid_dbg(ihid, "Using a HID report descriptor override\n");
 	} else {
 		rdesc = kzalloc(rsize, GFP_KERNEL);
-
-		if (!rdesc) {
-			dbg_hid("couldn't allocate rdesc memory\n");
+		if (!rdesc)
 			return -ENOMEM;
-		}
 
 		i2c_hid_dbg(ihid, "asking HID report descriptor\n");
 
@@ -773,23 +771,21 @@ static int i2c_hid_parse(struct hid_device *hid)
 					    rdesc, rsize);
 		if (ret) {
 			hid_err(hid, "reading report descriptor failed\n");
-			kfree(rdesc);
-			return -EIO;
+			goto out;
 		}
 	}
 
 	i2c_hid_dbg(ihid, "Report Descriptor: %*ph\n", rsize, rdesc);
 
 	ret = hid_parse_report(hid, rdesc, rsize);
+	if (ret)
+		dbg_hid("parsing report descriptor failed\n");
+
+out:
 	if (!use_override)
 		kfree(rdesc);
 
-	if (ret) {
-		dbg_hid("parsing report descriptor failed\n");
-		return ret;
-	}
-
-	return 0;
+	return ret;
 }
 
 static int i2c_hid_start(struct hid_device *hid)
@@ -958,7 +954,8 @@ static int i2c_hid_core_suspend(struct i2c_hid *ihid, bool force_poweroff)
 		return ret;
 
 	/* Save some power */
-	i2c_hid_set_power(ihid, I2C_HID_PWR_SLEEP);
+	if (!(ihid->quirks & I2C_HID_QUIRK_NO_SLEEP_ON_SUSPEND))
+		i2c_hid_set_power(ihid, I2C_HID_PWR_SLEEP);
 
 	disable_irq(client->irq);
 
@@ -979,6 +976,21 @@ static int i2c_hid_core_resume(struct i2c_hid *ihid)
 
 	enable_irq(client->irq);
 
+	/* Make sure the device is awake on the bus */
+	ret = i2c_hid_probe_address(ihid);
+	if (ret < 0) {
+		dev_err(&client->dev, "nothing at address after resume: %d\n",
+			ret);
+		return -ENXIO;
+	}
+
+	/* On Goodix 27c6:0d42 wait extra time before device wakeup.
+	 * It's not clear why but if we send wakeup too early, the device will
+	 * never trigger input interrupts.
+	 */
+	if (ihid->quirks & I2C_HID_QUIRK_DELAY_WAKEUP_AFTER_RESUME)
+		msleep(1500);
+
 	/* Instead of resetting device, simply powers the device on. This
 	 * solves "incomplete reports" on Raydium devices 2386:3118 and
 	 * 2386:4B33 and fixes various SIS touchscreens no longer sending
@@ -987,10 +999,15 @@ static int i2c_hid_core_resume(struct i2c_hid *ihid)
 	 * However some ALPS touchpads generate IRQ storm without reset, so
 	 * let's still reset them here.
 	 */
-	if (ihid->quirks & I2C_HID_QUIRK_RESET_ON_RESUME)
-		ret = i2c_hid_hwreset(ihid);
-	else
+	if (ihid->quirks & I2C_HID_QUIRK_RESET_ON_RESUME) {
+		mutex_lock(&ihid->reset_lock);
+		ret = i2c_hid_start_hwreset(ihid);
+		if (ret == 0)
+			ret = i2c_hid_finish_hwreset(ihid);
+		mutex_unlock(&ihid->reset_lock);
+	} else {
 		ret = i2c_hid_set_power(ihid, I2C_HID_PWR_ON);
+	}
 
 	if (ret)
 		return ret;
@@ -1007,8 +1024,7 @@ static int __i2c_hid_core_probe(struct i2c_hid *ihid)
 	struct hid_device *hid = ihid->hid;
 	int ret;
 
-	/* Make sure there is something at this address */
-	ret = i2c_smbus_read_byte(client);
+	ret = i2c_hid_probe_address(ihid);
 	if (ret < 0) {
 		i2c_hid_dbg(ihid, "nothing at this address: %d\n", ret);
 		return -ENXIO;
@@ -1205,6 +1221,7 @@ int i2c_hid_core_probe(struct i2c_client *client, struct i2chid_ops *ops,
 	ihid->is_panel_follower = drm_is_panel_follower(&client->dev);
 
 	init_waitqueue_head(&ihid->wait);
+	mutex_init(&ihid->cmd_lock);
 	mutex_init(&ihid->reset_lock);
 	INIT_WORK(&ihid->panel_follower_prepare_work, ihid_core_panel_prepare_work);
 

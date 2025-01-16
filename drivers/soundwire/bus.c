@@ -22,6 +22,10 @@ static int sdw_get_id(struct sdw_bus *bus)
 		return rc;
 
 	bus->id = rc;
+
+	if (bus->controller_id == -1)
+		bus->controller_id = rc;
+
 	return 0;
 }
 
@@ -1001,7 +1005,7 @@ static int sdw_slave_clk_stop_prepare(struct sdw_slave *slave,
 	return ret;
 }
 
-static int sdw_bus_wait_for_clk_prep_deprep(struct sdw_bus *bus, u16 dev_num)
+static int sdw_bus_wait_for_clk_prep_deprep(struct sdw_bus *bus, u16 dev_num, bool prepare)
 {
 	int retry = bus->clk_stop_timeout;
 	int val;
@@ -1015,7 +1019,8 @@ static int sdw_bus_wait_for_clk_prep_deprep(struct sdw_bus *bus, u16 dev_num)
 		}
 		val &= SDW_SCP_STAT_CLK_STP_NF;
 		if (!val) {
-			dev_dbg(bus->dev, "clock stop prep/de-prep done slave:%d\n",
+			dev_dbg(bus->dev, "clock stop %s done slave:%d\n",
+				prepare ? "prepare" : "deprepare",
 				dev_num);
 			return 0;
 		}
@@ -1024,7 +1029,8 @@ static int sdw_bus_wait_for_clk_prep_deprep(struct sdw_bus *bus, u16 dev_num)
 		retry--;
 	} while (retry);
 
-	dev_err(bus->dev, "clock stop prep/de-prep failed slave:%d\n",
+	dev_dbg(bus->dev, "clock stop %s did not complete for slave:%d\n",
+		prepare ? "prepare" : "deprepare",
 		dev_num);
 
 	return -ETIMEDOUT;
@@ -1095,7 +1101,7 @@ int sdw_bus_prep_clk_stop(struct sdw_bus *bus)
 	 */
 	if (!simple_clk_stop) {
 		ret = sdw_bus_wait_for_clk_prep_deprep(bus,
-						       SDW_BROADCAST_DEV_NUM);
+						       SDW_BROADCAST_DEV_NUM, true);
 		/*
 		 * if there are no Slave devices present and the reply is
 		 * Command_Ignored/-ENODATA, we don't need to continue with the
@@ -1215,7 +1221,7 @@ int sdw_bus_exit_clk_stop(struct sdw_bus *bus)
 	 * state machine
 	 */
 	if (!simple_clk_stop) {
-		ret = sdw_bus_wait_for_clk_prep_deprep(bus, SDW_BROADCAST_DEV_NUM);
+		ret = sdw_bus_wait_for_clk_prep_deprep(bus, SDW_BROADCAST_DEV_NUM, false);
 		if (ret < 0)
 			dev_warn(bus->dev, "clock stop deprepare wait failed:%d\n", ret);
 	}
@@ -1306,18 +1312,18 @@ static int sdw_slave_set_frequency(struct sdw_slave *slave)
 	if (!(19200000 % mclk_freq)) {
 		mclk_freq = 19200000;
 		base = SDW_SCP_BASE_CLOCK_19200000_HZ;
-	} else if (!(24000000 % mclk_freq)) {
-		mclk_freq = 24000000;
-		base = SDW_SCP_BASE_CLOCK_24000000_HZ;
-	} else if (!(24576000 % mclk_freq)) {
-		mclk_freq = 24576000;
-		base = SDW_SCP_BASE_CLOCK_24576000_HZ;
 	} else if (!(22579200 % mclk_freq)) {
 		mclk_freq = 22579200;
 		base = SDW_SCP_BASE_CLOCK_22579200_HZ;
+	} else if (!(24576000 % mclk_freq)) {
+		mclk_freq = 24576000;
+		base = SDW_SCP_BASE_CLOCK_24576000_HZ;
 	} else if (!(32000000 % mclk_freq)) {
 		mclk_freq = 32000000;
 		base = SDW_SCP_BASE_CLOCK_32000000_HZ;
+	} else if (!(96000000 % mclk_freq)) {
+		mclk_freq = 24000000;
+		base = SDW_SCP_BASE_CLOCK_24000000_HZ;
 	} else {
 		dev_err(&slave->dev,
 			"Unsupported clock base, mclk %d\n",
@@ -1404,7 +1410,7 @@ static int sdw_initialize_slave(struct sdw_slave *slave)
 		}
 	}
 	if ((slave->bus->prop.quirks & SDW_MASTER_QUIRKS_CLEAR_INITIAL_PARITY) &&
-	    !(slave->prop.quirks & SDW_SLAVE_QUIRKS_INVALID_INITIAL_PARITY)) {
+	    !(prop->quirks & SDW_SLAVE_QUIRKS_INVALID_INITIAL_PARITY)) {
 		/* Clear parity interrupt before enabling interrupt mask */
 		status = sdw_read_no_pm(slave, SDW_SCP_INT1);
 		if (status < 0) {
@@ -1430,7 +1436,7 @@ static int sdw_initialize_slave(struct sdw_slave *slave)
 	 * device-dependent, it might e.g. only be enabled in
 	 * steady-state after a couple of frames.
 	 */
-	val = slave->prop.scp_int1_mask;
+	val = prop->scp_int1_mask;
 
 	/* Enable SCP interrupts */
 	ret = sdw_update_no_pm(slave, SDW_SCP_INTMASK1, val, val);
@@ -1441,7 +1447,7 @@ static int sdw_initialize_slave(struct sdw_slave *slave)
 	}
 
 	/* No need to continue if DP0 is not present */
-	if (!slave->prop.dp0_prop)
+	if (!prop->dp0_prop)
 		return 0;
 
 	/* Enable DP0 interrupts */
@@ -1468,7 +1474,7 @@ static int sdw_handle_dp0_interrupt(struct sdw_slave *slave, u8 *slave_status)
 	}
 
 	do {
-		clear = status & ~SDW_DP0_INTERRUPTS;
+		clear = status & ~(SDW_DP0_INTERRUPTS | SDW_DP0_SDCA_CASCADE);
 
 		if (status & SDW_DP0_INT_TEST_FAIL) {
 			dev_err(&slave->dev, "Test fail for port 0\n");

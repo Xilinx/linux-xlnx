@@ -689,7 +689,6 @@ static int objects_lookup(struct drm_file *filp, u32 *handle, int count,
  * For a single handle lookup, use drm_gem_object_lookup().
  *
  * Returns:
- *
  * @objs filled in with GEM object pointers. Returned GEM objects need to be
  * released with drm_gem_object_put(). -ENOENT is returned on a lookup
  * failure. 0 is returned on success.
@@ -737,12 +736,11 @@ EXPORT_SYMBOL(drm_gem_objects_lookup);
  * @filp: DRM file private date
  * @handle: userspace handle
  *
- * Returns:
+ * If looking up an array of handles, use drm_gem_objects_lookup().
  *
+ * Returns:
  * A reference to the object named by the handle if such exists on @filp, NULL
  * otherwise.
- *
- * If looking up an array of handles, use drm_gem_objects_lookup().
  */
 struct drm_gem_object *
 drm_gem_object_lookup(struct drm_file *filp, u32 handle)
@@ -763,7 +761,6 @@ EXPORT_SYMBOL(drm_gem_object_lookup);
  * @timeout: timeout value in jiffies or zero to return immediately
  *
  * Returns:
- *
  * Returns -ERESTARTSYS if interrupted, 0 if the wait timed out, or
  * greater than 0 on success.
  */
@@ -1161,7 +1158,7 @@ void drm_gem_print_info(struct drm_printer *p, unsigned int indent,
 		obj->funcs->print_info(p, indent, obj);
 }
 
-int drm_gem_pin(struct drm_gem_object *obj)
+int drm_gem_pin_locked(struct drm_gem_object *obj)
 {
 	if (obj->funcs->pin)
 		return obj->funcs->pin(obj);
@@ -1169,10 +1166,28 @@ int drm_gem_pin(struct drm_gem_object *obj)
 	return 0;
 }
 
-void drm_gem_unpin(struct drm_gem_object *obj)
+void drm_gem_unpin_locked(struct drm_gem_object *obj)
 {
 	if (obj->funcs->unpin)
 		obj->funcs->unpin(obj);
+}
+
+int drm_gem_pin(struct drm_gem_object *obj)
+{
+	int ret;
+
+	dma_resv_lock(obj->resv, NULL);
+	ret = drm_gem_pin_locked(obj);
+	dma_resv_unlock(obj->resv);
+
+	return ret;
+}
+
+void drm_gem_unpin(struct drm_gem_object *obj)
+{
+	dma_resv_lock(obj->resv, NULL);
+	drm_gem_unpin_locked(obj);
+	dma_resv_unlock(obj->resv);
 }
 
 int drm_gem_vmap(struct drm_gem_object *obj, struct iosys_map *map)
@@ -1208,6 +1223,18 @@ void drm_gem_vunmap(struct drm_gem_object *obj, struct iosys_map *map)
 	iosys_map_clear(map);
 }
 EXPORT_SYMBOL(drm_gem_vunmap);
+
+void drm_gem_lock(struct drm_gem_object *obj)
+{
+	dma_resv_lock(obj->resv, NULL);
+}
+EXPORT_SYMBOL(drm_gem_lock);
+
+void drm_gem_unlock(struct drm_gem_object *obj)
+{
+	dma_resv_unlock(obj->resv);
+}
+EXPORT_SYMBOL(drm_gem_unlock);
 
 int drm_gem_vmap_unlocked(struct drm_gem_object *obj, struct iosys_map *map)
 {

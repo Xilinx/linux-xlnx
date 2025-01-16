@@ -20,6 +20,7 @@
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
 #include <linux/of_net.h>
+#include <linux/platform_device.h>
 
 #include "xilinx_axienet.h"
 #include "xilinx_axienet_eoe.h"
@@ -136,15 +137,17 @@ void __maybe_unused axienet_mcdma_tx_bd_free(struct net_device *ndev,
 void __maybe_unused axienet_mcdma_rx_bd_free(struct net_device *ndev,
 					     struct axienet_dma_q *q)
 {
-	int i;
 	struct axienet_local *lp = netdev_priv(ndev);
+	dma_addr_t phys;
+	int i;
 
 	if (!q->rxq_bd_v)
 		return;
 
 	for (i = 0; i < lp->rx_bd_num; i++) {
-		if (q->rxq_bd_v[i].phys)
-			dma_unmap_single(ndev->dev.parent, q->rxq_bd_v[i].phys,
+		phys = mcdma_desc_get_phys_addr(lp, &q->rxq_bd_v[i]);
+		if (phys)
+			dma_unmap_single(ndev->dev.parent, phys,
 					 lp->max_frm_size, DMA_FROM_DEVICE);
 		dev_kfree_skb((struct sk_buff *)
 			      (q->rxq_bd_v[i].sw_id_offset));
@@ -299,7 +302,7 @@ int __maybe_unused axienet_mcdma_rx_q_init(struct net_device *ndev,
 				goto out;
 			}
 
-			q->rxq_bd_v[i].phys = mapping;
+			mcdma_desc_set_phys_addr(lp, mapping, &q->rxq_bd_v[i]);
 			q->rxq_bd_v[i].cntrl = lp->max_frm_size;
 		}
 	}
@@ -396,12 +399,12 @@ static inline int map_dma_q_txirq(int irq, struct axienet_local *lp)
 
 irqreturn_t __maybe_unused axienet_mcdma_tx_irq(int irq, void *_ndev)
 {
-	u32 cr;
-	unsigned int status;
 	struct net_device *ndev = _ndev;
 	struct axienet_local *lp = netdev_priv(ndev);
-	int i, j = map_dma_q_txirq(irq, lp);
 	struct axienet_dma_q *q;
+	u32 cr;
+	unsigned int status;
+	int i, j = map_dma_q_txirq(irq, lp);
 
 	if (j < 0)
 		return IRQ_NONE;
@@ -411,16 +414,24 @@ irqreturn_t __maybe_unused axienet_mcdma_tx_irq(int irq, void *_ndev)
 
 	status = axienet_dma_in32(q, XMCDMA_CHAN_SR_OFFSET(q->chan_id));
 	if (status & (XMCDMA_IRQ_IOC_MASK | XMCDMA_IRQ_DELAY_MASK)) {
-		axienet_dma_out32(q, XMCDMA_CHAN_SR_OFFSET(q->chan_id), status);
-		axienet_start_xmit_done(lp->ndev, q);
+		/* Disable further TX completion interrupts and schedule
+		 * NAPI to handle the completions.
+		 */
+		cr =  axienet_dma_in32(q, XMCDMA_CHAN_CR_OFFSET(q->chan_id));
+		cr &= ~(XMCDMA_IRQ_IOC_MASK | XMCDMA_IRQ_DELAY_MASK);
+		if (napi_schedule_prep(&q->napi_tx)) {
+			axienet_dma_out32(q, XMCDMA_CHAN_CR_OFFSET(q->chan_id), cr);
+			__napi_schedule(&q->napi_tx);
+		}
 		goto out;
 	}
 	if (!(status & XMCDMA_IRQ_ALL_MASK))
 		return IRQ_NONE;
 	if (status & XMCDMA_IRQ_ERR_MASK) {
 		dev_err(&ndev->dev, "DMA Tx error 0x%x\n", status);
-		dev_err(&ndev->dev, "Current BD is at: %pa\n",
-			&q->txq_bd_v[q->tx_bd_ci].phys);
+		dev_err(&ndev->dev, "Current BD is at: 0x%x%08x\n",
+			q->txq_bd_v[q->tx_bd_ci].phys_msb,
+			q->txq_bd_v[q->tx_bd_ci].phys);
 
 		cr = axienet_dma_in32(q, XMCDMA_CHAN_CR_OFFSET(q->chan_id));
 		/* Disable coalesce, delay timer and error interrupts */
@@ -485,7 +496,7 @@ irqreturn_t __maybe_unused axienet_mcdma_rx_irq(int irq, void *_ndev)
 		cr &= ~(XMCDMA_IRQ_IOC_MASK | XMCDMA_IRQ_DELAY_MASK);
 		axienet_dma_out32(q, XMCDMA_CHAN_CR_OFFSET(q->chan_id) +
 				  q->rx_offset, cr);
-		napi_schedule(&lp->napi[i]);
+		napi_schedule(&q->napi_rx);
 	}
 
 	if (!(status & XMCDMA_IRQ_ALL_MASK))
@@ -493,8 +504,9 @@ irqreturn_t __maybe_unused axienet_mcdma_rx_irq(int irq, void *_ndev)
 
 	if (status & XMCDMA_IRQ_ERR_MASK) {
 		dev_err(&ndev->dev, "DMA Rx error 0x%x\n", status);
-		dev_err(&ndev->dev, "Current BD is at: %pa\n",
-			&q->rxq_bd_v[q->rx_bd_ci].phys);
+		dev_err(&ndev->dev, "Current BD is at: 0x%x%08x\n",
+			q->rxq_bd_v[q->rx_bd_ci].phys_msb,
+			q->rxq_bd_v[q->rx_bd_ci].phys);
 
 		cr = axienet_dma_in32(q, XMCDMA_CHAN_CR_OFFSET(q->chan_id));
 		/* Disable coalesce, delay timer and error interrupts */
@@ -584,8 +596,8 @@ void axienet_get_stats(struct net_device *ndev,
 			break;
 
 		q = lp->dq[j];
-		data[i++] = q->tx_packets;
-		data[i++] = q->tx_bytes;
+		data[i++] = q->txq_packets;
+		data[i++] = q->txq_bytes;
 		++j;
 	}
 	for (j = 0; i < AXIENET_TX_SSTATS_LEN(lp) + AXIENET_RX_SSTATS_LEN(lp) +
@@ -594,8 +606,8 @@ void axienet_get_stats(struct net_device *ndev,
 			break;
 
 		q = lp->dq[j];
-		data[i++] = q->rx_packets;
-		data[i++] = q->rx_bytes;
+		data[i++] = q->rxq_packets;
+		data[i++] = q->rxq_bytes;
 		++j;
 	}
 }
@@ -609,12 +621,13 @@ void axienet_get_stats(struct net_device *ndev,
  */
 void __maybe_unused axienet_mcdma_err_handler(unsigned long data)
 {
-	u32 axienet_status;
-	u32 cr, i, chan_en;
 	struct axienet_dma_q *q = (struct axienet_dma_q *)data;
 	struct axienet_local *lp = q->lp;
 	struct net_device *ndev = lp->ndev;
 	struct aximcdma_bd *cur_p;
+	dma_addr_t phys;
+	u32 axienet_status;
+	u32 cr, i, chan_en;
 
 	lp->axienet_config->setoptions(ndev, lp->options &
 				       ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
@@ -628,13 +641,15 @@ void __maybe_unused axienet_mcdma_err_handler(unsigned long data)
 
 	for (i = 0; i < lp->tx_bd_num; i++) {
 		cur_p = &q->txq_bd_v[i];
-		if (cur_p->phys)
-			dma_unmap_single(ndev->dev.parent, cur_p->phys,
+		phys = mcdma_desc_get_phys_addr(lp, cur_p);
+		if (phys)
+			dma_unmap_single(ndev->dev.parent, phys,
 					 (cur_p->cntrl &
 					  XAXIDMA_BD_CTRL_LENGTH_MASK),
 					 DMA_TO_DEVICE);
 		if (cur_p->tx_skb)
 			dev_kfree_skb_irq((struct sk_buff *)cur_p->tx_skb);
+		cur_p->phys_msb = 0;
 		cur_p->phys = 0;
 		cur_p->cntrl = 0;
 		cur_p->status = 0;
@@ -787,6 +802,7 @@ int __maybe_unused axienet_mcdma_tx_probe(struct platform_device *pdev,
 		q->tx_irq = platform_get_irq_byname(pdev, dma_name);
 		q->eth_hasdre = of_property_read_bool(np,
 						      "xlnx,include-dre");
+		netif_napi_add(lp->ndev, &q->napi_tx, axienet_tx_poll);
 		spin_lock_init(&q->tx_lock);
 	}
 	of_node_put(np);
@@ -811,9 +827,7 @@ int __maybe_unused axienet_mcdma_rx_probe(struct platform_device *pdev,
 			 q->chan_id);
 		q->rx_irq = platform_get_irq_byname(pdev, dma_name);
 
-		spin_lock_init(&q->rx_lock);
-
-		netif_napi_add(ndev, &lp->napi[i], xaxienet_rx_poll);
+		netif_napi_add(lp->ndev, &q->napi_rx, xaxienet_rx_poll);
 	}
 
 	return 0;

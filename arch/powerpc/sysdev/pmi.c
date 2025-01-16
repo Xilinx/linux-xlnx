@@ -173,7 +173,7 @@ out:
 	return rc;
 }
 
-static int pmi_of_remove(struct platform_device *dev)
+static void pmi_of_remove(struct platform_device *dev)
 {
 	struct pmi_handler *handler, *tmp;
 
@@ -189,8 +189,6 @@ static int pmi_of_remove(struct platform_device *dev)
 
 	kfree(data);
 	data = NULL;
-
-	return 0;
 }
 
 static struct platform_driver pmi_of_platform_driver = {

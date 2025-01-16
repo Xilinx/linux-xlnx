@@ -543,7 +543,7 @@ out:
 	return ret;
 }
 
-static int xilinx_rsa_remove(struct platform_device *pdev)
+static void xilinx_rsa_remove(struct platform_device *pdev)
 {
 	struct xilinx_rsa_drv_ctx *rsa_drv_ctx;
 
@@ -552,8 +552,6 @@ static int xilinx_rsa_remove(struct platform_device *pdev)
 	crypto_engine_exit(rsa_drv_ctx->engine);
 
 	crypto_engine_unregister_akcipher(&rsa_drv_ctx->alg);
-
-	return 0;
 }
 
 static struct platform_driver xilinx_rsa_driver = {

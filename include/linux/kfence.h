@@ -124,7 +124,7 @@ static __always_inline void *kfence_alloc(struct kmem_cache *s, size_t size, gfp
 	if (!static_branch_likely(&kfence_allocation_key))
 		return NULL;
 #endif
-	if (likely(atomic_read(&kfence_allocation_gate)))
+	if (likely(atomic_read(&kfence_allocation_gate) > 0))
 		return NULL;
 	return __kfence_alloc(s, size, flags);
 }
@@ -222,6 +222,8 @@ bool __kfence_obj_info(struct kmem_obj_info *kpp, void *object, struct slab *sla
 #endif
 
 #else /* CONFIG_KFENCE */
+
+#define kfence_sample_interval	(0)
 
 static inline bool is_kfence_address(const void *addr) { return false; }
 static inline void kfence_alloc_pool_and_metadata(void) { }

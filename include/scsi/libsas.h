@@ -404,8 +404,6 @@ cmd_to_domain_dev(struct scsi_cmnd *cmd)
 	return sdev_to_domain_dev(cmd->device);
 }
 
-void sas_hash_addr(u8 *hashed, const u8 *sas_addr);
-
 /* Before calling a notify event, LLDD should use this function
  * when the link is severed (possibly from its tasklet).
  * The idea is that the Class only reads those, while the LLDD,
@@ -681,12 +679,12 @@ extern void sas_resume_ha(struct sas_ha_struct *sas_ha);
 extern void sas_resume_ha_no_sync(struct sas_ha_struct *sas_ha);
 extern void sas_suspend_ha(struct sas_ha_struct *sas_ha);
 
-int sas_set_phy_speed(struct sas_phy *phy, struct sas_phy_linkrates *rates);
 int sas_phy_reset(struct sas_phy *phy, int hard_reset);
 int sas_phy_enable(struct sas_phy *phy, int enable);
 extern int sas_queuecommand(struct Scsi_Host *, struct scsi_cmnd *);
 extern int sas_target_alloc(struct scsi_target *);
-extern int sas_slave_configure(struct scsi_device *);
+int sas_device_configure(struct scsi_device *dev,
+		struct queue_limits *lim);
 extern int sas_change_queue_depth(struct scsi_device *, int new_depth);
 extern int sas_bios_param(struct scsi_device *, struct block_device *,
 			  sector_t capacity, int *hsc);
@@ -698,20 +696,6 @@ int sas_execute_internal_abort_dev(struct domain_device *device,
 extern struct scsi_transport_template *
 sas_domain_attach_transport(struct sas_domain_function_template *);
 extern struct device_attribute dev_attr_phy_event_threshold;
-
-int  sas_discover_root_expander(struct domain_device *);
-
-int  sas_ex_revalidate_domain(struct domain_device *);
-
-void sas_unregister_domain_devices(struct asd_sas_port *port, int gone);
-void sas_init_disc(struct sas_discovery *disc, struct asd_sas_port *);
-void sas_discover_event(struct asd_sas_port *, enum discover_event ev);
-
-int  sas_discover_end_dev(struct domain_device *);
-
-void sas_unregister_dev(struct asd_sas_port *port, struct domain_device *);
-
-void sas_init_dev(struct domain_device *);
 
 void sas_task_abort(struct sas_task *);
 int sas_eh_abort_handler(struct scsi_cmnd *cmd);
@@ -742,5 +726,34 @@ void sas_notify_port_event(struct asd_sas_phy *phy, enum port_event event,
 			   gfp_t gfp_flags);
 void sas_notify_phy_event(struct asd_sas_phy *phy, enum phy_event event,
 			   gfp_t gfp_flags);
+
+#define __LIBSAS_SHT_BASE						\
+	.module				= THIS_MODULE,			\
+	.name				= DRV_NAME,			\
+	.proc_name			= DRV_NAME,			\
+	.queuecommand			= sas_queuecommand,		\
+	.dma_need_drain			= ata_scsi_dma_need_drain,	\
+	.target_alloc			= sas_target_alloc,		\
+	.change_queue_depth		= sas_change_queue_depth,	\
+	.bios_param			= sas_bios_param,		\
+	.this_id			= -1,				\
+	.eh_device_reset_handler	= sas_eh_device_reset_handler,	\
+	.eh_target_reset_handler	= sas_eh_target_reset_handler,	\
+	.target_destroy			= sas_target_destroy,		\
+	.ioctl				= sas_ioctl,			\
+
+#ifdef CONFIG_COMPAT
+#define _LIBSAS_SHT_BASE		__LIBSAS_SHT_BASE		\
+	.compat_ioctl			= sas_ioctl,
+#else
+#define _LIBSAS_SHT_BASE		__LIBSAS_SHT_BASE
+#endif
+
+#define LIBSAS_SHT_BASE			_LIBSAS_SHT_BASE		\
+	.device_configure		= sas_device_configure,		\
+	.slave_alloc			= sas_slave_alloc,		\
+
+#define LIBSAS_SHT_BASE_NO_SLAVE_INIT	_LIBSAS_SHT_BASE
+
 
 #endif /* _SASLIB_H_ */

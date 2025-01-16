@@ -276,15 +276,14 @@ static u32 kempld_i2c_func(struct i2c_adapter *adap)
 }
 
 static const struct i2c_algorithm kempld_i2c_algorithm = {
-	.master_xfer	= kempld_i2c_xfer,
-	.functionality	= kempld_i2c_func,
+	.xfer = kempld_i2c_xfer,
+	.functionality = kempld_i2c_func,
 };
 
 static const struct i2c_adapter kempld_i2c_adapter = {
 	.owner		= THIS_MODULE,
 	.name		= "i2c-kempld",
-	.class		= I2C_CLASS_HWMON | I2C_CLASS_SPD |
-			  I2C_CLASS_DEPRECATED,
+	.class		= I2C_CLASS_HWMON | I2C_CLASS_DEPRECATED,
 	.algo		= &kempld_i2c_algorithm,
 };
 

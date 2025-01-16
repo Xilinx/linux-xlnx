@@ -535,8 +535,7 @@ __xcsc_get_pad_format(struct xcsc_dev *xcsc,
 
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		format = v4l2_subdev_get_try_format(&xcsc->xvip.subdev,
-						    sd_state, pad);
+		format = v4l2_subdev_state_get_format(sd_state, pad);
 		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		format = &xcsc->formats[pad];
@@ -966,11 +965,10 @@ static int xcsc_open(struct v4l2_subdev *subdev,
 	struct v4l2_mbus_framefmt *format;
 
 	/* Initialize with default formats */
-	format = v4l2_subdev_get_try_format(subdev, fh->state, XVIP_PAD_SINK);
+	format = v4l2_subdev_state_get_format(fh->state, XVIP_PAD_SINK);
 	*format = xcsc->default_formats[XVIP_PAD_SINK];
 
-	format = v4l2_subdev_get_try_format(subdev, fh->state,
-					    XVIP_PAD_SOURCE);
+	format = v4l2_subdev_state_get_format(fh->state, XVIP_PAD_SOURCE);
 	*format = xcsc->default_formats[XVIP_PAD_SOURCE];
 
 	return 0;
@@ -1109,7 +1107,7 @@ static int xcsc_probe(struct platform_device *pdev)
 	v4l2_subdev_init(subdev, &xcsc_ops);
 	subdev->dev = &pdev->dev;
 	subdev->internal_ops = &xcsc_internal_ops;
-	strlcpy(subdev->name, dev_name(&pdev->dev), sizeof(subdev->name));
+	strscpy(subdev->name, dev_name(&pdev->dev), sizeof(subdev->name));
 	v4l2_set_subdevdata(subdev, xcsc);
 	subdev->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 
@@ -1173,7 +1171,7 @@ media_error:
 	return rval;
 }
 
-static int xcsc_remove(struct platform_device *pdev)
+static void xcsc_remove(struct platform_device *pdev)
 {
 	struct xcsc_dev *xcsc = platform_get_drvdata(pdev);
 	struct v4l2_subdev *subdev = &xcsc->xvip.subdev;
@@ -1182,7 +1180,6 @@ static int xcsc_remove(struct platform_device *pdev)
 	v4l2_ctrl_handler_free(&xcsc->ctrl_handler);
 	media_entity_cleanup(&subdev->entity);
 	xvip_cleanup_resources(&xcsc->xvip);
-	return 0;
 }
 
 static const struct of_device_id xcsc_of_id_table[] = {

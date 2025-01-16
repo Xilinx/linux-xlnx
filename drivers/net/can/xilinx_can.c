@@ -20,8 +20,8 @@
 #include <linux/module.h>
 #include <linux/netdevice.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 #include <linux/skbuff.h>
 #include <linux/spinlock.h>
 #include <linux/string.h>
@@ -228,13 +228,13 @@ struct xcan_devtype_data {
  * @transceiver:		Optional pointer to associated CAN transceiver
  * @rstc:			Pointer to reset control
  * @ecc_enable:			ECC enable flag
- * @stats_lock:			Lock for synchronizing ECC errors stats
- * @ecc_2bit_rxfifo_cnt:	RXFIFO 2bit ECC count
- * @ecc_1bit_rxfifo_cnt:	RXFIFO 1bit ECC count
- * @ecc_2bit_txolfifo_cnt:	TXOLFIFO 2bit ECC count
- * @ecc_1bit_txolfifo_cnt:	TXOLFIFO 1bit ECC count
- * @ecc_2bit_txtlfifo_cnt:	TXTLFIFO 2bit ECC count
- * @ecc_1bit_txtlfifo_cnt:	TXTLFIFO 1bit ECC count
+ * @syncp:			synchronization for ECC error stats
+ * @ecc_rx_2_bit_errors:	RXFIFO 2bit ECC count
+ * @ecc_rx_1_bit_errors:	RXFIFO 1bit ECC count
+ * @ecc_txol_2_bit_errors:	TXOLFIFO 2bit ECC count
+ * @ecc_txol_1_bit_errors:	TXOLFIFO 1bit ECC count
+ * @ecc_txtl_2_bit_errors:	TXTLFIFO 2bit ECC count
+ * @ecc_txtl_1_bit_errors:	TXTLFIFO 1bit ECC count
  */
 struct xcan_priv {
 	struct can_priv can;
@@ -255,13 +255,13 @@ struct xcan_priv {
 	struct phy *transceiver;
 	struct reset_control *rstc;
 	bool ecc_enable;
-	spinlock_t stats_lock; /* Lock for synchronizing ECC errors stats */
-	u64_stats_t ecc_2bit_rxfifo_cnt;
-	u64_stats_t ecc_1bit_rxfifo_cnt;
-	u64_stats_t ecc_2bit_txolfifo_cnt;
-	u64_stats_t ecc_1bit_txolfifo_cnt;
-	u64_stats_t ecc_2bit_txtlfifo_cnt;
-	u64_stats_t ecc_1bit_txtlfifo_cnt;
+	struct u64_stats_sync syncp;
+	u64_stats_t ecc_rx_2_bit_errors;
+	u64_stats_t ecc_rx_1_bit_errors;
+	u64_stats_t ecc_txol_2_bit_errors;
+	u64_stats_t ecc_txol_1_bit_errors;
+	u64_stats_t ecc_txtl_2_bit_errors;
+	u64_stats_t ecc_txtl_1_bit_errors;
 };
 
 /* CAN Bittiming constants as per Xilinx CAN specs */
@@ -349,10 +349,22 @@ static const struct can_tdc_const xcan_tdc_const_canfd2 = {
 	.tdcf_max = 0,
 };
 
+enum xcan_stats_type {
+	XCAN_ECC_RX_2_BIT_ERRORS,
+	XCAN_ECC_RX_1_BIT_ERRORS,
+	XCAN_ECC_TXOL_2_BIT_ERRORS,
+	XCAN_ECC_TXOL_1_BIT_ERRORS,
+	XCAN_ECC_TXTL_2_BIT_ERRORS,
+	XCAN_ECC_TXTL_1_BIT_ERRORS,
+};
+
 static const char xcan_priv_flags_strings[][ETH_GSTRING_LEN] = {
-	"err-ecc-rx-2-bit", "err-ecc-rx-1-bit",
-	"err-ecc-txol-2-bit", "err-ecc-txol-1-bit",
-	"err-ecc-txtl-2-bit", "err-ecc-txtl-1-bit",
+	[XCAN_ECC_RX_2_BIT_ERRORS] = "ecc_rx_2_bit_errors",
+	[XCAN_ECC_RX_1_BIT_ERRORS] = "ecc_rx_1_bit_errors",
+	[XCAN_ECC_TXOL_2_BIT_ERRORS] = "ecc_txol_2_bit_errors",
+	[XCAN_ECC_TXOL_1_BIT_ERRORS] = "ecc_txol_1_bit_errors",
+	[XCAN_ECC_TXTL_2_BIT_ERRORS] = "ecc_txtl_2_bit_errors",
+	[XCAN_ECC_TXTL_1_BIT_ERRORS] = "ecc_txtl_1_bit_errors",
 };
 
 /**
@@ -1179,7 +1191,6 @@ static void xcan_err_interrupt(struct net_device *ndev, u32 isr)
 
 	if (priv->ecc_enable && isr & XCAN_IXR_ECC_MASK) {
 		u32 reg_rx_ecc, reg_txol_ecc, reg_txtl_ecc;
-		unsigned long flags;
 
 		reg_rx_ecc = priv->read_reg(priv, XCAN_RXFIFO_ECC_OFFSET);
 		reg_txol_ecc = priv->read_reg(priv, XCAN_TXOLFIFO_ECC_OFFSET);
@@ -1191,39 +1202,39 @@ static void xcan_err_interrupt(struct net_device *ndev, u32 isr)
 		priv->write_reg(priv, XCAN_ECC_CFG_OFFSET, XCAN_ECC_CFG_REECRX_MASK |
 				XCAN_ECC_CFG_REECTXOL_MASK | XCAN_ECC_CFG_REECTXTL_MASK);
 
-		spin_lock_irqsave(&priv->stats_lock, flags);
+		u64_stats_update_begin(&priv->syncp);
 
 		if (isr & XCAN_IXR_E2BERX_MASK) {
-			u64_stats_add(&priv->ecc_2bit_rxfifo_cnt,
+			u64_stats_add(&priv->ecc_rx_2_bit_errors,
 				      FIELD_GET(XCAN_ECC_2BIT_CNT_MASK, reg_rx_ecc));
 		}
 
 		if (isr & XCAN_IXR_E1BERX_MASK) {
-			u64_stats_add(&priv->ecc_1bit_rxfifo_cnt,
+			u64_stats_add(&priv->ecc_rx_1_bit_errors,
 				      FIELD_GET(XCAN_ECC_1BIT_CNT_MASK, reg_rx_ecc));
 		}
 
 		if (isr & XCAN_IXR_E2BETXOL_MASK) {
-			u64_stats_add(&priv->ecc_2bit_txolfifo_cnt,
+			u64_stats_add(&priv->ecc_txol_2_bit_errors,
 				      FIELD_GET(XCAN_ECC_2BIT_CNT_MASK, reg_txol_ecc));
 		}
 
 		if (isr & XCAN_IXR_E1BETXOL_MASK) {
-			u64_stats_add(&priv->ecc_1bit_txolfifo_cnt,
+			u64_stats_add(&priv->ecc_txol_1_bit_errors,
 				      FIELD_GET(XCAN_ECC_1BIT_CNT_MASK, reg_txol_ecc));
 		}
 
 		if (isr & XCAN_IXR_E2BETXTL_MASK) {
-			u64_stats_add(&priv->ecc_2bit_txtlfifo_cnt,
+			u64_stats_add(&priv->ecc_txtl_2_bit_errors,
 				      FIELD_GET(XCAN_ECC_2BIT_CNT_MASK, reg_txtl_ecc));
 		}
 
 		if (isr & XCAN_IXR_E1BETXTL_MASK) {
-			u64_stats_add(&priv->ecc_1bit_txtlfifo_cnt,
+			u64_stats_add(&priv->ecc_txtl_1_bit_errors,
 				      FIELD_GET(XCAN_ECC_1BIT_CNT_MASK, reg_txtl_ecc));
 		}
 
-		spin_unlock_irqrestore(&priv->stats_lock, flags);
+		u64_stats_update_end(&priv->syncp);
 	}
 
 	if (cf.can_id) {
@@ -1453,8 +1464,8 @@ static irqreturn_t xcan_interrupt(int irq, void *dev_id)
 {
 	struct net_device *ndev = (struct net_device *)dev_id;
 	struct xcan_priv *priv = netdev_priv(ndev);
-	u32 isr, ier;
 	u32 isr_errors, mask;
+	u32 isr, ier;
 	u32 rx_int_mask = xcan_rx_int_mask(priv);
 
 	/* Get the interrupt status from Xilinx CAN */
@@ -1673,19 +1684,18 @@ static void xcan_get_ethtool_stats(struct net_device *ndev,
 				   struct ethtool_stats *stats, u64 *data)
 {
 	struct xcan_priv *priv = netdev_priv(ndev);
-	unsigned long flags;
-	int i = 0;
+	unsigned int start;
 
-	spin_lock_irqsave(&priv->stats_lock, flags);
+	do {
+		start = u64_stats_fetch_begin(&priv->syncp);
 
-	data[i++] = u64_stats_read(&priv->ecc_2bit_rxfifo_cnt);
-	data[i++] = u64_stats_read(&priv->ecc_1bit_rxfifo_cnt);
-	data[i++] = u64_stats_read(&priv->ecc_2bit_txolfifo_cnt);
-	data[i++] = u64_stats_read(&priv->ecc_1bit_txolfifo_cnt);
-	data[i++] = u64_stats_read(&priv->ecc_2bit_txtlfifo_cnt);
-	data[i++] = u64_stats_read(&priv->ecc_1bit_txtlfifo_cnt);
-
-	spin_unlock_irqrestore(&priv->stats_lock, flags);
+		data[XCAN_ECC_RX_2_BIT_ERRORS] = u64_stats_read(&priv->ecc_rx_2_bit_errors);
+		data[XCAN_ECC_RX_1_BIT_ERRORS] = u64_stats_read(&priv->ecc_rx_1_bit_errors);
+		data[XCAN_ECC_TXOL_2_BIT_ERRORS] = u64_stats_read(&priv->ecc_txol_2_bit_errors);
+		data[XCAN_ECC_TXOL_1_BIT_ERRORS] = u64_stats_read(&priv->ecc_txol_1_bit_errors);
+		data[XCAN_ECC_TXTL_2_BIT_ERRORS] = u64_stats_read(&priv->ecc_txtl_2_bit_errors);
+		data[XCAN_ECC_TXTL_1_BIT_ERRORS] = u64_stats_read(&priv->ecc_txtl_1_bit_errors);
+	} while (u64_stats_fetch_retry(&priv->syncp, start));
 }
 
 static const struct net_device_ops xcan_netdev_ops = {
@@ -1871,8 +1881,7 @@ static int xcan_probe(struct platform_device *pdev)
 	struct net_device *ndev;
 	struct xcan_priv *priv;
 	struct phy *transceiver;
-	const struct of_device_id *of_id;
-	const struct xcan_devtype_data *devtype = &xcan_axi_data;
+	const struct xcan_devtype_data *devtype;
 	void __iomem *addr;
 	int ret;
 	int rx_max, tx_max;
@@ -1886,9 +1895,7 @@ static int xcan_probe(struct platform_device *pdev)
 		goto err;
 	}
 
-	of_id = of_match_device(xcan_of_match, &pdev->dev);
-	if (of_id && of_id->data)
-		devtype = of_id->data;
+	devtype = device_get_match_data(&pdev->dev);
 
 	hw_tx_max_property = devtype->flags & XCAN_FLAG_TX_MAILBOXES ?
 			     "tx-mailbox-count" : "tx-fifo-depth";
@@ -2096,7 +2103,7 @@ static void xcan_remove(struct platform_device *pdev)
 
 static struct platform_driver xcan_driver = {
 	.probe = xcan_probe,
-	.remove_new = xcan_remove,
+	.remove = xcan_remove,
 	.driver	= {
 		.name = DRIVER_NAME,
 		.pm = &xcan_dev_pm_ops,

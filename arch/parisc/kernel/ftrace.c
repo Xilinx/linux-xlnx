@@ -78,7 +78,7 @@ asmlinkage void notrace __hot ftrace_function_trampoline(unsigned long parent,
 #endif
 }
 
-#ifdef CONFIG_FUNCTION_GRAPH_TRACER
+#if defined(CONFIG_DYNAMIC_FTRACE) && defined(CONFIG_FUNCTION_GRAPH_TRACER)
 int ftrace_enable_ftrace_graph_caller(void)
 {
 	static_key_enable(&ftrace_graph_enable.key);
@@ -205,6 +205,9 @@ void kprobe_ftrace_handler(unsigned long ip, unsigned long parent_ip,
 	struct pt_regs *regs;
 	struct kprobe *p;
 	int bit;
+
+	if (unlikely(kprobe_ftrace_disabled))
+		return;
 
 	bit = ftrace_test_recursion_trylock(ip, parent_ip);
 	if (bit < 0)

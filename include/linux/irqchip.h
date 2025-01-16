@@ -38,7 +38,7 @@ extern of_irq_init_cb_t typecheck_irq_init_cb;
 
 extern int platform_irqchip_probe(struct platform_device *pdev);
 #ifdef CONFIG_IRQCHIP_XILINX_INTC_MODULE_SUPPORT_EXPERIMENTAL
-extern int platform_irqchip_remove(struct platform_device *pdev);
+extern void platform_irqchip_remove(struct platform_device *pdev);
 #endif
 
 #define IRQCHIP_PLATFORM_DRIVER_BEGIN(drv_name) \

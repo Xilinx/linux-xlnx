@@ -5,17 +5,20 @@
 
 #include <linux/clk.h>
 #include <linux/delay.h>
+#include <linux/dma-mapping.h>
+#include <linux/dmaengine.h>
 #include <linux/err.h>
+#include <linux/interconnect.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/list.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/pm_opp.h>
 #include <linux/pm_runtime.h>
 #include <linux/spi/spi.h>
-#include <linux/dmaengine.h>
-#include <linux/dma-mapping.h>
+#include "internals.h"
 
 #define QUP_CONFIG			0x0000
 #define QUP_STATE			0x0004
@@ -121,11 +124,14 @@
 #define SPI_DELAY_THRESHOLD		1
 #define SPI_DELAY_RETRY			10
 
+#define SPI_BUS_WIDTH			8
+
 struct spi_qup {
 	void __iomem		*base;
 	struct device		*dev;
 	struct clk		*cclk;	/* core clock */
 	struct clk		*iclk;	/* interface clock */
+	struct icc_path		*icc_path; /* interconnect to RAM */
 	int			irq;
 	spinlock_t		lock;
 
@@ -148,6 +154,8 @@ struct spi_qup {
 	int			mode;
 	struct dma_slave_config	rx_conf;
 	struct dma_slave_config	tx_conf;
+
+	u32			bw_speed_hz;
 };
 
 static int spi_qup_io_config(struct spi_device *spi, struct spi_transfer *xfer);
@@ -178,6 +186,23 @@ static inline bool spi_qup_is_valid_state(struct spi_qup *controller)
 	u32 opstate = readl_relaxed(controller->base + QUP_STATE);
 
 	return opstate & QUP_STATE_VALID;
+}
+
+static int spi_qup_vote_bw(struct spi_qup *controller, u32 speed_hz)
+{
+	u32 needed_peak_bw;
+	int ret;
+
+	if (controller->bw_speed_hz == speed_hz)
+		return 0;
+
+	needed_peak_bw = Bps_to_icc(speed_hz * SPI_BUS_WIDTH);
+	ret = icc_set_bw(controller->icc_path, 0, needed_peak_bw);
+	if (ret)
+		return ret;
+
+	controller->bw_speed_hz = speed_hz;
+	return 0;
 }
 
 static int spi_qup_set_state(struct spi_qup *controller, u32 state)
@@ -450,6 +475,12 @@ static int spi_qup_do_dma(struct spi_device *spi, struct spi_transfer *xfer,
 	struct scatterlist *tx_sgl, *rx_sgl;
 	int ret;
 
+	ret = spi_qup_vote_bw(qup, xfer->speed_hz);
+	if (ret) {
+		dev_err(qup->dev, "fail to vote for ICC bandwidth: %d\n", ret);
+		return -EIO;
+	}
+
 	if (xfer->rx_buf)
 		rx_done = spi_qup_dma_done;
 	else if (xfer->tx_buf)
@@ -667,7 +698,7 @@ static int spi_qup_io_prep(struct spi_device *spi, struct spi_transfer *xfer)
 		return -EIO;
 	}
 
-	ret = clk_set_rate(controller->cclk, xfer->speed_hz);
+	ret = dev_pm_opp_set_rate(controller->dev, xfer->speed_hz);
 	if (ret) {
 		dev_err(controller->dev, "fail to set frequency %d",
 			xfer->speed_hz);
@@ -679,9 +710,7 @@ static int spi_qup_io_prep(struct spi_device *spi, struct spi_transfer *xfer)
 
 	if (controller->n_words <= (controller->in_fifo_sz / sizeof(u32)))
 		controller->mode = QUP_IO_M_MODE_FIFO;
-	else if (spi->controller->can_dma &&
-		 spi->controller->can_dma(spi->controller, spi, xfer) &&
-		 spi->controller->cur_msg_mapped)
+	else if (spi_xfer_is_dma_mapped(spi->controller, spi, xfer))
 		controller->mode = QUP_IO_M_MODE_BAM;
 	else
 		controller->mode = QUP_IO_M_MODE_BLOCK;
@@ -993,6 +1022,7 @@ static void spi_qup_set_cs(struct spi_device *spi, bool val)
 static int spi_qup_probe(struct platform_device *pdev)
 {
 	struct spi_controller *host;
+	struct icc_path *icc_path;
 	struct clk *iclk, *cclk;
 	struct spi_qup *controller;
 	struct resource *res;
@@ -1018,6 +1048,11 @@ static int spi_qup_probe(struct platform_device *pdev)
 	if (IS_ERR(iclk))
 		return PTR_ERR(iclk);
 
+	icc_path = devm_of_icc_get(dev, NULL);
+	if (IS_ERR(icc_path))
+		return dev_err_probe(dev, PTR_ERR(icc_path),
+				     "failed to get interconnect path\n");
+
 	/* This is optional parameter */
 	if (of_property_read_u32(dev->of_node, "spi-max-frequency", &max_freq))
 		max_freq = SPI_MAX_RATE;
@@ -1026,6 +1061,15 @@ static int spi_qup_probe(struct platform_device *pdev)
 		dev_err(dev, "invalid clock frequency %d\n", max_freq);
 		return -ENXIO;
 	}
+
+	ret = devm_pm_opp_set_clkname(dev, "core");
+	if (ret)
+		return ret;
+
+	/* OPP table is optional */
+	ret = devm_pm_opp_of_add_table(dev);
+	if (ret && ret != -ENODEV)
+		return dev_err_probe(dev, ret, "invalid OPP table\n");
 
 	host = spi_alloc_host(dev, sizeof(struct spi_qup));
 	if (!host) {
@@ -1060,6 +1104,7 @@ static int spi_qup_probe(struct platform_device *pdev)
 	controller->base = base;
 	controller->iclk = iclk;
 	controller->cclk = cclk;
+	controller->icc_path = icc_path;
 	controller->irq = irq;
 
 	ret = spi_qup_init_dma(host, res->start);
@@ -1180,6 +1225,7 @@ static int spi_qup_pm_suspend_runtime(struct device *device)
 	writel_relaxed(config, controller->base + QUP_CONFIG);
 
 	clk_disable_unprepare(controller->cclk);
+	spi_qup_vote_bw(controller, 0);
 	clk_disable_unprepare(controller->iclk);
 
 	return 0;
@@ -1231,6 +1277,7 @@ static int spi_qup_suspend(struct device *device)
 		return ret;
 
 	clk_disable_unprepare(controller->cclk);
+	spi_qup_vote_bw(controller, 0);
 	clk_disable_unprepare(controller->iclk);
 	return 0;
 }
@@ -1321,5 +1368,6 @@ static struct platform_driver spi_qup_driver = {
 };
 module_platform_driver(spi_qup_driver);
 
+MODULE_DESCRIPTION("Qualcomm SPI controller with QUP interface");
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("platform:spi_qup");

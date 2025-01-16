@@ -169,7 +169,10 @@ static int vfio_cdx_ioctl_get_irq_info(struct vfio_cdx_device *vdev,
 	if (info.index >= 1)
 		return -EINVAL;
 
-	info.flags = VFIO_IRQ_INFO_EVENTFD;
+	if (!cdx_dev->num_msi)
+		return -EINVAL;
+
+	info.flags = VFIO_IRQ_INFO_EVENTFD | VFIO_IRQ_INFO_NORESIZE;
 	info.count = cdx_dev->num_msi;
 
 	return copy_to_user(arg, &info, minsz) ? -EFAULT : 0;

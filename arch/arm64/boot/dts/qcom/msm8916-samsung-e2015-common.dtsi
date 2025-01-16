@@ -23,6 +23,12 @@
 
 			pinctrl-names = "default";
 			pinctrl-0 = <&muic_int_default>;
+
+			usb_con: connector {
+				compatible = "usb-b-connector";
+				label = "micro-USB";
+				type = "micro";
+			};
 		};
 	};
 
@@ -65,6 +71,10 @@
 	};
 };
 
+&mpss_mem {
+	reg = <0x0 0x86800000 0x0 0x5a00000>;
+};
+
 &reg_motor_vdd {
 	regulator-min-microvolt = <3300000>;
 	regulator-max-microvolt = <3300000>;
@@ -81,6 +91,10 @@
 
 &wcnss_iris {
 	compatible = "qcom,wcn3620";
+};
+
+&wcnss_mem {
+	status = "okay";
 };
 
 &tlmm {

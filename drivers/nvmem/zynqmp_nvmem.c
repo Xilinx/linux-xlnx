@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (C) 2019 Xilinx, Inc.
- * Copyright (C), 2022 - 2023 Advanced Micro Devices, Inc.
+ * Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc.
  */
 
 #include <linux/dma-mapping.h>
@@ -214,7 +214,6 @@ static int zynqmp_nvmem_probe(struct platform_device *pdev)
 	econfig.size = ZYNQMP_NVMEM_SIZE;
 	econfig.dev = dev;
 	econfig.add_legacy_fixed_of_cells = true;
-	econfig.priv = dev;
 	econfig.reg_read = zynqmp_nvmem_read;
 	econfig.reg_write = zynqmp_nvmem_write;
 
@@ -231,6 +230,6 @@ static struct platform_driver zynqmp_nvmem_driver = {
 
 module_platform_driver(zynqmp_nvmem_driver);
 
-MODULE_AUTHOR("Kalyani Akula <kalyani.akula@amd.com>, Praveen Teja Kundanala <praveen.teja.kundanala@amd.com>");
+MODULE_AUTHOR("Michal Simek <michal.simek@amd.com>, Nava kishore Manne <nava.kishore.manne@amd.com>");
 MODULE_DESCRIPTION("ZynqMP NVMEM driver");
 MODULE_LICENSE("GPL");

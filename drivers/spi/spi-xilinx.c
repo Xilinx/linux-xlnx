@@ -236,7 +236,8 @@ static void xspi_init_hw(struct xilinx_spi *xspi)
 	/* Deselect the slave on the SPI bus */
 	xspi->write_fn(0xffff, regs_base + XSPI_SSR_OFFSET);
 	/* Disable the transmitter, enable Manual Slave Select Assertion,
-	 * put SPI controller into master mode, and enable it */
+	 * put SPI controller into master mode, and enable it
+	 */
 	xspi->write_fn(XSPI_CR_MANUAL_SSELECT |	XSPI_CR_MASTER_MODE |
 		XSPI_CR_ENABLE | XSPI_CR_TXFIFO_RESET |	XSPI_CR_RXFIFO_RESET,
 		regs_base + XSPI_CR_OFFSET);
@@ -250,7 +251,7 @@ static void xspi_init_hw(struct xilinx_spi *xspi)
  */
 static void xspi_chipselect(struct spi_device *qspi, bool is_high)
 {
-	struct xilinx_spi *xqspi = spi_master_get_devdata(qspi->master);
+	struct xilinx_spi *xqspi = spi_controller_get_devdata(qspi->controller);
 	u32 cs;
 
 	if (is_high) {
@@ -329,7 +330,7 @@ static void xilinx_spi_startup_block(struct xilinx_spi *xspi, u32 cs_num)
 static int xilinx_spi_setup_transfer(struct spi_device *spi,
 		struct spi_transfer *t)
 {
-	struct xilinx_spi *xspi = spi_master_get_devdata(spi->master);
+	struct xilinx_spi *xspi = spi_controller_get_devdata(spi->controller);
 	u32 config_reg;
 
 	config_reg = xspi->read_fn(xspi->regs + XSPI_CR_OFFSET);
@@ -363,9 +364,9 @@ static int xilinx_spi_setup_transfer(struct spi_device *spi,
 static int xspi_setup(struct spi_device *qspi)
 {
 	int ret;
-	struct xilinx_spi *xqspi = spi_master_get_devdata(qspi->master);
+	struct xilinx_spi *xqspi = spi_controller_get_devdata(qspi->controller);
 
-	if (qspi->master->busy)
+	if (qspi->controller->busy)
 		return -EBUSY;
 
 	ret = pm_runtime_get_sync(xqspi->dev);
@@ -380,7 +381,7 @@ static int xspi_setup(struct spi_device *qspi)
 
 /**
  * xspi_start_transfer - Initiates the SPI transfer
- * @master:	Pointer to the spi_master structure which provides
+ * @ctlr:	Pointer to the spi_ controller structure which provides
  *		information about the controller.
  * @qspi:	Pointer to the spi_device structure
  * @transfer:	Pointer to the spi_transfer structure which provide information
@@ -392,11 +393,11 @@ static int xspi_setup(struct spi_device *qspi)
  * Return:	Number of bytes transferred in the last transfer
  */
 
-static int xspi_start_transfer(struct spi_master *master,
+static int xspi_start_transfer(struct spi_controller *ctlr,
 			       struct spi_device *qspi,
 			       struct spi_transfer *transfer)
 {
-	struct xilinx_spi *xqspi = spi_master_get_devdata(master);
+	struct xilinx_spi *xqspi = spi_controller_get_devdata(ctlr);
 	u32 cr;
 
 	xqspi->tx_ptr = transfer->tx_buf;
@@ -431,16 +432,16 @@ static int xspi_start_transfer(struct spi_master *master,
 
 /**
  * xspi_prepare_transfer_hardware -	Prepares hardware for transfer.
- * @master:	Pointer to the spi_master structure which provides
+ * @ctlr:	Pointer to the spi_controller structure which provides
  *		information about the controller.
  *
  * This function enables SPI master controller.
  *
  * Return:	0 on success; error value otherwise
  */
-static int xspi_prepare_transfer_hardware(struct spi_master *master)
+static int xspi_prepare_transfer_hardware(struct spi_controller *ctlr)
 {
-	struct xilinx_spi *xqspi = spi_master_get_devdata(master);
+	struct xilinx_spi *xqspi = spi_controller_get_devdata(ctlr);
 
 	u32 cr;
 	int ret;
@@ -458,16 +459,16 @@ static int xspi_prepare_transfer_hardware(struct spi_master *master)
 
 /**
  * xspi_unprepare_transfer_hardware -	Relaxes hardware after transfer
- * @master:	Pointer to the spi_master structure which provides
+ * @ctlr:	Pointer to the spi_controller structure which provides
  *		information about the controller.
  *
  * This function disables the SPI master controller.
  *
  * Return:	Always 0
  */
-static int xspi_unprepare_transfer_hardware(struct spi_master *master)
+static int xspi_unprepare_transfer_hardware(struct spi_controller *ctlr)
 {
-	struct xilinx_spi *xqspi = spi_master_get_devdata(master);
+	struct xilinx_spi *xqspi = spi_controller_get_devdata(ctlr);
 	u32 cr;
 
 	cr = xqspi->read_fn(xqspi->regs + XSPI_CR_OFFSET);
@@ -489,8 +490,8 @@ static int xspi_unprepare_transfer_hardware(struct spi_master *master)
  */
 static int __maybe_unused xilinx_spi_runtime_resume(struct device *dev)
 {
-	struct spi_master *master = dev_get_drvdata(dev);
-	struct xilinx_spi *xspi = spi_master_get_devdata(master);
+	struct spi_controller *ctlr = dev_get_drvdata(dev);
+	struct xilinx_spi *xspi = spi_controller_get_devdata(ctlr);
 	int ret;
 
 	ret = clk_bulk_prepare_enable(xspi->num_clocks, xspi->clks);
@@ -512,8 +513,8 @@ static int __maybe_unused xilinx_spi_runtime_resume(struct device *dev)
  */
 static int __maybe_unused xilinx_spi_runtime_suspend(struct device *dev)
 {
-	struct spi_master *master = dev_get_drvdata(dev);
-	struct xilinx_spi *xspi = spi_master_get_devdata(master);
+	struct spi_controller *ctlr = dev_get_drvdata(dev);
+	struct xilinx_spi *xspi = spi_controller_get_devdata(ctlr);
 
 	clk_bulk_disable_unprepare(xspi->num_clocks, xspi->clks);
 
@@ -531,8 +532,8 @@ static int __maybe_unused xilinx_spi_runtime_suspend(struct device *dev)
  */
 static int __maybe_unused xilinx_spi_resume(struct device *dev)
 {
-	struct spi_master *master = dev_get_drvdata(dev);
-	struct xilinx_spi *xspi = spi_master_get_devdata(master);
+	struct spi_controller *ctlr = dev_get_drvdata(dev);
+	struct xilinx_spi *xspi = spi_controller_get_devdata(ctlr);
 	int ret = 0;
 
 	if (!pm_runtime_suspended(dev)) {
@@ -541,10 +542,9 @@ static int __maybe_unused xilinx_spi_resume(struct device *dev)
 			return ret;
 	}
 
-	ret = spi_master_resume(master);
-	if (ret < 0) {
+	ret = spi_controller_resume(ctlr);
+	if (ret < 0)
 		clk_bulk_disable_unprepare(xspi->num_clocks, xspi->clks);
-	}
 
 	return ret;
 }
@@ -559,17 +559,17 @@ static int __maybe_unused xilinx_spi_resume(struct device *dev)
  */
 static int __maybe_unused xilinx_spi_suspend(struct device *dev)
 {
-	struct spi_master *master = dev_get_drvdata(dev);
+	struct spi_controller *ctlr = dev_get_drvdata(dev);
 	int ret = 0;
 
-	ret = spi_master_suspend(master);
+	ret = spi_controller_suspend(ctlr);
 	if (ret)
 		return ret;
 
 	if (!pm_runtime_suspended(dev))
 		xilinx_spi_runtime_suspend(dev);
 
-	xspi_unprepare_transfer_hardware(master);
+	xspi_unprepare_transfer_hardware(ctlr);
 
 	return ret;
 }
@@ -587,8 +587,8 @@ static const struct dev_pm_ops xilinx_spi_dev_pm_ops = {
  */
 static irqreturn_t xilinx_spi_irq(int irq, void *dev_id)
 {
-	struct spi_master *master = dev_id;
-	struct xilinx_spi *xspi = spi_master_get_devdata(dev_id);
+	struct spi_controller *ctlr = dev_id;
+	struct xilinx_spi *xspi = spi_controller_get_devdata(dev_id);
 	u32 ipif_isr;
 	u32 cr;
 	irqreturn_t status = IRQ_NONE;
@@ -615,7 +615,7 @@ static irqreturn_t xilinx_spi_irq(int irq, void *dev_id)
 	if (!xspi->bytes_to_receive && !xspi->bytes_to_transfer) {
 		/* Disable the interrupts here. */
 		xspi->write_fn(0x0, xspi->regs + XIPIF_V123B_DGIER_OFFSET);
-		spi_finalize_current_transfer(master);
+		spi_finalize_current_transfer(ctlr);
 	}
 
 	/* Disable master transaction inhibit */
@@ -631,7 +631,7 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 	int ret;
 	u32 num_cs = 0, bits_per_word = 8;
 	u32 cs_num;
-	struct spi_master *master;
+	struct spi_controller *ctlr;
 	struct device_node *nc;
 	u32 tmp, rx_bus_width, fifo_size;
 	bool startup_block;
@@ -649,18 +649,18 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 
 	startup_block = of_property_read_bool(pdev->dev.of_node,
 					      "xlnx,startup-block");
-	master = spi_alloc_master(&pdev->dev, sizeof(struct xilinx_spi));
-	if (!master)
+	ctlr = spi_alloc_master(&pdev->dev, sizeof(struct xilinx_spi));
+	if (!ctlr)
 		return -ENODEV;
 
-	xspi = spi_master_get_devdata(master);
-	master->dev.of_node = pdev->dev.of_node;
-	platform_set_drvdata(pdev, master);
+	xspi = spi_controller_get_devdata(ctlr);
+	ctlr->dev.of_node = pdev->dev.of_node;
+	platform_set_drvdata(pdev, ctlr);
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	xspi->regs = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(xspi->regs)) {
 		ret = PTR_ERR(xspi->regs);
-		goto put_master;
+		goto put_controller;
 	}
 	ret = of_property_read_u32(pdev->dev.of_node, "fifo-size",
 				   &fifo_size);
@@ -679,13 +679,16 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 		if (startup_block) {
 			ret = of_property_read_u32(nc, "reg",
 						   &cs_num);
-			if (ret < 0)
+			if (ret < 0) {
+				of_node_put(nc);
 				return -EINVAL;
+			}
 		}
 		ret = of_property_read_u32(nc, "spi-rx-bus-width",
 					   &rx_bus_width);
 		if (!ret) {
 			xspi->rx_bus_width = rx_bus_width;
+			of_node_put(nc);
 			break;
 		}
 	}
@@ -731,7 +734,7 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 	} else if (xspi->irq >= 0) {
 		/* Register for SPI Interrupt */
 		ret = devm_request_irq(&pdev->dev, xspi->irq, xilinx_spi_irq, 0,
-				       dev_name(&pdev->dev), master);
+				       dev_name(&pdev->dev), ctlr);
 		if (ret)
 			goto clk_unprepare_all;
 	}
@@ -741,15 +744,15 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 
 	pm_runtime_put(&pdev->dev);
 
-	master->bus_num = pdev->id;
-	master->num_chipselect = num_cs;
-	master->setup = xspi_setup;
-	master->set_cs = xspi_chipselect;
-	master->transfer_one = xspi_start_transfer;
-	master->prepare_transfer_hardware = xspi_prepare_transfer_hardware;
-	master->unprepare_transfer_hardware = xspi_unprepare_transfer_hardware;
-	master->bits_per_word_mask = SPI_BPW_MASK(bits_per_word);
-	master->mode_bits = SPI_CPOL | SPI_CPHA | SPI_CS_HIGH;
+	ctlr->bus_num = pdev->id;
+	ctlr->num_chipselect = num_cs;
+	ctlr->setup = xspi_setup;
+	ctlr->set_cs = xspi_chipselect;
+	ctlr->transfer_one = xspi_start_transfer;
+	ctlr->prepare_transfer_hardware = xspi_prepare_transfer_hardware;
+	ctlr->unprepare_transfer_hardware = xspi_unprepare_transfer_hardware;
+	ctlr->bits_per_word_mask = SPI_BPW_MASK(bits_per_word);
+	ctlr->mode_bits = SPI_CPOL | SPI_CPHA | SPI_CS_HIGH;
 
 	xspi->bytes_per_word = bits_per_word / 8;
 	xspi->tx_fifo = xspi_fill_tx_fifo_8;
@@ -763,7 +766,7 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 			xspi->rx_fifo = xspi_read_rx_fifo_32;
 		}
 	} else if (xspi->rx_bus_width == XSPI_RX_FOUR_WIRE) {
-		master->mode_bits |= SPI_TX_QUAD | SPI_RX_QUAD;
+		ctlr->mode_bits |= SPI_TX_QUAD | SPI_RX_QUAD;
 	} else {
 		dev_err(&pdev->dev, "Dual Mode not supported\n");
 		goto clk_unprepare_all;
@@ -779,9 +782,9 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 	if (startup_block)
 		xilinx_spi_startup_block(xspi, cs_num);
 
-	ret = spi_register_master(master);
+	ret = spi_register_controller(ctlr);
 	if (ret) {
-		dev_err(&pdev->dev, "spi_register_master failed\n");
+		dev_err(&pdev->dev, "spi_register_controller failed\n");
 		goto clk_unprepare_all;
 	}
 
@@ -792,8 +795,8 @@ clk_unprepare_all:
 runtime_disable:
 	pm_runtime_disable(&pdev->dev);
 	pm_runtime_set_suspended(&pdev->dev);
-put_master:
-	spi_master_put(master);
+put_controller:
+	spi_controller_put(ctlr);
 
 	return ret;
 }
@@ -808,10 +811,10 @@ put_master:
  *
  * Return:	0 Always
  */
-static int xilinx_spi_remove(struct platform_device *pdev)
+static void xilinx_spi_remove(struct platform_device *pdev)
 {
-	struct spi_master *master = platform_get_drvdata(pdev);
-	struct xilinx_spi *xspi = spi_master_get_devdata(master);
+	struct spi_controller *ctlr = platform_get_drvdata(pdev);
+	struct xilinx_spi *xspi = spi_controller_get_devdata(ctlr);
 	void __iomem *regs_base = xspi->regs;
 
 	/* Disable all the interrupts just in case */
@@ -823,9 +826,7 @@ static int xilinx_spi_remove(struct platform_device *pdev)
 
 	clk_bulk_disable_unprepare(xspi->num_clocks, xspi->clks);
 
-	spi_unregister_master(master);
-
-	return 0;
+	spi_unregister_controller(ctlr);
 }
 
 /* work with hotplug and coldplug */
@@ -841,7 +842,7 @@ MODULE_DEVICE_TABLE(of, xilinx_spi_of_match);
 
 static struct platform_driver xilinx_spi_driver = {
 	.probe = xilinx_spi_probe,
-	.remove = xilinx_spi_remove,
+	.remove_new = xilinx_spi_remove,
 	.driver = {
 		.name = XILINX_SPI_NAME,
 		.of_match_table = xilinx_spi_of_match,

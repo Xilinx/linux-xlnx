@@ -21,9 +21,11 @@ struct uid_gid_extent {
 };
 
 struct uid_gid_map { /* 64 bytes -- 1 cache line */
-	u32 nr_extents;
 	union {
-		struct uid_gid_extent extent[UID_GID_MAP_MAX_BASE_EXTENTS];
+		struct {
+			struct uid_gid_extent extent[UID_GID_MAP_MAX_BASE_EXTENTS];
+			u32 nr_extents;
+		};
 		struct {
 			struct uid_gid_extent *forward;
 			struct uid_gid_extent *reverse;
@@ -65,6 +67,10 @@ enum rlimit_type {
 	UCOUNT_RLIMIT_COUNTS,
 };
 
+#if IS_ENABLED(CONFIG_BINFMT_MISC)
+struct binfmt_misc;
+#endif
+
 struct user_namespace {
 	struct uid_gid_map	uid_map;
 	struct uid_gid_map	gid_map;
@@ -102,6 +108,10 @@ struct user_namespace {
 	struct ucounts		*ucounts;
 	long ucount_max[UCOUNT_COUNTS];
 	long rlimit_max[UCOUNT_RLIMIT_COUNTS];
+
+#if IS_ENABLED(CONFIG_BINFMT_MISC)
+	struct binfmt_misc *binfmt_misc;
+#endif
 } __randomize_layout;
 
 struct ucounts {
@@ -131,7 +141,8 @@ static inline long get_rlimit_value(struct ucounts *ucounts, enum rlimit_type ty
 
 long inc_rlimit_ucounts(struct ucounts *ucounts, enum rlimit_type type, long v);
 bool dec_rlimit_ucounts(struct ucounts *ucounts, enum rlimit_type type, long v);
-long inc_rlimit_get_ucounts(struct ucounts *ucounts, enum rlimit_type type);
+long inc_rlimit_get_ucounts(struct ucounts *ucounts, enum rlimit_type type,
+			    bool override_rlimit);
 void dec_rlimit_put_ucounts(struct ucounts *ucounts, enum rlimit_type type);
 bool is_rlimit_overlimit(struct ucounts *ucounts, enum rlimit_type type, unsigned long max);
 

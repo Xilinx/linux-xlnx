@@ -64,7 +64,7 @@
 #include <linux/iio/trigger.h>
 #include <linux/iio/trigger_consumer.h>
 #include <linux/iio/triggered_buffer.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include "zpa2326.h"
 
 /* 200 ms should be enough for the longest conversion time in one-shot mode. */
@@ -861,13 +861,13 @@ static int zpa2326_wait_oneshot_completion(const struct iio_dev   *indio_dev,
 					   struct zpa2326_private *private)
 {
 	unsigned int val;
-	long     timeout;
+	long time_left;
 
 	zpa2326_dbg(indio_dev, "waiting for one shot completion interrupt");
 
-	timeout = wait_for_completion_interruptible_timeout(
+	time_left = wait_for_completion_interruptible_timeout(
 		&private->data_ready, ZPA2326_CONVERSION_JIFFIES);
-	if (timeout > 0)
+	if (time_left > 0)
 		/*
 		 * Interrupt handler completed before timeout: return operation
 		 * status.
@@ -877,10 +877,10 @@ static int zpa2326_wait_oneshot_completion(const struct iio_dev   *indio_dev,
 	/* Clear all interrupts just to be sure. */
 	regmap_read(private->regmap, ZPA2326_INT_SOURCE_REG, &val);
 
-	if (!timeout) {
+	if (!time_left) {
 		/* Timed out. */
 		zpa2326_warn(indio_dev, "no one shot interrupt occurred (%ld)",
-			     timeout);
+			     time_left);
 		return -ETIME;
 	}
 

@@ -115,6 +115,16 @@ enum {
 	 * Enable recursive subtree protection
 	 */
 	CGRP_ROOT_MEMORY_RECURSIVE_PROT = (1 << 18),
+
+	/*
+	 * Enable hugetlb accounting for the memory controller.
+	 */
+	CGRP_ROOT_MEMORY_HUGETLB_ACCOUNTING = (1 << 19),
+
+	/*
+	 * Enable legacy local pids.events.
+	 */
+	CGRP_ROOT_PIDS_LOCAL_EVENTS = (1 << 20),
 };
 
 /* cftype->flags */
@@ -162,7 +172,11 @@ struct cgroup_subsys_state {
 	/* reference count - access via css_[try]get() and css_put() */
 	struct percpu_ref refcnt;
 
-	/* siblings list anchored at the parent's ->children */
+	/*
+	 * siblings list anchored at the parent's ->children
+	 *
+	 * linkage is protected by cgroup_mutex or RCU
+	 */
 	struct list_head sibling;
 	struct list_head children;
 
@@ -200,6 +214,14 @@ struct cgroup_subsys_state {
 	 * fields of the containing structure.
 	 */
 	struct cgroup_subsys_state *parent;
+
+	/*
+	 * Keep track of total numbers of visible descendant CSSes.
+	 * The total number of dying CSSes is tracked in
+	 * css->cgroup->nr_dying_subsys[ssid].
+	 * Protected by cgroup_mutex.
+	 */
+	int nr_descendants;
 };
 
 /*
@@ -460,6 +482,12 @@ struct cgroup {
 	/* Private pointers for each registered subsystem */
 	struct cgroup_subsys_state __rcu *subsys[CGROUP_SUBSYS_COUNT];
 
+	/*
+	 * Keep track of total number of dying CSSes at and below this cgroup.
+	 * Protected by cgroup_mutex.
+	 */
+	int nr_dying_subsys[CGROUP_SUBSYS_COUNT];
+
 	struct cgroup_root *root;
 
 	/*
@@ -491,6 +519,20 @@ struct cgroup {
 	struct cgroup_rstat_cpu __percpu *rstat_cpu;
 	struct list_head rstat_css_list;
 
+	/*
+	 * Add padding to separate the read mostly rstat_cpu and
+	 * rstat_css_list into a different cacheline from the following
+	 * rstat_flush_next and *bstat fields which can have frequent updates.
+	 */
+	CACHELINE_PADDING(_pad_);
+
+	/*
+	 * A singly-linked list of cgroup structures to be rstat flushed.
+	 * This is a scratch field to be used exclusively by
+	 * cgroup_rstat_flush_locked() and protected by cgroup_rstat_lock.
+	 */
+	struct cgroup	*rstat_flush_next;
+
 	/* cgroup basic resource statistics */
 	struct cgroup_base_stat last_bstat;
 	struct cgroup_base_stat bstat;
@@ -514,9 +556,6 @@ struct cgroup {
 
 	/* used to store eBPF programs */
 	struct cgroup_bpf bpf;
-
-	/* If there is block congestion on this cgroup. */
-	atomic_t congestion_count;
 
 	/* Used to store internal freezer state */
 	struct cgroup_freezer_state freezer;
@@ -543,6 +582,10 @@ struct cgroup_root {
 	/* Unique id for this hierarchy. */
 	int hierarchy_id;
 
+	/* A list running through the active hierarchies */
+	struct list_head root_list;
+	struct rcu_head rcu;	/* Must be near the top */
+
 	/*
 	 * The root cgroup. The containing cgroup_root will be destroyed on its
 	 * release. cgrp->ancestors[0] will be used overflowing into the
@@ -555,9 +598,6 @@ struct cgroup_root {
 
 	/* Number of cgroups in the hierarchy, used only for /proc/cgroups */
 	atomic_t nr_cgrps;
-
-	/* A list running through the active hierarchies */
-	struct list_head root_list;
 
 	/* Hierarchy-specific flags */
 	unsigned int flags;
@@ -656,9 +696,7 @@ struct cftype {
 	__poll_t (*poll)(struct kernfs_open_file *of,
 			 struct poll_table_struct *pt);
 
-#ifdef CONFIG_DEBUG_LOCK_ALLOC
 	struct lock_class_key	lockdep_key;
-#endif
 };
 
 /*
@@ -754,6 +792,11 @@ struct cgroup_subsys {
 };
 
 extern struct percpu_rw_semaphore cgroup_threadgroup_rwsem;
+
+struct cgroup_of_peak {
+	unsigned long		value;
+	struct list_head	list;
+};
 
 /**
  * cgroup_threadgroup_change_begin - threadgroup exclusion for cgroups

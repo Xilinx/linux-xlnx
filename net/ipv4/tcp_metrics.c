@@ -470,11 +470,15 @@ void tcp_init_metrics(struct sock *sk)
 	u32 val, crtt = 0; /* cached RTT scaled by 8 */
 
 	sk_dst_confirm(sk);
+	/* ssthresh may have been reduced unnecessarily during.
+	 * 3WHS. Restore it back to its initial default.
+	 */
+	tp->snd_ssthresh = TCP_INFINITE_SSTHRESH;
 	if (!dst)
 		goto reset;
 
 	rcu_read_lock();
-	tm = tcp_get_metrics(sk, dst, true);
+	tm = tcp_get_metrics(sk, dst, false);
 	if (!tm) {
 		rcu_read_unlock();
 		goto reset;
@@ -489,11 +493,6 @@ void tcp_init_metrics(struct sock *sk)
 		tp->snd_ssthresh = val;
 		if (tp->snd_ssthresh > tp->snd_cwnd_clamp)
 			tp->snd_ssthresh = tp->snd_cwnd_clamp;
-	} else {
-		/* ssthresh may have been reduced unnecessarily during.
-		 * 3WHS. Restore it back to its initial default.
-		 */
-		tp->snd_ssthresh = TCP_INFINITE_SSTHRESH;
 	}
 	val = tcp_metric_get(tm, TCP_METRIC_REORDERING);
 	if (val && tp->reordering != val)
@@ -618,8 +617,13 @@ static struct genl_family tcp_metrics_nl_family;
 
 static const struct nla_policy tcp_metrics_nl_policy[TCP_METRICS_ATTR_MAX + 1] = {
 	[TCP_METRICS_ATTR_ADDR_IPV4]	= { .type = NLA_U32, },
-	[TCP_METRICS_ATTR_ADDR_IPV6]	= { .type = NLA_BINARY,
-					    .len = sizeof(struct in6_addr), },
+	[TCP_METRICS_ATTR_ADDR_IPV6]	=
+		NLA_POLICY_EXACT_LEN(sizeof(struct in6_addr)),
+
+	[TCP_METRICS_ATTR_SADDR_IPV4]	= { .type = NLA_U32, },
+	[TCP_METRICS_ATTR_SADDR_IPV6]	=
+		NLA_POLICY_EXACT_LEN(sizeof(struct in6_addr)),
+
 	/* Following attributes are not received for GET/DEL,
 	 * we keep them for reference
 	 */
@@ -767,6 +771,7 @@ static int tcp_metrics_nl_dump(struct sk_buff *skb,
 	unsigned int max_rows = 1U << tcp_metrics_hash_log;
 	unsigned int row, s_row = cb->args[0];
 	int s_col = cb->args[1], col = s_col;
+	int res = 0;
 
 	for (row = s_row; row < max_rows; row++, s_col = 0) {
 		struct tcp_metrics_block *tm;
@@ -779,7 +784,8 @@ static int tcp_metrics_nl_dump(struct sk_buff *skb,
 				continue;
 			if (col < s_col)
 				continue;
-			if (tcp_metrics_dump_info(skb, cb, tm) < 0) {
+			res = tcp_metrics_dump_info(skb, cb, tm);
+			if (res < 0) {
 				rcu_read_unlock();
 				goto done;
 			}
@@ -790,7 +796,7 @@ static int tcp_metrics_nl_dump(struct sk_buff *skb,
 done:
 	cb->args[0] = row;
 	cb->args[1] = col;
-	return skb->len;
+	return res;
 }
 
 static int __parse_nl_addr(struct genl_info *info, struct inetpeer_addr *addr,
@@ -809,8 +815,6 @@ static int __parse_nl_addr(struct genl_info *info, struct inetpeer_addr *addr,
 	if (a) {
 		struct in6_addr in6;
 
-		if (nla_len(a) != sizeof(struct in6_addr))
-			return -EINVAL;
 		in6 = nla_get_in6_addr(a);
 		inetpeer_set_addr_v6(addr, &in6);
 		if (hash)
@@ -899,22 +903,25 @@ static void tcp_metrics_flush_all(struct net *net)
 	unsigned int row;
 
 	for (row = 0; row < max_rows; row++, hb++) {
-		struct tcp_metrics_block __rcu **pp;
+		struct tcp_metrics_block __rcu **pp = &hb->chain;
 		bool match;
 
+		if (!rcu_access_pointer(*pp))
+			continue;
+
 		spin_lock_bh(&tcp_metrics_lock);
-		pp = &hb->chain;
 		for (tm = deref_locked(*pp); tm; tm = deref_locked(*pp)) {
 			match = net ? net_eq(tm_net(tm), net) :
 				!refcount_read(&tm_net(tm)->ns.count);
 			if (match) {
-				*pp = tm->tcpm_next;
+				rcu_assign_pointer(*pp, tm->tcpm_next);
 				kfree_rcu(tm, rcu_head);
 			} else {
 				pp = &tm->tcpm_next;
 			}
 		}
 		spin_unlock_bh(&tcp_metrics_lock);
+		cond_resched();
 	}
 }
 
@@ -949,7 +956,7 @@ static int tcp_metrics_nl_cmd_del(struct sk_buff *skb, struct genl_info *info)
 		if (addr_same(&tm->tcpm_daddr, &daddr) &&
 		    (!src || addr_same(&tm->tcpm_saddr, &saddr)) &&
 		    net_eq(tm_net(tm), net)) {
-			*pp = tm->tcpm_next;
+			rcu_assign_pointer(*pp, tm->tcpm_next);
 			kfree_rcu(tm, rcu_head);
 			found = true;
 		} else {
@@ -984,6 +991,7 @@ static struct genl_family tcp_metrics_nl_family __ro_after_init = {
 	.maxattr	= TCP_METRICS_ATTR_MAX,
 	.policy = tcp_metrics_nl_policy,
 	.netnsok	= true,
+	.parallel_ops	= true,
 	.module		= THIS_MODULE,
 	.small_ops	= tcp_metrics_nl_ops,
 	.n_small_ops	= ARRAY_SIZE(tcp_metrics_nl_ops),

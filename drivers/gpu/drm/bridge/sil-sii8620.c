@@ -6,7 +6,7 @@
  * Andrzej Hajda <a.hajda@samsung.com>
  */
 
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 #include <drm/bridge/mhl.h>
 #include <drm/drm_bridge.h>
@@ -2384,4 +2384,5 @@ static struct i2c_driver sii8620_driver = {
 };
 
 module_i2c_driver(sii8620_driver);
+MODULE_DESCRIPTION("Silicon Image SiI8620 HDMI/MHL bridge driver");
 MODULE_LICENSE("GPL v2");

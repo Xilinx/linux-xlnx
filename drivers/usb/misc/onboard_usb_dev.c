@@ -105,7 +105,7 @@ static int onboard_dev_power_on(struct onboard_dev *onboard_dev)
 	if (err) {
 		dev_err(onboard_dev->dev, "failed to enable supplies: %pe\n",
 			ERR_PTR(err));
-		return err;
+		goto disable_clk;
 	}
 
 	fsleep(onboard_dev->pdata->reset_us);
@@ -115,6 +115,10 @@ static int onboard_dev_power_on(struct onboard_dev *onboard_dev)
 	onboard_dev->is_powered_on = true;
 
 	return 0;
+
+disable_clk:
+	clk_disable_unprepare(onboard_dev->clk);
+	return err;
 }
 
 static int onboard_dev_power_off(struct onboard_dev *onboard_dev)
@@ -274,20 +278,40 @@ static struct attribute *onboard_dev_attrs[] = {
 	&dev_attr_always_powered_in_suspend.attr,
 	NULL,
 };
-ATTRIBUTE_GROUPS(onboard_dev);
+
+static umode_t onboard_dev_attrs_are_visible(struct kobject *kobj,
+					     struct attribute *attr,
+					     int n)
+{
+	struct device *dev = kobj_to_dev(kobj);
+	struct onboard_dev *onboard_dev = dev_get_drvdata(dev);
+
+	if (attr == &dev_attr_always_powered_in_suspend.attr &&
+	    !onboard_dev->pdata->is_hub)
+		return 0;
+
+	return attr->mode;
+}
+
+static const struct attribute_group onboard_dev_group = {
+	.is_visible = onboard_dev_attrs_are_visible,
+	.attrs = onboard_dev_attrs,
+};
+__ATTRIBUTE_GROUPS(onboard_dev);
+
 
 static void onboard_dev_attach_usb_driver(struct work_struct *work)
 {
 	int err;
 
-	err = driver_attach(&onboard_dev_usbdev_driver.drvwrap.driver);
+	err = driver_attach(&onboard_dev_usbdev_driver.driver);
 	if (err)
 		pr_err("Failed to attach USB driver: %pe\n", ERR_PTR(err));
 }
 
 static int onboard_dev_5744_i2c_init(struct i2c_client *client)
 {
-#if IS_ENABLED(CONFIG_I2C)
+#if IS_ENABLED(CONFIG_USB_ONBOARD_DEV_USB5744)
 	struct device *dev = &client->dev;
 	int ret;
 
@@ -339,6 +363,9 @@ static int onboard_dev_probe(struct platform_device *pdev)
 	if (!onboard_dev->pdata)
 		return -EINVAL;
 
+	if (!onboard_dev->pdata->is_hub)
+		onboard_dev->always_powered_in_suspend = true;
+
 	onboard_dev->dev = dev;
 
 	err = onboard_dev_get_regulators(onboard_dev);
@@ -367,9 +394,11 @@ static int onboard_dev_probe(struct platform_device *pdev)
 
 	i2c_node = of_parse_phandle(pdev->dev.of_node, "i2c-bus", 0);
 	if (i2c_node) {
-		struct i2c_client *client;
+		struct i2c_client *client = NULL;
 
+#if IS_ENABLED(CONFIG_USB_ONBOARD_DEV_USB5744)
 		client = of_find_i2c_device_by_node(i2c_node);
+#endif
 		of_node_put(i2c_node);
 
 		if (!client) {
@@ -464,6 +493,7 @@ static struct platform_driver onboard_dev_driver = {
 #define VENDOR_ID_REALTEK	0x0bda
 #define VENDOR_ID_TI		0x0451
 #define VENDOR_ID_VIA		0x2109
+#define VENDOR_ID_XMOS		0x20B1
 
 /*
  * Returns the onboard_dev platform device that is associated with the USB
@@ -506,15 +536,17 @@ static struct onboard_dev *_find_onboard_dev(struct device *dev)
 	return onboard_dev;
 }
 
+static bool onboard_dev_usbdev_match(struct usb_device *udev)
+{
+	/* Onboard devices using this driver must have a device tree node */
+	return !!udev->dev.of_node;
+}
+
 static int onboard_dev_usbdev_probe(struct usb_device *udev)
 {
 	struct device *dev = &udev->dev;
 	struct onboard_dev *onboard_dev;
 	int err;
-
-	/* ignore supported devices without device tree node */
-	if (!dev->of_node)
-		return -ENODEV;
 
 	onboard_dev = _find_onboard_dev(dev);
 	if (IS_ERR(onboard_dev))
@@ -558,12 +590,14 @@ static const struct usb_device_id onboard_dev_id_table[] = {
 	{ USB_DEVICE(VENDOR_ID_TI, 0x8142) }, /* TI USB8041 2.0 HUB */
 	{ USB_DEVICE(VENDOR_ID_VIA, 0x0817) }, /* VIA VL817 3.1 HUB */
 	{ USB_DEVICE(VENDOR_ID_VIA, 0x2817) }, /* VIA VL817 2.0 HUB */
+	{ USB_DEVICE(VENDOR_ID_XMOS, 0x0013) }, /* XMOS XVF3500 Voice Processor */
 	{}
 };
 MODULE_DEVICE_TABLE(usb, onboard_dev_id_table);
 
 static struct usb_device_driver onboard_dev_usbdev_driver = {
 	.name = "onboard-usb-dev",
+	.match = onboard_dev_usbdev_match,
 	.probe = onboard_dev_usbdev_probe,
 	.disconnect = onboard_dev_usbdev_disconnect,
 	.generic_subclass = 1,

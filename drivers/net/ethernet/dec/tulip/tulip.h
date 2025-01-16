@@ -23,7 +23,7 @@
 #include <linux/pci.h>
 #include <asm/io.h>
 #include <asm/irq.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 
 
@@ -381,7 +381,7 @@ struct mediatable {
 	unsigned has_reset:6;
 	u32 csr15dir;
 	u32 csr15val;		/* 21143 NWay setting. */
-	struct medialeaf mleaf[];
+	struct medialeaf mleaf[] __counted_by(leafcount);
 };
 
 

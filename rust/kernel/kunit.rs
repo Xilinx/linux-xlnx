@@ -2,7 +2,7 @@
 
 //! KUnit-based macros for Rust unit tests.
 //!
-//! C header: [`include/kunit/test.h`](../../../../../include/kunit/test.h)
+//! C header: [`include/kunit/test.h`](srctree/include/kunit/test.h)
 //!
 //! Reference: <https://docs.kernel.org/dev-tools/kunit/index.html>
 
@@ -18,7 +18,7 @@ pub fn err(args: fmt::Arguments<'_>) {
     #[cfg(CONFIG_PRINTK)]
     unsafe {
         bindings::_printk(
-            b"\x013%pA\0".as_ptr() as _,
+            c"\x013%pA".as_ptr() as _,
             &args as *const _ as *const c_void,
         );
     }
@@ -34,7 +34,7 @@ pub fn info(args: fmt::Arguments<'_>) {
     #[cfg(CONFIG_PRINTK)]
     unsafe {
         bindings::_printk(
-            b"\x016%pA\0".as_ptr() as _,
+            c"\x016%pA".as_ptr() as _,
             &args as *const _ as *const c_void,
         );
     }

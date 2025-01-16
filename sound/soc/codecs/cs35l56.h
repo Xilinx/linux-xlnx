@@ -44,13 +44,13 @@ struct cs35l56_private {
 	bool sdw_attached;
 	struct completion init_completion;
 
+	int speaker_id;
 	u32 rx_mask;
 	u32 tx_mask;
 	u8 asp_slot_width;
 	u8 asp_slot_count;
 	bool tdm_mode;
 	bool sysclk_set;
-	u8 old_sdw_clock_scale;
 };
 
 extern const struct dev_pm_ops cs35l56_pm_ops_i2c_spi;

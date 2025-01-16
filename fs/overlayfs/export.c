@@ -23,12 +23,7 @@ static int ovl_encode_maybe_copy_up(struct dentry *dentry)
 	if (ovl_dentry_upper(dentry))
 		return 0;
 
-	err = ovl_want_write(dentry);
-	if (!err) {
-		err = ovl_copy_up(dentry);
-		ovl_drop_write(dentry);
-	}
-
+	err = ovl_copy_up(dentry);
 	if (err) {
 		pr_warn_ratelimited("failed to copy up on encode (%pd2, err=%i)\n",
 				    dentry, err);
@@ -186,6 +181,10 @@ static int ovl_check_encode_origin(struct dentry *dentry)
 	struct ovl_fs *ofs = OVL_FS(dentry->d_sb);
 	bool decodable = ofs->config.nfs_export;
 
+	/* No upper layer? */
+	if (!ovl_upper_mnt(ofs))
+		return 1;
+
 	/* Lower file handle for non-upper non-decodable */
 	if (!ovl_dentry_upper(dentry) && !decodable)
 		return 1;
@@ -214,7 +213,7 @@ static int ovl_check_encode_origin(struct dentry *dentry)
 	 * ovl_connect_layer() will try to make origin's layer "connected" by
 	 * copying up a "connectable" ancestor.
 	 */
-	if (d_is_dir(dentry) && ovl_upper_mnt(ofs) && decodable)
+	if (d_is_dir(dentry) && decodable)
 		return ovl_connect_layer(dentry);
 
 	/* Lower file handle for indexed and non-upper dir/non-dir */
@@ -294,7 +293,6 @@ static struct dentry *ovl_obtain_alias(struct super_block *sb,
 {
 	struct dentry *lower = lowerpath ? lowerpath->dentry : NULL;
 	struct dentry *upper = upper_alias ?: index;
-	struct dentry *dentry;
 	struct inode *inode = NULL;
 	struct ovl_entry *oe;
 	struct ovl_inode_params oip = {
@@ -325,27 +323,7 @@ static struct dentry *ovl_obtain_alias(struct super_block *sb,
 	if (upper)
 		ovl_set_flag(OVL_UPPERDATA, inode);
 
-	dentry = d_find_any_alias(inode);
-	if (dentry)
-		goto out_iput;
-
-	dentry = d_alloc_anon(inode->i_sb);
-	if (unlikely(!dentry))
-		goto nomem;
-
-	if (upper_alias)
-		ovl_dentry_set_upper_alias(dentry);
-
-	ovl_dentry_init_reval(dentry, upper, OVL_I_E(inode));
-
-	return d_instantiate_anon(dentry, inode);
-
-nomem:
-	dput(dentry);
-	dentry = ERR_PTR(-ENOMEM);
-out_iput:
-	iput(inode);
-	return dentry;
+	return d_obtain_alias(inode);
 }
 
 /* Get the upper or lower dentry in stack whose on layer @idx */
@@ -465,7 +443,7 @@ static struct dentry *ovl_lookup_real_inode(struct super_block *sb,
 	 * For decoded lower dir file handle, lookup index by origin to check
 	 * if lower dir was copied up and and/or removed.
 	 */
-	if (!this && layer->idx && ofs->indexdir && !WARN_ON(!d_is_dir(real))) {
+	if (!this && layer->idx && ovl_indexdir(sb) && !WARN_ON(!d_is_dir(real))) {
 		index = ovl_lookup_index(ofs, NULL, real, false);
 		if (IS_ERR(index))
 			return index;
@@ -738,7 +716,7 @@ static struct dentry *ovl_lower_fh_to_d(struct super_block *sb,
 	}
 
 	/* Then lookup indexed upper/whiteout by origin fh */
-	if (ofs->indexdir) {
+	if (ovl_indexdir(sb)) {
 		index = ovl_get_index_fh(ofs, fh);
 		err = PTR_ERR(index);
 		if (IS_ERR(index)) {

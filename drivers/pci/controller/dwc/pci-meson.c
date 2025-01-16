@@ -9,7 +9,6 @@
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/gpio/consumer.h>
-#include <linux/of_gpio.h>
 #include <linux/pci.h>
 #include <linux/platform_device.h>
 #include <linux/reset.h>
@@ -389,7 +388,7 @@ static int meson_pcie_host_init(struct dw_pcie_rp *pp)
 }
 
 static const struct dw_pcie_host_ops meson_pcie_host_ops = {
-	.host_init = meson_pcie_host_init,
+	.init = meson_pcie_host_init,
 };
 
 static const struct dw_pcie_ops dw_pcie_ops = {

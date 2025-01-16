@@ -591,8 +591,8 @@ static int twl_rtc_probe(struct platform_device *pdev)
 	memset(&nvmem_cfg, 0, sizeof(nvmem_cfg));
 	nvmem_cfg.name = "twl-secured-";
 	nvmem_cfg.type = NVMEM_TYPE_BATTERY_BACKED;
-	nvmem_cfg.reg_read = twl_nvram_read,
-	nvmem_cfg.reg_write = twl_nvram_write,
+	nvmem_cfg.reg_read = twl_nvram_read;
+	nvmem_cfg.reg_write = twl_nvram_write;
 	nvmem_cfg.word_size = 1;
 	nvmem_cfg.stride = 1;
 	if (twl_class_is_4030()) {
@@ -685,4 +685,5 @@ static struct platform_driver twl4030rtc_driver = {
 module_platform_driver(twl4030rtc_driver);
 
 MODULE_AUTHOR("Texas Instruments, MontaVista Software");
+MODULE_DESCRIPTION("TI TWL4030/TWL5030/TWL6030/TPS659x0 RTC driver");
 MODULE_LICENSE("GPL");

@@ -42,8 +42,6 @@
 #define CRAT_OEMTABLEID_LENGTH	8
 #define CRAT_RESERVED_LENGTH	6
 
-#define CRAT_OEMID_64BIT_MASK ((1ULL << (CRAT_OEMID_LENGTH * 8)) - 1)
-
 /* Compute Unit flags */
 #define COMPUTE_UNIT_CPU	(1 << 0)  /* Create Virtual CRAT for CPU */
 #define COMPUTE_UNIT_GPU	(1 << 1)  /* Create Virtual CRAT for GPU */
@@ -303,6 +301,7 @@ struct kfd_node;
 struct kfd_gpu_cache_info {
 	uint32_t	cache_size;
 	uint32_t	cache_level;
+	uint32_t	cache_line_size;
 	uint32_t	flags;
 	/* Indicates how many Compute Units share this cache
 	 * within a SA. Value = 1 indicates the cache is not shared

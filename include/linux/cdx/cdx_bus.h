@@ -12,6 +12,7 @@
 #include <linux/device.h>
 #include <linux/list.h>
 #include <linux/mod_devicetable.h>
+#include <linux/msi.h>
 
 #define MAX_CDX_DEV_RESOURCES	4
 #define CDX_CONTROLLER_ID_SHIFT 4
@@ -28,16 +29,18 @@ enum {
 };
 
 struct cdx_msi_config {
-	u16 msi_index;
-	u32 data;
 	u64 addr;
+	u32 data;
+	u16 msi_index;
 };
 
 struct cdx_device_config {
 	u8 type;
-	struct cdx_msi_config msi;
-	bool bus_master_enable;
-	bool msi_enable;
+	union {
+		struct cdx_msi_config msi;
+		bool bus_master_enable;
+		bool msi_enable;
+	};
 };
 
 typedef int (*cdx_bus_enable_cb)(struct cdx_controller *cdx, u8 bus_num);
@@ -163,7 +166,7 @@ struct cdx_device {
 	u32 msi_dev_id;
 	u32 num_msi;
 	const char *driver_override;
-	struct mutex irqchip_lock; /* Serialize write msi configuration */
+	struct mutex irqchip_lock;
 	bool msi_write_pending;
 };
 
@@ -208,7 +211,7 @@ struct cdx_driver {
 };
 
 #define to_cdx_driver(_drv) \
-	container_of(_drv, struct cdx_driver, driver)
+	container_of_const(_drv, struct cdx_driver, driver)
 
 /* Macro to avoid include chaining to get THIS_MODULE */
 #define cdx_driver_register(drv) \
@@ -234,20 +237,6 @@ void cdx_driver_unregister(struct cdx_driver *cdx_driver);
 extern struct bus_type cdx_bus_type;
 
 /**
- * cdx_msi_domain_alloc_irqs - Allocate MSI's for the CDX device
- * @dev: device pointer
- * @irq_count: Number of MSI's to be allocated
- *
- * Return: 0 for success, -errno on failure
- */
-int cdx_msi_domain_alloc_irqs(struct device *dev, unsigned int irq_count);
-
-/**
- * cdx_msi_domain_free_irqs - Free MSI's for CDX device
- */
-#define cdx_msi_domain_free_irqs msi_domain_free_irqs_all
-
-/**
  * cdx_dev_reset - Reset CDX device
  * @dev: device pointer
  *
@@ -271,6 +260,7 @@ int cdx_set_master(struct cdx_device *cdx_dev);
  */
 int cdx_clear_master(struct cdx_device *cdx_dev);
 
+#ifdef CONFIG_GENERIC_MSI_IRQ
 /**
  * cdx_enable_msi - Enable MSI for the CDX device.
  * @cdx_dev: device pointer
@@ -284,5 +274,18 @@ int cdx_enable_msi(struct cdx_device *cdx_dev);
  * @cdx_dev: device pointer
  */
 void cdx_disable_msi(struct cdx_device *cdx_dev);
+
+#else /* CONFIG_GENERIC_MSI_IRQ */
+
+static inline int cdx_enable_msi(struct cdx_device *cdx_dev)
+{
+	return -ENODEV;
+}
+
+static inline void cdx_disable_msi(struct cdx_device *cdx_dev)
+{
+}
+
+#endif /* CONFIG_GENERIC_MSI_IRQ */
 
 #endif /* _CDX_BUS_H_ */

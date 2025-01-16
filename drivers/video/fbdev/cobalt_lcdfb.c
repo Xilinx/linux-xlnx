@@ -280,7 +280,9 @@ static const struct fb_ops cobalt_lcd_fbops = {
 	.fb_read	= cobalt_lcdfb_read,
 	.fb_write	= cobalt_lcdfb_write,
 	.fb_blank	= cobalt_lcdfb_blank,
+	__FB_DEFAULT_IOMEM_OPS_DRAW,
 	.fb_cursor	= cobalt_lcdfb_cursor,
+	__FB_DEFAULT_IOMEM_OPS_MMAP,
 };
 
 static int cobalt_lcdfb_probe(struct platform_device *dev)
@@ -342,7 +344,7 @@ static void cobalt_lcdfb_remove(struct platform_device *dev)
 
 static struct platform_driver cobalt_lcdfb_driver = {
 	.probe	= cobalt_lcdfb_probe,
-	.remove_new = cobalt_lcdfb_remove,
+	.remove	= cobalt_lcdfb_remove,
 	.driver	= {
 		.name	= "cobalt-lcd",
 	},

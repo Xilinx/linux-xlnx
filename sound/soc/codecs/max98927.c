@@ -15,9 +15,7 @@
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
-#include <linux/gpio.h>
 #include <linux/gpio/consumer.h>
-#include <linux/of_gpio.h>
 #include <sound/tlv.h>
 #include "max98927.h"
 
@@ -877,7 +875,7 @@ static void max98927_i2c_remove(struct i2c_client *i2c)
 }
 
 static const struct i2c_device_id max98927_i2c_id[] = {
-	{ "max98927", 0},
+	{ "max98927"},
 	{ },
 };
 

@@ -1418,20 +1418,18 @@ clk_err:
 	return ret;
 }
 
-static int xlnxsync_remove(struct platform_device *pdev)
+static void xlnxsync_remove(struct platform_device *pdev)
 {
 	struct xlnxsync_device *xlnxsync = platform_get_drvdata(pdev);
 
 	if (!xlnxsync || !xlnxsync_class)
-		return -EIO;
+		return;
 
 	cdev_del(&xlnxsync->chdev);
 	clk_disable_unprepare(xlnxsync->c_clk);
 	clk_disable_unprepare(xlnxsync->p_clk);
 	clk_disable_unprepare(xlnxsync->axi_clk);
 	ida_simple_remove(&xs_ida, xlnxsync->minor);
-
-	return 0;
 }
 
 static const struct of_device_id xlnxsync_of_match[] = {

@@ -2,8 +2,10 @@
 /*
  * FPU data structures:
  */
-#ifndef _ASM_X86_FPU_H
-#define _ASM_X86_FPU_H
+#ifndef _ASM_X86_FPU_TYPES_H
+#define _ASM_X86_FPU_TYPES_H
+
+#include <asm/page_types.h>
 
 /*
  * The legacy x87 FPU state format, as saved by FSAVE and
@@ -415,7 +417,7 @@ struct fpu_state_perm {
 	 *
 	 * This master permission field is only to be used when
 	 * task.fpu.fpstate based checks fail to validate whether the task
-	 * is allowed to expand it's xfeatures set which requires to
+	 * is allowed to expand its xfeatures set which requires to
 	 * allocate a larger sized fpstate buffer.
 	 *
 	 * Do not access this field directly.  Use the provided helper
@@ -589,9 +591,16 @@ struct fpu_state_config {
 	 * even without XSAVE support, i.e. legacy features FP + SSE
 	 */
 	u64 legacy_features;
+	/*
+	 * @independent_features:
+	 *
+	 * Features that are supported by XSAVES, but not managed as part of
+	 * the FPU core, such as LBR
+	 */
+	u64 independent_features;
 };
 
 /* FPU state configuration information */
 extern struct fpu_state_config fpu_kernel_cfg, fpu_user_cfg;
 
-#endif /* _ASM_X86_FPU_H */
+#endif /* _ASM_X86_FPU_TYPES_H */

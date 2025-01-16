@@ -2953,23 +2953,32 @@ xlnx_hdmi_set_frl_tmds_mode(struct drm_connector *connector)
 static int xlnx_hdmi_connector_get_modes(struct drm_connector *connector)
 {
 	struct xlnx_hdmi *hdmi = connector_to_hdmi(connector);
-	struct edid *edid;
+	const struct drm_edid *drm_edid;
+	const struct edid *edid;
 	int ret;
 	bool is_hdmi_sink;
 
 	hdmi_mutex_lock(&hdmi->hdmi_mutex);
 
-	edid = drm_do_get_edid(connector, xlnx_hdmi_get_edid_block, hdmi);
+	drm_edid = drm_edid_read_custom(connector, xlnx_hdmi_get_edid_block, hdmi);
 
 	/* Set HDMI FRL or TMDS Mode */
 	xlnx_hdmi_set_frl_tmds_mode(connector);
 
 	hdmi_mutex_unlock(&hdmi->hdmi_mutex);
-	if (!edid) {
+	drm_edid_connector_update(connector, drm_edid);
+
+	if (!drm_edid) {
 		dev_info(hdmi->dev, "no edid, assume <= 1024x768 works\n");
-		drm_connector_update_edid_property(connector, NULL);
 		return 0;
 	}
+
+	/*
+	 * FIXME: This should use connector->display_info.is_hdmi from a
+	 * path that has read the EDID and called
+	 * drm_edid_connector_update().
+	 */
+	edid = drm_edid_raw(drm_edid);
 
 	/* If the sink is non HDMI, set the stream type to DVI else HDMI */
 	is_hdmi_sink = drm_detect_hdmi_monitor(edid);
@@ -2983,8 +2992,7 @@ static int xlnx_hdmi_connector_get_modes(struct drm_connector *connector)
 		dev_dbg(hdmi->dev, "setting stream type to DVI\n");
 	}
 
-	drm_connector_update_edid_property(connector, edid);
-	ret = drm_add_edid_modes(connector, edid);
+	ret = drm_edid_connector_add_modes(connector);
 	kfree(edid);
 
 	return ret;
@@ -4015,7 +4023,7 @@ err_clk_put:
 	return ret;
 }
 
-static int xlnx_hdmi_remove(struct platform_device *pdev)
+static void xlnx_hdmi_remove(struct platform_device *pdev)
 {
 	struct xlnx_hdmi *hdmi = platform_get_drvdata(pdev);
 	int num_clks = ARRAY_SIZE(hdmitx_clks);
@@ -4028,8 +4036,6 @@ static int xlnx_hdmi_remove(struct platform_device *pdev)
 	component_del(&pdev->dev, &xlnx_hdmi_component_ops);
 	clk_bulk_disable_unprepare(num_clks, hdmitx_clks);
 	clk_bulk_put(num_clks, hdmitx_clks);
-
-	return 0;
 }
 
 static const struct of_device_id xlnx_hdmi_of_match[] = {

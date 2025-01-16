@@ -568,13 +568,13 @@ static void read_main_config_table(struct pm8001_hba_info *pm8001_ha)
 	pm8001_ha->main_cfg_tbl.pm80xx_tbl.inc_fw_version =
 		pm8001_mr32(address, MAIN_MPI_INACTIVE_FW_VERSION);
 
-	pm8001_dbg(pm8001_ha, DEV,
+	pm8001_dbg(pm8001_ha, INIT,
 		   "Main cfg table: sign:%x interface rev:%x fw_rev:%x\n",
 		   pm8001_ha->main_cfg_tbl.pm80xx_tbl.signature,
 		   pm8001_ha->main_cfg_tbl.pm80xx_tbl.interface_rev,
 		   pm8001_ha->main_cfg_tbl.pm80xx_tbl.firmware_rev);
 
-	pm8001_dbg(pm8001_ha, DEV,
+	pm8001_dbg(pm8001_ha, INIT,
 		   "table offset: gst:%x iq:%x oq:%x int vec:%x phy attr:%x\n",
 		   pm8001_ha->main_cfg_tbl.pm80xx_tbl.gst_offset,
 		   pm8001_ha->main_cfg_tbl.pm80xx_tbl.inbound_queue_offset,
@@ -582,7 +582,7 @@ static void read_main_config_table(struct pm8001_hba_info *pm8001_ha)
 		   pm8001_ha->main_cfg_tbl.pm80xx_tbl.int_vec_table_offset,
 		   pm8001_ha->main_cfg_tbl.pm80xx_tbl.phy_attr_table_offset);
 
-	pm8001_dbg(pm8001_ha, DEV,
+	pm8001_dbg(pm8001_ha, INIT,
 		   "Main cfg table; ila rev:%x Inactive fw rev:%x\n",
 		   pm8001_ha->main_cfg_tbl.pm80xx_tbl.ila_version,
 		   pm8001_ha->main_cfg_tbl.pm80xx_tbl.inc_fw_version);
@@ -1715,27 +1715,6 @@ static void pm80xx_hw_chip_rst(struct pm8001_hba_info *pm8001_ha)
 }
 
 /**
- * pm80xx_chip_intx_interrupt_enable - enable PM8001 chip interrupt
- * @pm8001_ha: our hba card information
- */
-static void
-pm80xx_chip_intx_interrupt_enable(struct pm8001_hba_info *pm8001_ha)
-{
-	pm8001_cw32(pm8001_ha, 0, MSGU_ODMR, ODMR_CLEAR_ALL);
-	pm8001_cw32(pm8001_ha, 0, MSGU_ODCR, ODCR_CLEAR_ALL);
-}
-
-/**
- * pm80xx_chip_intx_interrupt_disable - disable PM8001 chip interrupt
- * @pm8001_ha: our hba card information
- */
-static void
-pm80xx_chip_intx_interrupt_disable(struct pm8001_hba_info *pm8001_ha)
-{
-	pm8001_cw32(pm8001_ha, 0, MSGU_ODMR_CLR, ODMR_MASK_ALL);
-}
-
-/**
  * pm80xx_chip_interrupt_enable - enable PM8001 chip interrupt
  * @pm8001_ha: our hba card information
  * @vec: interrupt number to enable
@@ -1743,16 +1722,16 @@ pm80xx_chip_intx_interrupt_disable(struct pm8001_hba_info *pm8001_ha)
 static void
 pm80xx_chip_interrupt_enable(struct pm8001_hba_info *pm8001_ha, u8 vec)
 {
-#ifdef PM8001_USE_MSIX
+	if (!pm8001_ha->use_msix) {
+		pm8001_cw32(pm8001_ha, 0, MSGU_ODMR, ODMR_CLEAR_ALL);
+		pm8001_cw32(pm8001_ha, 0, MSGU_ODCR, ODCR_CLEAR_ALL);
+		return;
+	}
+
 	if (vec < 32)
 		pm8001_cw32(pm8001_ha, 0, MSGU_ODMR_CLR, 1U << vec);
 	else
-		pm8001_cw32(pm8001_ha, 0, MSGU_ODMR_CLR_U,
-			    1U << (vec - 32));
-	return;
-#endif
-	pm80xx_chip_intx_interrupt_enable(pm8001_ha);
-
+		pm8001_cw32(pm8001_ha, 0, MSGU_ODMR_CLR_U, 1U << (vec - 32));
 }
 
 /**
@@ -1763,19 +1742,20 @@ pm80xx_chip_interrupt_enable(struct pm8001_hba_info *pm8001_ha, u8 vec)
 static void
 pm80xx_chip_interrupt_disable(struct pm8001_hba_info *pm8001_ha, u8 vec)
 {
-#ifdef PM8001_USE_MSIX
+	if (!pm8001_ha->use_msix) {
+		pm8001_cw32(pm8001_ha, 0, MSGU_ODMR_CLR, ODMR_MASK_ALL);
+		return;
+	}
+
 	if (vec == 0xFF) {
 		/* disable all vectors 0-31, 32-63 */
 		pm8001_cw32(pm8001_ha, 0, MSGU_ODMR, 0xFFFFFFFF);
 		pm8001_cw32(pm8001_ha, 0, MSGU_ODMR_U, 0xFFFFFFFF);
-	} else if (vec < 32)
+	} else if (vec < 32) {
 		pm8001_cw32(pm8001_ha, 0, MSGU_ODMR, 1U << vec);
-	else
-		pm8001_cw32(pm8001_ha, 0, MSGU_ODMR_U,
-			    1U << (vec - 32));
-	return;
-#endif
-	pm80xx_chip_intx_interrupt_disable(pm8001_ha);
+	} else {
+		pm8001_cw32(pm8001_ha, 0, MSGU_ODMR_U, 1U << (vec - 32));
+	}
 }
 
 /**
@@ -2057,7 +2037,7 @@ mpi_ssp_completion(struct pm8001_hba_info *pm8001_ha, void *piomb)
 			atomic_dec(&pm8001_dev->running_req);
 		break;
 	}
-	pm8001_dbg(pm8001_ha, IO, "scsi_status = 0x%x\n ",
+	pm8001_dbg(pm8001_ha, IO, "scsi_status = 0x%x\n",
 		   psspPayload->ssp_resp_iu.status);
 	spin_lock_irqsave(&t->task_state_lock, flags);
 	t->task_state_flags &= ~SAS_TASK_STATE_PENDING;
@@ -4802,16 +4782,15 @@ static int pm80xx_chip_phy_ctl_req(struct pm8001_hba_info *pm8001_ha,
 
 static u32 pm80xx_chip_is_our_interrupt(struct pm8001_hba_info *pm8001_ha)
 {
-#ifdef PM8001_USE_MSIX
-	return 1;
-#else
 	u32 value;
+
+	if (pm8001_ha->use_msix)
+		return 1;
 
 	value = pm8001_cr32(pm8001_ha, 0, MSGU_ODR);
 	if (value)
 		return 1;
 	return 0;
-#endif
 }
 
 /**

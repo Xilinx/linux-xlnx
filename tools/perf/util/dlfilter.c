@@ -33,13 +33,13 @@ static void al_to_d_al(struct addr_location *al, struct perf_dlfilter_al *d_al)
 	if (al->map) {
 		struct dso *dso = map__dso(al->map);
 
-		if (symbol_conf.show_kernel_path && dso->long_name)
-			d_al->dso = dso->long_name;
+		if (symbol_conf.show_kernel_path && dso__long_name(dso))
+			d_al->dso = dso__long_name(dso);
 		else
-			d_al->dso = dso->name;
-		d_al->is_64_bit = dso->is_64_bit;
-		d_al->buildid_size = dso->bid.size;
-		d_al->buildid = dso->bid.data;
+			d_al->dso = dso__name(dso);
+		d_al->is_64_bit = dso__is_64_bit(dso);
+		d_al->buildid_size = dso__bid(dso)->size;
+		d_al->buildid = dso__bid(dso)->data;
 	} else {
 		d_al->dso = NULL;
 		d_al->is_64_bit = 0;
@@ -52,8 +52,10 @@ static void al_to_d_al(struct addr_location *al, struct perf_dlfilter_al *d_al)
 		d_al->sym_end = sym->end;
 		if (al->addr < sym->end)
 			d_al->symoff = al->addr - sym->start;
-		else
+		else if (al->map)
 			d_al->symoff = al->addr - map__start(al->map) - sym->start;
+		else
+			d_al->symoff = 0;
 		d_al->sym_binding = sym->binding;
 	} else {
 		d_al->sym = NULL;

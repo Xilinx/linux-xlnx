@@ -29,8 +29,19 @@ static int bcm84881_wait_init(struct phy_device *phydev)
 					 100000, 2000000, false);
 }
 
+static void bcm84881_fill_possible_interfaces(struct phy_device *phydev)
+{
+	unsigned long *possible = phydev->possible_interfaces;
+
+	__set_bit(PHY_INTERFACE_MODE_SGMII, possible);
+	__set_bit(PHY_INTERFACE_MODE_2500BASEX, possible);
+	__set_bit(PHY_INTERFACE_MODE_10GBASER, possible);
+}
+
 static int bcm84881_config_init(struct phy_device *phydev)
 {
+	bcm84881_fill_possible_interfaces(phydev);
+
 	switch (phydev->interface) {
 	case PHY_INTERFACE_MODE_SGMII:
 	case PHY_INTERFACE_MODE_2500BASEX:
@@ -39,6 +50,7 @@ static int bcm84881_config_init(struct phy_device *phydev)
 	default:
 		return -ENODEV;
 	}
+
 	return 0;
 }
 
@@ -120,7 +132,7 @@ static int bcm84881_aneg_done(struct phy_device *phydev)
 
 	bmsr = phy_read_mmd(phydev, MDIO_MMD_AN, MDIO_AN_C22 + MII_BMSR);
 	if (bmsr < 0)
-		return val;
+		return bmsr;
 
 	return !!(val & MDIO_AN_STAT1_COMPLETE) &&
 	       !!(bmsr & BMSR_ANEGCOMPLETE);
@@ -146,7 +158,7 @@ static int bcm84881_read_status(struct phy_device *phydev)
 
 	bmsr = phy_read_mmd(phydev, MDIO_MMD_AN, MDIO_AN_C22 + MII_BMSR);
 	if (bmsr < 0)
-		return val;
+		return bmsr;
 
 	phydev->autoneg_complete = !!(val & MDIO_AN_STAT1_COMPLETE) &&
 				   !!(bmsr & BMSR_ANEGCOMPLETE);

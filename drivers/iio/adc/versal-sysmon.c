@@ -265,7 +265,7 @@ error_exit:
 	return ret;
 }
 
-static int sysmon_remove(struct platform_device *pdev)
+static void sysmon_remove(struct platform_device *pdev)
 {
 	struct iio_dev *indio_dev = platform_get_drvdata(pdev);
 	struct sysmon *sysmon = iio_priv(indio_dev);
@@ -283,8 +283,6 @@ static int sysmon_remove(struct platform_device *pdev)
 	sysfs_remove_group(&indio_dev->dev.kobj, &sysmon->avg_attr_group);
 	/* Unregister the device */
 	iio_device_unregister(indio_dev);
-
-	return 0;
 }
 
 static int sysmon_resume(struct platform_device *pdev)

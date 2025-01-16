@@ -1680,7 +1680,7 @@ static int cam_cc_sc7180_probe(struct platform_device *pdev)
 	clk_agera_pll_configure(&cam_cc_pll2, regmap, &cam_cc_pll2_config);
 	clk_fabia_pll_configure(&cam_cc_pll3, regmap, &cam_cc_pll3_config);
 
-	ret = qcom_cc_really_probe(pdev, &cam_cc_sc7180_desc, regmap);
+	ret = qcom_cc_really_probe(&pdev->dev, &cam_cc_sc7180_desc, regmap);
 	pm_runtime_put(&pdev->dev);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Failed to register CAM CC clocks\n");
@@ -1703,17 +1703,7 @@ static struct platform_driver cam_cc_sc7180_driver = {
 	},
 };
 
-static int __init cam_cc_sc7180_init(void)
-{
-	return platform_driver_register(&cam_cc_sc7180_driver);
-}
-subsys_initcall(cam_cc_sc7180_init);
-
-static void __exit cam_cc_sc7180_exit(void)
-{
-	platform_driver_unregister(&cam_cc_sc7180_driver);
-}
-module_exit(cam_cc_sc7180_exit);
+module_platform_driver(cam_cc_sc7180_driver);
 
 MODULE_DESCRIPTION("QTI CAM_CC SC7180 Driver");
 MODULE_LICENSE("GPL v2");

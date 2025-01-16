@@ -17,6 +17,7 @@
 #include <linux/err.h>
 #include <linux/io.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
@@ -411,15 +412,13 @@ err_axi_clk:
 	return ret;
 }
 
-static int xlnx_vtc_remove(struct platform_device *pdev)
+static void xlnx_vtc_remove(struct platform_device *pdev)
 {
 	struct xlnx_vtc *vtc = platform_get_drvdata(pdev);
 
 	xlnx_bridge_unregister(&vtc->bridge);
 	clk_disable_unprepare(vtc->vid_clk);
 	clk_disable_unprepare(vtc->axi_clk);
-
-	return 0;
 }
 
 static const struct of_device_id xlnx_vtc_of_match[] = {

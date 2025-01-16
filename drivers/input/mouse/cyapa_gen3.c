@@ -20,7 +20,7 @@
 #include <linux/input/mt.h>
 #include <linux/module.h>
 #include <linux/slab.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include "cyapa.h"
 
 
@@ -860,7 +860,7 @@ static ssize_t cyapa_gen3_show_baseline(struct device *dev,
 
 	dev_dbg(dev, "Baseline report successful. Max: %d Min: %d\n",
 		max_baseline, min_baseline);
-	ret = scnprintf(buf, PAGE_SIZE, "%d %d\n", max_baseline, min_baseline);
+	ret = sysfs_emit(buf, "%d %d\n", max_baseline, min_baseline);
 
 out:
 	return ret;

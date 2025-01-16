@@ -628,7 +628,7 @@ void devm_usb_put_phy(struct device *dev, struct usb_phy *phy)
 {
 	int r;
 
-	r = devres_destroy(dev, devm_usb_phy_release, devm_usb_phy_match, phy);
+	r = devres_release(dev, devm_usb_phy_release, devm_usb_phy_match, phy);
 	dev_WARN_ONCE(dev, r, "couldn't find PHY resource\n");
 }
 EXPORT_SYMBOL_GPL(devm_usb_put_phy);
@@ -699,7 +699,7 @@ out:
 }
 EXPORT_SYMBOL_GPL(usb_add_phy);
 
-static struct device_type usb_phy_dev_type = {
+static const struct device_type usb_phy_dev_type = {
 	.name = "usb_phy",
 	.uevent = usb_phy_uevent,
 };

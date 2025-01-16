@@ -111,17 +111,8 @@ uint32_t xlnx_get_format(struct drm_device *drm)
 	return xlnx_crtc_helper_get_format(xlnx_drm->crtc);
 }
 
-static void xlnx_output_poll_changed(struct drm_device *drm)
-{
-	struct xlnx_drm *xlnx_drm = drm->dev_private;
-
-	if (xlnx_drm->fb)
-		drm_fb_helper_hotplug_event(xlnx_drm->fb);
-}
-
 static const struct drm_mode_config_funcs xlnx_mode_config_funcs = {
 	.fb_create		= xlnx_fb_create,
-	.output_poll_changed	= xlnx_output_poll_changed,
 	.atomic_check		= drm_atomic_helper_check,
 	.atomic_commit		= drm_atomic_helper_commit,
 };
@@ -170,14 +161,6 @@ static int xlnx_drm_release(struct inode *inode, struct file *filp)
 	return drm_release(inode, filp);
 }
 
-static void xlnx_lastclose(struct drm_device *drm)
-{
-	struct xlnx_drm *xlnx_drm = drm->dev_private;
-
-	if (xlnx_drm->fb)
-		drm_fb_helper_restore_fbdev_mode_unlocked(xlnx_drm->fb);
-}
-
 static const struct file_operations xlnx_fops = {
 	.owner		= THIS_MODULE,
 	.open		= drm_open,
@@ -196,7 +179,6 @@ static struct drm_driver xlnx_drm_driver = {
 	.driver_features		= DRIVER_MODESET | DRIVER_GEM |
 					  DRIVER_ATOMIC,
 	.open				= xlnx_drm_open,
-	.lastclose			= xlnx_lastclose,
 
 	DRM_GEM_DMA_DRIVER_OPS_VMAP_WITH_DUMB_CREATE(xlnx_gem_cma_dumb_create),
 
@@ -407,10 +389,9 @@ static int xlnx_platform_probe(struct platform_device *pdev)
 				       &xlnx_master_ops);
 }
 
-static int xlnx_platform_remove(struct platform_device *pdev)
+static void xlnx_platform_remove(struct platform_device *pdev)
 {
 	component_master_del(&pdev->dev, &xlnx_master_ops);
-	return 0;
 }
 
 static void xlnx_platform_shutdown(struct platform_device *pdev)

@@ -753,7 +753,7 @@ static int smc_pnet_add_pnetid(struct net *net, u8 *pnetid)
 
 	write_lock(&sn->pnetids_ndev.lock);
 	list_for_each_entry(pi, &sn->pnetids_ndev.list, list) {
-		if (smc_pnet_match(pnetid, pe->pnetid)) {
+		if (smc_pnet_match(pnetid, pi->pnetid)) {
 			refcount_inc(&pi->refcnt);
 			kfree(pe);
 			goto unlock;
@@ -806,6 +806,16 @@ static void smc_pnet_create_pnetids_list(struct net *net)
 	u8 ndev_pnetid[SMC_MAX_PNETID_LEN];
 	struct net_device *dev;
 
+	/* Newly created netns do not have devices.
+	 * Do not even acquire rtnl.
+	 */
+	if (list_empty(&net->dev_base_head))
+		return;
+
+	/* Note: This might not be needed, because smc_pnet_netdev_event()
+	 * is also calling smc_pnet_add_base_pnetid() when handling
+	 * NETDEV_UP event.
+	 */
 	rtnl_lock();
 	for_each_netdev(net, dev)
 		smc_pnet_add_base_pnetid(net, dev, ndev_pnetid);
@@ -876,9 +886,6 @@ int smc_pnet_net_init(struct net *net)
 	rwlock_init(&pnetids_ndev->lock);
 
 	smc_pnet_create_pnetids_list(net);
-
-	/* disable handshake limitation by default */
-	net->smc.limit_smc_hs = 0;
 
 	return 0;
 }
@@ -1047,9 +1054,7 @@ static void smc_pnet_find_rdma_dev(struct net_device *netdev,
 		for (i = 1; i <= SMC_MAX_PORTS; i++) {
 			if (!rdma_is_port_valid(ibdev->ibdev, i))
 				continue;
-			if (!ibdev->ibdev->ops.get_netdev)
-				continue;
-			ndev = ibdev->ibdev->ops.get_netdev(ibdev->ibdev, i);
+			ndev = ib_device_get_netdev(ibdev->ibdev, i);
 			if (!ndev)
 				continue;
 			dev_put(ndev);
@@ -1103,8 +1108,8 @@ static void smc_pnet_find_ism_by_pnetid(struct net_device *ndev,
 	list_for_each_entry(ismdev, &smcd_dev_list.list, list) {
 		if (smc_pnet_match(ismdev->pnetid, ndev_pnetid) &&
 		    !ismdev->going_away &&
-		    (!ini->ism_peer_gid[0] ||
-		     !smc_ism_cantalk(ini->ism_peer_gid[0], ini->vlan_id,
+		    (!ini->ism_peer_gid[0].gid ||
+		     !smc_ism_cantalk(&ini->ism_peer_gid[0], ini->vlan_id,
 				      ismdev))) {
 			ini->ism_dev[0] = ismdev;
 			break;

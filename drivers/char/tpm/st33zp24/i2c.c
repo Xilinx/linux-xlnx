@@ -133,7 +133,7 @@ static void st33zp24_i2c_remove(struct i2c_client *client)
 }
 
 static const struct i2c_device_id st33zp24_i2c_id[] = {
-	{TPM_ST33_I2C, 0},
+	{ TPM_ST33_I2C },
 	{}
 };
 MODULE_DEVICE_TABLE(i2c, st33zp24_i2c_id);
@@ -167,7 +167,7 @@ static struct i2c_driver st33zp24_i2c_driver = {
 
 module_i2c_driver(st33zp24_i2c_driver);
 
-MODULE_AUTHOR("TPM support (TPMsupport@list.st.com)");
+MODULE_AUTHOR("TPM support <TPMsupport@list.st.com>");
 MODULE_DESCRIPTION("STM TPM 1.2 I2C ST33 Driver");
 MODULE_VERSION("1.3.0");
 MODULE_LICENSE("GPL");

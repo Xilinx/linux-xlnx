@@ -3,7 +3,7 @@
 // This file is provided under a dual BSD/GPLv2 license.  When using or
 // redistributing this file, you may do so under either license.
 //
-// Copyright(c) 2023 Intel Corporation. All rights reserved.
+// Copyright(c) 2023 Intel Corporation
 //
 // Author: Ranjani Sridharan <ranjani.sridharan@linux.intel.com>
 //
@@ -29,17 +29,20 @@ static const struct sof_dev_desc lnl_desc = {
 	.resindex_imr_base      = -1,
 	.irqindex_host_ipc      = -1,
 	.chip_info		= &lnl_chip_info,
-	.ipc_supported_mask	= BIT(SOF_INTEL_IPC4),
-	.ipc_default		= SOF_INTEL_IPC4,
+	.ipc_supported_mask	= BIT(SOF_IPC_TYPE_4),
+	.ipc_default		= SOF_IPC_TYPE_4,
 	.dspless_mode_supported	= true,
 	.default_fw_path = {
-		[SOF_INTEL_IPC4] = "intel/sof-ipc4/lnl",
+		[SOF_IPC_TYPE_4] = "intel/sof-ipc4/lnl",
+	},
+	.default_lib_path = {
+		[SOF_IPC_TYPE_4] = "intel/sof-ipc4-lib/lnl",
 	},
 	.default_tplg_path = {
-		[SOF_INTEL_IPC4] = "intel/sof-ace-tplg",
+		[SOF_IPC_TYPE_4] = "intel/sof-ipc4-tplg",
 	},
 	.default_fw_filename = {
-		[SOF_INTEL_IPC4] = "sof-lnl.ri",
+		[SOF_IPC_TYPE_4] = "sof-lnl.ri",
 	},
 	.nocodec_tplg_filename = "sof-lnl-nocodec.tplg",
 	.ops = &sof_lnl_ops,
@@ -67,5 +70,9 @@ static struct pci_driver snd_sof_pci_intel_lnl_driver = {
 module_pci_driver(snd_sof_pci_intel_lnl_driver);
 
 MODULE_LICENSE("Dual BSD/GPL");
+MODULE_DESCRIPTION("SOF support for LunarLake platforms");
+MODULE_IMPORT_NS(SND_SOC_SOF_INTEL_HDA_GENERIC);
 MODULE_IMPORT_NS(SND_SOC_SOF_INTEL_HDA_COMMON);
+MODULE_IMPORT_NS(SND_SOC_SOF_INTEL_MTL);
+MODULE_IMPORT_NS(SND_SOC_SOF_HDA_MLINK);
 MODULE_IMPORT_NS(SND_SOC_SOF_PCI_DEV);

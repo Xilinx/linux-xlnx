@@ -406,9 +406,9 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 		size = ((size_t)dma->r.width * dma->fmtinfo->bpl_factor *
 			padding_factor_nume * bpl_nume) /
 			((size_t)padding_factor_deno * bpl_deno);
-		dma->sgl[0].size = size;
+		dma->sgl.size = size;
 
-		dma->sgl[0].icg = bpl - dma->sgl[0].size;
+		dma->sgl.icg = bpl - dma->sgl.size;
 		dma->xt.numf = dma->r.height;
 
 		/*
@@ -418,7 +418,7 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 
 		/* Handling contiguous data with mplanes */
 		if (dma->fmtinfo->buffers == 1) {
-			dma->sgl[0].dst_icg = (size_t)bpl *
+			dma->sgl.dst_icg = (size_t)bpl *
 					      (pix_mp->height - dma->r.height);
 		} else {
 			/* Handling non-contiguous data with mplanes */
@@ -427,7 +427,7 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 					vb2_dma_contig_plane_dma_addr(vb, 1);
 				luma_size = bpl * dma->xt.numf;
 				if (chroma_addr > addr)
-					dma->sgl[0].dst_icg = chroma_addr -
+					dma->sgl.dst_icg = chroma_addr -
 						addr - luma_size;
 			}
 			/* Handle the 3rd plane for Y_U_V8 */
@@ -439,7 +439,7 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 				u32 chroma_size = bpl * dma->xt.numf;
 
 				if (third_plane_addr > chroma_addr)
-					dma->sgl[0].dst_icg = third_plane_addr -
+					dma->sgl.dst_icg = third_plane_addr -
 						chroma_addr - chroma_size;
 			}
 		}
@@ -460,12 +460,12 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 		size = ((size_t)dma->r.width * dma->fmtinfo->bpl_factor *
 			padding_factor_nume * bpl_nume) /
 			((size_t)padding_factor_deno * bpl_deno);
-		dma->sgl[0].size = size;
-		dma->sgl[0].icg = bpl - dma->sgl[0].size;
+		dma->sgl.size = size;
+		dma->sgl.icg = bpl - dma->sgl.size;
 		dma->xt.numf = dma->r.height;
-		dma->sgl[0].dst_icg = 0;
+		dma->sgl.dst_icg = 0;
 		dst_icg = (size_t)bpl * (pix->height - dma->r.height);
-		dma->sgl[0].dst_icg = dst_icg;
+		dma->sgl.dst_icg = dst_icg;
 	}
 
 	desc = dmaengine_prep_interleaved_dma(dma->dma, &dma->xt, flags);
@@ -709,7 +709,7 @@ xvip_dma_enum_input(struct file *file, void *priv, struct v4l2_input *i)
 	 * input like V4L2_INPUT_TYPE_TUNER and V4L2_INPUT_TYPE_TOUCH.
 	 */
 	i->type = V4L2_INPUT_TYPE_CAMERA;
-	strlcpy((char *)i->name, (char *)subdev->name, sizeof(i->name));
+	strscpy((char *)i->name, (char *)subdev->name, sizeof(i->name));
 
 	return 0;
 }
@@ -1424,9 +1424,8 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 	snprintf(name, sizeof(name), "port%u", port);
 	dma->dma = dma_request_chan(dma->xdev->dev, name);
 	if (IS_ERR(dma->dma)) {
-		ret = PTR_ERR(dma->dma);
-		if (ret != -EPROBE_DEFER)
-			dev_err(dma->xdev->dev, "no VDMA channel found\n");
+		ret = dev_err_probe(dma->xdev->dev, PTR_ERR(dma->dma),
+				    "no VDMA channel found\n");
 		goto error;
 	}
 

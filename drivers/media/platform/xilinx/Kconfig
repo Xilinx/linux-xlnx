@@ -68,7 +68,6 @@ config VIDEO_XILINX_HDCP2X_RX
 	  authentication. Choose this config in a platform where the DP/HDMI Rx
 	  subsystem enabled with HDCP2X.
 
-
 config VIDEO_XILINX_HDMI21RXSS
 	tristate "Xilinx HDMI 2.1 Rx Subsystem"
 	depends on VIDEO_XILINX

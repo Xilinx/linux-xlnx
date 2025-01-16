@@ -22,6 +22,7 @@
 
 #include <stdlib.h>
 
+#include <xalloc.h>
 #include "lkc.h"
 #include "qconf.h"
 
@@ -147,7 +148,7 @@ void ConfigItem::updateMenu(void)
 		expr = sym_get_tristate_value(sym);
 		switch (expr) {
 		case yes:
-			if (sym_is_choice_value(sym) && type == S_BOOLEAN)
+			if (sym_is_choice_value(sym))
 				setIcon(promptColIdx, choiceYesIcon);
 			else
 				setIcon(promptColIdx, symbolYesIcon);
@@ -1058,7 +1059,7 @@ void ConfigInfoView::menuInfo(void)
 				stream << "<br><br>";
 			}
 
-			stream << "defined at " << _menu->file->name << ":"
+			stream << "defined at " << _menu->filename << ":"
 			       << _menu->lineno << "<br><br>";
 		}
 	}
@@ -1094,20 +1095,11 @@ QString ConfigInfoView::debug_info(struct symbol *sym)
 		case P_RANGE:
 		case P_COMMENT:
 		case P_IMPLY:
-		case P_SYMBOL:
 			stream << prop_get_type_name(prop->type);
 			stream << ": ";
 			expr_print(prop->expr, expr_print_help,
 				   &stream, E_NONE);
 			stream << "<br>";
-			break;
-		case P_CHOICE:
-			if (sym_is_choice(sym)) {
-				stream << "choice: ";
-				expr_print(prop->expr, expr_print_help,
-					   &stream, E_NONE);
-				stream << "<br>";
-			}
 			break;
 		default:
 			stream << "unknown property: ";
@@ -1174,7 +1166,7 @@ void ConfigInfoView::clicked(const QUrl &url)
 {
 	QByteArray str = url.toEncoded();
 	const std::size_t count = str.size();
-	char *data = new char[count + 1];
+	char *data = new char[count + 2];  // '$' + '\0'
 	struct symbol **result;
 	struct menu *m = NULL;
 
@@ -1397,8 +1389,6 @@ ConfigMainWindow::ConfigMainWindow(void)
 
 	conf_set_changed_callback(conf_changed);
 
-	// Set saveAction's initial state
-	conf_changed();
 	configname = xstrdup(conf_get_configname());
 
 	QAction *saveAsAction = new QAction("Save &As...", this);
@@ -1514,6 +1504,8 @@ ConfigMainWindow::ConfigMainWindow(void)
 		this, &ConfigMainWindow::listFocusChanged);
 	connect(helpText, &ConfigInfoView::menuSelected,
 		this, &ConfigMainWindow::setMenuLink);
+
+	conf_read(NULL);
 
 	QString listMode = configSettings->value("/listMode", "symbol").toString();
 	if (listMode == "single")
@@ -1851,10 +1843,10 @@ void ConfigMainWindow::saveSettings(void)
 	configSettings->writeSizes("/split2", split2->sizes());
 }
 
-void ConfigMainWindow::conf_changed(void)
+void ConfigMainWindow::conf_changed(bool dirty)
 {
 	if (saveAction)
-		saveAction->setEnabled(conf_get_changed());
+		saveAction->setEnabled(dirty);
 }
 
 void fixup_rootmenu(struct menu *menu)
@@ -1904,7 +1896,6 @@ int main(int ac, char** av)
 
 	conf_parse(name);
 	fixup_rootmenu(&rootmenu);
-	conf_read(NULL);
 	//zconfdump(stdout);
 
 	configApp = new QApplication(ac, av);
@@ -1916,6 +1907,7 @@ int main(int ac, char** av)
 	//zconfdump(stdout);
 	configApp->connect(configApp, SIGNAL(lastWindowClosed()), SLOT(quit()));
 	configApp->connect(configApp, SIGNAL(aboutToQuit()), v, SLOT(saveSettings()));
+
 	v->show();
 	configApp->exec();
 

@@ -25,7 +25,7 @@ extern void set_merr_handler(unsigned long offset, void *addr, unsigned long len
 #ifdef CONFIG_RELOCATABLE
 
 struct rela_la_abs {
-	long offset;
+	long pc;
 	long symvalue;
 };
 
@@ -33,6 +33,11 @@ extern long __la_abs_begin;
 extern long __la_abs_end;
 extern long __rela_dyn_begin;
 extern long __rela_dyn_end;
+
+#ifdef CONFIG_RELR
+extern long __relr_dyn_begin;
+extern long __relr_dyn_end;
+#endif
 
 extern unsigned long __init relocate_kernel(void);
 

@@ -4,8 +4,6 @@
  *
  * Copyright (C) 2020, Google LLC.
  */
-
-#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdarg.h>
 #include <assert.h>
@@ -391,4 +389,29 @@ char *strdup_printf(const char *fmt, ...)
 	va_end(ap);
 
 	return str;
+}
+
+#define CLOCKSOURCE_PATH "/sys/devices/system/clocksource/clocksource0/current_clocksource"
+
+char *sys_get_cur_clocksource(void)
+{
+	char *clk_name;
+	struct stat st;
+	FILE *fp;
+
+	fp = fopen(CLOCKSOURCE_PATH, "r");
+	TEST_ASSERT(fp, "failed to open clocksource file, errno: %d", errno);
+
+	TEST_ASSERT(!fstat(fileno(fp), &st), "failed to stat clocksource file, errno: %d",
+		    errno);
+
+	clk_name = malloc(st.st_size);
+	TEST_ASSERT(clk_name, "failed to allocate buffer to read file");
+
+	TEST_ASSERT(fgets(clk_name, st.st_size, fp), "failed to read clocksource file: %d",
+		    ferror(fp));
+
+	fclose(fp);
+
+	return clk_name;
 }

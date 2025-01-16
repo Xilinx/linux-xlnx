@@ -22,6 +22,7 @@
 #include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
+#include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <uapi/linux/xlnx-ai-engine.h>
 

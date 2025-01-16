@@ -72,8 +72,7 @@ static int cdx_configure_device(struct cdx_controller *cdx,
 		data = dev_config->msi.data;
 		addr = dev_config->msi.addr;
 
-		ret = cdx_mcdi_write_msi(cdx->priv, bus_num, dev_num,
-					 msi_index, addr, data);
+		ret = cdx_mcdi_write_msi(cdx->priv, bus_num, dev_num, msi_index, addr, data);
 		break;
 	case CDX_DEV_RESET_CONF:
 		ret = cdx_mcdi_reset_device(cdx->priv, bus_num, dev_num);
@@ -83,8 +82,7 @@ static int cdx_configure_device(struct cdx_controller *cdx,
 						 dev_config->bus_master_enable);
 		break;
 	case CDX_DEV_MSI_ENABLE:
-		ret = cdx_mcdi_msi_enable(cdx->priv, bus_num, dev_num,
-					  dev_config->msi_enable);
+		ret = cdx_mcdi_msi_enable(cdx->priv, bus_num, dev_num, dev_config->msi_enable);
 		break;
 	default:
 		ret = -EINVAL;
@@ -224,7 +222,7 @@ mcdi_init_fail:
 	return ret;
 }
 
-static int xlnx_cdx_remove(struct platform_device *pdev)
+static void xlnx_cdx_remove(struct platform_device *pdev)
 {
 	struct cdx_controller *cdx = platform_get_drvdata(pdev);
 	struct cdx_mcdi *cdx_mcdi = cdx->priv;
@@ -236,8 +234,6 @@ static int xlnx_cdx_remove(struct platform_device *pdev)
 
 	cdx_mcdi_finish(cdx_mcdi);
 	kfree(cdx_mcdi);
-
-	return 0;
 }
 
 static const struct of_device_id cdx_match_table[] = {
@@ -254,7 +250,7 @@ static struct platform_driver cdx_pdriver = {
 		   .of_match_table = cdx_match_table,
 		   },
 	.probe = xlnx_cdx_probe,
-	.remove = xlnx_cdx_remove,
+	.remove_new = xlnx_cdx_remove,
 };
 
 static int __init cdx_controller_init(void)

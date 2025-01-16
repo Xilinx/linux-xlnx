@@ -522,7 +522,7 @@ static int ntfs_extend_mft(struct ntfs_sb_info *sbi)
 	ni->mi.dirty = true;
 
 	/* Step 2: Resize $MFT::BITMAP. */
-	new_bitmap_bytes = bitmap_size(new_mft_total);
+	new_bitmap_bytes = ntfs3_bitmap_size(new_mft_total);
 
 	err = attr_set_size(ni, ATTR_BITMAP, NULL, 0, &sbi->mft.bitmap.run,
 			    new_bitmap_bytes, &new_bitmap_bytes, true, NULL);
@@ -853,7 +853,8 @@ void ntfs_update_mftmirr(struct ntfs_sb_info *sbi, int wait)
 	/*
 	 * sb can be NULL here. In this case sbi->flags should be 0 too.
 	 */
-	if (!sb || !(sbi->flags & NTFS_FLAGS_MFTMIRR))
+	if (!sb || !(sbi->flags & NTFS_FLAGS_MFTMIRR) ||
+	    unlikely(ntfs3_forced_shutdown(sb)))
 		return;
 
 	blocksize = sb->s_blocksize;
@@ -1004,6 +1005,30 @@ static inline __le32 security_hash(const void *sd, size_t bytes)
 	while (bytes--)
 		hash = ((hash >> 0x1D) | (hash << 3)) + le32_to_cpu(*ptr++);
 	return cpu_to_le32(hash);
+}
+
+/*
+ * simple wrapper for sb_bread_unmovable.
+ */
+struct buffer_head *ntfs_bread(struct super_block *sb, sector_t block)
+{
+	struct ntfs_sb_info *sbi = sb->s_fs_info;
+	struct buffer_head *bh;
+
+	if (unlikely(block >= sbi->volume.blocks)) {
+		/* prevent generic message "attempt to access beyond end of device" */
+		ntfs_err(sb, "try to read out of volume at offset 0x%llx",
+			 (u64)block << sb->s_blocksize_bits);
+		return NULL;
+	}
+
+	bh = sb_bread_unmovable(sb, block);
+	if (bh)
+		return bh;
+
+	ntfs_err(sb, "failed to read volume at offset 0x%llx",
+		 (u64)block << sb->s_blocksize_bits);
+	return NULL;
 }
 
 int ntfs_sb_read(struct super_block *sb, u64 lbo, size_t bytes, void *buffer)
@@ -2128,8 +2153,8 @@ int ntfs_insert_security(struct ntfs_sb_info *sbi,
 			if (le32_to_cpu(d_security->size) == new_sec_size &&
 			    d_security->key.hash == hash_key.hash &&
 			    !memcmp(d_security + 1, sd, size_sd)) {
-				*security_id = d_security->key.sec_id;
 				/* Such security already exists. */
+				*security_id = d_security->key.sec_id;
 				err = 0;
 				goto out;
 			}
@@ -2625,8 +2650,8 @@ int ntfs_set_label(struct ntfs_sb_info *sbi, u8 *label, int len)
 {
 	int err;
 	struct ATTRIB *attr;
+	u32 uni_bytes;
 	struct ntfs_inode *ni = sbi->volume.ni;
-	const u8 max_ulen = 0x80; /* TODO: use attrdef to get maximum length */
 	/* Allocate PATH_MAX bytes. */
 	struct cpu_str *uni = __getname();
 
@@ -2638,7 +2663,8 @@ int ntfs_set_label(struct ntfs_sb_info *sbi, u8 *label, int len)
 	if (err < 0)
 		goto out;
 
-	if (uni->len > max_ulen) {
+	uni_bytes = uni->len * sizeof(u16);
+	if (uni_bytes > NTFS_LABEL_MAX_LENGTH * sizeof(u16)) {
 		ntfs_warn(sbi->sb, "new label is too long");
 		err = -EFBIG;
 		goto out;
@@ -2649,13 +2675,13 @@ int ntfs_set_label(struct ntfs_sb_info *sbi, u8 *label, int len)
 	/* Ignore any errors. */
 	ni_remove_attr(ni, ATTR_LABEL, NULL, 0, false, NULL);
 
-	err = ni_insert_resident(ni, uni->len * sizeof(u16), ATTR_LABEL, NULL,
-				 0, &attr, NULL, NULL);
+	err = ni_insert_resident(ni, uni_bytes, ATTR_LABEL, NULL, 0, &attr,
+				 NULL, NULL);
 	if (err < 0)
 		goto unlock_out;
 
 	/* write new label in on-disk struct. */
-	memcpy(resident_data(attr), uni->name, uni->len * sizeof(u16));
+	memcpy(resident_data(attr), uni->name, uni_bytes);
 
 	/* update cached value of current label. */
 	if (len >= ARRAY_SIZE(sbi->volume.label))

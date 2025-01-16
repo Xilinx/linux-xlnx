@@ -6,7 +6,7 @@
 
 #include <asm/vmx.h>
 
-#include "hyperv.h"
+#include "vmx_onhyperv.h"
 #include "vmcs.h"
 #include "../x86.h"
 
@@ -47,7 +47,7 @@ static __always_inline void vmcs_check16(unsigned long field)
 	BUILD_BUG_ON_MSG(__builtin_constant_p(field) && ((field) & 0x6001) == 0x2001,
 			 "16-bit accessor invalid for 64-bit high field");
 	BUILD_BUG_ON_MSG(__builtin_constant_p(field) && ((field) & 0x6000) == 0x4000,
-			 "16-bit accessor invalid for 32-bit high field");
+			 "16-bit accessor invalid for 32-bit field");
 	BUILD_BUG_ON_MSG(__builtin_constant_p(field) && ((field) & 0x6000) == 0x6000,
 			 "16-bit accessor invalid for natural width field");
 }
@@ -94,7 +94,7 @@ static __always_inline unsigned long __vmcs_readl(unsigned long field)
 
 #ifdef CONFIG_CC_HAS_ASM_GOTO_OUTPUT
 
-	asm_volatile_goto("1: vmread %[field], %[output]\n\t"
+	asm_goto_output("1: vmread %[field], %[output]\n\t"
 			  "jna %l[do_fail]\n\t"
 
 			  _ASM_EXTABLE(1b, %l[do_exception])
@@ -188,7 +188,7 @@ static __always_inline unsigned long vmcs_readl(unsigned long field)
 
 #define vmx_asm1(insn, op1, error_args...)				\
 do {									\
-	asm_volatile_goto("1: " __stringify(insn) " %0\n\t"		\
+	asm goto("1: " __stringify(insn) " %0\n\t"			\
 			  ".byte 0x2e\n\t" /* branch not taken hint */	\
 			  "jna %l[error]\n\t"				\
 			  _ASM_EXTABLE(1b, %l[fault])			\
@@ -205,7 +205,7 @@ fault:									\
 
 #define vmx_asm2(insn, op1, op2, error_args...)				\
 do {									\
-	asm_volatile_goto("1: "  __stringify(insn) " %1, %0\n\t"	\
+	asm goto("1: "  __stringify(insn) " %1, %0\n\t"			\
 			  ".byte 0x2e\n\t" /* branch not taken hint */	\
 			  "jna %l[error]\n\t"				\
 			  _ASM_EXTABLE(1b, %l[fault])			\

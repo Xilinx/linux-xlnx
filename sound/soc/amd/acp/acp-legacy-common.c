@@ -16,6 +16,11 @@
 #include <linux/pci.h>
 #include <linux/export.h>
 
+#define ACP_RENOIR_PDM_ADDR	0x02
+#define ACP_REMBRANDT_PDM_ADDR	0x03
+#define ACP63_PDM_ADDR		0x02
+#define ACP70_PDM_ADDR		0x02
+
 void acp_enable_interrupts(struct acp_dev_data *adata)
 {
 	struct acp_resource *rsrc = adata->rsrc;
@@ -80,8 +85,8 @@ void restore_acp_pdm_params(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *soc_runtime;
 	u32 ext_int_ctrl;
 
-	soc_runtime = asoc_substream_to_rtd(substream);
-	dai = asoc_rtd_to_cpu(soc_runtime, 0);
+	soc_runtime = snd_soc_substream_to_rtd(substream);
+	dai = snd_soc_rtd_to_cpu(soc_runtime, 0);
 	/* Programming channel mask and sampling rate */
 	writel(adata->ch_mask, adata->acp_base + ACP_WOV_PDM_NO_OF_CHANNELS);
 	writel(PDM_DEC_64, adata->acp_base + ACP_WOV_PDM_DECIMATION_FACTOR);
@@ -108,40 +113,40 @@ static int set_acp_i2s_dma_fifo(struct snd_pcm_substream *substream,
 	switch (dai->driver->id) {
 	case I2S_SP_INSTANCE:
 		if (dir == SNDRV_PCM_STREAM_PLAYBACK) {
-			reg_dma_size = ACP_I2S_TX_DMA_SIZE;
+			reg_dma_size = ACP_I2S_TX_DMA_SIZE(adata);
 			acp_fifo_addr = rsrc->sram_pte_offset +
 					SP_PB_FIFO_ADDR_OFFSET;
-			reg_fifo_addr = ACP_I2S_TX_FIFOADDR;
-			reg_fifo_size = ACP_I2S_TX_FIFOSIZE;
+			reg_fifo_addr = ACP_I2S_TX_FIFOADDR(adata);
+			reg_fifo_size = ACP_I2S_TX_FIFOSIZE(adata);
 			phy_addr = I2S_SP_TX_MEM_WINDOW_START + stream->reg_offset;
-			writel(phy_addr, adata->acp_base + ACP_I2S_TX_RINGBUFADDR);
+			writel(phy_addr, adata->acp_base + ACP_I2S_TX_RINGBUFADDR(adata));
 		} else {
-			reg_dma_size = ACP_I2S_RX_DMA_SIZE;
+			reg_dma_size = ACP_I2S_RX_DMA_SIZE(adata);
 			acp_fifo_addr = rsrc->sram_pte_offset +
 					SP_CAPT_FIFO_ADDR_OFFSET;
-			reg_fifo_addr = ACP_I2S_RX_FIFOADDR;
-			reg_fifo_size = ACP_I2S_RX_FIFOSIZE;
+			reg_fifo_addr = ACP_I2S_RX_FIFOADDR(adata);
+			reg_fifo_size = ACP_I2S_RX_FIFOSIZE(adata);
 			phy_addr = I2S_SP_RX_MEM_WINDOW_START + stream->reg_offset;
-			writel(phy_addr, adata->acp_base + ACP_I2S_RX_RINGBUFADDR);
+			writel(phy_addr, adata->acp_base + ACP_I2S_RX_RINGBUFADDR(adata));
 		}
 		break;
 	case I2S_BT_INSTANCE:
 		if (dir == SNDRV_PCM_STREAM_PLAYBACK) {
-			reg_dma_size = ACP_BT_TX_DMA_SIZE;
+			reg_dma_size = ACP_BT_TX_DMA_SIZE(adata);
 			acp_fifo_addr = rsrc->sram_pte_offset +
 					BT_PB_FIFO_ADDR_OFFSET;
-			reg_fifo_addr = ACP_BT_TX_FIFOADDR;
-			reg_fifo_size = ACP_BT_TX_FIFOSIZE;
+			reg_fifo_addr = ACP_BT_TX_FIFOADDR(adata);
+			reg_fifo_size = ACP_BT_TX_FIFOSIZE(adata);
 			phy_addr = I2S_BT_TX_MEM_WINDOW_START + stream->reg_offset;
-			writel(phy_addr, adata->acp_base + ACP_BT_TX_RINGBUFADDR);
+			writel(phy_addr, adata->acp_base + ACP_BT_TX_RINGBUFADDR(adata));
 		} else {
-			reg_dma_size = ACP_BT_RX_DMA_SIZE;
+			reg_dma_size = ACP_BT_RX_DMA_SIZE(adata);
 			acp_fifo_addr = rsrc->sram_pte_offset +
 					BT_CAPT_FIFO_ADDR_OFFSET;
-			reg_fifo_addr = ACP_BT_RX_FIFOADDR;
-			reg_fifo_size = ACP_BT_RX_FIFOSIZE;
+			reg_fifo_addr = ACP_BT_RX_FIFOADDR(adata);
+			reg_fifo_size = ACP_BT_RX_FIFOSIZE(adata);
 			phy_addr = I2S_BT_TX_MEM_WINDOW_START + stream->reg_offset;
-			writel(phy_addr, adata->acp_base + ACP_BT_RX_RINGBUFADDR);
+			writel(phy_addr, adata->acp_base + ACP_BT_RX_RINGBUFADDR(adata));
 		}
 		break;
 	case I2S_HS_INSTANCE:
@@ -192,8 +197,8 @@ int restore_acp_i2s_params(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *soc_runtime;
 	u32 tdm_fmt, reg_val, fmt_reg, val;
 
-	soc_runtime = asoc_substream_to_rtd(substream);
-	dai = asoc_rtd_to_cpu(soc_runtime, 0);
+	soc_runtime = snd_soc_substream_to_rtd(substream);
+	dai = snd_soc_rtd_to_cpu(soc_runtime, 0);
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		tdm_fmt = adata->tdm_tx_fmt[stream->dai_id - 1];
 		switch (stream->dai_id) {
@@ -260,6 +265,15 @@ static int acp_power_on(struct acp_chip_info *chip)
 		acp_pgfsm_stat_reg = ACP6X_PGFSM_STATUS;
 		acp_pgfsm_ctrl_reg = ACP6X_PGFSM_CONTROL;
 		break;
+	case ACP63_DEV:
+		acp_pgfsm_stat_reg = ACP63_PGFSM_STATUS;
+		acp_pgfsm_ctrl_reg = ACP63_PGFSM_CONTROL;
+		break;
+	case ACP70_DEV:
+	case ACP71_DEV:
+		acp_pgfsm_stat_reg = ACP70_PGFSM_STATUS;
+		acp_pgfsm_ctrl_reg = ACP70_PGFSM_CONTROL;
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -308,20 +322,25 @@ int acp_init(struct acp_chip_info *chip)
 		pr_err("ACP reset failed\n");
 		return ret;
 	}
+	if (chip->acp_rev >= ACP70_DEV)
+		writel(0, chip->base + ACP_ZSC_DSP_CTRL);
 	return 0;
 }
 EXPORT_SYMBOL_NS_GPL(acp_init, SND_SOC_ACP_COMMON);
 
-int acp_deinit(void __iomem *base)
+int acp_deinit(struct acp_chip_info *chip)
 {
 	int ret;
 
 	/* Reset */
-	ret = acp_reset(base);
+	ret = acp_reset(chip->base);
 	if (ret)
 		return ret;
 
-	writel(0, base + ACP_CONTROL);
+	if (chip->acp_rev < ACP70_DEV)
+		writel(0, chip->base + ACP_CONTROL);
+	else
+		writel(0x01, chip->base + ACP_ZSC_DSP_CTRL);
 	return 0;
 }
 EXPORT_SYMBOL_NS_GPL(acp_deinit, SND_SOC_ACP_COMMON);
@@ -344,4 +363,123 @@ int smn_read(struct pci_dev *dev, u32 smn_addr)
 }
 EXPORT_SYMBOL_NS_GPL(smn_read, SND_SOC_ACP_COMMON);
 
+static void check_acp3x_config(struct acp_chip_info *chip)
+{
+	u32 val;
+
+	val = readl(chip->base + ACP3X_PIN_CONFIG);
+	switch (val) {
+	case ACP_CONFIG_4:
+		chip->is_i2s_config = true;
+		chip->is_pdm_config = true;
+		break;
+	default:
+		chip->is_pdm_config = true;
+		break;
+	}
+}
+
+static void check_acp6x_config(struct acp_chip_info *chip)
+{
+	u32 val;
+
+	val = readl(chip->base + ACP_PIN_CONFIG);
+	switch (val) {
+	case ACP_CONFIG_4:
+	case ACP_CONFIG_5:
+	case ACP_CONFIG_6:
+	case ACP_CONFIG_7:
+	case ACP_CONFIG_8:
+	case ACP_CONFIG_11:
+	case ACP_CONFIG_14:
+		chip->is_pdm_config = true;
+		break;
+	case ACP_CONFIG_9:
+		chip->is_i2s_config = true;
+		break;
+	case ACP_CONFIG_10:
+	case ACP_CONFIG_12:
+	case ACP_CONFIG_13:
+		chip->is_i2s_config = true;
+		chip->is_pdm_config = true;
+		break;
+	default:
+		break;
+	}
+}
+
+static void check_acp70_config(struct acp_chip_info *chip)
+{
+	u32 val;
+
+	val = readl(chip->base + ACP_PIN_CONFIG);
+	switch (val) {
+	case ACP_CONFIG_4:
+	case ACP_CONFIG_5:
+	case ACP_CONFIG_6:
+	case ACP_CONFIG_7:
+	case ACP_CONFIG_8:
+	case ACP_CONFIG_11:
+	case ACP_CONFIG_14:
+	case ACP_CONFIG_17:
+	case ACP_CONFIG_18:
+		chip->is_pdm_config = true;
+		break;
+	case ACP_CONFIG_9:
+		chip->is_i2s_config = true;
+		break;
+	case ACP_CONFIG_10:
+	case ACP_CONFIG_12:
+	case ACP_CONFIG_13:
+	case ACP_CONFIG_19:
+	case ACP_CONFIG_20:
+		chip->is_i2s_config = true;
+		chip->is_pdm_config = true;
+		break;
+	default:
+		break;
+	}
+}
+
+void check_acp_config(struct pci_dev *pci, struct acp_chip_info *chip)
+{
+	struct acpi_device *pdm_dev;
+	const union acpi_object *obj;
+	u32 pdm_addr;
+
+	switch (chip->acp_rev) {
+	case ACP3X_DEV:
+		pdm_addr = ACP_RENOIR_PDM_ADDR;
+		check_acp3x_config(chip);
+		break;
+	case ACP6X_DEV:
+		pdm_addr = ACP_REMBRANDT_PDM_ADDR;
+		check_acp6x_config(chip);
+		break;
+	case ACP63_DEV:
+		pdm_addr = ACP63_PDM_ADDR;
+		check_acp6x_config(chip);
+		break;
+	case ACP70_DEV:
+	case ACP71_DEV:
+		pdm_addr = ACP70_PDM_ADDR;
+		check_acp70_config(chip);
+		break;
+	default:
+		break;
+	}
+
+	if (chip->is_pdm_config) {
+		pdm_dev = acpi_find_child_device(ACPI_COMPANION(&pci->dev), pdm_addr, 0);
+		if (pdm_dev) {
+			if (!acpi_dev_get_property(pdm_dev, "acp-audio-device-type",
+						   ACPI_TYPE_INTEGER, &obj) &&
+						   obj->integer.value == pdm_addr)
+				chip->is_pdm_dev = true;
+		}
+	}
+}
+EXPORT_SYMBOL_NS_GPL(check_acp_config, SND_SOC_ACP_COMMON);
+
+MODULE_DESCRIPTION("AMD ACP legacy common features");
 MODULE_LICENSE("Dual BSD/GPL");

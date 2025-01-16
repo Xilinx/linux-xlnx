@@ -459,7 +459,7 @@ static bool davinci_spi_can_dma(struct spi_controller *host,
 
 static int davinci_spi_check_error(struct davinci_spi *dspi, int int_status)
 {
-	struct device *sdev = dspi->bitbang.master->dev.parent;
+	struct device *sdev = dspi->bitbang.ctlr->dev.parent;
 
 	if (int_status & SPIFLG_TIMEOUT_MASK) {
 		dev_err(sdev, "SPI Time-out Error\n");
@@ -570,6 +570,7 @@ static int davinci_spi_bufs(struct spi_device *spi, struct spi_transfer *t)
 	u32 errors = 0;
 	struct davinci_spi_config *spicfg;
 	struct davinci_spi_platform_data *pdata;
+	unsigned long timeout;
 
 	dspi = spi_controller_get_devdata(spi->controller);
 	pdata = &dspi->pdata;
@@ -661,7 +662,12 @@ static int davinci_spi_bufs(struct spi_device *spi, struct spi_transfer *t)
 
 	/* Wait for the transfer to complete */
 	if (spicfg->io_type != SPI_IO_TYPE_POLL) {
-		if (wait_for_completion_timeout(&dspi->done, HZ) == 0)
+		timeout = DIV_ROUND_UP(t->speed_hz, MSEC_PER_SEC);
+		timeout = DIV_ROUND_UP(t->len * 8, timeout);
+		/* Assume we are at most 2x slower than the nominal bus speed */
+		timeout = 2 * msecs_to_jiffies(timeout);
+
+		if (wait_for_completion_timeout(&dspi->done, timeout) == 0)
 			errors = SPIFLG_TIMEOUT_MASK;
 	} else {
 		while (dspi->rcount > 0 || dspi->wcount > 0) {
@@ -742,7 +748,7 @@ static irqreturn_t davinci_spi_irq(s32 irq, void *data)
 
 static int davinci_spi_request_dma(struct davinci_spi *dspi)
 {
-	struct device *sdev = dspi->bitbang.master->dev.parent;
+	struct device *sdev = dspi->bitbang.ctlr->dev.parent;
 
 	dspi->dma_rx = dma_request_chan(sdev, "rx");
 	if (IS_ERR(dspi->dma_rx))
@@ -913,16 +919,13 @@ static int davinci_spi_probe(struct platform_device *pdev)
 	if (ret)
 		goto free_host;
 
-	dspi->bitbang.master = host;
+	dspi->bitbang.ctlr = host;
 
-	dspi->clk = devm_clk_get(&pdev->dev, NULL);
+	dspi->clk = devm_clk_get_enabled(&pdev->dev, NULL);
 	if (IS_ERR(dspi->clk)) {
 		ret = -ENODEV;
 		goto free_host;
 	}
-	ret = clk_prepare_enable(dspi->clk);
-	if (ret)
-		goto free_host;
 
 	host->use_gpio_descriptors = true;
 	host->dev.of_node = pdev->dev.of_node;
@@ -947,7 +950,7 @@ static int davinci_spi_probe(struct platform_device *pdev)
 
 	ret = davinci_spi_request_dma(dspi);
 	if (ret == -EPROBE_DEFER) {
-		goto free_clk;
+		goto free_host;
 	} else if (ret) {
 		dev_info(&pdev->dev, "DMA is not supported (%d)\n", ret);
 		dspi->dma_rx = NULL;
@@ -987,12 +990,13 @@ static int davinci_spi_probe(struct platform_device *pdev)
 	return ret;
 
 free_dma:
+	/* This bit needs to be cleared to disable dpsi->clk */
+	clear_io_bits(dspi->base + SPIGCR1, SPIGCR1_POWERDOWN_MASK);
+
 	if (dspi->dma_rx) {
 		dma_release_channel(dspi->dma_rx);
 		dma_release_channel(dspi->dma_tx);
 	}
-free_clk:
-	clk_disable_unprepare(dspi->clk);
 free_host:
 	spi_controller_put(host);
 err:
@@ -1018,7 +1022,8 @@ static void davinci_spi_remove(struct platform_device *pdev)
 
 	spi_bitbang_stop(&dspi->bitbang);
 
-	clk_disable_unprepare(dspi->clk);
+	/* This bit needs to be cleared to disable dpsi->clk */
+	clear_io_bits(dspi->base + SPIGCR1, SPIGCR1_POWERDOWN_MASK);
 
 	if (dspi->dma_rx) {
 		dma_release_channel(dspi->dma_rx);

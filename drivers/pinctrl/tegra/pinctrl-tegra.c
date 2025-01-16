@@ -120,7 +120,7 @@ static int tegra_pinctrl_dt_subnode_to_map(struct pinctrl_dev *pctldev,
 		/* EINVAL=missing, which is fine since it's optional */
 		if (ret != -EINVAL)
 			dev_err(dev,
-				"could not parse property nvidia,function\n");
+				"%pOF: could not parse property nvidia,function\n", np);
 		function = NULL;
 	}
 
@@ -134,8 +134,8 @@ static int tegra_pinctrl_dt_subnode_to_map(struct pinctrl_dev *pctldev,
 				goto exit;
 		/* EINVAL=missing, which is fine since it's optional */
 		} else if (ret != -EINVAL) {
-			dev_err(dev, "could not parse property %s\n",
-				cfg_params[i].property);
+			dev_err(dev, "%pOF: could not parse property %s\n",
+				np, cfg_params[i].property);
 		}
 	}
 
@@ -146,7 +146,7 @@ static int tegra_pinctrl_dt_subnode_to_map(struct pinctrl_dev *pctldev,
 		reserve++;
 	ret = of_property_count_strings(np, "nvidia,pins");
 	if (ret < 0) {
-		dev_err(dev, "could not parse property nvidia,pins\n");
+		dev_err(dev, "%pOF: could not parse property nvidia,pins\n", np);
 		goto exit;
 	}
 	reserve *= ret;
@@ -188,20 +188,18 @@ static int tegra_pinctrl_dt_node_to_map(struct pinctrl_dev *pctldev,
 					unsigned *num_maps)
 {
 	unsigned reserved_maps;
-	struct device_node *np;
 	int ret;
 
 	reserved_maps = 0;
 	*map = NULL;
 	*num_maps = 0;
 
-	for_each_child_of_node(np_config, np) {
+	for_each_child_of_node_scoped(np_config, np) {
 		ret = tegra_pinctrl_dt_subnode_to_map(pctldev, np, map,
 						      &reserved_maps, num_maps);
 		if (ret < 0) {
 			pinctrl_utils_free_map(pctldev, *map,
 				*num_maps);
-			of_node_put(np);
 			return ret;
 		}
 	}
@@ -635,6 +633,14 @@ static void tegra_pinconf_group_dbg_show(struct pinctrl_dev *pctldev,
 
 		seq_printf(s, "\n\t%s=%u",
 			   strip_prefix(cfg_params[i].property), val);
+	}
+
+	if (g->mux_reg >= 0) {
+		/* read pinmux function and dump to seq_file */
+		val = pmx_readl(pmx, g->mux_bank, g->mux_reg);
+		val = g->funcs[(val >> g->mux_bit) & 0x3];
+
+		seq_printf(s, "\n\tfunction=%s", pmx->functions[val].name);
 	}
 }
 

@@ -440,11 +440,6 @@ int __usb_get_extra_descriptor(char *buffer, unsigned size,
 
 /* ----------------------------------------------------------------------- */
 
-/* USB device number allocation bitmap */
-struct usb_devmap {
-	unsigned long devicemap[128 / (8*sizeof(unsigned long))];
-};
-
 /*
  * Allocated per bus (tree of devices) we have:
  */
@@ -472,7 +467,7 @@ struct usb_bus {
 					 * round-robin allocation */
 	struct mutex devnum_next_mutex; /* devnum_next mutex */
 
-	struct usb_devmap devmap;	/* device address allocation map */
+	DECLARE_BITMAP(devmap, 128);	/* USB device number allocation bitmap */
 	struct usb_device *root_hub;	/* Root hub */
 	struct usb_bus *hs_companion;	/* Companion EHCI bus, if any */
 
@@ -499,6 +494,12 @@ struct usb_dev_state;
 /* ----------------------------------------------------------------------- */
 
 struct usb_tt;
+
+enum usb_link_tunnel_mode {
+	USB_LINK_UNKNOWN = 0,
+	USB_LINK_NATIVE,
+	USB_LINK_TUNNELED,
+};
 
 enum usb_port_connect_type {
 	USB_PORT_CONNECT_TYPE_UNKNOWN = 0,
@@ -610,6 +611,7 @@ struct usb3_lpm_parameters {
  *	WUSB devices are not, until we authorize them from user space.
  *	FIXME -- complete doc
  * @authenticated: Crypto authentication passed
+ * @tunnel_mode: Connection native or tunneled over USB4
  * @lpm_capable: device supports LPM
  * @lpm_devinit_allow: Allow USB3 device initiated LPM, exit latency is in range
  * @usb2_hw_lpm_capable: device can perform USB2 hardware LPM
@@ -632,7 +634,6 @@ struct usb3_lpm_parameters {
  * @reset_resume: needs reset instead of resume
  * @port_is_suspended: the upstream port is suspended (L2 or U3)
  * @slot_id: Slot ID assigned by xHCI
- * @removable: Device can be physically removed from this port
  * @l1_params: best effor service latency for USB2 L1 LPM state, and L1 timeout.
  * @u1_params: exit latencies for USB3 U1 LPM state, and hub-initiated timeout.
  * @u2_params: exit latencies for USB3 U2 LPM state, and hub-initiated timeout.
@@ -720,6 +721,7 @@ struct usb_device {
 	unsigned do_remote_wakeup:1;
 	unsigned reset_resume:1;
 	unsigned port_is_suspended:1;
+	enum usb_link_tunnel_mode tunnel_mode;
 
 	int slot_id;
 	struct usb2_lpm_parameters l1_params;
@@ -1145,16 +1147,6 @@ extern ssize_t usb_store_new_id(struct usb_dynids *dynids,
 extern ssize_t usb_show_dynids(struct usb_dynids *dynids, char *buf);
 
 /**
- * struct usbdrv_wrap - wrapper for driver-model structure
- * @driver: The driver-model core driver structure.
- * @for_devices: Non-zero for device drivers, 0 for interface drivers.
- */
-struct usbdrv_wrap {
-	struct device_driver driver;
-	int for_devices;
-};
-
-/**
  * struct usb_driver - identifies USB interface driver to usbcore
  * @name: The driver name should be unique among USB drivers,
  *	and should normally be the same as the module name.
@@ -1187,6 +1179,7 @@ struct usbdrv_wrap {
  *	post_reset method is called.
  * @post_reset: Called by usb_reset_device() after the device
  *	has been reset
+ * @shutdown: Called at shut-down time to quiesce the device.
  * @id_table: USB drivers use ID table to support hotplugging.
  *	Export this with MODULE_DEVICE_TABLE(usb,...).  This must be set
  *	or your driver's probe function will never get called.
@@ -1194,7 +1187,7 @@ struct usbdrv_wrap {
  *	is bound to the driver.
  * @dynids: used internally to hold the list of dynamically added device
  *	ids for this driver.
- * @drvwrap: Driver-model core structure wrapper.
+ * @driver: The driver-model core driver structure.
  * @no_dynamic_id: if set to 1, the USB core will not allow dynamic ids to be
  *	added to this driver by preventing the sysfs file from being created.
  * @supports_autosuspend: if set to 0, the USB core will not allow autosuspend
@@ -1238,17 +1231,19 @@ struct usb_driver {
 	int (*pre_reset)(struct usb_interface *intf);
 	int (*post_reset)(struct usb_interface *intf);
 
+	void (*shutdown)(struct usb_interface *intf);
+
 	const struct usb_device_id *id_table;
 	const struct attribute_group **dev_groups;
 
 	struct usb_dynids dynids;
-	struct usbdrv_wrap drvwrap;
+	struct device_driver driver;
 	unsigned int no_dynamic_id:1;
 	unsigned int supports_autosuspend:1;
 	unsigned int disable_hub_initiated_lpm:1;
 	unsigned int soft_unbind:1;
 };
-#define	to_usb_driver(d) container_of(d, struct usb_driver, drvwrap.driver)
+#define	to_usb_driver(d) container_of(d, struct usb_driver, driver)
 
 /**
  * struct usb_device_driver - identifies USB device driver to usbcore
@@ -1264,9 +1259,12 @@ struct usb_driver {
  *	module is being unloaded.
  * @suspend: Called when the device is going to be suspended by the system.
  * @resume: Called when the device is being resumed by the system.
+ * @choose_configuration: If non-NULL, called instead of the default
+ *	usb_choose_configuration(). If this returns an error then we'll go
+ *	on to call the normal usb_choose_configuration().
  * @dev_groups: Attributes attached to the device that will be created once it
  *	is bound to the driver.
- * @drvwrap: Driver-model core structure wrapper.
+ * @driver: The driver-model core driver structure.
  * @id_table: used with @match() to select better matching driver at
  * 	probe() time.
  * @supports_autosuspend: if set to 0, the USB core will not allow autosuspend
@@ -1275,7 +1273,7 @@ struct usb_driver {
  *	resume and suspend functions will be called in addition to the driver's
  *	own, so this part of the setup does not need to be replicated.
  *
- * USB drivers must provide all the fields listed above except drvwrap,
+ * USB drivers must provide all the fields listed above except driver,
  * match, and id_table.
  */
 struct usb_device_driver {
@@ -1287,14 +1285,17 @@ struct usb_device_driver {
 
 	int (*suspend) (struct usb_device *udev, pm_message_t message);
 	int (*resume) (struct usb_device *udev, pm_message_t message);
+
+	int (*choose_configuration) (struct usb_device *udev);
+
 	const struct attribute_group **dev_groups;
-	struct usbdrv_wrap drvwrap;
+	struct device_driver driver;
 	const struct usb_device_id *id_table;
 	unsigned int supports_autosuspend:1;
 	unsigned int generic_subclass:1;
 };
 #define	to_usb_device_driver(d) container_of(d, struct usb_device_driver, \
-		drvwrap.driver)
+		driver)
 
 /**
  * struct usb_class_driver - identifies a USB driver that wants to use the USB major number
@@ -1822,22 +1823,6 @@ void *usb_alloc_coherent(struct usb_device *dev, size_t size,
 	gfp_t mem_flags, dma_addr_t *dma);
 void usb_free_coherent(struct usb_device *dev, size_t size,
 	void *addr, dma_addr_t dma);
-
-#if 0
-struct urb *usb_buffer_map(struct urb *urb);
-void usb_buffer_dmasync(struct urb *urb);
-void usb_buffer_unmap(struct urb *urb);
-#endif
-
-struct scatterlist;
-int usb_buffer_map_sg(const struct usb_device *dev, int is_in,
-		      struct scatterlist *sg, int nents);
-#if 0
-void usb_buffer_dmasync_sg(const struct usb_device *dev, int is_in,
-			   struct scatterlist *sg, int n_hw_ents);
-#endif
-void usb_buffer_unmap_sg(const struct usb_device *dev, int is_in,
-			 struct scatterlist *sg, int n_hw_ents);
 
 /*-------------------------------------------------------------------*
  *                         SYNCHRONOUS CALL SUPPORT                  *

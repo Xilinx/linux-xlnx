@@ -390,15 +390,13 @@ rsmu_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int
+static void
 rsmu_remove(struct platform_device *pdev)
 {
 	struct rsmu_cdev *rsmu = platform_get_drvdata(pdev);
 
 	misc_deregister(&rsmu->miscdev);
 	ida_simple_remove(&rsmu_cdev_map, rsmu->index);
-
-	return 0;
 }
 
 static const struct platform_device_id rsmu_id_table[] = {

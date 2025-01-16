@@ -2585,6 +2585,7 @@ static struct dma_pl330_desc *pluck_desc(struct list_head *pool,
 
 		desc->status = PREP;
 		desc->txd.callback = NULL;
+		desc->txd.callback_result = NULL;
 	}
 
 	spin_unlock_irqrestore(lock, flags);
@@ -3162,10 +3163,7 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 	 * This is the limit for transfers with a buswidth of 1, larger
 	 * buswidths will have larger limits.
 	 */
-	ret = dma_set_max_seg_size(&adev->dev, 1900800);
-	if (ret)
-		dev_err(&adev->dev, "unable to set the seg size\n");
-
+	dma_set_max_seg_size(&adev->dev, 1900800);
 
 	init_pl330_debugfs(pl330);
 	dev_info(&adev->dev,
@@ -3261,7 +3259,6 @@ MODULE_DEVICE_TABLE(amba, pl330_ids);
 
 static struct amba_driver pl330_driver = {
 	.drv = {
-		.owner = THIS_MODULE,
 		.name = "dma-pl330",
 		.pm = &pl330_pm,
 	},

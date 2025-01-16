@@ -17,7 +17,7 @@ static irqreturn_t vfio_cdx_msihandler(int irq_no, void *arg)
 {
 	struct eventfd_ctx *trigger = arg;
 
-	eventfd_signal(trigger, 1);
+	eventfd_signal(trigger);
 	return IRQ_HANDLED;
 }
 
@@ -38,7 +38,7 @@ static int vfio_cdx_msi_enable(struct vfio_cdx_device *vdev, int nvec)
 	}
 
 	/* Allocate cdx MSIs */
-	ret = cdx_msi_domain_alloc_irqs(dev, nvec);
+	ret = msi_domain_alloc_irqs(dev, MSI_DEFAULT_DOMAIN, nvec);
 	if (ret) {
 		cdx_disable_msi(cdx_dev);
 		kfree(vdev->cdx_irqs);
@@ -48,7 +48,7 @@ static int vfio_cdx_msi_enable(struct vfio_cdx_device *vdev, int nvec)
 	for (msi_idx = 0; msi_idx < nvec; msi_idx++)
 		vdev->cdx_irqs[msi_idx].irq_no = msi_get_virq(dev, msi_idx);
 
-	vdev->irq_count = nvec;
+	vdev->msi_count = nvec;
 	vdev->config_msi = 1;
 
 	return 0;
@@ -60,7 +60,7 @@ static int vfio_cdx_msi_set_vector_signal(struct vfio_cdx_device *vdev,
 	struct eventfd_ctx *trigger;
 	int irq_no, ret;
 
-	if (vector < 0 || vector >= vdev->irq_count)
+	if (vector < 0 || vector >= vdev->msi_count)
 		return -EINVAL;
 
 	irq_no = vdev->cdx_irqs[vector].irq_no;
@@ -105,7 +105,7 @@ static int vfio_cdx_msi_set_block(struct vfio_cdx_device *vdev,
 {
 	int i, j, ret = 0;
 
-	if (start >= vdev->irq_count || start + count > vdev->irq_count)
+	if (start >= vdev->msi_count || start + count > vdev->msi_count)
 		return -EINVAL;
 
 	for (i = 0, j = start; i < count && !ret; i++, j++) {
@@ -127,17 +127,17 @@ static void vfio_cdx_msi_disable(struct vfio_cdx_device *vdev)
 	struct cdx_device *cdx_dev = to_cdx_device(vdev->vdev.dev);
 	struct device *dev = vdev->vdev.dev;
 
-	vfio_cdx_msi_set_block(vdev, 0, vdev->irq_count, NULL);
+	vfio_cdx_msi_set_block(vdev, 0, vdev->msi_count, NULL);
 
 	if (!vdev->config_msi)
 		return;
 
-	cdx_msi_domain_free_irqs(dev, MSI_DEFAULT_DOMAIN);
+	msi_domain_free_irqs_all(dev, MSI_DEFAULT_DOMAIN);
 	cdx_disable_msi(cdx_dev);
 	kfree(vdev->cdx_irqs);
 
 	vdev->cdx_irqs = NULL;
-	vdev->irq_count = 0;
+	vdev->msi_count = 0;
 	vdev->config_msi = 0;
 }
 
@@ -178,8 +178,14 @@ static int vfio_cdx_set_msi_trigger(struct vfio_cdx_device *vdev,
 	for (i = start; i < start + count; i++) {
 		if (!vdev->cdx_irqs[i].trigger)
 			continue;
-		if (flags & VFIO_IRQ_SET_DATA_NONE)
-			eventfd_signal(vdev->cdx_irqs[i].trigger, 1);
+		if (flags & VFIO_IRQ_SET_DATA_NONE) {
+			eventfd_signal(vdev->cdx_irqs[i].trigger);
+		} else if (flags & VFIO_IRQ_SET_DATA_BOOL) {
+			u8 *bools = data;
+
+			if (bools[i - start])
+				eventfd_signal(vdev->cdx_irqs[i].trigger);
+		}
 	}
 
 	return 0;
@@ -207,5 +213,5 @@ void vfio_cdx_irqs_cleanup(struct vfio_cdx_device *vdev)
 	if (!vdev->cdx_irqs)
 		return;
 
-	vfio_cdx_set_msi_trigger(vdev, 1, 0, 0, VFIO_IRQ_SET_DATA_NONE, NULL);
+	vfio_cdx_set_msi_trigger(vdev, 0, 0, 0, VFIO_IRQ_SET_DATA_NONE, NULL);
 }

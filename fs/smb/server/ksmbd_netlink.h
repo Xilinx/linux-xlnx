@@ -51,6 +51,9 @@
  *  - KSMBD_EVENT_SPNEGO_AUTHEN_REQUEST/RESPONSE(ksmbd_spnego_authen_request/response)
  *    This event is to make kerberos authentication to be processed in
  *    userspace.
+ *
+ *  - KSMBD_EVENT_LOGIN_REQUEST_EXT/RESPONSE_EXT(ksmbd_login_request_ext/response_ext)
+ *    This event is to get user account extension info to user IPC daemon.
  */
 
 #define KSMBD_GENL_NAME		"SMBD_GENL"
@@ -75,6 +78,7 @@ struct ksmbd_heartbeat {
 #define KSMBD_GLOBAL_FLAG_SMB2_ENCRYPTION	BIT(1)
 #define KSMBD_GLOBAL_FLAG_SMB3_MULTICHANNEL	BIT(2)
 #define KSMBD_GLOBAL_FLAG_SMB2_ENCRYPTION_OFF	BIT(3)
+#define KSMBD_GLOBAL_FLAG_DURABLE_HANDLE	BIT(4)
 
 /*
  * IPC request for ksmbd server startup
@@ -145,6 +149,16 @@ struct ksmbd_login_response {
 };
 
 /*
+ * IPC user login response extension.
+ */
+struct ksmbd_login_response_ext {
+	__u32	handle;
+	__s32	ngroups;			/* supplementary group count */
+	__s8	reserved[128];			/* Reserved room */
+	__s8	____payload[];
+};
+
+/*
  * IPC request to fetch net share config.
  */
 struct ksmbd_share_config_request {
@@ -166,7 +180,8 @@ struct ksmbd_share_config_response {
 	__u16	force_uid;
 	__u16	force_gid;
 	__s8	share_name[KSMBD_REQ_MAX_SHARE_NAME];
-	__u32	reserved[112];		/* Reserved room */
+	__u32	reserved[111];		/* Reserved room */
+	__u32	payload_sz;
 	__u32	veto_list_sz;
 	__s8	____payload[];
 };
@@ -211,7 +226,7 @@ struct ksmbd_tree_connect_response {
 };
 
 /*
- * IPC Request struture to disconnect tree connection.
+ * IPC Request structure to disconnect tree connection.
  */
 struct ksmbd_tree_disconnect_request {
 	__u64	session_id;	/* session id */
@@ -304,7 +319,11 @@ enum ksmbd_event {
 	KSMBD_EVENT_SPNEGO_AUTHEN_REQUEST,
 	KSMBD_EVENT_SPNEGO_AUTHEN_RESPONSE	= 15,
 
-	KSMBD_EVENT_MAX
+	KSMBD_EVENT_LOGIN_REQUEST_EXT,
+	KSMBD_EVENT_LOGIN_RESPONSE_EXT,
+
+	__KSMBD_EVENT_MAX,
+	KSMBD_EVENT_MAX = __KSMBD_EVENT_MAX - 1
 };
 
 /*
@@ -333,27 +352,29 @@ enum KSMBD_TREE_CONN_STATUS {
 #define KSMBD_USER_FLAG_BAD_USER	BIT(3)
 #define KSMBD_USER_FLAG_GUEST_ACCOUNT	BIT(4)
 #define KSMBD_USER_FLAG_DELAY_SESSION	BIT(5)
+#define KSMBD_USER_FLAG_EXTENSION	BIT(6)
 
 /*
  * Share config flags.
  */
-#define KSMBD_SHARE_FLAG_INVALID		(0)
-#define KSMBD_SHARE_FLAG_AVAILABLE		BIT(0)
-#define KSMBD_SHARE_FLAG_BROWSEABLE		BIT(1)
-#define KSMBD_SHARE_FLAG_WRITEABLE		BIT(2)
-#define KSMBD_SHARE_FLAG_READONLY		BIT(3)
-#define KSMBD_SHARE_FLAG_GUEST_OK		BIT(4)
-#define KSMBD_SHARE_FLAG_GUEST_ONLY		BIT(5)
-#define KSMBD_SHARE_FLAG_STORE_DOS_ATTRS	BIT(6)
-#define KSMBD_SHARE_FLAG_OPLOCKS		BIT(7)
-#define KSMBD_SHARE_FLAG_PIPE			BIT(8)
-#define KSMBD_SHARE_FLAG_HIDE_DOT_FILES		BIT(9)
-#define KSMBD_SHARE_FLAG_INHERIT_OWNER		BIT(10)
-#define KSMBD_SHARE_FLAG_STREAMS		BIT(11)
-#define KSMBD_SHARE_FLAG_FOLLOW_SYMLINKS	BIT(12)
-#define KSMBD_SHARE_FLAG_ACL_XATTR		BIT(13)
-#define KSMBD_SHARE_FLAG_UPDATE			BIT(14)
-#define KSMBD_SHARE_FLAG_CROSSMNT		BIT(15)
+#define KSMBD_SHARE_FLAG_INVALID			(0)
+#define KSMBD_SHARE_FLAG_AVAILABLE			BIT(0)
+#define KSMBD_SHARE_FLAG_BROWSEABLE			BIT(1)
+#define KSMBD_SHARE_FLAG_WRITEABLE			BIT(2)
+#define KSMBD_SHARE_FLAG_READONLY			BIT(3)
+#define KSMBD_SHARE_FLAG_GUEST_OK			BIT(4)
+#define KSMBD_SHARE_FLAG_GUEST_ONLY			BIT(5)
+#define KSMBD_SHARE_FLAG_STORE_DOS_ATTRS		BIT(6)
+#define KSMBD_SHARE_FLAG_OPLOCKS			BIT(7)
+#define KSMBD_SHARE_FLAG_PIPE				BIT(8)
+#define KSMBD_SHARE_FLAG_HIDE_DOT_FILES			BIT(9)
+#define KSMBD_SHARE_FLAG_INHERIT_OWNER			BIT(10)
+#define KSMBD_SHARE_FLAG_STREAMS			BIT(11)
+#define KSMBD_SHARE_FLAG_FOLLOW_SYMLINKS		BIT(12)
+#define KSMBD_SHARE_FLAG_ACL_XATTR			BIT(13)
+#define KSMBD_SHARE_FLAG_UPDATE				BIT(14)
+#define KSMBD_SHARE_FLAG_CROSSMNT			BIT(15)
+#define KSMBD_SHARE_FLAG_CONTINUOUS_AVAILABILITY	BIT(16)
 
 /*
  * Tree connect request flags.

@@ -27,11 +27,16 @@ struct ivpu_fw_info {
 	u32 trace_level;
 	u32 trace_destination_mask;
 	u64 trace_hw_component_mask;
+	u32 dvfs_mode;
+	u32 primary_preempt_buf_size;
+	u32 secondary_preempt_buf_size;
+	u64 read_only_addr;
+	u32 read_only_size;
 };
 
 int ivpu_fw_init(struct ivpu_device *vdev);
 void ivpu_fw_fini(struct ivpu_device *vdev);
-int ivpu_fw_load(struct ivpu_device *vdev);
+void ivpu_fw_load(struct ivpu_device *vdev);
 void ivpu_fw_boot_params_setup(struct ivpu_device *vdev, struct vpu_boot_params *bp);
 
 static inline bool ivpu_fw_is_cold_boot(struct ivpu_device *vdev)

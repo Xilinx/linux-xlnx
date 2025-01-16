@@ -2649,13 +2649,14 @@ ssize_t tomoyo_write_control(struct tomoyo_io_buffer *head,
 {
 	int error = buffer_len;
 	size_t avail_len = buffer_len;
-	char *cp0 = head->write_buf;
+	char *cp0;
 	int idx;
 
 	if (!head->write)
 		return -EINVAL;
 	if (mutex_lock_interruptible(&head->io_sem))
 		return -EINTR;
+	cp0 = head->write_buf;
 	head->read_user_buf_avail = 0;
 	idx = tomoyo_read_lock();
 	/* Read a line and dispatch it to the policy handler. */
@@ -2786,7 +2787,7 @@ void tomoyo_check_profile(void)
 		else
 			continue;
 		pr_err("Userland tools for TOMOYO 2.6 must be installed and policy must be initialized.\n");
-		pr_err("Please see https://tomoyo.osdn.jp/2.6/ for more information.\n");
+		pr_err("Please see https://tomoyo.sourceforge.net/2.6/ for more information.\n");
 		panic("STOP!");
 	}
 	tomoyo_read_unlock(idx);

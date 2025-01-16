@@ -64,9 +64,34 @@ static void qcom_hwspinlock_unlock(struct hwspinlock *lock)
 		pr_err("%s: failed to unlock spinlock\n", __func__);
 }
 
+static int qcom_hwspinlock_bust(struct hwspinlock *lock, unsigned int id)
+{
+	struct regmap_field *field = lock->priv;
+	u32 owner;
+	int ret;
+
+	ret = regmap_field_read(field, &owner);
+	if (ret) {
+		dev_err(lock->bank->dev, "unable to query spinlock owner\n");
+		return ret;
+	}
+
+	if (owner != id)
+		return 0;
+
+	ret = regmap_field_write(field, 0);
+	if (ret) {
+		dev_err(lock->bank->dev, "failed to bust spinlock\n");
+		return ret;
+	}
+
+	return 0;
+}
+
 static const struct hwspinlock_ops qcom_hwspinlock_ops = {
 	.trylock	= qcom_hwspinlock_trylock,
 	.unlock		= qcom_hwspinlock_unlock,
+	.bust		= qcom_hwspinlock_bust,
 };
 
 static const struct regmap_config sfpb_mutex_config = {
@@ -115,7 +140,6 @@ static const struct of_device_id qcom_hwspinlock_of_match[] = {
 	{ .compatible = "qcom,sfpb-mutex", .data = &of_sfpb_mutex },
 	{ .compatible = "qcom,tcsr-mutex", .data = &of_tcsr_mutex },
 	{ .compatible = "qcom,apq8084-tcsr-mutex", .data = &of_msm8226_tcsr_mutex },
-	{ .compatible = "qcom,ipq6018-tcsr-mutex", .data = &of_msm8226_tcsr_mutex },
 	{ .compatible = "qcom,msm8226-tcsr-mutex", .data = &of_msm8226_tcsr_mutex },
 	{ .compatible = "qcom,msm8974-tcsr-mutex", .data = &of_msm8226_tcsr_mutex },
 	{ .compatible = "qcom,msm8994-tcsr-mutex", .data = &of_msm8226_tcsr_mutex },

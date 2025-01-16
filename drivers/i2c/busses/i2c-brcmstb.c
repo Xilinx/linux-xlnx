@@ -67,7 +67,7 @@
 
 /* BSC block register map structure to cache fields to be written */
 struct bsc_regs {
-	u32	chip_address;           /* slave address */
+	u32	chip_address;           /* target address */
 	u32	data_in[N_DATA_REGS];   /* tx data buffer*/
 	u32	cnt_reg;		/* rx/tx data length */
 	u32	ctl_reg;		/* control register */
@@ -160,6 +160,7 @@ struct brcmstb_i2c_dev {
 	struct completion done;
 	u32 clk_freq_hz;
 	int data_regsz;
+	bool atomic;
 };
 
 /* register accessors for both be and le cpu arch */
@@ -240,7 +241,7 @@ static int brcmstb_i2c_wait_for_completion(struct brcmstb_i2c_dev *dev)
 	int ret = 0;
 	unsigned long timeout = msecs_to_jiffies(I2C_TIMEOUT);
 
-	if (dev->irq >= 0) {
+	if (dev->irq >= 0 && !dev->atomic) {
 		if (!wait_for_completion_timeout(&dev->done, timeout))
 			ret = -ETIMEDOUT;
 	} else {
@@ -287,7 +288,7 @@ static int brcmstb_send_i2c_cmd(struct brcmstb_i2c_dev *dev,
 		return rc;
 
 	/* only if we are in interrupt mode */
-	if (dev->irq >= 0)
+	if (dev->irq >= 0 && !dev->atomic)
 		reinit_completion(&dev->done);
 
 	/* enable BSC CTL interrupt line */
@@ -319,7 +320,7 @@ cmd_out:
 	return rc;
 }
 
-/* Actual data transfer through the BSC master */
+/* Actual data transfer through the BSC controller */
 static int brcmstb_i2c_xfer_bsc_data(struct brcmstb_i2c_dev *dev,
 				     u8 *buf, unsigned int len,
 				     struct i2c_msg *pmsg)
@@ -440,7 +441,6 @@ static int brcmstb_i2c_do_addr(struct brcmstb_i2c_dev *dev,
 	return 0;
 }
 
-/* Master transfer function */
 static int brcmstb_i2c_xfer(struct i2c_adapter *adapter,
 			    struct i2c_msg msgs[], int num)
 {
@@ -472,7 +472,7 @@ static int brcmstb_i2c_xfer(struct i2c_adapter *adapter,
 
 		brcmstb_set_i2c_start_stop(dev, cond);
 
-		/* Send slave address */
+		/* Send target address */
 		if (!(pmsg->flags & I2C_M_NOSTART)) {
 			rc = brcmstb_i2c_do_addr(dev, pmsg);
 			if (rc < 0) {
@@ -520,6 +520,23 @@ out:
 
 }
 
+static int brcmstb_i2c_xfer_atomic(struct i2c_adapter *adapter,
+				   struct i2c_msg msgs[], int num)
+{
+	struct brcmstb_i2c_dev *dev = i2c_get_adapdata(adapter);
+	int ret;
+
+	if (dev->irq >= 0)
+		disable_irq(dev->irq);
+	dev->atomic = true;
+	ret = brcmstb_i2c_xfer(adapter, msgs, num);
+	dev->atomic = false;
+	if (dev->irq >= 0)
+		enable_irq(dev->irq);
+
+	return ret;
+}
+
 static u32 brcmstb_i2c_functionality(struct i2c_adapter *adap)
 {
 	return I2C_FUNC_I2C | I2C_FUNC_SMBUS_EMUL | I2C_FUNC_10BIT_ADDR
@@ -527,7 +544,8 @@ static u32 brcmstb_i2c_functionality(struct i2c_adapter *adap)
 }
 
 static const struct i2c_algorithm brcmstb_i2c_algo = {
-	.master_xfer = brcmstb_i2c_xfer,
+	.xfer = brcmstb_i2c_xfer,
+	.xfer_atomic = brcmstb_i2c_xfer_atomic,
 	.functionality = brcmstb_i2c_functionality,
 };
 

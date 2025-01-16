@@ -24,7 +24,7 @@
 #include <linux/pm_wakeirq.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 /* Slave I2C mode */
 #define RM_BOOT_BLDR		0x02
@@ -1004,7 +1004,7 @@ static DEVICE_ATTR(boot_mode, S_IRUGO, raydium_i2c_boot_mode_show, NULL);
 static DEVICE_ATTR(update_fw, S_IWUSR, NULL, raydium_i2c_update_fw_store);
 static DEVICE_ATTR(calibrate, S_IWUSR, NULL, raydium_i2c_calibrate_store);
 
-static struct attribute *raydium_i2c_attributes[] = {
+static struct attribute *raydium_i2c_attrs[] = {
 	&dev_attr_update_fw.attr,
 	&dev_attr_boot_mode.attr,
 	&dev_attr_fw_version.attr,
@@ -1012,10 +1012,7 @@ static struct attribute *raydium_i2c_attributes[] = {
 	&dev_attr_calibrate.attr,
 	NULL
 };
-
-static const struct attribute_group raydium_i2c_attribute_group = {
-	.attrs = raydium_i2c_attributes,
-};
+ATTRIBUTE_GROUPS(raydium_i2c);
 
 static int raydium_i2c_power_on(struct raydium_data *ts)
 {
@@ -1174,14 +1171,6 @@ static int raydium_i2c_probe(struct i2c_client *client)
 		return error;
 	}
 
-	error = devm_device_add_group(&client->dev,
-				   &raydium_i2c_attribute_group);
-	if (error) {
-		dev_err(&client->dev, "failed to create sysfs attributes: %d\n",
-			error);
-		return error;
-	}
-
 	return 0;
 }
 
@@ -1238,8 +1227,8 @@ static DEFINE_SIMPLE_DEV_PM_OPS(raydium_i2c_pm_ops,
 				raydium_i2c_suspend, raydium_i2c_resume);
 
 static const struct i2c_device_id raydium_i2c_id[] = {
-	{ "raydium_i2c", 0 },
-	{ "rm32380", 0 },
+	{ "raydium_i2c" },
+	{ "rm32380" },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(i2c, raydium_i2c_id);
@@ -1265,6 +1254,7 @@ static struct i2c_driver raydium_i2c_driver = {
 	.id_table = raydium_i2c_id,
 	.driver = {
 		.name = "raydium_ts",
+		.dev_groups = raydium_i2c_groups,
 		.pm = pm_sleep_ptr(&raydium_i2c_pm_ops),
 		.acpi_match_table = ACPI_PTR(raydium_acpi_id),
 		.of_match_table = of_match_ptr(raydium_of_match),

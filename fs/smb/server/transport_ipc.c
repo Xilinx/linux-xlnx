@@ -65,6 +65,7 @@ struct ipc_msg_table_entry {
 	struct hlist_node	ipc_table_hlist;
 
 	void			*response;
+	unsigned int		msg_sz;
 };
 
 static struct delayed_work ipc_timer_work;
@@ -74,7 +75,7 @@ static int handle_unsupported_event(struct sk_buff *skb, struct genl_info *info)
 static int handle_generic_event(struct sk_buff *skb, struct genl_info *info);
 static int ksmbd_ipc_heartbeat_request(void);
 
-static const struct nla_policy ksmbd_nl_policy[KSMBD_EVENT_MAX] = {
+static const struct nla_policy ksmbd_nl_policy[KSMBD_EVENT_MAX + 1] = {
 	[KSMBD_EVENT_UNSPEC] = {
 		.len = 0,
 	},
@@ -118,6 +119,12 @@ static const struct nla_policy ksmbd_nl_policy[KSMBD_EVENT_MAX] = {
 	[KSMBD_EVENT_SPNEGO_AUTHEN_REQUEST] = {
 	},
 	[KSMBD_EVENT_SPNEGO_AUTHEN_RESPONSE] = {
+	},
+	[KSMBD_EVENT_LOGIN_REQUEST_EXT] = {
+		.len = sizeof(struct ksmbd_login_request),
+	},
+	[KSMBD_EVENT_LOGIN_RESPONSE_EXT] = {
+		.len = sizeof(struct ksmbd_login_response_ext),
 	},
 };
 
@@ -186,6 +193,14 @@ static struct genl_ops ksmbd_genl_ops[] = {
 		.cmd	= KSMBD_EVENT_SPNEGO_AUTHEN_RESPONSE,
 		.doit	= handle_generic_event,
 	},
+	{
+		.cmd	= KSMBD_EVENT_LOGIN_REQUEST_EXT,
+		.doit	= handle_unsupported_event,
+	},
+	{
+		.cmd	= KSMBD_EVENT_LOGIN_RESPONSE_EXT,
+		.doit	= handle_generic_event,
+	},
 };
 
 static struct genl_family ksmbd_genl_family = {
@@ -197,7 +212,7 @@ static struct genl_family ksmbd_genl_family = {
 	.module		= THIS_MODULE,
 	.ops		= ksmbd_genl_ops,
 	.n_ops		= ARRAY_SIZE(ksmbd_genl_ops),
-	.resv_start_op	= KSMBD_EVENT_SPNEGO_AUTHEN_RESPONSE + 1,
+	.resv_start_op	= KSMBD_EVENT_LOGIN_RESPONSE_EXT + 1,
 };
 
 static void ksmbd_nl_init_fixup(void)
@@ -275,6 +290,7 @@ static int handle_response(int type, void *payload, size_t sz)
 		}
 
 		memcpy(entry->response, payload, sz);
+		entry->msg_sz = sz;
 		wake_up_interruptible(&entry->wait);
 		ret = 0;
 		break;
@@ -403,7 +419,7 @@ static int handle_generic_event(struct sk_buff *skb, struct genl_info *info)
 		return -EPERM;
 #endif
 
-	if (type >= KSMBD_EVENT_MAX) {
+	if (type > KSMBD_EVENT_MAX) {
 		WARN_ON(1);
 		return -EINVAL;
 	}
@@ -453,6 +469,53 @@ out:
 	return ret;
 }
 
+static int ipc_validate_msg(struct ipc_msg_table_entry *entry)
+{
+	unsigned int msg_sz = entry->msg_sz;
+
+	switch (entry->type) {
+	case KSMBD_EVENT_RPC_REQUEST:
+	{
+		struct ksmbd_rpc_command *resp = entry->response;
+
+		msg_sz = sizeof(struct ksmbd_rpc_command) + resp->payload_sz;
+		break;
+	}
+	case KSMBD_EVENT_SPNEGO_AUTHEN_REQUEST:
+	{
+		struct ksmbd_spnego_authen_response *resp = entry->response;
+
+		msg_sz = sizeof(struct ksmbd_spnego_authen_response) +
+				resp->session_key_len + resp->spnego_blob_len;
+		break;
+	}
+	case KSMBD_EVENT_SHARE_CONFIG_REQUEST:
+	{
+		struct ksmbd_share_config_response *resp = entry->response;
+
+		if (resp->payload_sz) {
+			if (resp->payload_sz < resp->veto_list_sz)
+				return -EINVAL;
+
+			msg_sz = sizeof(struct ksmbd_share_config_response) +
+					resp->payload_sz;
+		}
+		break;
+	}
+	case KSMBD_EVENT_LOGIN_REQUEST_EXT:
+	{
+		struct ksmbd_login_response_ext *resp = entry->response;
+
+		if (resp->ngroups) {
+			msg_sz = sizeof(struct ksmbd_login_response_ext) +
+					resp->ngroups * sizeof(gid_t);
+		}
+	}
+	}
+
+	return entry->msg_sz != msg_sz ? -EINVAL : 0;
+}
+
 static void *ipc_msg_send_request(struct ksmbd_ipc_msg *msg, unsigned int handle)
 {
 	struct ipc_msg_table_entry entry;
@@ -477,6 +540,13 @@ static void *ipc_msg_send_request(struct ksmbd_ipc_msg *msg, unsigned int handle
 	ret = wait_event_interruptible_timeout(entry.wait,
 					       entry.response != NULL,
 					       IPC_WAIT_TIMEOUT);
+	if (entry.response) {
+		ret = ipc_validate_msg(&entry);
+		if (ret) {
+			kvfree(entry.response);
+			entry.response = NULL;
+		}
+	}
 out:
 	down_write(&ipc_msg_table_lock);
 	hash_del(&entry.ipc_table_hlist);
@@ -517,6 +587,29 @@ struct ksmbd_login_response *ksmbd_ipc_login_request(const char *account)
 	req->handle = ksmbd_acquire_id(&ipc_ida);
 	strscpy(req->account, account, KSMBD_REQ_MAX_ACCOUNT_NAME_SZ);
 
+	resp = ipc_msg_send_request(msg, req->handle);
+	ipc_msg_handle_free(req->handle);
+	ipc_msg_free(msg);
+	return resp;
+}
+
+struct ksmbd_login_response_ext *ksmbd_ipc_login_request_ext(const char *account)
+{
+	struct ksmbd_ipc_msg *msg;
+	struct ksmbd_login_request *req;
+	struct ksmbd_login_response_ext *resp;
+
+	if (strlen(account) >= KSMBD_REQ_MAX_ACCOUNT_NAME_SZ)
+		return NULL;
+
+	msg = ipc_msg_alloc(sizeof(struct ksmbd_login_request));
+	if (!msg)
+		return NULL;
+
+	msg->type = KSMBD_EVENT_LOGIN_REQUEST_EXT;
+	req = (struct ksmbd_login_request *)msg->payload;
+	req->handle = ksmbd_acquire_id(&ipc_ida);
+	strscpy(req->account, account, KSMBD_REQ_MAX_ACCOUNT_NAME_SZ);
 	resp = ipc_msg_send_request(msg, req->handle);
 	ipc_msg_handle_free(req->handle);
 	ipc_msg_free(msg);

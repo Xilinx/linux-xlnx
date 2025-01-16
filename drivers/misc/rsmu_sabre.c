@@ -10,7 +10,7 @@
 #include <linux/device.h>
 #include <linux/mfd/idt82p33_reg.h>
 #include <linux/mfd/rsmu.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 #include "rsmu_cdev.h"
 

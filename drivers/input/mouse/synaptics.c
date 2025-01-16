@@ -183,11 +183,13 @@ static const char * const smbus_pnp_ids[] = {
 	"LEN009b", /* T580 */
 	"LEN0402", /* X1 Extreme Gen 2 / P1 Gen 2 */
 	"LEN040f", /* P1 Gen 3 */
+	"LEN0411", /* L14 Gen 1 */
 	"LEN200f", /* T450s */
 	"LEN2044", /* L470  */
 	"LEN2054", /* E480 */
 	"LEN2055", /* E580 */
 	"LEN2068", /* T14 Gen 1 */
+	"SYN3015", /* HP EliteBook 840 G2 */
 	"SYN3052", /* HP EliteBook 840 G4 */
 	"SYN3221", /* HP 15-ay000 */
 	"SYN323d", /* HP Spectre X360 13-w013dx */
@@ -707,7 +709,7 @@ static void synaptics_pt_create(struct psmouse *psmouse)
 {
 	struct serio *serio;
 
-	serio = kzalloc(sizeof(struct serio), GFP_KERNEL);
+	serio = kzalloc(sizeof(*serio), GFP_KERNEL);
 	if (!serio) {
 		psmouse_err(psmouse,
 			    "not enough memory for pass-through port\n");
@@ -1562,7 +1564,7 @@ static int synaptics_init_ps2(struct psmouse *psmouse,
 
 	synaptics_apply_quirks(psmouse, info);
 
-	psmouse->private = priv = kzalloc(sizeof(struct synaptics_data), GFP_KERNEL);
+	psmouse->private = priv = kzalloc(sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
 

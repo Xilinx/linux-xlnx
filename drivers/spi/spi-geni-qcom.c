@@ -145,10 +145,10 @@ static int get_spi_clk_cfg(unsigned int speed_hz,
 	return ret;
 }
 
-static void handle_se_timeout(struct spi_master *spi,
-				struct spi_message *msg)
+static void handle_se_timeout(struct spi_controller *spi,
+			      struct spi_message *msg)
 {
-	struct spi_geni_master *mas = spi_master_get_devdata(spi);
+	struct spi_geni_master *mas = spi_controller_get_devdata(spi);
 	unsigned long time_left;
 	struct geni_se *se = &mas->se;
 	const struct spi_transfer *xfer;
@@ -160,13 +160,13 @@ static void handle_se_timeout(struct spi_master *spi,
 	xfer = mas->cur_xfer;
 	mas->cur_xfer = NULL;
 
-	if (spi->slave) {
+	if (spi->target) {
 		/*
-		 * skip CMD Cancel sequnece since spi slave
+		 * skip CMD Cancel sequnece since spi target
 		 * doesn`t support CMD Cancel sequnece
 		 */
 		spin_unlock_irq(&mas->lock);
-		goto unmap_if_dma;
+		goto reset_if_dma;
 	}
 
 	reinit_completion(&mas->cancel_done);
@@ -175,7 +175,7 @@ static void handle_se_timeout(struct spi_master *spi,
 
 	time_left = wait_for_completion_timeout(&mas->cancel_done, HZ);
 	if (time_left)
-		goto unmap_if_dma;
+		goto reset_if_dma;
 
 	spin_lock_irq(&mas->lock);
 	reinit_completion(&mas->abort_done);
@@ -193,7 +193,7 @@ static void handle_se_timeout(struct spi_master *spi,
 		mas->abort_failed = true;
 	}
 
-unmap_if_dma:
+reset_if_dma:
 	if (mas->cur_xfer_mode == GENI_SE_DMA) {
 		if (xfer) {
 			if (xfer->tx_buf) {
@@ -225,17 +225,17 @@ unmap_if_dma:
 	}
 }
 
-static void handle_gpi_timeout(struct spi_master *spi, struct spi_message *msg)
+static void handle_gpi_timeout(struct spi_controller *spi, struct spi_message *msg)
 {
-	struct spi_geni_master *mas = spi_master_get_devdata(spi);
+	struct spi_geni_master *mas = spi_controller_get_devdata(spi);
 
 	dmaengine_terminate_sync(mas->tx);
 	dmaengine_terminate_sync(mas->rx);
 }
 
-static void spi_geni_handle_err(struct spi_master *spi, struct spi_message *msg)
+static void spi_geni_handle_err(struct spi_controller *spi, struct spi_message *msg)
 {
-	struct spi_geni_master *mas = spi_master_get_devdata(spi);
+	struct spi_geni_master *mas = spi_controller_get_devdata(spi);
 
 	switch (mas->cur_xfer_mode) {
 	case GENI_SE_FIFO:
@@ -286,8 +286,8 @@ static bool spi_geni_is_abort_still_pending(struct spi_geni_master *mas)
 
 static void spi_geni_set_cs(struct spi_device *slv, bool set_flag)
 {
-	struct spi_geni_master *mas = spi_master_get_devdata(slv->master);
-	struct spi_master *spi = dev_get_drvdata(mas->dev);
+	struct spi_geni_master *mas = spi_controller_get_devdata(slv->controller);
+	struct spi_controller *spi = dev_get_drvdata(mas->dev);
 	struct geni_se *se = &mas->se;
 	unsigned long time_left;
 
@@ -395,9 +395,9 @@ static int geni_spi_set_clock_and_bw(struct spi_geni_master *mas,
 }
 
 static int setup_fifo_params(struct spi_device *spi_slv,
-					struct spi_master *spi)
+					struct spi_controller *spi)
 {
-	struct spi_geni_master *mas = spi_master_get_devdata(spi);
+	struct spi_geni_master *mas = spi_controller_get_devdata(spi);
 	struct geni_se *se = &mas->se;
 	u32 loopback_cfg = 0, cpol = 0, cpha = 0, demux_output_inv = 0;
 	u32 demux_sel;
@@ -434,7 +434,7 @@ static int setup_fifo_params(struct spi_device *spi_slv,
 static void
 spi_gsi_callback_result(void *cb, const struct dmaengine_result *result)
 {
-	struct spi_master *spi = cb;
+	struct spi_controller *spi = cb;
 
 	spi->cur_msg->status = -EIO;
 	if (result->result != DMA_TRANS_NOERROR) {
@@ -454,7 +454,7 @@ spi_gsi_callback_result(void *cb, const struct dmaengine_result *result)
 }
 
 static int setup_gsi_xfer(struct spi_transfer *xfer, struct spi_geni_master *mas,
-			  struct spi_device *spi_slv, struct spi_master *spi)
+			  struct spi_device *spi_slv, struct spi_controller *spi)
 {
 	unsigned long flags = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
 	struct dma_slave_config config = {};
@@ -560,14 +560,14 @@ static u32 get_xfer_len_in_words(struct spi_transfer *xfer,
 static bool geni_can_dma(struct spi_controller *ctlr,
 			 struct spi_device *slv, struct spi_transfer *xfer)
 {
-	struct spi_geni_master *mas = spi_master_get_devdata(slv->master);
+	struct spi_geni_master *mas = spi_controller_get_devdata(slv->controller);
 	u32 len, fifo_size;
 
 	if (mas->cur_xfer_mode == GENI_GPI_DMA)
 		return true;
 
-	/* Set SE DMA mode for SPI slave. */
-	if (ctlr->slave)
+	/* Set SE DMA mode for SPI target. */
+	if (ctlr->target)
 		return true;
 
 	len = get_xfer_len_in_words(xfer, mas);
@@ -579,10 +579,10 @@ static bool geni_can_dma(struct spi_controller *ctlr,
 		return false;
 }
 
-static int spi_geni_prepare_message(struct spi_master *spi,
-					struct spi_message *spi_msg)
+static int spi_geni_prepare_message(struct spi_controller *spi,
+				    struct spi_message *spi_msg)
 {
-	struct spi_geni_master *mas = spi_master_get_devdata(spi);
+	struct spi_geni_master *mas = spi_controller_get_devdata(spi);
 	int ret;
 
 	switch (mas->cur_xfer_mode) {
@@ -604,6 +604,21 @@ static int spi_geni_prepare_message(struct spi_master *spi,
 	return -EINVAL;
 }
 
+static void spi_geni_release_dma_chan(void *data)
+{
+	struct spi_geni_master *mas = data;
+
+	if (mas->rx) {
+		dma_release_channel(mas->rx);
+		mas->rx = NULL;
+	}
+
+	if (mas->tx) {
+		dma_release_channel(mas->tx);
+		mas->tx = NULL;
+	}
+}
+
 static int spi_geni_grab_gpi_chan(struct spi_geni_master *mas)
 {
 	int ret;
@@ -622,6 +637,12 @@ static int spi_geni_grab_gpi_chan(struct spi_geni_master *mas)
 		goto err_rx;
 	}
 
+	ret = devm_add_action_or_reset(mas->dev, spi_geni_release_dma_chan, mas);
+	if (ret) {
+		dev_err(mas->dev, "Unable to add action.\n");
+		return ret;
+	}
+
 	return 0;
 
 err_rx:
@@ -632,22 +653,9 @@ err_tx:
 	return ret;
 }
 
-static void spi_geni_release_dma_chan(struct spi_geni_master *mas)
-{
-	if (mas->rx) {
-		dma_release_channel(mas->rx);
-		mas->rx = NULL;
-	}
-
-	if (mas->tx) {
-		dma_release_channel(mas->tx);
-		mas->tx = NULL;
-	}
-}
-
 static int spi_geni_init(struct spi_geni_master *mas)
 {
-	struct spi_master *spi = dev_get_drvdata(mas->dev);
+	struct spi_controller *spi = dev_get_drvdata(mas->dev);
 	struct geni_se *se = &mas->se;
 	unsigned int proto, major, minor, ver;
 	u32 spi_tx_cfg, fifo_disable;
@@ -657,7 +665,7 @@ static int spi_geni_init(struct spi_geni_master *mas)
 
 	proto = geni_se_read_proto(se);
 
-	if (spi->slave) {
+	if (spi->target) {
 		if (proto != GENI_SE_SPI_SLAVE) {
 			dev_err(mas->dev, "Invalid proto %d\n", proto);
 			goto out_pm;
@@ -715,7 +723,7 @@ static int spi_geni_init(struct spi_geni_master *mas)
 	}
 
 	/* We always control CS manually */
-	if (!spi->slave) {
+	if (!spi->target) {
 		spi_tx_cfg = readl(se->base + SE_SPI_TRANS_CFG);
 		spi_tx_cfg &= ~CS_TOGGLE;
 		writel(spi_tx_cfg, se->base + SE_SPI_TRANS_CFG);
@@ -824,7 +832,7 @@ static void geni_spi_handle_rx(struct spi_geni_master *mas)
 
 static int setup_se_xfer(struct spi_transfer *xfer,
 				struct spi_geni_master *mas,
-				u16 mode, struct spi_master *spi)
+				u16 mode, struct spi_controller *spi)
 {
 	u32 m_cmd = 0;
 	u32 len;
@@ -913,11 +921,11 @@ static int setup_se_xfer(struct spi_transfer *xfer,
 	return ret;
 }
 
-static int spi_geni_transfer_one(struct spi_master *spi,
-				struct spi_device *slv,
-				struct spi_transfer *xfer)
+static int spi_geni_transfer_one(struct spi_controller *spi,
+				 struct spi_device *slv,
+				 struct spi_transfer *xfer)
 {
-	struct spi_geni_master *mas = spi_master_get_devdata(spi);
+	struct spi_geni_master *mas = spi_controller_get_devdata(spi);
 	int ret;
 
 	if (spi_geni_is_abort_still_pending(mas))
@@ -939,8 +947,8 @@ static int spi_geni_transfer_one(struct spi_master *spi,
 
 static irqreturn_t geni_spi_isr(int irq, void *data)
 {
-	struct spi_master *spi = data;
-	struct spi_geni_master *mas = spi_master_get_devdata(spi);
+	struct spi_controller *spi = data;
+	struct spi_geni_master *mas = spi_controller_get_devdata(spi);
 	struct geni_se *se = &mas->se;
 	u32 m_irq;
 
@@ -1042,7 +1050,7 @@ static irqreturn_t geni_spi_isr(int irq, void *data)
 static int spi_geni_probe(struct platform_device *pdev)
 {
 	int ret, irq;
-	struct spi_master *spi;
+	struct spi_controller *spi;
 	struct spi_geni_master *mas;
 	void __iomem *base;
 	struct clk *clk;
@@ -1064,12 +1072,12 @@ static int spi_geni_probe(struct platform_device *pdev)
 	if (IS_ERR(clk))
 		return PTR_ERR(clk);
 
-	spi = devm_spi_alloc_master(dev, sizeof(*mas));
+	spi = devm_spi_alloc_host(dev, sizeof(*mas));
 	if (!spi)
 		return -ENOMEM;
 
 	platform_set_drvdata(pdev, spi);
-	mas = spi_master_get_devdata(spi);
+	mas = spi_controller_get_devdata(spi);
 	mas->irq = irq;
 	mas->dev = dev;
 	mas->se.dev = dev;
@@ -1108,34 +1116,38 @@ static int spi_geni_probe(struct platform_device *pdev)
 	init_completion(&mas->tx_reset_done);
 	init_completion(&mas->rx_reset_done);
 	spin_lock_init(&mas->lock);
-	pm_runtime_use_autosuspend(&pdev->dev);
-	pm_runtime_set_autosuspend_delay(&pdev->dev, 250);
-	pm_runtime_enable(dev);
-
-	if (device_property_read_bool(&pdev->dev, "spi-slave"))
-		spi->slave = true;
 
 	ret = geni_icc_get(&mas->se, NULL);
 	if (ret)
-		goto spi_geni_probe_runtime_disable;
+		return ret;
+
+	pm_runtime_use_autosuspend(&pdev->dev);
+	pm_runtime_set_autosuspend_delay(&pdev->dev, 250);
+	ret = devm_pm_runtime_enable(dev);
+	if (ret)
+		return ret;
+
+	if (device_property_read_bool(&pdev->dev, "spi-slave"))
+		spi->target = true;
+
 	/* Set the bus quota to a reasonable value for register access */
 	mas->se.icc_paths[GENI_TO_CORE].avg_bw = Bps_to_icc(CORE_2X_50_MHZ);
 	mas->se.icc_paths[CPU_TO_GENI].avg_bw = GENI_DEFAULT_BW;
 
 	ret = geni_icc_set_bw(&mas->se);
 	if (ret)
-		goto spi_geni_probe_runtime_disable;
+		return ret;
 
 	ret = spi_geni_init(mas);
 	if (ret)
-		goto spi_geni_probe_runtime_disable;
+		return ret;
 
 	/*
 	 * check the mode supported and set_cs for fifo mode only
 	 * for dma (gsi) mode, the gsi will set cs based on params passed in
 	 * TRE
 	 */
-	if (!spi->slave && mas->cur_xfer_mode == GENI_SE_FIFO)
+	if (!spi->target && mas->cur_xfer_mode == GENI_SE_FIFO)
 		spi->set_cs = spi_geni_set_cs;
 
 	/*
@@ -1144,42 +1156,17 @@ static int spi_geni_probe(struct platform_device *pdev)
 	if (mas->cur_xfer_mode == GENI_GPI_DMA)
 		spi->flags = SPI_CONTROLLER_MUST_TX;
 
-	ret = request_irq(mas->irq, geni_spi_isr, 0, dev_name(dev), spi);
+	ret = devm_request_irq(dev, mas->irq, geni_spi_isr, 0, dev_name(dev), spi);
 	if (ret)
-		goto spi_geni_release_dma;
+		return ret;
 
-	ret = spi_register_master(spi);
-	if (ret)
-		goto spi_geni_probe_free_irq;
-
-	return 0;
-spi_geni_probe_free_irq:
-	free_irq(mas->irq, spi);
-spi_geni_release_dma:
-	spi_geni_release_dma_chan(mas);
-spi_geni_probe_runtime_disable:
-	pm_runtime_disable(dev);
-	return ret;
-}
-
-static void spi_geni_remove(struct platform_device *pdev)
-{
-	struct spi_master *spi = platform_get_drvdata(pdev);
-	struct spi_geni_master *mas = spi_master_get_devdata(spi);
-
-	/* Unregister _before_ disabling pm_runtime() so we stop transfers */
-	spi_unregister_master(spi);
-
-	spi_geni_release_dma_chan(mas);
-
-	free_irq(mas->irq, spi);
-	pm_runtime_disable(&pdev->dev);
+	return devm_spi_register_controller(dev, spi);
 }
 
 static int __maybe_unused spi_geni_runtime_suspend(struct device *dev)
 {
-	struct spi_master *spi = dev_get_drvdata(dev);
-	struct spi_geni_master *mas = spi_master_get_devdata(spi);
+	struct spi_controller *spi = dev_get_drvdata(dev);
+	struct spi_geni_master *mas = spi_controller_get_devdata(spi);
 	int ret;
 
 	/* Drop the performance state vote */
@@ -1194,8 +1181,8 @@ static int __maybe_unused spi_geni_runtime_suspend(struct device *dev)
 
 static int __maybe_unused spi_geni_runtime_resume(struct device *dev)
 {
-	struct spi_master *spi = dev_get_drvdata(dev);
-	struct spi_geni_master *mas = spi_master_get_devdata(spi);
+	struct spi_controller *spi = dev_get_drvdata(dev);
+	struct spi_geni_master *mas = spi_controller_get_devdata(spi);
 	int ret;
 
 	ret = geni_icc_enable(&mas->se);
@@ -1211,30 +1198,30 @@ static int __maybe_unused spi_geni_runtime_resume(struct device *dev)
 
 static int __maybe_unused spi_geni_suspend(struct device *dev)
 {
-	struct spi_master *spi = dev_get_drvdata(dev);
+	struct spi_controller *spi = dev_get_drvdata(dev);
 	int ret;
 
-	ret = spi_master_suspend(spi);
+	ret = spi_controller_suspend(spi);
 	if (ret)
 		return ret;
 
 	ret = pm_runtime_force_suspend(dev);
 	if (ret)
-		spi_master_resume(spi);
+		spi_controller_resume(spi);
 
 	return ret;
 }
 
 static int __maybe_unused spi_geni_resume(struct device *dev)
 {
-	struct spi_master *spi = dev_get_drvdata(dev);
+	struct spi_controller *spi = dev_get_drvdata(dev);
 	int ret;
 
 	ret = pm_runtime_force_resume(dev);
 	if (ret)
 		return ret;
 
-	ret = spi_master_resume(spi);
+	ret = spi_controller_resume(spi);
 	if (ret)
 		pm_runtime_force_suspend(dev);
 
@@ -1255,7 +1242,6 @@ MODULE_DEVICE_TABLE(of, spi_geni_dt_match);
 
 static struct platform_driver spi_geni_driver = {
 	.probe  = spi_geni_probe,
-	.remove_new = spi_geni_remove,
 	.driver = {
 		.name = "geni_spi",
 		.pm = &spi_geni_pm_ops,

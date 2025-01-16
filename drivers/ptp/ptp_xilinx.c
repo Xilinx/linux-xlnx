@@ -498,7 +498,7 @@ static int xlnx_ptp_timer_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int xlnx_ptp_timer_remove(struct platform_device *pdev)
+static void xlnx_ptp_timer_remove(struct platform_device *pdev)
 {
 	struct xlnx_ptp_timer *timer = platform_get_drvdata(pdev);
 
@@ -507,8 +507,6 @@ static int xlnx_ptp_timer_remove(struct platform_device *pdev)
 		xlnx_ptp_iow(timer, XPTPTIMER_IER_OFFSET,
 			     (u32)~(XPTPTIMER_EXTS_1PPS_INTR_MASK));
 	ptp_clock_unregister(timer->ptp_clock);
-
-	return 0;
 }
 
 static const struct of_device_id timer_1588_of_match[] = {

@@ -9,9 +9,6 @@ title: Xilinx Zynq UltraScale+ MPSoC GQSPI controller
 maintainers:
   - Michal Simek <michal.simek@amd.com>
 
-allOf:
-  - $ref: spi-controller.yaml#
-
 properties:
   compatible:
     enum:
@@ -19,6 +16,7 @@ properties:
       - xlnx,zynqmp-qspi-1.0
 
   reg:
+    minItems: 1
     maxItems: 2
 
   interrupts:
@@ -37,6 +35,7 @@ properties:
 
   power-domains:
     maxItems: 1
+
   has-io-mode:
     $ref: /schemas/types.yaml#/definitions/flag
     description:
@@ -52,6 +51,24 @@ required:
   - clocks
 
 unevaluatedProperties: false
+
+allOf:
+  - $ref: spi-controller.yaml#
+
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: xlnx,zynqmp-qspi-1.0
+    then:
+      properties:
+        reg:
+          minItems: 2
+
+    else:
+      properties:
+        reg:
+          maxItems: 1
 
 examples:
   - |

@@ -11,6 +11,7 @@
  * define how recovery should work for that type of log item.
  */
 struct xlog_recover_item;
+struct xfs_defer_op_type;
 
 /* Sorting hat for log items as they're read in. */
 enum xlog_recover_reorder {
@@ -74,6 +75,8 @@ extern const struct xlog_recover_item_ops xlog_cui_item_ops;
 extern const struct xlog_recover_item_ops xlog_cud_item_ops;
 extern const struct xlog_recover_item_ops xlog_attri_item_ops;
 extern const struct xlog_recover_item_ops xlog_attrd_item_ops;
+extern const struct xlog_recover_item_ops xlog_xmi_item_ops;
+extern const struct xlog_recover_item_ops xlog_xmd_item_ops;
 
 /*
  * Macros, structures, prototypes for internal log manager use.
@@ -120,6 +123,8 @@ bool xlog_is_buffer_cancelled(struct xlog *log, xfs_daddr_t blkno, uint len);
 
 int xlog_recover_iget(struct xfs_mount *mp, xfs_ino_t ino,
 		struct xfs_inode **ipp);
+int xlog_recover_iget_handle(struct xfs_mount *mp, xfs_ino_t ino, uint32_t gen,
+		struct xfs_inode **ipp);
 void xlog_recover_release_intent(struct xlog *log, unsigned short intent_type,
 		uint64_t intent_id);
 int xlog_alloc_buf_cancel_table(struct xlog *log);
@@ -152,5 +157,12 @@ xlog_recover_resv(const struct xfs_trans_res *r)
 
 	return ret;
 }
+
+struct xfs_defer_pending;
+
+void xlog_recover_intent_item(struct xlog *log, struct xfs_log_item *lip,
+		xfs_lsn_t lsn, const struct xfs_defer_op_type *ops);
+int xlog_recover_finish_intent(struct xfs_trans *tp,
+		struct xfs_defer_pending *dfp);
 
 #endif	/* __XFS_LOG_RECOVER_H__ */

@@ -318,7 +318,7 @@ static void sh_dmae_setup_xfer(struct shdma_chan *schan,
 }
 
 /*
- * Find a slave channel configuration from the contoller list by either a slave
+ * Find a slave channel configuration from the controller list by either a slave
  * ID in the non-DT case, or by a MID/RID value in the DT case
  */
 static const struct sh_dmae_slave_config *dmae_find_slave(
@@ -882,7 +882,7 @@ eshdma:
 	return err;
 }
 
-static int sh_dmae_remove(struct platform_device *pdev)
+static void sh_dmae_remove(struct platform_device *pdev)
 {
 	struct sh_dmae_device *shdev = platform_get_drvdata(pdev);
 	struct dma_device *dma_dev = &shdev->shdma_dev.dma_dev;
@@ -899,8 +899,6 @@ static int sh_dmae_remove(struct platform_device *pdev)
 	shdma_cleanup(&shdev->shdma_dev);
 
 	synchronize_rcu();
-
-	return 0;
 }
 
 static struct platform_driver sh_dmae_driver = {
@@ -908,7 +906,7 @@ static struct platform_driver sh_dmae_driver = {
 		.pm	= &sh_dmae_pm,
 		.name	= SH_DMAE_DRV_NAME,
 	},
-	.remove		= sh_dmae_remove,
+	.remove_new	= sh_dmae_remove,
 };
 
 static int __init sh_dmae_init(void)

@@ -24,7 +24,7 @@
 #include <linux/string.h>
 #include <linux/configfs.h>
 #include <linux/ctype.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <scsi/scsi_host.h>
 #include <target/target_core_base.h>
 #include <target/target_core_fabric.h>
@@ -1822,6 +1822,9 @@ static const struct target_core_fabric_ops tcm_qla2xxx_ops = {
 	.tfc_wwn_attrs			= tcm_qla2xxx_wwn_attrs,
 	.tfc_tpg_base_attrs		= tcm_qla2xxx_tpg_attrs,
 	.tfc_tpg_attrib_attrs		= tcm_qla2xxx_tpg_attrib_attrs,
+
+	.default_submit_type		= TARGET_DIRECT_SUBMIT,
+	.direct_submit_supp		= 1,
 };
 
 static const struct target_core_fabric_ops tcm_qla2xxx_npiv_ops = {
@@ -1859,6 +1862,9 @@ static const struct target_core_fabric_ops tcm_qla2xxx_npiv_ops = {
 	.fabric_init_nodeacl		= tcm_qla2xxx_init_nodeacl,
 
 	.tfc_wwn_attrs			= tcm_qla2xxx_wwn_attrs,
+
+	.default_submit_type		= TARGET_DIRECT_SUBMIT,
+	.direct_submit_supp		= 1,
 };
 
 static int tcm_qla2xxx_register_configfs(void)

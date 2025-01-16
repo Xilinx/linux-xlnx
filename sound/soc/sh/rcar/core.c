@@ -91,6 +91,7 @@
  */
 
 #include <linux/pm_runtime.h>
+#include <linux/of_graph.h>
 #include "rsnd.h"
 
 #define RSND_RATES SNDRV_PCM_RATE_8000_192000
@@ -659,23 +660,6 @@ static struct rsnd_dai *rsnd_dai_to_rdai(struct snd_soc_dai *dai)
 	return rsnd_rdai_get(priv, dai->id);
 }
 
-/*
- *	rsnd_soc_dai functions
- */
-void rsnd_dai_period_elapsed(struct rsnd_dai_stream *io)
-{
-	struct snd_pcm_substream *substream = io->substream;
-
-	/*
-	 * this function should be called...
-	 *
-	 * - if rsnd_dai_pointer_update() returns true
-	 * - without spin lock
-	 */
-
-	snd_pcm_period_elapsed(substream);
-}
-
 static void rsnd_dai_stream_init(struct rsnd_dai_stream *io,
 				struct snd_pcm_substream *substream)
 {
@@ -690,9 +674,9 @@ static void rsnd_dai_stream_quit(struct rsnd_dai_stream *io)
 static
 struct snd_soc_dai *rsnd_substream_to_dai(struct snd_pcm_substream *substream)
 {
-	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
+	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
 
-	return  asoc_rtd_to_cpu(rtd, 0);
+	return snd_soc_rtd_to_cpu(rtd, 0);
 }
 
 static
@@ -1060,7 +1044,7 @@ static int rsnd_soc_dai_prepare(struct snd_pcm_substream *substream,
 	return rsnd_dai_call(prepare, io, priv);
 }
 
-static u64 rsnd_soc_dai_formats[] = {
+static const u64 rsnd_soc_dai_formats[] = {
 	/*
 	 * 1st Priority
 	 *
@@ -1297,12 +1281,13 @@ audio_graph:
 		if (!of_node_name_eq(ports, "ports") &&
 		    !of_node_name_eq(ports, "port"))
 			continue;
-		priv->component_dais[i] = of_graph_get_endpoint_count(ports);
+		priv->component_dais[i] =
+			of_graph_get_endpoint_count(of_node_name_eq(ports, "ports") ?
+						    ports : np);
 		nr += priv->component_dais[i];
 		i++;
 		if (i >= RSND_MAX_COMPONENT) {
 			dev_info(dev, "reach to max component\n");
-			of_node_put(node);
 			of_node_put(ports);
 			break;
 		}
@@ -1510,9 +1495,10 @@ static int rsnd_dai_probe(struct rsnd_priv *priv)
 			if (!of_node_name_eq(ports, "ports") &&
 			    !of_node_name_eq(ports, "port"))
 				continue;
-			for_each_endpoint_of_node(ports, dai_np) {
+			for_each_endpoint_of_node(of_node_name_eq(ports, "ports") ?
+						  ports : np, dai_np) {
 				__rsnd_dai_probe(priv, dai_np, dai_np, 0, dai_i);
-				if (rsnd_is_gen3(priv) || rsnd_is_gen4(priv)) {
+				if (!rsnd_is_gen1(priv) && !rsnd_is_gen2(priv)) {
 					rdai = rsnd_rdai_get(priv, dai_i);
 
 					rsnd_parse_connect_graph(priv, &rdai->playback, dai_np);
@@ -1531,7 +1517,7 @@ static int rsnd_dai_probe(struct rsnd_priv *priv)
 
 			for_each_child_of_node(node, dai_np) {
 				__rsnd_dai_probe(priv, dai_np, np, dai_i, dai_i);
-				if (rsnd_is_gen3(priv) || rsnd_is_gen4(priv)) {
+				if (!rsnd_is_gen1(priv) && !rsnd_is_gen2(priv)) {
 					rdai = rsnd_rdai_get(priv, dai_i);
 
 					rsnd_parse_connect_simple(priv, &rdai->playback, dai_np);
@@ -1575,7 +1561,7 @@ static int rsnd_hw_params(struct snd_soc_component *component,
 	struct snd_soc_dai *dai = rsnd_substream_to_dai(substream);
 	struct rsnd_dai *rdai = rsnd_dai_to_rdai(dai);
 	struct rsnd_dai_stream *io = rsnd_rdai_to_io(rdai, substream);
-	struct snd_soc_pcm_runtime *fe = asoc_substream_to_rtd(substream);
+	struct snd_soc_pcm_runtime *fe = snd_soc_substream_to_rtd(substream);
 
 	/*
 	 * rsnd assumes that it might be used under DPCM if user want to use
@@ -2104,7 +2090,7 @@ static struct platform_driver rsnd_driver = {
 		.of_match_table = rsnd_of_match,
 	},
 	.probe		= rsnd_probe,
-	.remove_new	= rsnd_remove,
+	.remove		= rsnd_remove,
 };
 module_platform_driver(rsnd_driver);
 

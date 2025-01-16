@@ -137,6 +137,7 @@
 
 /* SAI Transmit and Receive Configuration 4 Register */
 
+#define FSL_SAI_CR4_FCONT_MASK	BIT(28)
 #define FSL_SAI_CR4_FCONT	BIT(28)
 #define FSL_SAI_CR4_FCOMB_SHIFT BIT(26)
 #define FSL_SAI_CR4_FCOMB_SOFT  BIT(27)
@@ -282,7 +283,7 @@ struct fsl_sai {
 	struct clk *pll11k_clk;
 	struct resource *res;
 
-	bool is_consumer_mode;
+	bool is_consumer_mode[2];
 	bool is_lsb_first;
 	bool is_dsp_mode;
 	bool is_pdm_mode;
@@ -299,7 +300,7 @@ struct fsl_sai {
 	unsigned int bclk_ratio;
 
 	const struct fsl_sai_soc_data *soc_data;
-	struct snd_soc_dai_driver cpu_dai_drv;
+	struct snd_soc_dai_driver cpu_dai_drv[3];
 	struct snd_dmaengine_dai_dma_data dma_params_rx;
 	struct snd_dmaengine_dai_dma_data dma_params_tx;
 	struct fsl_sai_verid verid;

@@ -14,8 +14,10 @@
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/gpio/consumer.h>
+#include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_device.h>
+#include <linux/of_platform.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/phy/phy.h>
@@ -30,6 +32,7 @@
 #include <drm/drm_framebuffer.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
+#include <drm/drm_eld.h>
 #include <drm/display/drm_dp_helper.h>
 #include <drm/display/drm_hdmi_helper.h>
 #include <drm/drm_edid.h>
@@ -512,7 +515,6 @@ enum xlnx_dp_train_state {
  * @tx_link_config: source configuration
  * @tx_hdcp: HDCP configuration
  * @hdcpx_keymgmt_base: HDCP key management base address
- * @rx_config: sink configuration
  * @link_config: common link configuration between IP core and sink device
  * @drm: DRM core
  * @mode: current mode between IP core and sink device
@@ -4049,7 +4051,7 @@ error_phy:
 	return ret;
 }
 
-static int xlnx_dp_remove(struct platform_device *pdev)
+static void xlnx_dp_remove(struct platform_device *pdev)
 {
 	struct xlnx_dp *dp = platform_get_drvdata(pdev);
 
@@ -4063,8 +4065,6 @@ static int xlnx_dp_remove(struct platform_device *pdev)
 		phy_exit(dp->phy[0]);
 	component_del(&pdev->dev, &xlnx_dp_component_ops);
 	sysfs_remove_group(&pdev->dev.kobj, &attr_group);
-
-	return 0;
 }
 
 MODULE_DEVICE_TABLE(of, xlnx_dp_of_match);

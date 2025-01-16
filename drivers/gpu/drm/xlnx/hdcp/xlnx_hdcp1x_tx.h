@@ -11,6 +11,7 @@
 #include <linux/io.h>
 #include <linux/regmap.h>
 #include <linux/time.h>
+#include <linux/workqueue.h>
 #include <linux/xlnx/xlnx_timer.h>
 #include "xhdcp1x_tx.h"
 

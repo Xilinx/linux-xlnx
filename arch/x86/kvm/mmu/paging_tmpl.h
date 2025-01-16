@@ -62,7 +62,7 @@
 #endif
 
 /* Common logic, but per-type values.  These also need to be undefined. */
-#define PT_BASE_ADDR_MASK	((pt_element_t)(((1ULL << 52) - 1) & ~(u64)(PAGE_SIZE-1)))
+#define PT_BASE_ADDR_MASK	((pt_element_t)__PT_BASE_ADDR_MASK)
 #define PT_LVL_ADDR_MASK(lvl)	__PT_LVL_ADDR_MASK(PT_BASE_ADDR_MASK, lvl, PT_LEVEL_BITS)
 #define PT_LVL_OFFSET_MASK(lvl)	__PT_LVL_OFFSET_MASK(PT_BASE_ADDR_MASK, lvl, PT_LEVEL_BITS)
 #define PT_INDEX(addr, lvl)	__PT_INDEX(addr, lvl, PT_LEVEL_BITS)
@@ -497,21 +497,21 @@ error:
 	 * The other bits are set to 0.
 	 */
 	if (!(errcode & PFERR_RSVD_MASK)) {
-		vcpu->arch.exit_qualification &= (EPT_VIOLATION_GVA_IS_VALID |
-						  EPT_VIOLATION_GVA_TRANSLATED);
+		walker->fault.exit_qualification = 0;
+
 		if (write_fault)
-			vcpu->arch.exit_qualification |= EPT_VIOLATION_ACC_WRITE;
+			walker->fault.exit_qualification |= EPT_VIOLATION_ACC_WRITE;
 		if (user_fault)
-			vcpu->arch.exit_qualification |= EPT_VIOLATION_ACC_READ;
+			walker->fault.exit_qualification |= EPT_VIOLATION_ACC_READ;
 		if (fetch_fault)
-			vcpu->arch.exit_qualification |= EPT_VIOLATION_ACC_INSTR;
+			walker->fault.exit_qualification |= EPT_VIOLATION_ACC_INSTR;
 
 		/*
 		 * Note, pte_access holds the raw RWX bits from the EPTE, not
 		 * ACC_*_MASK flags!
 		 */
-		vcpu->arch.exit_qualification |= (pte_access & VMX_EPT_RWX_MASK) <<
-						 EPT_VIOLATION_RWX_SHIFT;
+		walker->fault.exit_qualification |= (pte_access & VMX_EPT_RWX_MASK) <<
+						     EPT_VIOLATION_RWX_SHIFT;
 	}
 #endif
 	walker->fault.address = addr;
@@ -646,10 +646,10 @@ static int FNAME(fetch)(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault,
 	 * really care if it changes underneath us after this point).
 	 */
 	if (FNAME(gpte_changed)(vcpu, gw, top_level))
-		goto out_gpte_changed;
+		return RET_PF_RETRY;
 
 	if (WARN_ON_ONCE(!VALID_PAGE(vcpu->arch.mmu->root.hpa)))
-		goto out_gpte_changed;
+		return RET_PF_RETRY;
 
 	/*
 	 * Load a new root and retry the faulting instruction in the extremely
@@ -659,7 +659,7 @@ static int FNAME(fetch)(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault,
 	 */
 	if (unlikely(kvm_mmu_is_dummy_root(vcpu->arch.mmu->root.hpa))) {
 		kvm_make_request(KVM_REQ_MMU_FREE_OBSOLETE_ROOTS, vcpu);
-		goto out_gpte_changed;
+		return RET_PF_RETRY;
 	}
 
 	for_each_shadow_entry(vcpu, fault->addr, it) {
@@ -674,34 +674,38 @@ static int FNAME(fetch)(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault,
 		sp = kvm_mmu_get_child_sp(vcpu, it.sptep, table_gfn,
 					  false, access);
 
-		if (sp != ERR_PTR(-EEXIST)) {
-			/*
-			 * We must synchronize the pagetable before linking it
-			 * because the guest doesn't need to flush tlb when
-			 * the gpte is changed from non-present to present.
-			 * Otherwise, the guest may use the wrong mapping.
-			 *
-			 * For PG_LEVEL_4K, kvm_mmu_get_page() has already
-			 * synchronized it transiently via kvm_sync_page().
-			 *
-			 * For higher level pagetable, we synchronize it via
-			 * the slower mmu_sync_children().  If it needs to
-			 * break, some progress has been made; return
-			 * RET_PF_RETRY and retry on the next #PF.
-			 * KVM_REQ_MMU_SYNC is not necessary but it
-			 * expedites the process.
-			 */
-			if (sp->unsync_children &&
-			    mmu_sync_children(vcpu, sp, false))
-				return RET_PF_RETRY;
-		}
+		/*
+		 * Synchronize the new page before linking it, as the CPU (KVM)
+		 * is architecturally disallowed from inserting non-present
+		 * entries into the TLB, i.e. the guest isn't required to flush
+		 * the TLB when changing the gPTE from non-present to present.
+		 *
+		 * For PG_LEVEL_4K, kvm_mmu_find_shadow_page() has already
+		 * synchronized the page via kvm_sync_page().
+		 *
+		 * For higher level pages, which cannot be unsync themselves
+		 * but can have unsync children, synchronize via the slower
+		 * mmu_sync_children().  If KVM needs to drop mmu_lock due to
+		 * contention or to reschedule, instruct the caller to retry
+		 * the #PF (mmu_sync_children() ensures forward progress will
+		 * be made).
+		 */
+		if (sp != ERR_PTR(-EEXIST) && sp->unsync_children &&
+		    mmu_sync_children(vcpu, sp, false))
+			return RET_PF_RETRY;
 
 		/*
-		 * Verify that the gpte in the page we've just write
-		 * protected is still there.
+		 * Verify that the gpte in the page, which is now either
+		 * write-protected or unsync, wasn't modified between the fault
+		 * and acquiring mmu_lock.  This needs to be done even when
+		 * reusing an existing shadow page to ensure the information
+		 * gathered by the walker matches the information stored in the
+		 * shadow page (which could have been modified by a different
+		 * vCPU even if the page was already linked).  Holding mmu_lock
+		 * prevents the shadow page from changing after this point.
 		 */
 		if (FNAME(gpte_changed)(vcpu, gw, it.level - 1))
-			goto out_gpte_changed;
+			return RET_PF_RETRY;
 
 		if (sp != ERR_PTR(-EEXIST))
 			link_shadow_page(vcpu, it.sptep, sp);
@@ -755,9 +759,6 @@ static int FNAME(fetch)(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault,
 
 	FNAME(pte_prefetch)(vcpu, gw, it.sptep);
 	return ret;
-
-out_gpte_changed:
-	return RET_PF_RETRY;
 }
 
 /*
@@ -805,7 +806,7 @@ static int FNAME(page_fault)(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault
 
 	if (page_fault_handle_page_track(vcpu, fault)) {
 		shadow_page_table_clear_flood(vcpu, fault->addr);
-		return RET_PF_EMULATE;
+		return RET_PF_WRITE_PROTECTED;
 	}
 
 	r = mmu_topup_memory_caches(vcpu, true);
@@ -911,7 +912,8 @@ static int FNAME(sync_spte)(struct kvm_vcpu *vcpu, struct kvm_mmu_page *sp, int 
 	gpa_t pte_gpa;
 	gfn_t gfn;
 
-	if (WARN_ON_ONCE(!sp->spt[i]))
+	if (WARN_ON_ONCE(sp->spt[i] == SHADOW_NONPRESENT_VALUE ||
+			 !sp->shadowed_translation))
 		return 0;
 
 	first_pte_gpa = FNAME(get_level1_sp_gpa)(sp);
@@ -933,13 +935,13 @@ static int FNAME(sync_spte)(struct kvm_vcpu *vcpu, struct kvm_mmu_page *sp, int 
 		return 0;
 
 	/*
-	 * Drop the SPTE if the new protections would result in a RWX=0
-	 * SPTE or if the gfn is changing.  The RWX=0 case only affects
-	 * EPT with execute-only support, i.e. EPT without an effective
-	 * "present" bit, as all other paging modes will create a
-	 * read-only SPTE if pte_access is zero.
+	 * Drop the SPTE if the new protections result in no effective
+	 * "present" bit or if the gfn is changing.  The former case
+	 * only affects EPT with execute-only support with pte_access==0;
+	 * all other paging modes will create a read-only SPTE if
+	 * pte_access is zero.
 	 */
-	if ((!pte_access && !shadow_present_mask) ||
+	if ((pte_access | shadow_present_mask) == SHADOW_NONPRESENT_VALUE ||
 	    gfn != kvm_mmu_page_get_gfn(sp, i)) {
 		drop_spte(vcpu->kvm, &sp->spt[i]);
 		return 1;

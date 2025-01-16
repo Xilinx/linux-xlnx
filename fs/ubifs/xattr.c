@@ -149,7 +149,7 @@ static int create_xattr(struct ubifs_info *c, struct inode *host,
 	if (strcmp(fname_name(nm), UBIFS_XATTR_NAME_ENCRYPTION_CONTEXT) == 0)
 		host_ui->flags |= UBIFS_CRYPT_FL;
 
-	err = ubifs_jnl_update(c, host, nm, inode, 0, 1);
+	err = ubifs_jnl_update(c, host, nm, inode, 0, 1, 0);
 	if (err)
 		goto out_cancel;
 	ubifs_set_inode_flags(host);
@@ -735,7 +735,7 @@ static const struct xattr_handler ubifs_security_xattr_handler = {
 };
 #endif
 
-const struct xattr_handler *ubifs_xattr_handlers[] = {
+const struct xattr_handler * const ubifs_xattr_handlers[] = {
 	&ubifs_user_xattr_handler,
 	&ubifs_trusted_xattr_handler,
 #ifdef CONFIG_UBIFS_FS_SECURITY

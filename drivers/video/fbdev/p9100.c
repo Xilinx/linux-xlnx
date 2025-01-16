@@ -31,8 +31,8 @@ static int p9100_setcolreg(unsigned, unsigned, unsigned, unsigned,
 			   unsigned, struct fb_info *);
 static int p9100_blank(int, struct fb_info *);
 
-static int p9100_mmap(struct fb_info *, struct vm_area_struct *);
-static int p9100_ioctl(struct fb_info *, unsigned int, unsigned long);
+static int p9100_sbusfb_mmap(struct fb_info *info, struct vm_area_struct *vma);
+static int p9100_sbusfb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg);
 
 /*
  *  Frame buffer operations
@@ -40,16 +40,9 @@ static int p9100_ioctl(struct fb_info *, unsigned int, unsigned long);
 
 static const struct fb_ops p9100_ops = {
 	.owner			= THIS_MODULE,
+	FB_DEFAULT_SBUS_OPS(p9100),
 	.fb_setcolreg		= p9100_setcolreg,
 	.fb_blank		= p9100_blank,
-	.fb_fillrect		= cfb_fillrect,
-	.fb_copyarea		= cfb_copyarea,
-	.fb_imageblit		= cfb_imageblit,
-	.fb_mmap		= p9100_mmap,
-	.fb_ioctl		= p9100_ioctl,
-#ifdef CONFIG_COMPAT
-	.fb_compat_ioctl	= sbusfb_compat_ioctl,
-#endif
 };
 
 /* P9100 control registers */
@@ -213,12 +206,12 @@ p9100_blank(int blank, struct fb_info *info)
 	return 0;
 }
 
-static struct sbus_mmap_map p9100_mmap_map[] = {
+static const struct sbus_mmap_map p9100_mmap_map[] = {
 	{ CG3_MMAP_OFFSET,	0,		SBUS_MMAP_FBSIZE(1) },
 	{ 0,			0,		0		    }
 };
 
-static int p9100_mmap(struct fb_info *info, struct vm_area_struct *vma)
+static int p9100_sbusfb_mmap(struct fb_info *info, struct vm_area_struct *vma)
 {
 	struct p9100_par *par = (struct p9100_par *)info->par;
 
@@ -227,8 +220,7 @@ static int p9100_mmap(struct fb_info *info, struct vm_area_struct *vma)
 				  par->which_io, vma);
 }
 
-static int p9100_ioctl(struct fb_info *info, unsigned int cmd,
-		       unsigned long arg)
+static int p9100_sbusfb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
 {
 	/* Make it look like a cg3. */
 	return sbusfb_ioctl_helper(cmd, arg, info,
@@ -355,7 +347,7 @@ static struct platform_driver p9100_driver = {
 		.of_match_table = p9100_match,
 	},
 	.probe		= p9100_probe,
-	.remove_new	= p9100_remove,
+	.remove		= p9100_remove,
 };
 
 static int __init p9100_init(void)

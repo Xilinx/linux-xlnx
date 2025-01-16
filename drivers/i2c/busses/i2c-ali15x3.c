@@ -39,7 +39,7 @@
     We make sure that the SMB is enabled. We leave the ACPI alone.
 
     This driver controls the SMB Host only.
-    The SMB Slave controller on the M15X3 is not enabled.
+    The SMB Target controller on the M15X3 is not enabled.
 
     This driver does not use interrupts.
 */
@@ -294,10 +294,8 @@ static int ali15x3_transaction(struct i2c_adapter *adap)
 		 && (timeout++ < MAX_TIMEOUT));
 
 	/* If the SMBus is still busy, we give up */
-	if (timeout > MAX_TIMEOUT) {
+	if (timeout > MAX_TIMEOUT)
 		result = -ETIMEDOUT;
-		dev_err(&adap->dev, "SMBus Timeout!\n");
-	}
 
 	if (temp & ALI15X3_STS_TERM) {
 		result = -EIO;
@@ -461,7 +459,7 @@ static const struct i2c_algorithm smbus_algorithm = {
 
 static struct i2c_adapter ali15x3_adapter = {
 	.owner		= THIS_MODULE,
-	.class          = I2C_CLASS_HWMON | I2C_CLASS_SPD,
+	.class          = I2C_CLASS_HWMON,
 	.algo		= &smbus_algorithm,
 };
 

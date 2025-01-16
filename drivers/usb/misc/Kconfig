@@ -165,6 +165,19 @@ config APPLE_MFI_FASTCHARGE
 
 	  It is safe to say M here.
 
+config USB_LJCA
+	tristate "Intel La Jolla Cove Adapter support"
+	select AUXILIARY_BUS
+	depends on USB && ACPI
+	help
+	  This adds support for Intel La Jolla Cove USB-I2C/SPI/GPIO
+	  Master Adapter (LJCA). Additional drivers such as I2C_LJCA,
+	  GPIO_LJCA and SPI_LJCA must be enabled in order to use the
+	  functionality of the device.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called usb-ljca.
+
 source "drivers/usb/misc/sisusbvga/Kconfig"
 
 config USB_LD
@@ -318,3 +331,15 @@ config USB_ONBOARD_DEV
 	  this config will enable the driver and it will automatically
 	  match the state of the USB subsystem. If this driver is a
 	  module it will be called onboard_usb_dev.
+
+config USB_ONBOARD_DEV_USB5744
+	bool "Onboard USB Microchip usb5744 hub with SMBus support"
+	depends on (USB_ONBOARD_DEV && I2C=y) || (USB_ONBOARD_DEV=m && I2C=m)
+	help
+	  Say Y here if you want to support onboard USB Microchip usb5744
+	  hub that requires SMBus initialization.
+
+	  This options enables usb5744 i2c default initialization sequence
+	  during hub start-up configuration stage. It is must to enable this
+	  option on AMD Kria KR260 Robotics Starter Kit as this hub is
+	  connected to USB-SD converter which mounts the root filesystem.

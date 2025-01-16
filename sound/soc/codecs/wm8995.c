@@ -541,7 +541,7 @@ static int check_clk_sys(struct snd_soc_dapm_widget *source,
 		clk = "AIF2CLK";
 	else
 		clk = "AIF1CLK";
-	return !strcmp(source->name, clk);
+	return !snd_soc_dapm_widget_name_cmp(source, clk);
 }
 
 static int wm8995_put_class_w(struct snd_kcontrol *kcontrol,
@@ -2258,7 +2258,7 @@ static int wm8995_i2c_probe(struct i2c_client *i2c)
 }
 
 static const struct i2c_device_id wm8995_i2c_id[] = {
-	{"wm8995", 0},
+	{"wm8995"},
 	{}
 };
 

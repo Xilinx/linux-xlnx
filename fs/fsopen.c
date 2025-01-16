@@ -78,7 +78,6 @@ static int fscontext_release(struct inode *inode, struct file *file)
 const struct file_operations fscontext_fops = {
 	.read		= fscontext_read,
 	.release	= fscontext_release,
-	.llseek		= no_llseek,
 };
 
 /*
@@ -219,10 +218,6 @@ static int vfs_cmd_create(struct fs_context *fc, bool exclusive)
 
 	if (!mount_capable(fc))
 		return -EPERM;
-
-	/* require the new mount api */
-	if (exclusive && fc->ops == &legacy_fs_context_ops)
-		return -EOPNOTSUPP;
 
 	fc->phase = FS_CONTEXT_CREATING;
 	fc->exclusive = exclusive;
@@ -398,19 +393,20 @@ SYSCALL_DEFINE5(fsconfig,
 	}
 
 	f = fdget(fd);
-	if (!f.file)
+	if (!fd_file(f))
 		return -EBADF;
 	ret = -EINVAL;
-	if (f.file->f_op != &fscontext_fops)
+	if (fd_file(f)->f_op != &fscontext_fops)
 		goto out_f;
 
-	fc = f.file->private_data;
+	fc = fd_file(f)->private_data;
 	if (fc->ops == &legacy_fs_context_ops) {
 		switch (cmd) {
 		case FSCONFIG_SET_BINARY:
 		case FSCONFIG_SET_PATH:
 		case FSCONFIG_SET_PATH_EMPTY:
 		case FSCONFIG_SET_FD:
+		case FSCONFIG_CMD_CREATE_EXCL:
 			ret = -EOPNOTSUPP;
 			goto out_f;
 		}
@@ -451,7 +447,7 @@ SYSCALL_DEFINE5(fsconfig,
 		fallthrough;
 	case FSCONFIG_SET_PATH:
 		param.type = fs_value_is_filename;
-		param.name = getname_flags(_value, lookup_flags, NULL);
+		param.name = getname_flags(_value, lookup_flags);
 		if (IS_ERR(param.name)) {
 			ret = PTR_ERR(param.name);
 			goto out_key;
@@ -465,6 +461,7 @@ SYSCALL_DEFINE5(fsconfig,
 		param.file = fget(aux);
 		if (!param.file)
 			goto out_key;
+		param.dirfd = aux;
 		break;
 	default:
 		break;

@@ -15,10 +15,10 @@
 #include <linux/delay.h>
 #include <linux/pm.h>
 #include <linux/i2c.h>
+#include <linux/of.h>
 #include <linux/regmap.h>
 #include <linux/spi/spi.h>
 #include <linux/slab.h>
-#include <linux/of_device.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
@@ -802,8 +802,8 @@ static int wm8750_i2c_probe(struct i2c_client *i2c)
 }
 
 static const struct i2c_device_id wm8750_i2c_id[] = {
-	{ "wm8750", 0 },
-	{ "wm8987", 0 },
+	{ "wm8750" },
+	{ "wm8987" },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, wm8750_i2c_id);

@@ -158,8 +158,6 @@
 #define LOCOMO_LPT_TOH(TOH)	((TOH & 0x7) << 4)
 #define LOCOMO_LPT_TOL(TOL)	((TOL & 0x7))
 
-extern struct bus_type locomo_bus_type;
-
 #define LOCOMO_DEVID_KEYBOARD	0
 #define LOCOMO_DEVID_FRONTLIGHT	1
 #define LOCOMO_DEVID_BACKLIGHT	2
@@ -191,7 +189,7 @@ struct locomo_driver {
 	void (*remove)(struct locomo_dev *);
 };
 
-#define LOCOMO_DRV(_d)	container_of((_d), struct locomo_driver, drv)
+#define LOCOMO_DRV(_d)	container_of_const((_d), struct locomo_driver, drv)
 
 #define LOCOMO_DRIVER_NAME(_ldev) ((_ldev)->dev.driver->name)
 

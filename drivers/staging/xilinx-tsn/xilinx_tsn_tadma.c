@@ -21,6 +21,7 @@
 #include <linux/of_irq.h>
 #include <linux/list.h>
 #include <linux/hash.h>
+#include <linux/platform_device.h>
 #include "xilinx_axienet_tsn.h"
 #include "xilinx_tsn_tadma.h"
 

@@ -41,10 +41,33 @@
 
 		vin-supply = <&vph_ext>;
 	};
+
+	reg_2v952_vcc: regulator-2v952-vcc {
+		compatible = "regulator-gpio";
+		regulator-name = "2v952_vcc";
+		regulator-min-microvolt = <1650000>;
+		regulator-max-microvolt = <3600000>;
+		enable-gpios = <&tlmm 102 GPIO_ACTIVE_HIGH>;
+		gpios = <&tlmm 84 GPIO_ACTIVE_HIGH>;
+		states = <1650000 0>, <3600000 1>;
+		startup-delay-us = <5000>;
+		enable-active-high;
+		regulator-boot-on;
+
+		vin-supply = <&vph_ext>;
+	};
+
+	reg_2v95_vdd: regulator-2v95-vdd {
+		compatible = "regulator-fixed";
+		regulator-name = "2v95_vdd";
+		regulator-min-microvolt = <2950000>;
+		regulator-max-microvolt = <2950000>;
+		vin-supply = <&reg_2v952_vcc>;
+	};
 };
 
 &apps_rsc {
-	pmx75-rpmh-regulators {
+	regulators-0 {
 		compatible = "qcom,pmx75-rpmh-regulators";
 		qcom,pmic-id = "b";
 
@@ -250,14 +273,71 @@
 	stdout-path = "serial0:115200n8";
 };
 
+&pm7550ba_eusb2_repeater {
+	vdd18-supply = <&vreg_l5b_1p776>;
+	vdd3-supply = <&vreg_l10b_3p08>;
+};
+
 &qupv3_id_0 {
+	status = "okay";
+};
+
+&remoteproc_mpss {
+	firmware-name = "qcom/sdx75/modem.mbn",
+			"qcom/sdx75/modem_dtb.mbn";
+	status = "okay";
+};
+
+&sdhc {
+	cd-gpios = <&tlmm 103 GPIO_ACTIVE_LOW>;
+	vmmc-supply = <&reg_2v95_vdd>;
+	vqmmc-supply = <&reg_2v952_vcc>;
+	bus-width = <4>;
+	no-sdio;
+	no-mmc;
+
+	pinctrl-0 = <&sdc1_default &sd_cd>;
+	pinctrl-1 = <&sdc1_sleep &sd_cd>;
+	pinctrl-names = "default", "sleep";
+
 	status = "okay";
 };
 
 &tlmm {
 	gpio-reserved-ranges = <110 6>;
+
+	sd_cd: sd-cd-state {
+		pins = "gpio103";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-up;
+	};
 };
 
 &uart1 {
+	status = "okay";
+};
+
+&usb {
+	status = "okay";
+};
+
+&usb_dwc3 {
+	dr_mode = "peripheral";
+};
+
+&usb_hsphy {
+	vdd-supply = <&vreg_l4b_0p88>;
+	vdda12-supply = <&vreg_l1b_1p2>;
+
+	phys = <&pm7550ba_eusb2_repeater>;
+
+	status = "okay";
+};
+
+&usb_qmpphy {
+	vdda-phy-supply = <&vreg_l4b_0p88>;
+	vdda-pll-supply = <&vreg_l1b_1p2>;
+
 	status = "okay";
 };

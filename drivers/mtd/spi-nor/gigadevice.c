@@ -75,7 +75,7 @@ static int spi_nor_gigadevice_octal_dtr_enable(struct spi_nor *nor, bool enable)
 		SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_RDID, 1),
 			   SPI_MEM_OP_NO_ADDR,
 			   SPI_MEM_OP_DUMMY(enable ? 8 : 0, 1),
-			   SPI_MEM_OP_DATA_IN(round_up(nor->info->id_len, 2),
+			   SPI_MEM_OP_DATA_IN(round_up(nor->info->id->len, 2),
 					      buf, 1));
 
 	if (enable)
@@ -85,7 +85,7 @@ static int spi_nor_gigadevice_octal_dtr_enable(struct spi_nor *nor, bool enable)
 	if (ret)
 		return ret;
 
-	if (memcmp(buf, nor->info->id, nor->info->id_len))
+	if (memcmp(buf, nor->info->id->bytes, nor->info->id->len))
 		return -EINVAL;
 
 	return 0;
@@ -139,12 +139,20 @@ static int gd25lx256e_post_sfdp_fixup(struct spi_nor *nor)
 	return 0;
 }
 
-static void gd25b512_default_init(struct spi_nor *nor)
+static void gd25lx512_default_init(struct spi_nor *nor)
 {
 	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
 
 	nor->flags &= ~SNOR_F_HAS_16BIT_SR;
 	params->set_octal_dtr = spi_nor_gigadevice_octal_dtr_enable;
+	params->set_4byte_addr_mode = gd25lx256e_set_4byte_addr_mode;
+}
+
+static void gd25b512_default_init(struct spi_nor *nor)
+{
+	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
+
+	nor->flags &= ~SNOR_F_HAS_16BIT_SR;
 	params->set_4byte_addr_mode = gd25lx256e_set_4byte_addr_mode;
 }
 
@@ -158,8 +166,8 @@ static struct spi_nor_fixups gd25b512_fixups = {
 };
 
 static struct spi_nor_fixups gd25lx512_fixups = {
-	.default_init = gd25b512_default_init,
-	.post_sfdp = gd25lx256e_post_sfdp_fixup,
+	.default_init = gd25lx512_default_init,
+	.post_sfdp = gd25lx256e_post_sfdp_fixup
 };
 
 static int
@@ -190,77 +198,108 @@ static const struct spi_nor_fixups gd25q256_fixups = {
 };
 
 static const struct flash_info gigadevice_nor_parts[] = {
-	{ "gd25q16", INFO(0xc84015, 0, 64 * 1024,  32)
-		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB)
-		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ |
-			      SPI_NOR_QUAD_READ) },
-	{ "gd25q32", INFO(0xc84016, 0, 64 * 1024,  64)
-		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB)
-		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ |
-			      SPI_NOR_QUAD_READ) },
-	{ "gd25lq32", INFO(0xc86016, 0, 64 * 1024, 64)
-		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB)
-		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ |
-			      SPI_NOR_QUAD_READ) },
-	{ "gd25q64", INFO(0xc84017, 0, 64 * 1024, 128)
-		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB)
-		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ |
-			      SPI_NOR_QUAD_READ) },
-	{ "gd25lq64c", INFO(0xc86017, 0, 64 * 1024, 128)
-		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB)
-		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ |
-			      SPI_NOR_QUAD_READ) },
-	{ "gd25lq128d", INFO(0xc86018, 0, 64 * 1024, 256)
-		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB)
-		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ |
-			      SPI_NOR_QUAD_READ) },
-	{ "gd25q128", INFO(0xc84018, 0, 64 * 1024, 256)
-		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB)
-		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ |
-			      SPI_NOR_QUAD_READ) },
-	{ "gd25q256", INFO(0xc84019, 0, 64 * 1024, 512)
-		PARSE_SFDP
-		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6)
-		FIXUP_FLAGS(SPI_NOR_4B_OPCODES)
-		.fixups = &gd25q256_fixups },
-	{ "gd25lx256e",  INFO(0xc86819, 0, 64 * 1024, 512)
-		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
-		      SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5)
-		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_OCTAL_READ |
-			   SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP)
-		FIXUP_FLAGS(SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE)
-		MFR_FLAGS(USE_FSR)
-		.fixups = &gd25lx256e_fixups },
-	{ "gd25b512", INFO(0xc8471a, 0, 64 * 1024, 1024)
-		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
-		      SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5)
-		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ)
-		FIXUP_FLAGS(SPI_NOR_4B_OPCODES)
-		.fixups = &gd25b512_fixups},
-	{ "gd25lx512m", INFO(0xc8681a, 0, 64 * 1024, 1024)
-		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
-		      SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5)
-		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_OCTAL_READ |
-			   SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP)
-		FIXUP_FLAGS(SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE)
-		MFR_FLAGS(USE_FSR)
-		.fixups = &gd25lx512_fixups },
-	{ "gd55lx01g", INFO(0xc8681b, 0, 64 * 1024, 2048)
-		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
-		      SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5)
-		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_OCTAL_READ |
-			   SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP)
-		FIXUP_FLAGS(SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE)
-		MFR_FLAGS(USE_FSR)
-		.fixups = &gd25lx512_fixups },
-	{ "gd55lx02g", INFO(0xc8681c, 0, 64 * 1024, 4096)
-		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
-		      SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5)
-		NO_SFDP_FLAGS(SECT_4K | SPI_NOR_OCTAL_READ |
-			   SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP)
-		FIXUP_FLAGS(SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE)
-		MFR_FLAGS(USE_FSR)
-		.fixups = &gd25lx512_fixups },
+	{
+		.id = SNOR_ID(0xc8, 0x40, 0x15),
+		.name = "gd25q16",
+		.size = SZ_2M,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
+	}, {
+		.id = SNOR_ID(0xc8, 0x40, 0x16),
+		.name = "gd25q32",
+		.size = SZ_4M,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
+	}, {
+		.id = SNOR_ID(0xc8, 0x40, 0x17),
+		.name = "gd25q64",
+		.size = SZ_8M,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
+	}, {
+		.id = SNOR_ID(0xc8, 0x40, 0x18),
+		.name = "gd25q128",
+		.size = SZ_16M,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
+	}, {
+		.id = SNOR_ID(0xc8, 0x40, 0x19),
+		.name = "gd25q256",
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6,
+		.fixups = &gd25q256_fixups,
+		.fixup_flags = SPI_NOR_4B_OPCODES,
+	}, {
+		.id = SNOR_ID(0xc8, 0x60, 0x16),
+		.name = "gd25lq32",
+		.size = SZ_4M,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
+	}, {
+		.id = SNOR_ID(0xc8, 0x60, 0x17),
+		.name = "gd25lq64c",
+		.size = SZ_8M,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
+	}, {
+		.id = SNOR_ID(0xc8, 0x60, 0x18),
+		.name = "gd25lq128d",
+		.size = SZ_16M,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
+			   SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
+	}, {
+		.id = SNOR_ID(0xc8, 0x68, 0x19),
+		.name = "gd25lx256e",
+		.size = SZ_32M,
+		.mfr_flags = USE_FSR,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
+			   SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
+		.fixup_flags = SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE,
+		.fixups = &gd25lx256e_fixups,
+	}, {
+		.id = SNOR_ID(0xc8, 0x68, 0x1a),
+		.name = "gd25lx512m",
+		.size = SZ_64M,
+		.mfr_flags = USE_FSR,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
+				SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
+					SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
+		.fixup_flags = SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE,
+		.fixups = &gd25lx512_fixups,
+	}, {
+		.id = SNOR_ID(0xc8, 0x68, 0x1b),
+		.name = "gd55lx01g",
+		.size = SZ_128M,
+		.mfr_flags = USE_FSR,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
+				SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
+					SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
+		.fixup_flags = SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE,
+		.fixups = &gd25lx512_fixups,
+	}, {
+		.id = SNOR_ID(0xc8, 0x68, 0x1c),
+		.name = "gd55lx02g",
+		.size = SZ_128M,
+		.mfr_flags = USE_FSR,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
+				SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
+					SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
+		.fixup_flags = SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE,
+		.fixups = &gd25lx512_fixups,
+	}, {
+		.id = SNOR_ID(0xc8, 0x47, 0x1a),
+		.name = "gd25b512",
+		.size = SZ_64M,
+		.mfr_flags = USE_FSR,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
+		      SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
+		.fixup_flags = SPI_NOR_4B_OPCODES,
+		.fixups = &gd25b512_fixups,
+	}
 };
 
 const struct spi_nor_manufacturer spi_nor_gigadevice = {

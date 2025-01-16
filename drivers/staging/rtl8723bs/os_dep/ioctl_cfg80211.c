@@ -7,7 +7,6 @@
 
 #include <linux/etherdevice.h>
 #include <drv_types.h>
-#include <rtw_debug.h>
 #include <linux/jiffies.h>
 
 #include <rtw_wifi_regd.h>
@@ -884,7 +883,7 @@ static int cfg80211_rtw_add_key(struct wiphy *wiphy, struct net_device *ndev,
 		goto addkey_end;
 	}
 
-	strncpy((char *)param->u.crypt.alg, alg_name, IEEE_CRYPT_ALG_NAME_LEN);
+	strscpy(param->u.crypt.alg, alg_name);
 
 	if (!mac_addr || is_broadcast_ether_addr(mac_addr))
 		param->u.crypt.set_tx = 0; /* for wpa/wpa2 group key */
@@ -1259,8 +1258,7 @@ static int cfg80211_rtw_scan(struct wiphy *wiphy
 		goto check_need_indicate_scan_done;
 	}
 
-	ssid = kzalloc(RTW_SSID_SCAN_AMOUNT * sizeof(struct ndis_802_11_ssid),
-		       GFP_KERNEL);
+	ssid = kcalloc(RTW_SSID_SCAN_AMOUNT, sizeof(*ssid), GFP_KERNEL);
 	if (!ssid) {
 		ret = -ENOMEM;
 		goto check_need_indicate_scan_done;
@@ -2144,8 +2142,7 @@ static int rtw_cfg80211_add_monitor_if(struct adapter *padapter, char *name, str
 	}
 
 	mon_ndev->type = ARPHRD_IEEE80211_RADIOTAP;
-	strncpy(mon_ndev->name, name, IFNAMSIZ);
-	mon_ndev->name[IFNAMSIZ - 1] = 0;
+	strscpy(mon_ndev->name, name);
 	mon_ndev->needs_free_netdev = true;
 	mon_ndev->priv_destructor = rtw_ndev_destructor;
 
@@ -2317,13 +2314,14 @@ static int cfg80211_rtw_start_ap(struct wiphy *wiphy, struct net_device *ndev,
 	return ret;
 }
 
-static int cfg80211_rtw_change_beacon(struct wiphy *wiphy,
-				      struct net_device *ndev,
-				      struct cfg80211_beacon_data *info)
+static int cfg80211_rtw_change_beacon(struct wiphy *wiphy, struct net_device *ndev,
+		struct cfg80211_ap_update *info)
 {
 	struct adapter *adapter = rtw_netdev_priv(ndev);
 
-	return rtw_add_beacon(adapter, info->head, info->head_len, info->tail, info->tail_len);
+	return rtw_add_beacon(adapter, info->beacon.head,
+			      info->beacon.head_len, info->beacon.tail,
+			      info->beacon.tail_len);
 }
 
 static int cfg80211_rtw_stop_ap(struct wiphy *wiphy, struct net_device *ndev,
@@ -2550,9 +2548,7 @@ static int cfg80211_rtw_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
 	bool ack = true;
 	u8 tx_ch = (u8)ieee80211_frequency_to_channel(chan->center_freq);
 	u8 category, action;
-	int type = (-1);
 	struct adapter *padapter;
-	struct rtw_wdev_priv *pwdev_priv;
 
 	if (!ndev) {
 		ret = -EINVAL;
@@ -2560,7 +2556,6 @@ static int cfg80211_rtw_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
 	}
 
 	padapter = rtw_netdev_priv(ndev);
-	pwdev_priv = adapter_wdev_data(padapter);
 
 	/* cookie generation */
 	*cookie = (unsigned long)buf;
@@ -2582,19 +2577,6 @@ static int cfg80211_rtw_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
 		tx_ret = _cfg80211_rtw_mgmt_tx(padapter, tx_ch, buf, len);
 	} while (dump_cnt < dump_limit && tx_ret != _SUCCESS);
 
-	switch (type) {
-	case P2P_GO_NEGO_CONF:
-		rtw_clear_scan_deny(padapter);
-		break;
-	case P2P_INVIT_RESP:
-		if (pwdev_priv->invit_info.flags & BIT(0) && pwdev_priv->invit_info.status == 0) {
-			rtw_set_scan_deny(padapter, 5000);
-			rtw_pwr_wakeup_ex(padapter, 5000);
-			rtw_clear_scan_deny(padapter);
-		}
-		break;
-	}
-
 cancel_ps_deny:
 	rtw_ps_deny_cancel(padapter, PS_DENY_MGNT_TX);
 exit:
@@ -2603,7 +2585,6 @@ exit:
 
 static void rtw_cfg80211_init_ht_capab(struct ieee80211_sta_ht_cap *ht_cap, enum nl80211_band band)
 {
-#define MAX_BIT_RATE_40MHZ_MCS15	300	/* Mbps */
 #define MAX_BIT_RATE_40MHZ_MCS7		150	/* Mbps */
 
 	ht_cap->ht_supported = true;

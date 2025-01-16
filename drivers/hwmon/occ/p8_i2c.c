@@ -8,7 +8,7 @@
 #include <linux/jiffies.h>
 #include <linux/module.h>
 #include <linux/sched.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 #include "common.h"
 
@@ -241,7 +241,6 @@ static const struct of_device_id p8_i2c_occ_of_match[] = {
 MODULE_DEVICE_TABLE(of, p8_i2c_occ_of_match);
 
 static struct i2c_driver p8_i2c_occ_driver = {
-	.class = I2C_CLASS_HWMON,
 	.driver = {
 		.name = "occ-hwmon",
 		.of_match_table = p8_i2c_occ_of_match,

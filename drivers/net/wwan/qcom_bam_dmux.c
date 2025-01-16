@@ -823,17 +823,17 @@ static int bam_dmux_probe(struct platform_device *pdev)
 	ret = devm_request_threaded_irq(dev, pc_ack_irq, NULL, bam_dmux_pc_ack_irq,
 					IRQF_ONESHOT, NULL, dmux);
 	if (ret)
-		return ret;
+		goto err_disable_pm;
 
 	ret = devm_request_threaded_irq(dev, dmux->pc_irq, NULL, bam_dmux_pc_irq,
 					IRQF_ONESHOT, NULL, dmux);
 	if (ret)
-		return ret;
+		goto err_disable_pm;
 
 	ret = irq_get_irqchip_state(dmux->pc_irq, IRQCHIP_STATE_LINE_LEVEL,
 				    &dmux->pc_state);
 	if (ret)
-		return ret;
+		goto err_disable_pm;
 
 	/* Check if remote finished initialization before us */
 	if (dmux->pc_state) {
@@ -844,9 +844,14 @@ static int bam_dmux_probe(struct platform_device *pdev)
 	}
 
 	return 0;
+
+err_disable_pm:
+	pm_runtime_disable(dev);
+	pm_runtime_dont_use_autosuspend(dev);
+	return ret;
 }
 
-static int bam_dmux_remove(struct platform_device *pdev)
+static void bam_dmux_remove(struct platform_device *pdev)
 {
 	struct bam_dmux *dmux = platform_get_drvdata(pdev);
 	struct device *dev = dmux->dev;
@@ -877,8 +882,6 @@ static int bam_dmux_remove(struct platform_device *pdev)
 	disable_irq(dmux->pc_irq);
 	bam_dmux_power_off(dmux);
 	bam_dmux_free_skbs(dmux->tx_skbs, DMA_TO_DEVICE);
-
-	return 0;
 }
 
 static const struct dev_pm_ops bam_dmux_pm_ops = {
@@ -893,7 +896,7 @@ MODULE_DEVICE_TABLE(of, bam_dmux_of_match);
 
 static struct platform_driver bam_dmux_driver = {
 	.probe = bam_dmux_probe,
-	.remove = bam_dmux_remove,
+	.remove_new = bam_dmux_remove,
 	.driver = {
 		.name = "bam-dmux",
 		.pm = &bam_dmux_pm_ops,

@@ -35,10 +35,10 @@ DEFINE_STATIC_KEY_FALSE(mte_async_or_asymm_mode);
 EXPORT_SYMBOL_GPL(mte_async_or_asymm_mode);
 #endif
 
-void mte_sync_tags(pte_t pte)
+void mte_sync_tags(pte_t pte, unsigned int nr_pages)
 {
 	struct page *page = pte_page(pte);
-	long i, nr_pages = compound_nr(page);
+	unsigned int i;
 
 	/* if PG_mte_tagged is set, tags have already been initialised */
 	for (i = 0; i < nr_pages; i++, page++) {
@@ -67,7 +67,7 @@ int memcmp_pages(struct page *page1, struct page *page2)
 	/*
 	 * If the page content is identical but at least one of the pages is
 	 * tagged, return non-zero to avoid KSM merging. If only one of the
-	 * pages is tagged, set_pte_at() may zero or change the tags of the
+	 * pages is tagged, __set_ptes() may zero or change the tags of the
 	 * other page via mte_sync_tags().
 	 */
 	if (page_mte_tagged(page1) || page_mte_tagged(page2))
@@ -411,8 +411,8 @@ static int __access_remote_tags(struct mm_struct *mm, unsigned long addr,
 		struct page *page = get_user_page_vma_remote(mm, addr,
 							     gup_flags, &vma);
 
-		if (IS_ERR_OR_NULL(page)) {
-			err = page == NULL ? -EIO : PTR_ERR(page);
+		if (IS_ERR(page)) {
+			err = PTR_ERR(page);
 			break;
 		}
 
@@ -582,12 +582,9 @@ subsys_initcall(register_mte_tcf_preferred_sysctl);
 size_t mte_probe_user_range(const char __user *uaddr, size_t size)
 {
 	const char __user *end = uaddr + size;
-	int err = 0;
 	char val;
 
-	__raw_get_user(val, uaddr, err);
-	if (err)
-		return size;
+	__raw_get_user(val, uaddr, efault);
 
 	uaddr = PTR_ALIGN(uaddr, MTE_GRANULE_SIZE);
 	while (uaddr < end) {
@@ -595,12 +592,13 @@ size_t mte_probe_user_range(const char __user *uaddr, size_t size)
 		 * A read is sufficient for mte, the caller should have probed
 		 * for the pte write permission if required.
 		 */
-		__raw_get_user(val, uaddr, err);
-		if (err)
-			return end - uaddr;
+		__raw_get_user(val, uaddr, efault);
 		uaddr += MTE_GRANULE_SIZE;
 	}
 	(void)val;
 
 	return 0;
+
+efault:
+	return end - uaddr;
 }

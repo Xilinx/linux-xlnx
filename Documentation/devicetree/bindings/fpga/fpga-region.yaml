@@ -279,6 +279,21 @@ properties:
       Set if partial reconfiguration is to be done, otherwise full
       reconfiguration is done.
 
+  userkey-encrypted-fpga-config:
+    type: boolean
+    description:
+      Set if the bitstream is encrypted with user key.
+
+  ddrmem-authenticated-fpga-config:
+    type: boolean
+    description:
+      Set if do bitstream authentication using DDR memory.
+
+  securemem-authenticated-fpga-config:
+    type: boolean
+    description:
+      Set if do bitstream authenticated using secure memory.
+
   region-freeze-timeout-us:
     description:
       The maximum time in microseconds to wait for bridges to successfully

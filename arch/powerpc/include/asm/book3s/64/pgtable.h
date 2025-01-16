@@ -17,8 +17,6 @@
 #define _PAGE_EXEC		0x00001 /* execute permission */
 #define _PAGE_WRITE		0x00002 /* write access allowed */
 #define _PAGE_READ		0x00004	/* read access allowed */
-#define _PAGE_RW		(_PAGE_READ | _PAGE_WRITE)
-#define _PAGE_RWX		(_PAGE_READ | _PAGE_WRITE | _PAGE_EXEC)
 #define _PAGE_PRIVILEGED	0x00008 /* kernel access only */
 #define _PAGE_SAO		0x00010 /* Strong access order */
 #define _PAGE_NON_IDEMPOTENT	0x00020 /* non idempotent memory */
@@ -136,23 +134,7 @@
 #define _PAGE_BASE_NC	(_PAGE_PRESENT | _PAGE_ACCESSED)
 #define _PAGE_BASE	(_PAGE_BASE_NC)
 
-/* Permission masks used to generate the __P and __S table,
- *
- * Note:__pgprot is defined in arch/powerpc/include/asm/page.h
- *
- * Write permissions imply read permissions for now (we could make write-only
- * pages on BookE but we don't bother for now). Execute permission control is
- * possible on platforms that define _PAGE_EXEC
- */
-#define PAGE_NONE	__pgprot(_PAGE_BASE | _PAGE_PRIVILEGED)
-#define PAGE_SHARED	__pgprot(_PAGE_BASE | _PAGE_RW)
-#define PAGE_SHARED_X	__pgprot(_PAGE_BASE | _PAGE_RW | _PAGE_EXEC)
-#define PAGE_COPY	__pgprot(_PAGE_BASE | _PAGE_READ)
-#define PAGE_COPY_X	__pgprot(_PAGE_BASE | _PAGE_READ | _PAGE_EXEC)
-#define PAGE_READONLY	__pgprot(_PAGE_BASE | _PAGE_READ)
-#define PAGE_READONLY_X	__pgprot(_PAGE_BASE | _PAGE_READ | _PAGE_EXEC)
-/* Radix only, Hash uses PAGE_READONLY_X + execute-only pkey instead */
-#define PAGE_EXECONLY	__pgprot(_PAGE_BASE | _PAGE_EXEC)
+#include <asm/pgtable-masks.h>
 
 /* Permission masks used for kernel mappings */
 #define PAGE_KERNEL	__pgprot(_PAGE_BASE | _PAGE_KERNEL_RW)
@@ -280,6 +262,36 @@ extern unsigned long __kernel_io_end;
 
 extern struct page *vmemmap;
 extern unsigned long pci_io_base;
+
+#define pmd_leaf pmd_leaf
+static inline bool pmd_leaf(pmd_t pmd)
+{
+	return !!(pmd_raw(pmd) & cpu_to_be64(_PAGE_PTE));
+}
+
+#define pud_leaf pud_leaf
+static inline bool pud_leaf(pud_t pud)
+{
+	return !!(pud_raw(pud) & cpu_to_be64(_PAGE_PTE));
+}
+
+#define pmd_leaf_size pmd_leaf_size
+static inline unsigned long pmd_leaf_size(pmd_t pmd)
+{
+	if (IS_ENABLED(CONFIG_PPC_4K_PAGES) && !radix_enabled())
+		return SZ_16M;
+	else
+		return PMD_SIZE;
+}
+
+#define pud_leaf_size pud_leaf_size
+static inline unsigned long pud_leaf_size(pud_t pud)
+{
+	if (IS_ENABLED(CONFIG_PPC_4K_PAGES) && !radix_enabled())
+		return SZ_16G;
+	else
+		return PUD_SIZE;
+}
 #endif /* __ASSEMBLY__ */
 
 #include <asm/book3s/64/hash.h>
@@ -291,11 +303,9 @@ extern unsigned long pci_io_base;
 #define  MAX_PHYSMEM_BITS	R_MAX_PHYSMEM_BITS
 #endif
 
-
+/* hash 4k can't share hugetlb and also doesn't support THP */
 #ifdef CONFIG_PPC_64K_PAGES
 #include <asm/book3s/64/pgtable-64k.h>
-#else
-#include <asm/book3s/64/pgtable-4k.h>
 #endif
 
 #include <asm/barrier.h>
@@ -316,34 +326,9 @@ extern unsigned long pci_io_base;
 #define IOREMAP_START	(ioremap_bot)
 #define IOREMAP_END	(KERN_IO_END - FIXADDR_SIZE)
 #define FIXADDR_SIZE	SZ_32M
+#define FIXADDR_TOP	(IOREMAP_END + FIXADDR_SIZE)
 
 #ifndef __ASSEMBLY__
-
-/*
- * This is the default implementation of various PTE accessors, it's
- * used in all cases except Book3S with 64K pages where we have a
- * concept of sub-pages
- */
-#ifndef __real_pte
-
-#define __real_pte(e, p, o)		((real_pte_t){(e)})
-#define __rpte_to_pte(r)	((r).pte)
-#define __rpte_to_hidx(r,index)	(pte_val(__rpte_to_pte(r)) >> H_PAGE_F_GIX_SHIFT)
-
-#define pte_iterate_hashed_subpages(rpte, psize, va, index, shift)       \
-	do {							         \
-		index = 0;					         \
-		shift = mmu_psize_defs[psize].shift;		         \
-
-#define pte_iterate_hashed_end() } while(0)
-
-/*
- * We expect this to be called only for user addresses or kernel virtual
- * addresses other than the linear mapping.
- */
-#define pte_pagesize_index(mm, addr, pte)	MMU_PAGE_4K
-
-#endif /* __real_pte */
 
 static inline unsigned long pte_update(struct mm_struct *mm, unsigned long addr,
 				       pte_t *ptep, unsigned long clr,
@@ -543,8 +528,8 @@ static inline bool pte_user(pte_t pte)
 static inline bool pte_access_permitted(pte_t pte, bool write)
 {
 	/*
-	 * _PAGE_READ is needed for any access and will be
-	 * cleared for PROT_NONE
+	 * _PAGE_READ is needed for any access and will be cleared for
+	 * PROT_NONE. Execute-only mapping via PROT_EXEC also returns false.
 	 */
 	if (!pte_present(pte) || !pte_user(pte) || !pte_read(pte))
 		return false;
@@ -629,16 +614,6 @@ static inline pte_t pte_mkdevmap(pte_t pte)
 	return __pte_raw(pte_raw(pte) | cpu_to_be64(_PAGE_SPECIAL | _PAGE_DEVMAP));
 }
 
-static inline pte_t pte_mkprivileged(pte_t pte)
-{
-	return __pte_raw(pte_raw(pte) | cpu_to_be64(_PAGE_PRIVILEGED));
-}
-
-static inline pte_t pte_mkuser(pte_t pte)
-{
-	return __pte_raw(pte_raw(pte) & cpu_to_be64(~_PAGE_PRIVILEGED));
-}
-
 /*
  * This is potentially called with a pmd as the argument, in which case it's not
  * safe to check _PAGE_DEVMAP unless we also confirm that _PAGE_PTE is set.
@@ -647,7 +622,7 @@ static inline pte_t pte_mkuser(pte_t pte)
  */
 static inline int pte_devmap(pte_t pte)
 {
-	u64 mask = cpu_to_be64(_PAGE_DEVMAP | _PAGE_PTE);
+	__be64 mask = cpu_to_be64(_PAGE_DEVMAP | _PAGE_PTE);
 
 	return (pte_raw(pte) & mask) == mask;
 }
@@ -1014,8 +989,6 @@ static inline pmd_t *pud_pgtable(pud_t pud)
 	return (pmd_t *)__va(pud_val(pud) & ~PUD_MASKED_BITS);
 }
 
-#define pte_ERROR(e) \
-	pr_err("%s:%d: bad pte %08lx.\n", __FILE__, __LINE__, pte_val(e))
 #define pmd_ERROR(e) \
 	pr_err("%s:%d: bad pmd %08lx.\n", __FILE__, __LINE__, pmd_val(e))
 #define pud_ERROR(e) \
@@ -1053,16 +1026,6 @@ static inline void vmemmap_remove_mapping(unsigned long start,
 	if (radix_enabled())
 		return radix__vmemmap_remove_mapping(start, page_size);
 	return hash__vmemmap_remove_mapping(start, page_size);
-}
-#endif
-
-#if defined(CONFIG_DEBUG_PAGEALLOC) || defined(CONFIG_KFENCE)
-static inline void __kernel_map_pages(struct page *page, int numpages, int enable)
-{
-	if (radix_enabled())
-		radix__kernel_map_pages(page, numpages, enable);
-	else
-		hash__kernel_map_pages(page, numpages, enable);
 }
 #endif
 
@@ -1135,6 +1098,7 @@ extern pmd_t pfn_pmd(unsigned long pfn, pgprot_t pgprot);
 extern pud_t pfn_pud(unsigned long pfn, pgprot_t pgprot);
 extern pmd_t mk_pmd(struct page *page, pgprot_t pgprot);
 extern pmd_t pmd_modify(pmd_t pmd, pgprot_t newprot);
+extern pud_t pud_modify(pud_t pud, pgprot_t newprot);
 extern void set_pmd_at(struct mm_struct *mm, unsigned long addr,
 		       pmd_t *pmdp, pmd_t pmd);
 extern void set_pud_at(struct mm_struct *mm, unsigned long addr,
@@ -1184,20 +1148,6 @@ pud_hugepage_update(struct mm_struct *mm, unsigned long addr, pud_t *pudp,
 		return radix__pud_hugepage_update(mm, addr, pudp, clr, set);
 	BUG();
 	return pud_val(*pudp);
-}
-
-/*
- * returns true for pmd migration entries, THP, devmap, hugetlb
- * But compile time dependent on THP config
- */
-static inline int pmd_large(pmd_t pmd)
-{
-	return !!(pmd_raw(pmd) & cpu_to_be64(_PAGE_PTE));
-}
-
-static inline int pud_large(pud_t pud)
-{
-	return !!(pud_raw(pud) & cpu_to_be64(_PAGE_PTE));
 }
 
 /*
@@ -1409,6 +1359,8 @@ static inline pgtable_t pgtable_trans_huge_withdraw(struct mm_struct *mm,
 #define __HAVE_ARCH_PMDP_INVALIDATE
 extern pmd_t pmdp_invalidate(struct vm_area_struct *vma, unsigned long address,
 			     pmd_t *pmdp);
+extern pud_t pudp_invalidate(struct vm_area_struct *vma, unsigned long address,
+			     pud_t *pudp);
 
 #define pmd_move_must_withdraw pmd_move_must_withdraw
 struct spinlock;
@@ -1477,23 +1429,6 @@ static inline bool is_pte_rw_upgrade(unsigned long old_val, unsigned long new_va
 		return true;
 
 	return false;
-}
-
-/*
- * Like pmd_huge() and pmd_large(), but works regardless of config options
- */
-#define pmd_is_leaf pmd_is_leaf
-#define pmd_leaf pmd_is_leaf
-static inline bool pmd_is_leaf(pmd_t pmd)
-{
-	return !!(pmd_raw(pmd) & cpu_to_be64(_PAGE_PTE));
-}
-
-#define pud_is_leaf pud_is_leaf
-#define pud_leaf pud_is_leaf
-static inline bool pud_is_leaf(pud_t pud)
-{
-	return !!(pud_raw(pud) & cpu_to_be64(_PAGE_PTE));
 }
 
 #endif /* __ASSEMBLY__ */

@@ -1,6 +1,7 @@
 .build:
   extends:
     - .build-rules
+    - .container+build-rules
   stage: build
   artifacts:
     paths:
@@ -105,6 +106,7 @@ build-nodebugfs:arm64:
   extends: .build:arm64
   variables:
     DISABLE_KCONFIGS: "DEBUG_FS"
+    ENABLE_KCONFIGS: "EXPERT DRM_MSM_VALIDATE_XML"
 
 build:x86_64:
   extends: .build:x86_64

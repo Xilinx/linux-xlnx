@@ -18,6 +18,7 @@
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/power/xlnx-zynqmp-power.h>
 #include <dt-bindings/reset/xlnx-zynqmp-resets.h>
+#include <dt-bindings/thermal/thermal.h>
 
 / {
 	compatible = "xlnx,zynqmp";
@@ -36,6 +37,7 @@
 		#size-cells = <0>;
 
 		cpu0: cpu@0 {
+			#cooling-cells = <2>;
 			compatible = "arm,cortex-a53";
 			device_type = "cpu";
 			enable-method = "psci";
@@ -46,6 +48,7 @@
 		};
 
 		cpu1: cpu@1 {
+			#cooling-cells = <2>;
 			compatible = "arm,cortex-a53";
 			device_type = "cpu";
 			enable-method = "psci";
@@ -56,6 +59,7 @@
 		};
 
 		cpu2: cpu@2 {
+			#cooling-cells = <2>;
 			compatible = "arm,cortex-a53";
 			device_type = "cpu";
 			enable-method = "psci";
@@ -66,6 +70,7 @@
 		};
 
 		cpu3: cpu@3 {
+			#cooling-cells = <2>;
 			compatible = "arm,cortex-a53";
 			device_type = "cpu";
 			enable-method = "psci";
@@ -120,6 +125,22 @@
 		};
 	};
 
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		rproc_0_fw_image: memory@3ed00000 {
+			no-map;
+			reg = <0x0 0x3ed00000 0x0 0x40000>;
+		};
+
+		rproc_1_fw_image: memory@3ef00000 {
+			no-map;
+			reg = <0x0 0x3ef00000 0x0 0x40000>;
+		};
+	};
+
 	zynqmp_ipi: zynqmp-ipi {
 		bootph-all;
 		compatible = "xlnx,zynqmp-ipi-mailbox";
@@ -153,7 +174,7 @@
 	};
 
 	pmu {
-		compatible = "arm,armv8-pmuv3";
+		compatible = "arm,cortex-a53-pmu";
 		interrupt-parent = <&gic>;
 		interrupts = <GIC_SPI 143 IRQ_TYPE_LEVEL_HIGH>,
 			     <GIC_SPI 144 IRQ_TYPE_LEVEL_HIGH>,
@@ -298,6 +319,102 @@
 		ranges;
 	};
 
+	ams: ams {
+		compatible = "iio-hwmon";
+		status = "disabled";
+		io-channels = <&xilinx_ams 0>, <&xilinx_ams 1>, <&xilinx_ams 2>,
+			<&xilinx_ams 3>, <&xilinx_ams 4>, <&xilinx_ams 5>,
+			<&xilinx_ams 6>, <&xilinx_ams 7>, <&xilinx_ams 8>,
+			<&xilinx_ams 9>, <&xilinx_ams 10>, <&xilinx_ams 11>,
+			<&xilinx_ams 12>, <&xilinx_ams 13>, <&xilinx_ams 14>,
+			<&xilinx_ams 15>, <&xilinx_ams 16>, <&xilinx_ams 17>,
+			<&xilinx_ams 18>, <&xilinx_ams 19>, <&xilinx_ams 20>,
+			<&xilinx_ams 21>, <&xilinx_ams 22>, <&xilinx_ams 23>,
+			<&xilinx_ams 24>, <&xilinx_ams 25>, <&xilinx_ams 26>,
+			<&xilinx_ams 27>, <&xilinx_ams 28>, <&xilinx_ams 29>;
+	};
+
+
+	tsens_apu: thermal-sensor-apu {
+		compatible = "generic-adc-thermal";
+		#thermal-sensor-cells = <0>;
+		io-channels = <&xilinx_ams 7>;
+		io-channel-names = "sensor-channel";
+	};
+
+	tsens_rpu: thermal-sensor-rpu {
+		compatible = "generic-adc-thermal";
+		#thermal-sensor-cells = <0>;
+		io-channels = <&xilinx_ams 8>;
+		io-channel-names = "sensor-channel";
+	};
+
+	tsens_pl: thermal-sensor-pl {
+		compatible = "generic-adc-thermal";
+		#thermal-sensor-cells = <0>;
+		io-channels = <&xilinx_ams 20>;
+		io-channel-names = "sensor-channel";
+	};
+
+	thermal-zones {
+		apu-thermal {
+			polling-delay-passive = <1000>;
+			polling-delay = <5000>;
+			thermal-sensors = <&tsens_apu>;
+
+			trips {
+				apu_passive: passive {
+					temperature = <93000>;
+					hysteresis = <3500>;
+					type = "passive";
+				};
+
+				apu_critical: critical {
+					temperature = <96500>;
+					hysteresis = <3500>;
+					type = "critical";
+				};
+			};
+
+			cooling-maps {
+				map {
+					trip = <&apu_passive>;
+					cooling-device =
+						<&cpu0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
+						<&cpu1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
+						<&cpu2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
+						<&cpu3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+				};
+			};
+		};
+
+		rpu-thermal {
+			polling-delay = <10000>;
+			thermal-sensors = <&tsens_rpu>;
+
+			trips {
+				critical {
+					temperature = <96500>;
+					hysteresis = <3500>;
+					type = "critical";
+				};
+			};
+		};
+
+		pl-thermal {
+			polling-delay = <10000>;
+			thermal-sensors = <&tsens_pl>;
+
+			trips {
+				critical {
+					temperature = <96500>;
+					hysteresis = <3500>;
+					type = "critical";
+				};
+			};
+		};
+	};
+
 	amba: axi {
 		compatible = "simple-bus";
 		bootph-all;
@@ -349,6 +466,34 @@
 					     <GIC_SPI 123 IRQ_TYPE_LEVEL_HIGH>,
 					     <GIC_SPI 123 IRQ_TYPE_LEVEL_HIGH>;
 			};
+		};
+
+		cpu0_debug: debug@fec10000 {
+			compatible = "arm,coresight-cpu-debug", "arm,primecell";
+			reg = <0x0 0xfec10000 0x0 0x1000>;
+			clock-names = "apb_pclk";
+			cpu = <&cpu0>;
+		};
+
+		cpu1_debug: debug@fed10000 {
+			compatible = "arm,coresight-cpu-debug", "arm,primecell";
+			reg = <0x0 0xfed10000 0x0 0x1000>;
+			clock-names = "apb_pclk";
+			cpu = <&cpu1>;
+		};
+
+		cpu2_debug: debug@fee10000 {
+			compatible = "arm,coresight-cpu-debug", "arm,primecell";
+			reg = <0x0 0xfee10000 0x0 0x1000>;
+			clock-names = "apb_pclk";
+			cpu = <&cpu2>;
+		};
+
+		cpu3_debug: debug@fef10000 {
+			compatible = "arm,coresight-cpu-debug", "arm,primecell";
+			reg = <0x0 0xfef10000 0x0 0x1000>;
+			clock-names = "apb_pclk";
+			cpu = <&cpu3>;
 		};
 
 		/* GDMA */
@@ -867,7 +1012,6 @@
 			power-domains = <&zynqmp_firmware PD_SATA>;
 			resets = <&zynqmp_reset ZYNQMP_RESET_SATA>;
 			/* iommus = <&smmu 0x4c0>, <&smmu 0x4c1>, <&smmu 0x4c2>, <&smmu 0x4c3>; */
-			/* dma-coherent; */
 		};
 
 		sdhci0: mmc@ff160000 {
@@ -1047,9 +1191,9 @@
 					     <GIC_SPI 65 IRQ_TYPE_LEVEL_HIGH>,
 					     <GIC_SPI 69 IRQ_TYPE_LEVEL_HIGH>,
 					     <GIC_SPI 75 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "ref";
 				/* iommus = <&smmu 0x860>; */
 				snps,quirk-frame-length-adjustment = <0x20>;
-				clock-names = "ref";
 				snps,resume-hs-terminations;
 				/* dma-coherent; */
 			};
@@ -1079,9 +1223,9 @@
 					     <GIC_SPI 70 IRQ_TYPE_LEVEL_HIGH>,
 					     <GIC_SPI 74 IRQ_TYPE_LEVEL_HIGH>,
 					     <GIC_SPI 76 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "ref";
 				/* iommus = <&smmu 0x861>; */
 				snps,quirk-frame-length-adjustment = <0x20>;
-				clock-names = "ref";
 				snps,resume-hs-terminations;
 				/* dma-coherent; */
 			};
@@ -1108,7 +1252,6 @@
 
 		xilinx_ams: ams@ffa50000 {
 			compatible = "xlnx,zynqmp-ams";
-			status = "disabled";
 			interrupt-parent = <&gic>;
 			interrupts = <GIC_SPI 56 IRQ_TYPE_LEVEL_HIGH>;
 			reg = <0x0 0xffa50000 0x0 0x800>;
@@ -1138,14 +1281,8 @@
 			interrupt-parent = <&gic>;
 			clock-names = "axi_clk";
 			power-domains = <&zynqmp_firmware PD_DP>;
-			dma-channels = <6>;
 			/* iommus = <&smmu 0xce4>; */
 			#dma-cells = <1>;
-		};
-
-		zynqmp_dpaud_setting: dp-aud@fd4ac000 {
-			compatible = "xlnx,zynqmp-dpaud-setting", "syscon";
-			reg = <0x0 0xfd4ac000 0x0 0x1000>;
 		};
 
 		zynqmp_dpsub: display@fd4a0000 {
@@ -1154,9 +1291,9 @@
 			status = "disabled";
 			reg = <0x0 0xfd4a0000 0x0 0x1000>,
 			      <0x0 0xfd4aa000 0x0 0x1000>,
-			      <0x0 0xfd4ab000 0x0 0x1000>;
-			reg-names = "dp", "blend", "av_buf";
-			xlnx,dpaud-reg = <&zynqmp_dpaud_setting>;
+			      <0x0 0xfd4ab000 0x0 0x1000>,
+			      <0x0 0xfd4ac000 0x0 0x1000>;
+			reg-names = "dp", "blend", "av_buf", "aud";
 			interrupts = <GIC_SPI 119 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-parent = <&gic>;
 			/* iommus = <&smmu 0xce3>; */
@@ -1164,39 +1301,14 @@
 				      "dp_vtc_pixel_clk_in";
 			power-domains = <&zynqmp_firmware PD_DP>;
 			resets = <&zynqmp_reset ZYNQMP_RESET_DP>;
-			dma-names = "vid0", "vid1", "vid2", "gfx0";
+			dma-names = "vid0", "vid1", "vid2", "gfx0",
+				    "aud0", "aud1";
 			dmas = <&zynqmp_dpdma ZYNQMP_DPDMA_VIDEO0>,
 			       <&zynqmp_dpdma ZYNQMP_DPDMA_VIDEO1>,
 			       <&zynqmp_dpdma ZYNQMP_DPDMA_VIDEO2>,
-			       <&zynqmp_dpdma ZYNQMP_DPDMA_GRAPHICS>;
-
-			/* dummy node to indicate there's no child i2c device */
-			i2c-bus {
-			};
-
-			zynqmp_dp_snd_codec0: zynqmp-dp-snd-codec0 {
-				compatible = "xlnx,dp-snd-codec";
-				clock-names = "aud_clk";
-			};
-
-			zynqmp_dp_snd_pcm0: zynqmp-dp-snd-pcm0 {
-				compatible = "xlnx,dp-snd-pcm0";
-				dmas = <&zynqmp_dpdma 4>;
-				dma-names = "tx";
-			};
-
-			zynqmp_dp_snd_pcm1: zynqmp-dp-snd-pcm1 {
-				compatible = "xlnx,dp-snd-pcm1";
-				dmas = <&zynqmp_dpdma 5>;
-				dma-names = "tx";
-			};
-
-			zynqmp_dp_snd_card0: zynqmp-dp-snd-card {
-				compatible = "xlnx,dp-snd-card";
-				xlnx,dp-snd-pcm = <&zynqmp_dp_snd_pcm0>,
-						  <&zynqmp_dp_snd_pcm1>;
-				xlnx,dp-snd-codec = <&zynqmp_dp_snd_codec0>;
-			};
+			       <&zynqmp_dpdma ZYNQMP_DPDMA_GRAPHICS>,
+			       <&zynqmp_dpdma ZYNQMP_DPDMA_AUDIO0>,
+			       <&zynqmp_dpdma ZYNQMP_DPDMA_AUDIO1>;
 
 			ports {
 				#address-cells = <1>;

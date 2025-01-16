@@ -20,10 +20,7 @@
  *   - the arguments are cast to long and assigned into the target registers
  *     which are then simply passed as registers to the asm code, so that we
  *     don't have to experience issues with register constraints.
- *
- * On aarch64, select() is not implemented so we have to use pselect6().
  */
-#define __ARCH_WANT_SYS_PSELECT6
 
 #define my_syscall0(num)                                                      \
 ({                                                                            \
@@ -145,13 +142,13 @@
 })
 
 /* startup code */
-void __attribute__((weak, noreturn, optimize("Os", "omit-frame-pointer"))) __no_stack_protector _start(void)
+void __attribute__((weak, noreturn)) __nolibc_entrypoint __no_stack_protector _start(void)
 {
 	__asm__ volatile (
 		"mov x0, sp\n"          /* save stack pointer to x0, as arg1 of _start_c */
 		"and sp, x0, -16\n"     /* sp must be 16-byte aligned in the callee      */
 		"bl  _start_c\n"        /* transfer to c runtime                         */
 	);
-	__builtin_unreachable();
+	__nolibc_entrypoint_epilogue();
 }
 #endif /* _NOLIBC_ARCH_AARCH64_H */

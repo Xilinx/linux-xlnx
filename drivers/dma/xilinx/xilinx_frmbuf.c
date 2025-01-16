@@ -27,10 +27,12 @@
 #include <linux/io.h>
 #include <linux/iopoll.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_dma.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
+#include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/videodev2.h>
 
@@ -1871,7 +1873,7 @@ disable_clk:
  *
  * Return: Always '0'
  */
-static int xilinx_frmbuf_remove(struct platform_device *pdev)
+static void xilinx_frmbuf_remove(struct platform_device *pdev)
 {
 	struct xilinx_frmbuf_device *xdev = platform_get_drvdata(pdev);
 
@@ -1880,8 +1882,6 @@ static int xilinx_frmbuf_remove(struct platform_device *pdev)
 	dma_async_device_unregister(&xdev->common);
 	xilinx_frmbuf_chan_remove(&xdev->chan);
 	clk_disable_unprepare(xdev->ap_clk);
-
-	return 0;
 }
 
 MODULE_DEVICE_TABLE(of, xilinx_frmbuf_of_ids);

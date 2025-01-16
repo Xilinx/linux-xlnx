@@ -482,10 +482,11 @@ static void sdhci_arasan_hw_reset(struct sdhci_host *host)
 	u8 reg;
 
 	reg = sdhci_readb(host, SDHCI_POWER_CONTROL);
-	/* Set eMMC HW reset and disable bus power */
-	sdhci_writeb(host, SDHCI_HW_RST_EN, SDHCI_POWER_CONTROL);
+	reg |= SDHCI_HW_RST_EN;
+	sdhci_writeb(host, reg, SDHCI_POWER_CONTROL);
 	/* As per eMMC spec, minimum 1us is required but give it 2us for good measure */
 	usleep_range(2, 5);
+	reg &= ~SDHCI_HW_RST_EN;
 	sdhci_writeb(host, reg, SDHCI_POWER_CONTROL);
 	/* As per eMMC spec, minimum 200us is required but give it 300us for good measure */
 	usleep_range(300, 500);

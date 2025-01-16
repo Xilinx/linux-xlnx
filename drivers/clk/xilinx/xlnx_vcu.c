@@ -48,7 +48,7 @@
 #define FVCO_MIN			(1500U * MHZ)
 #define FVCO_MAX			(3000U * MHZ)
 
-static struct regmap_config vcu_settings_regmap_config = {
+static const struct regmap_config vcu_settings_regmap_config = {
 	.name = "regmap",
 	.reg_bits = 32,
 	.val_bits = 32,
@@ -813,7 +813,7 @@ static struct platform_driver xvcu_driver = {
 		.of_match_table = xvcu_of_id_table,
 	},
 	.probe                  = xvcu_probe,
-	.remove_new             = xvcu_remove,
+	.remove                 = xvcu_remove,
 };
 
 module_platform_driver(xvcu_driver);

@@ -194,6 +194,8 @@ static int mt7915_thermal_init(struct mt7915_phy *phy)
 
 	name = devm_kasprintf(&wiphy->dev, GFP_KERNEL, "mt7915_%s",
 			      wiphy_name(wiphy));
+	if (!name)
+		return -ENOMEM;
 
 	cdev = thermal_cooling_device_register(name, phy, &mt7915_thermal_ops);
 	if (!IS_ERR(cdev)) {
@@ -213,10 +215,7 @@ static int mt7915_thermal_init(struct mt7915_phy *phy)
 
 	hwmon = devm_hwmon_device_register_with_groups(&wiphy->dev, name, phy,
 						       mt7915_hwmon_groups);
-	if (IS_ERR(hwmon))
-		return PTR_ERR(hwmon);
-
-	return 0;
+	return PTR_ERR_OR_ZERO(hwmon);
 }
 
 static void mt7915_led_set_config(struct led_classdev *led_cdev,
@@ -278,10 +277,11 @@ static void mt7915_led_set_brightness(struct led_classdev *led_cdev,
 		mt7915_led_set_config(led_cdev, 0xff, 0);
 }
 
-void mt7915_init_txpower(struct mt7915_dev *dev,
-			 struct ieee80211_supported_band *sband)
+static void __mt7915_init_txpower(struct mt7915_phy *phy,
+				  struct ieee80211_supported_band *sband)
 {
-	int i, n_chains = hweight8(dev->mphy.antenna_mask);
+	struct mt7915_dev *dev = phy->dev;
+	int i, n_chains = hweight16(phy->mt76->chainmask);
 	int nss_delta = mt76_tx_power_nss_delta(n_chains);
 	int pwr_delta = mt7915_eeprom_get_power_delta(dev, sband->band);
 	struct mt76_power_limits limits;
@@ -299,7 +299,7 @@ void mt7915_init_txpower(struct mt7915_dev *dev,
 		}
 
 		target_power += pwr_delta;
-		target_power = mt76_get_rate_power_limits(&dev->mphy, chan,
+		target_power = mt76_get_rate_power_limits(phy->mt76, chan,
 							  &limits,
 							  target_power);
 		target_power += nss_delta;
@@ -308,6 +308,19 @@ void mt7915_init_txpower(struct mt7915_dev *dev,
 					target_power);
 		chan->orig_mpwr = target_power;
 	}
+}
+
+void mt7915_init_txpower(struct mt7915_phy *phy)
+{
+	if (!phy)
+		return;
+
+	if (phy->mt76->cap.has_2ghz)
+		__mt7915_init_txpower(phy, &phy->mt76->sband_2g.sband);
+	if (phy->mt76->cap.has_5ghz)
+		__mt7915_init_txpower(phy, &phy->mt76->sband_5g.sband);
+	if (phy->mt76->cap.has_6ghz)
+		__mt7915_init_txpower(phy, &phy->mt76->sband_6g.sband);
 }
 
 static void
@@ -325,9 +338,7 @@ mt7915_regd_notifier(struct wiphy *wiphy,
 	if (dev->mt76.region == NL80211_DFS_UNSET)
 		mt7915_mcu_rdd_background_enable(phy, NULL);
 
-	mt7915_init_txpower(dev, &mphy->sband_2g.sband);
-	mt7915_init_txpower(dev, &mphy->sband_5g.sband);
-	mt7915_init_txpower(dev, &mphy->sband_6g.sband);
+	mt7915_init_txpower(phy);
 
 	mphy->dfs_state = MT_DFS_STATE_UNKNOWN;
 	mt7915_dfs_init_radar_detector(phy);
@@ -346,6 +357,9 @@ mt7915_init_wiphy(struct mt7915_phy *phy)
 	hw->max_rx_aggregation_subframes = IEEE80211_MAX_AMPDU_BUF_HE;
 	hw->max_tx_aggregation_subframes = IEEE80211_MAX_AMPDU_BUF_HE;
 	hw->netdev_features = NETIF_F_RXCSUM;
+
+	if (mtk_wed_device_active(&mdev->mmio.wed))
+		hw->netdev_features |= NETIF_F_HW_TC;
 
 	hw->radiotap_timestamp.units_pos =
 		IEEE80211_RADIOTAP_TIMESTAMP_UNIT_US;
@@ -386,6 +400,7 @@ mt7915_init_wiphy(struct mt7915_phy *phy)
 	ieee80211_hw_set(hw, SUPPORTS_RX_DECAP_OFFLOAD);
 	ieee80211_hw_set(hw, SUPPORTS_MULTI_BSSID);
 	ieee80211_hw_set(hw, WANT_MONITOR_VIF);
+	ieee80211_hw_set(hw, SUPPORTS_TX_FRAG);
 
 	hw->max_tx_fragments = 4;
 
@@ -393,8 +408,12 @@ mt7915_init_wiphy(struct mt7915_phy *phy)
 		phy->mt76->sband_2g.sband.ht_cap.cap |=
 			IEEE80211_HT_CAP_LDPC_CODING |
 			IEEE80211_HT_CAP_MAX_AMSDU;
-		phy->mt76->sband_2g.sband.ht_cap.ampdu_density =
-			IEEE80211_HT_MPDU_DENSITY_4;
+		if (is_mt7915(&dev->mt76))
+			phy->mt76->sband_2g.sband.ht_cap.ampdu_density =
+				IEEE80211_HT_MPDU_DENSITY_4;
+		else
+			phy->mt76->sband_2g.sband.ht_cap.ampdu_density =
+				IEEE80211_HT_MPDU_DENSITY_2;
 	}
 
 	if (phy->mt76->cap.has_5ghz) {
@@ -404,10 +423,11 @@ mt7915_init_wiphy(struct mt7915_phy *phy)
 		phy->mt76->sband_5g.sband.ht_cap.cap |=
 			IEEE80211_HT_CAP_LDPC_CODING |
 			IEEE80211_HT_CAP_MAX_AMSDU;
-		phy->mt76->sband_5g.sband.ht_cap.ampdu_density =
-			IEEE80211_HT_MPDU_DENSITY_4;
 
 		if (is_mt7915(&dev->mt76)) {
+			phy->mt76->sband_5g.sband.ht_cap.ampdu_density =
+				IEEE80211_HT_MPDU_DENSITY_4;
+
 			vht_cap->cap |=
 				IEEE80211_VHT_CAP_MAX_MPDU_LENGTH_7991 |
 				IEEE80211_VHT_CAP_MAX_A_MPDU_LENGTH_EXPONENT_MASK;
@@ -417,6 +437,9 @@ mt7915_init_wiphy(struct mt7915_phy *phy)
 					IEEE80211_VHT_CAP_SHORT_GI_160 |
 					FIELD_PREP(IEEE80211_VHT_CAP_EXT_NSS_BW_MASK, 1);
 		} else {
+			phy->mt76->sband_5g.sband.ht_cap.ampdu_density =
+				IEEE80211_HT_MPDU_DENSITY_2;
+
 			vht_cap->cap |=
 				IEEE80211_VHT_CAP_MAX_MPDU_LENGTH_11454 |
 				IEEE80211_VHT_CAP_MAX_A_MPDU_LENGTH_EXPONENT_MASK;
@@ -434,6 +457,7 @@ mt7915_init_wiphy(struct mt7915_phy *phy)
 	mt76_set_stream_caps(phy->mt76, true);
 	mt7915_set_stream_vht_txbf_caps(phy);
 	mt7915_set_stream_he_caps(phy);
+	mt7915_init_txpower(phy);
 
 	wiphy->available_antennas_rx = phy->mt76->antenna_mask;
 	wiphy->available_antennas_tx = phy->mt76->antenna_mask;
@@ -695,9 +719,6 @@ static void mt7915_init_work(struct work_struct *work)
 
 	mt7915_mcu_set_eeprom(dev);
 	mt7915_mac_init(dev);
-	mt7915_init_txpower(dev, &dev->mphy.sband_2g.sband);
-	mt7915_init_txpower(dev, &dev->mphy.sband_5g.sband);
-	mt7915_init_txpower(dev, &dev->mphy.sband_6g.sband);
 	mt7915_txbf_init(dev);
 }
 
@@ -805,7 +826,7 @@ mt7915_init_hardware(struct mt7915_dev *dev, struct mt7915_phy *phy2)
 	if (ret < 0)
 		return ret;
 
-	if (dev->flash_mode) {
+	if (dev->cal) {
 		ret = mt7915_mcu_apply_group_cal(dev);
 		if (ret)
 			return ret;
@@ -916,11 +937,10 @@ mt7915_set_stream_he_txbf_caps(struct mt7915_phy *phy,
 	/* the maximum cap is 4 x 3, (Nr, Nc) = (3, 2) */
 	elem->phy_cap_info[7] |= min_t(int, sts - 1, 2) << 3;
 
-	if (vif != NL80211_IFTYPE_AP)
+	if (vif != NL80211_IFTYPE_AP && vif != NL80211_IFTYPE_STATION)
 		return;
 
 	elem->phy_cap_info[3] |= IEEE80211_HE_PHY_CAP3_SU_BEAMFORMER;
-	elem->phy_cap_info[4] |= IEEE80211_HE_PHY_CAP4_MU_BEAMFORMER;
 
 	c = FIELD_PREP(IEEE80211_HE_PHY_CAP5_BEAMFORMEE_NUM_SND_DIM_UNDER_80MHZ_MASK,
 		       sts - 1);
@@ -928,6 +948,11 @@ mt7915_set_stream_he_txbf_caps(struct mt7915_phy *phy,
 		c |= FIELD_PREP(IEEE80211_HE_PHY_CAP5_BEAMFORMEE_NUM_SND_DIM_ABOVE_80MHZ_MASK,
 				sts_160 - 1);
 	elem->phy_cap_info[5] |= c;
+
+	if (vif != NL80211_IFTYPE_AP)
+		return;
+
+	elem->phy_cap_info[4] |= IEEE80211_HE_PHY_CAP4_MU_BEAMFORMER;
 
 	c = IEEE80211_HE_PHY_CAP6_TRIG_SU_BEAMFORMING_FB |
 	    IEEE80211_HE_PHY_CAP6_TRIG_MU_BEAMFORMING_PARTIAL_BW_FB;
@@ -1127,8 +1152,7 @@ void mt7915_set_stream_he_caps(struct mt7915_phy *phy)
 		n = mt7915_init_he_caps(phy, NL80211_BAND_2GHZ, data);
 
 		band = &phy->mt76->sband_2g.sband;
-		band->iftype_data = data;
-		band->n_iftype_data = n;
+		_ieee80211_set_sband_iftype_data(band, data, n);
 	}
 
 	if (phy->mt76->cap.has_5ghz) {
@@ -1136,8 +1160,7 @@ void mt7915_set_stream_he_caps(struct mt7915_phy *phy)
 		n = mt7915_init_he_caps(phy, NL80211_BAND_5GHZ, data);
 
 		band = &phy->mt76->sband_5g.sband;
-		band->iftype_data = data;
-		band->n_iftype_data = n;
+		_ieee80211_set_sband_iftype_data(band, data, n);
 	}
 
 	if (phy->mt76->cap.has_6ghz) {
@@ -1145,8 +1168,7 @@ void mt7915_set_stream_he_caps(struct mt7915_phy *phy)
 		n = mt7915_init_he_caps(phy, NL80211_BAND_6GHZ, data);
 
 		band = &phy->mt76->sband_6g.sband;
-		band->iftype_data = data;
-		band->n_iftype_data = n;
+		_ieee80211_set_sband_iftype_data(band, data, n);
 	}
 }
 

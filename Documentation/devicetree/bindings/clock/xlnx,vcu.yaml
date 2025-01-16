@@ -21,12 +21,9 @@ properties:
           - xlnx,vcu-logicoreip-1.0
 
   reg:
-    description:
-      The base offset and size of the VCU_PL_SLCR register space.
-    minItems: 1
+    maxItems: 1
 
   clocks:
-    description: List of clock specifiers
     items:
       - description: pll ref clocksource
       - description: aclk
@@ -37,8 +34,6 @@ properties:
       - const: aclk
 
   reset-gpios:
-    description: Optional GPIO used to reset the VCU, if available. Need use this
-      reset gpio when in design 'vcu_resetn' is driven by gpio.
     maxItems: 1
 
 required:
@@ -57,7 +52,7 @@ examples:
         xlnx_vcu: vcu@a0040000 {
             compatible = "xlnx,vcu-logicoreip-1.0";
             reg = <0x0 0xa0040000 0x0 0x1000>;
-            reset-gpios = <&gpio 0x4e GPIO_ACTIVE_HIGH>;
+            reset-gpios = <&gpio 78 GPIO_ACTIVE_HIGH>;
             clocks = <&si570_1>, <&clkc 71>;
             clock-names = "pll_ref", "aclk";
         };

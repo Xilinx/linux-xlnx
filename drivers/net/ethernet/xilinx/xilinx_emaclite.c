@@ -1116,8 +1116,7 @@ static int xemaclite_of_probe(struct platform_device *ofdev)
 
 	ndev->irq = rc;
 
-	res = platform_get_resource(ofdev, IORESOURCE_MEM, 0);
-	lp->base_addr = devm_ioremap_resource(&ofdev->dev, res);
+	lp->base_addr = devm_platform_get_and_ioremap_resource(ofdev, 0, &res);
 	if (IS_ERR(lp->base_addr))
 		return PTR_ERR(lp->base_addr);
 
@@ -1131,10 +1130,9 @@ static int xemaclite_of_probe(struct platform_device *ofdev)
 	lp->rx_ping_pong = get_bool(ofdev, "xlnx,rx-ping-pong");
 
 	clkin = devm_clk_get_optional_enabled(&ofdev->dev, NULL);
-	if (IS_ERR(clkin)) {
+	if (IS_ERR(clkin))
 		return dev_err_probe(&ofdev->dev, PTR_ERR(clkin),
 				"Failed to get and enable clock from Device Tree\n");
-	}
 
 	rc = of_get_ethdev_address(ofdev->dev.of_node, ndev);
 	if (rc) {
@@ -1184,10 +1182,8 @@ put_node:
  * This function is called if a device is physically removed from the system or
  * if the driver module is being unloaded. It frees any resources allocated to
  * the device.
- *
- * Return:	0, always.
  */
-static int xemaclite_of_remove(struct platform_device *of_dev)
+static void xemaclite_of_remove(struct platform_device *of_dev)
 {
 	struct net_device *ndev = platform_get_drvdata(of_dev);
 
@@ -1204,8 +1200,6 @@ static int xemaclite_of_remove(struct platform_device *of_dev)
 
 	of_node_put(lp->phy_node);
 	lp->phy_node = NULL;
-
-	return 0;
 }
 
 #ifdef CONFIG_NET_POLL_CONTROLLER
@@ -1264,7 +1258,7 @@ static struct platform_driver xemaclite_of_driver = {
 		.of_match_table = xemaclite_of_match,
 	},
 	.probe		= xemaclite_of_probe,
-	.remove		= xemaclite_of_remove,
+	.remove_new	= xemaclite_of_remove,
 };
 
 module_platform_driver(xemaclite_of_driver);

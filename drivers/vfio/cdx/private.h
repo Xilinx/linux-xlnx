@@ -31,11 +31,11 @@ struct vfio_cdx_region {
 struct vfio_cdx_device {
 	struct vfio_device	vdev;
 	struct vfio_cdx_region	*regions;
+	struct vfio_cdx_irq	*cdx_irqs;
 	u32			flags;
 #define BME_SUPPORT BIT(0)
-	struct vfio_cdx_irq	*cdx_irqs;
-	u32			irq_count;
-	u32			config_msi;
+	u32			msi_count;
+	u8			config_msi;
 };
 
 int vfio_cdx_set_irqs_ioctl(struct vfio_cdx_device *vdev,

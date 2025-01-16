@@ -229,7 +229,6 @@ static struct xilinx_sha_drv_ctx zynqmp_sha3_drv_ctx = {
 				     CRYPTO_ALG_NEED_FALLBACK,
 			.cra_blocksize = SHA3_384_BLOCK_SIZE,
 			.cra_ctxsize = sizeof(struct zynqmp_sha_tfm_ctx),
-			.cra_alignmask = 3,
 			.cra_module = THIS_MODULE,
 		}
 	},
@@ -332,7 +331,7 @@ err_mem:
 	return err;
 }
 
-static int zynqmp_sha_remove(struct platform_device *pdev)
+static void zynqmp_sha_remove(struct platform_device *pdev)
 {
 	struct xilinx_sha_drv_ctx *sha3_drv_ctx;
 
@@ -342,13 +341,11 @@ static int zynqmp_sha_remove(struct platform_device *pdev)
 			  ZYNQMP_DMA_ALLOC_FIXED_SIZE, ubuf, update_dma_addr);
 	dma_free_coherent(sha3_drv_ctx->dev,
 			  SHA3_384_DIGEST_SIZE, fbuf, final_dma_addr);
-
-	return 0;
 }
 
 static struct platform_driver zynqmp_sha_driver = {
 	.probe = zynqmp_sha_probe,
-	.remove = zynqmp_sha_remove,
+	.remove_new = zynqmp_sha_remove,
 	.driver = {
 		.name = "zynqmp-sha3-384",
 	},

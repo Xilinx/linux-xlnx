@@ -31,6 +31,7 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_bridge.h>
+#include <drm/drm_edid.h>
 #include <drm/drm_of.h>
 #include <drm/drm_print.h>
 #include <drm/drm_probe_helper.h>
@@ -137,9 +138,6 @@ struct dw_hdmi {
 	struct platform_device *audio;
 	struct platform_device *cec;
 	struct device *dev;
-	struct clk *isfr_clk;
-	struct clk *iahb_clk;
-	struct clk *cec_clk;
 	struct dw_hdmi_i2c *i2c;
 
 	struct hdmi_data_info hdmi_data;
@@ -515,7 +513,6 @@ static struct i2c_adapter *dw_hdmi_i2c_adapter(struct dw_hdmi *hdmi)
 	init_completion(&i2c->cmp);
 
 	adap = &i2c->adap;
-	adap->class = I2C_CLASS_DDC;
 	adap->owner = THIS_MODULE;
 	adap->dev.parent = hdmi->dev;
 	adap->algo = &dw_hdmi_algorithm;
@@ -2454,19 +2451,27 @@ static enum drm_connector_status dw_hdmi_detect(struct dw_hdmi *hdmi)
 	return result;
 }
 
-static struct edid *dw_hdmi_get_edid(struct dw_hdmi *hdmi,
-				     struct drm_connector *connector)
+static const struct drm_edid *dw_hdmi_edid_read(struct dw_hdmi *hdmi,
+						struct drm_connector *connector)
 {
-	struct edid *edid;
+	const struct drm_edid *drm_edid;
+	const struct edid *edid;
 
 	if (!hdmi->ddc)
 		return NULL;
 
-	edid = drm_get_edid(connector, hdmi->ddc);
-	if (!edid) {
+	drm_edid = drm_edid_read_ddc(connector, hdmi->ddc);
+	if (!drm_edid) {
 		dev_dbg(hdmi->dev, "failed to get edid\n");
 		return NULL;
 	}
+
+	/*
+	 * FIXME: This should use connector->display_info.is_hdmi and
+	 * connector->display_info.has_audio from a path that has read the EDID
+	 * and called drm_edid_connector_update().
+	 */
+	edid = drm_edid_raw(drm_edid);
 
 	dev_dbg(hdmi->dev, "got edid: width[%d] x height[%d]\n",
 		edid->width_cm, edid->height_cm);
@@ -2474,7 +2479,7 @@ static struct edid *dw_hdmi_get_edid(struct dw_hdmi *hdmi,
 	hdmi->sink_is_hdmi = drm_detect_hdmi_monitor(edid);
 	hdmi->sink_has_audio = drm_detect_monitor_audio(edid);
 
-	return edid;
+	return drm_edid;
 }
 
 /* -----------------------------------------------------------------------------
@@ -2493,17 +2498,16 @@ static int dw_hdmi_connector_get_modes(struct drm_connector *connector)
 {
 	struct dw_hdmi *hdmi = container_of(connector, struct dw_hdmi,
 					     connector);
-	struct edid *edid;
+	const struct drm_edid *drm_edid;
 	int ret;
 
-	edid = dw_hdmi_get_edid(hdmi, connector);
-	if (!edid)
-		return 0;
+	drm_edid = dw_hdmi_edid_read(hdmi, connector);
 
-	drm_connector_update_edid_property(connector, edid);
-	cec_notifier_set_phys_addr_from_edid(hdmi->cec_notifier, edid);
-	ret = drm_add_edid_modes(connector, edid);
-	kfree(edid);
+	drm_edid_connector_update(connector, drm_edid);
+	cec_notifier_set_phys_addr(hdmi->cec_notifier,
+				   connector->display_info.source_physical_address);
+	ret = drm_edid_connector_add_modes(connector);
+	drm_edid_free(drm_edid);
 
 	return ret;
 }
@@ -2980,12 +2984,12 @@ static enum drm_connector_status dw_hdmi_bridge_detect(struct drm_bridge *bridge
 	return dw_hdmi_detect(hdmi);
 }
 
-static struct edid *dw_hdmi_bridge_get_edid(struct drm_bridge *bridge,
-					    struct drm_connector *connector)
+static const struct drm_edid *dw_hdmi_bridge_edid_read(struct drm_bridge *bridge,
+						       struct drm_connector *connector)
 {
 	struct dw_hdmi *hdmi = bridge->driver_private;
 
-	return dw_hdmi_get_edid(hdmi, connector);
+	return dw_hdmi_edid_read(hdmi, connector);
 }
 
 static const struct drm_bridge_funcs dw_hdmi_bridge_funcs = {
@@ -3002,7 +3006,7 @@ static const struct drm_bridge_funcs dw_hdmi_bridge_funcs = {
 	.mode_set = dw_hdmi_bridge_mode_set,
 	.mode_valid = dw_hdmi_bridge_mode_valid,
 	.detect = dw_hdmi_bridge_detect,
-	.get_edid = dw_hdmi_bridge_get_edid,
+	.edid_read = dw_hdmi_bridge_edid_read,
 };
 
 /* -----------------------------------------------------------------------------
@@ -3284,40 +3288,17 @@ static void dw_hdmi_init_hw(struct dw_hdmi *hdmi)
 
 static int dw_hdmi_parse_dt(struct dw_hdmi *hdmi)
 {
-	struct device_node *endpoint;
 	struct device_node *remote;
 
 	if (!hdmi->plat_data->output_port)
 		return 0;
 
-	endpoint = of_graph_get_endpoint_by_regs(hdmi->dev->of_node,
-						 hdmi->plat_data->output_port,
-						 -1);
-	if (!endpoint) {
-		/*
-		 * On platforms whose bindings don't make the output port
-		 * mandatory (such as Rockchip) the plat_data->output_port
-		 * field isn't set, so it's safe to make this a fatal error.
-		 */
-		dev_err(hdmi->dev, "Missing endpoint in port@%u\n",
-			hdmi->plat_data->output_port);
-		return -ENODEV;
-	}
 
-	remote = of_graph_get_remote_port_parent(endpoint);
-	of_node_put(endpoint);
-	if (!remote) {
-		dev_err(hdmi->dev, "Endpoint in port@%u unconnected\n",
-			hdmi->plat_data->output_port);
+	remote = of_graph_get_remote_node(hdmi->dev->of_node,
+					  hdmi->plat_data->output_port,
+					  -1);
+	if (!remote)
 		return -ENODEV;
-	}
-
-	if (!of_device_is_available(remote)) {
-		dev_err(hdmi->dev, "port@%u remote device is disabled\n",
-			hdmi->plat_data->output_port);
-		of_node_put(remote);
-		return -ENODEV;
-	}
 
 	hdmi->next_bridge = of_drm_find_bridge(remote);
 	of_node_put(remote);
@@ -3342,6 +3323,7 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
 	struct device_node *ddc_node;
 	struct dw_hdmi_cec_data cec;
 	struct dw_hdmi *hdmi;
+	struct clk *clk;
 	struct resource *iores = NULL;
 	int irq;
 	int ret;
@@ -3421,50 +3403,27 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
 		hdmi->regm = plat_data->regm;
 	}
 
-	hdmi->isfr_clk = devm_clk_get(hdmi->dev, "isfr");
-	if (IS_ERR(hdmi->isfr_clk)) {
-		ret = PTR_ERR(hdmi->isfr_clk);
+	clk = devm_clk_get_enabled(hdmi->dev, "isfr");
+	if (IS_ERR(clk)) {
+		ret = PTR_ERR(clk);
 		dev_err(hdmi->dev, "Unable to get HDMI isfr clk: %d\n", ret);
 		goto err_res;
 	}
 
-	ret = clk_prepare_enable(hdmi->isfr_clk);
-	if (ret) {
-		dev_err(hdmi->dev, "Cannot enable HDMI isfr clock: %d\n", ret);
+	clk = devm_clk_get_enabled(hdmi->dev, "iahb");
+	if (IS_ERR(clk)) {
+		ret = PTR_ERR(clk);
+		dev_err(hdmi->dev, "Unable to get HDMI iahb clk: %d\n", ret);
 		goto err_res;
 	}
 
-	hdmi->iahb_clk = devm_clk_get(hdmi->dev, "iahb");
-	if (IS_ERR(hdmi->iahb_clk)) {
-		ret = PTR_ERR(hdmi->iahb_clk);
-		dev_err(hdmi->dev, "Unable to get HDMI iahb clk: %d\n", ret);
-		goto err_isfr;
-	}
-
-	ret = clk_prepare_enable(hdmi->iahb_clk);
-	if (ret) {
-		dev_err(hdmi->dev, "Cannot enable HDMI iahb clock: %d\n", ret);
-		goto err_isfr;
-	}
-
-	hdmi->cec_clk = devm_clk_get(hdmi->dev, "cec");
-	if (PTR_ERR(hdmi->cec_clk) == -ENOENT) {
-		hdmi->cec_clk = NULL;
-	} else if (IS_ERR(hdmi->cec_clk)) {
-		ret = PTR_ERR(hdmi->cec_clk);
+	clk = devm_clk_get_optional_enabled(hdmi->dev, "cec");
+	if (IS_ERR(clk)) {
+		ret = PTR_ERR(clk);
 		if (ret != -EPROBE_DEFER)
 			dev_err(hdmi->dev, "Cannot get HDMI cec clock: %d\n",
 				ret);
-
-		hdmi->cec_clk = NULL;
-		goto err_iahb;
-	} else {
-		ret = clk_prepare_enable(hdmi->cec_clk);
-		if (ret) {
-			dev_err(hdmi->dev, "Cannot enable HDMI cec clock: %d\n",
-				ret);
-			goto err_iahb;
-		}
+		goto err_res;
 	}
 
 	/* Product and revision IDs */
@@ -3478,12 +3437,12 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
 		dev_err(dev, "Unsupported HDMI controller (%04x:%02x:%02x)\n",
 			hdmi->version, prod_id0, prod_id1);
 		ret = -ENODEV;
-		goto err_iahb;
+		goto err_res;
 	}
 
 	ret = dw_hdmi_detect_phy(hdmi);
 	if (ret < 0)
-		goto err_iahb;
+		goto err_res;
 
 	dev_info(dev, "Detected HDMI TX controller v%x.%03x %s HDCP (%s)\n",
 		 hdmi->version >> 12, hdmi->version & 0xfff,
@@ -3495,14 +3454,14 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
 		ret = irq;
-		goto err_iahb;
+		goto err_res;
 	}
 
 	ret = devm_request_threaded_irq(dev, irq, dw_hdmi_hardirq,
 					dw_hdmi_irq, IRQF_SHARED,
 					dev_name(dev), hdmi);
 	if (ret)
-		goto err_iahb;
+		goto err_res;
 
 	/*
 	 * To prevent overflows in HDMI_IH_FC_STAT2, set the clk regenerator
@@ -3541,9 +3500,8 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
 			 | DRM_BRIDGE_OP_HPD;
 	hdmi->bridge.interlace_allowed = true;
 	hdmi->bridge.ddc = hdmi->ddc;
-#ifdef CONFIG_OF
 	hdmi->bridge.of_node = pdev->dev.of_node;
-#endif
+	hdmi->bridge.type = DRM_MODE_CONNECTOR_HDMIA;
 
 	memset(&pdevinfo, 0, sizeof(pdevinfo));
 	pdevinfo.parent = dev;
@@ -3620,11 +3578,6 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
 
 	return hdmi;
 
-err_iahb:
-	clk_disable_unprepare(hdmi->iahb_clk);
-	clk_disable_unprepare(hdmi->cec_clk);
-err_isfr:
-	clk_disable_unprepare(hdmi->isfr_clk);
 err_res:
 	i2c_put_adapter(hdmi->ddc);
 
@@ -3643,10 +3596,6 @@ void dw_hdmi_remove(struct dw_hdmi *hdmi)
 
 	/* Disable all interrupts */
 	hdmi_writeb(hdmi, ~0, HDMI_IH_MUTE_PHY_STAT0);
-
-	clk_disable_unprepare(hdmi->iahb_clk);
-	clk_disable_unprepare(hdmi->isfr_clk);
-	clk_disable_unprepare(hdmi->cec_clk);
 
 	if (hdmi->i2c)
 		i2c_del_adapter(&hdmi->i2c->adap);

@@ -1032,7 +1032,7 @@ err_dpuclk:
  *
  * Return: 0 on success. -EINVAL for invalid value.
  */
-static int xlnx_dpu_remove(struct platform_device *pdev)
+static void xlnx_dpu_remove(struct platform_device *pdev)
 {
 	struct xdpu_dev *xdpu = platform_get_drvdata(pdev);
 	int i;
@@ -1048,7 +1048,6 @@ static int xlnx_dpu_remove(struct platform_device *pdev)
 	misc_deregister(&xdpu->miscdev);
 
 	dev_dbg(xdpu->dev, "%s: device /dev/dpu unregistered\n", __func__);
-	return 0;
 }
 
 static const struct of_device_id dpu_of_match[] = {

@@ -3,7 +3,7 @@
  * Xilinx Zynq MPSoC Firmware layer
  *
  *  Copyright (C) 2014-2021 Xilinx
- *  Copyright (C), 2022 - 2024 Advanced Micro Devices, Inc.
+ *  Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc.
  *
  *  Michal Simek <michal.simek@amd.com>
  *  Davorin Mista <davorin.mista@aggios.com>
@@ -133,12 +133,6 @@
 #define CB_PAYLOAD_SIZE (CB_ARG_CNT + 1)
 
 #define ZYNQMP_PM_MAX_QOS		100U
-/* Usage status, returned by PmGetNodeStatus */
-#define PM_USAGE_NO_MASTER			0x0U
-#define PM_USAGE_CURRENT_MASTER			0x1U
-#define PM_USAGE_OTHER_MASTER			0x2U
-#define PM_USAGE_BOTH_MASTERS			(PM_USAGE_CURRENT_MASTER | \
-						 PM_USAGE_OTHER_MASTER)
 
 #define GSS_NUM_REGS	(4)
 
@@ -205,7 +199,6 @@ enum pm_api_cb_id {
 enum pm_api_id {
 	PM_API_FEATURES = 0,
 	PM_GET_API_VERSION = 1,
-	PM_GET_NODE_STATUS = 3,
 	PM_REGISTER_NOTIFIER = 5,
 	PM_FORCE_POWERDOWN = 8,
 	PM_REQUEST_WAKEUP = 10,
@@ -321,6 +314,7 @@ enum pm_query_id {
 	PM_QID_PINCTRL_GET_PIN_GROUPS = 11,
 	PM_QID_CLOCK_GET_NUM_CLOCKS = 12,
 	PM_QID_CLOCK_GET_MAX_DIVISOR = 13,
+	PM_QID_PINCTRL_GET_ATTRIBUTES = 15,
 };
 
 enum rpu_oper_mode {
@@ -633,6 +627,7 @@ struct zynqmp_pm_query_data {
 
 int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...);
 int zynqmp_pm_invoke_fw_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...);
+
 /**
  * struct xlnx_feature - Feature data
  * @family:	Family code of platform
@@ -667,9 +662,9 @@ int zynqmp_pm_get_pll_frac_data(u32 clk_id, u32 *data);
 int zynqmp_pm_set_sd_tapdelay(u32 node_id, u32 type, u32 value);
 int zynqmp_pm_sd_dll_reset(u32 node_id, u32 type);
 int zynqmp_pm_ospi_mux_select(u32 dev_id, u32 select);
-int zynqmp_pm_reset_assert(const enum zynqmp_pm_reset reset,
+int zynqmp_pm_reset_assert(const u32 reset,
 			   const enum zynqmp_pm_reset_action assert_flag);
-int zynqmp_pm_reset_get_status(const enum zynqmp_pm_reset reset, u32 *status);
+int zynqmp_pm_reset_get_status(const u32 reset, u32 *status);
 unsigned int zynqmp_pm_bootmode_read(u32 *ps_mode);
 int zynqmp_pm_bootmode_write(u32 ps_mode);
 int zynqmp_pm_init_finalize(void);
@@ -736,8 +731,6 @@ int zynqmp_pm_request_wake(const u32 node,
 int zynqmp_pm_get_rpu_mode(u32 node_id, enum rpu_oper_mode *rpu_mode);
 int zynqmp_pm_set_rpu_mode(u32 node_id, enum rpu_oper_mode rpu_mode);
 int zynqmp_pm_set_tcm_config(u32 node_id, enum rpu_tcm_comb tcm_mode);
-int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
-			      u32 *const requirements, u32 *const usage);
 int zynqmp_pm_set_sd_config(u32 node, enum pm_sd_config_type config, u32 value);
 int zynqmp_pm_set_gem_config(u32 node, enum pm_gem_config_type config,
 			     u32 value);
@@ -867,14 +860,13 @@ static inline int zynqmp_pm_ospi_mux_select(u32 dev_id, u32 select)
 	return -ENODEV;
 }
 
-static inline int zynqmp_pm_reset_assert(const enum zynqmp_pm_reset reset,
+static inline int zynqmp_pm_reset_assert(const u32 reset,
 					 const enum zynqmp_pm_reset_action assert_flag)
 {
 	return -ENODEV;
 }
 
-static inline int zynqmp_pm_reset_get_status(const enum zynqmp_pm_reset reset,
-					     u32 *status)
+static inline int zynqmp_pm_reset_get_status(const u32 reset, u32 *status)
 {
 	return -ENODEV;
 }
@@ -1167,13 +1159,6 @@ static inline int zynqmp_pm_set_tcm_config(u32 node_id, enum rpu_tcm_comb tcm_mo
 	return -ENODEV;
 }
 
-static inline int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
-					    u32 *const requirements,
-					    u32 *const usage)
-{
-	return -ENODEV;
-}
-
 static inline int zynqmp_pm_set_sd_config(u32 node,
 					  enum pm_sd_config_type config,
 					  u32 value)
@@ -1322,7 +1307,6 @@ static inline int versal_pm_rsa_decrypt(const u64 in_params,
 {
 	return -ENODEV;
 }
-
 static inline int versal_pm_puf_clear_id(void)
 {
 	return -ENODEV;

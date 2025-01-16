@@ -773,10 +773,9 @@ static void igc_ethtool_get_strings(struct net_device *netdev, u32 stringset,
 		break;
 	case ETH_SS_STATS:
 		for (i = 0; i < IGC_GLOBAL_STATS_LEN; i++)
-			ethtool_sprintf(&p, igc_gstrings_stats[i].stat_string);
+			ethtool_puts(&p, igc_gstrings_stats[i].stat_string);
 		for (i = 0; i < IGC_NETDEV_STATS_LEN; i++)
-			ethtool_sprintf(&p,
-					igc_gstrings_net_stats[i].stat_string);
+			ethtool_puts(&p, igc_gstrings_net_stats[i].stat_string);
 		for (i = 0; i < adapter->num_tx_queues; i++) {
 			ethtool_sprintf(&p, "tx_queue_%u_packets", i);
 			ethtool_sprintf(&p, "tx_queue_%u_bytes", i);
@@ -957,6 +956,7 @@ static int igc_ethtool_set_coalesce(struct net_device *netdev,
 }
 
 #define ETHER_TYPE_FULL_MASK ((__force __be16)~0)
+#define VLAN_TCI_FULL_MASK ((__force __be16)~0)
 static int igc_ethtool_get_nfc_rule(struct igc_adapter *adapter,
 				    struct ethtool_rxnfc *cmd)
 {
@@ -979,10 +979,16 @@ static int igc_ethtool_get_nfc_rule(struct igc_adapter *adapter,
 		fsp->m_u.ether_spec.h_proto = ETHER_TYPE_FULL_MASK;
 	}
 
+	if (rule->filter.match_flags & IGC_FILTER_FLAG_VLAN_ETYPE) {
+		fsp->flow_type |= FLOW_EXT;
+		fsp->h_ext.vlan_etype = htons(rule->filter.vlan_etype);
+		fsp->m_ext.vlan_etype = ETHER_TYPE_FULL_MASK;
+	}
+
 	if (rule->filter.match_flags & IGC_FILTER_FLAG_VLAN_TCI) {
 		fsp->flow_type |= FLOW_EXT;
 		fsp->h_ext.vlan_tci = htons(rule->filter.vlan_tci);
-		fsp->m_ext.vlan_tci = htons(VLAN_PRIO_MASK);
+		fsp->m_ext.vlan_tci = htons(rule->filter.vlan_tci_mask);
 	}
 
 	if (rule->filter.match_flags & IGC_FILTER_FLAG_DST_MAC_ADDR) {
@@ -1217,6 +1223,7 @@ static void igc_ethtool_init_nfc_rule(struct igc_nfc_rule *rule,
 
 	if ((fsp->flow_type & FLOW_EXT) && fsp->m_ext.vlan_tci) {
 		rule->filter.vlan_tci = ntohs(fsp->h_ext.vlan_tci);
+		rule->filter.vlan_tci_mask = ntohs(fsp->m_ext.vlan_tci);
 		rule->filter.match_flags |= IGC_FILTER_FLAG_VLAN_TCI;
 	}
 
@@ -1242,7 +1249,7 @@ static void igc_ethtool_init_nfc_rule(struct igc_nfc_rule *rule,
 
 	/* VLAN etype matching */
 	if ((fsp->flow_type & FLOW_EXT) && fsp->h_ext.vlan_etype) {
-		rule->filter.vlan_etype = fsp->h_ext.vlan_etype;
+		rule->filter.vlan_etype = ntohs(fsp->h_ext.vlan_etype);
 		rule->filter.match_flags |= IGC_FILTER_FLAG_VLAN_ETYPE;
 	}
 
@@ -1254,11 +1261,19 @@ static void igc_ethtool_init_nfc_rule(struct igc_nfc_rule *rule,
 		memcpy(rule->filter.user_mask, fsp->m_ext.data, sizeof(fsp->m_ext.data));
 	}
 
-	/* When multiple filter options or user data or vlan etype is set, use a
-	 * flex filter.
+	/* The i225/i226 has various different filters. Flex filters provide a
+	 * way to match up to the first 128 bytes of a packet. Use them for:
+	 *   a) For specific user data
+	 *   b) For VLAN EtherType
+	 *   c) For full TCI match
+	 *   d) Or in case multiple filter criteria are set
+	 *
+	 * Otherwise, use the simple MAC, VLAN PRIO or EtherType filters.
 	 */
 	if ((rule->filter.match_flags & IGC_FILTER_FLAG_USER_DATA) ||
 	    (rule->filter.match_flags & IGC_FILTER_FLAG_VLAN_ETYPE) ||
+	    ((rule->filter.match_flags & IGC_FILTER_FLAG_VLAN_TCI) &&
+	     rule->filter.vlan_tci_mask == ntohs(VLAN_TCI_FULL_MASK)) ||
 	    (rule->filter.match_flags & (rule->filter.match_flags - 1)))
 		rule->flex = true;
 	else
@@ -1326,6 +1341,26 @@ static int igc_ethtool_add_nfc_rule(struct igc_adapter *adapter,
 	if (fsp->ring_cookie >= adapter->num_rx_queues) {
 		netdev_dbg(netdev, "Invalid action\n");
 		return -EINVAL;
+	}
+
+	/* There are two ways to match the VLAN TCI:
+	 *  1. Match on PCP field and use vlan prio filter for it
+	 *  2. Match on complete TCI field and use flex filter for it
+	 */
+	if ((fsp->flow_type & FLOW_EXT) &&
+	    fsp->m_ext.vlan_tci &&
+	    fsp->m_ext.vlan_tci != htons(VLAN_PRIO_MASK) &&
+	    fsp->m_ext.vlan_tci != VLAN_TCI_FULL_MASK) {
+		netdev_dbg(netdev, "VLAN mask not supported\n");
+		return -EOPNOTSUPP;
+	}
+
+	/* VLAN EtherType can only be matched by full mask. */
+	if ((fsp->flow_type & FLOW_EXT) &&
+	    fsp->m_ext.vlan_etype &&
+	    fsp->m_ext.vlan_etype != ETHER_TYPE_FULL_MASK) {
+		netdev_dbg(netdev, "VLAN EtherType mask not supported\n");
+		return -EOPNOTSUPP;
 	}
 
 	if (fsp->location >= IGC_MAX_RXNFC_RULES) {
@@ -1427,45 +1462,46 @@ static u32 igc_ethtool_get_rxfh_indir_size(struct net_device *netdev)
 	return IGC_RETA_SIZE;
 }
 
-static int igc_ethtool_get_rxfh(struct net_device *netdev, u32 *indir, u8 *key,
-				u8 *hfunc)
+static int igc_ethtool_get_rxfh(struct net_device *netdev,
+				struct ethtool_rxfh_param *rxfh)
 {
 	struct igc_adapter *adapter = netdev_priv(netdev);
 	int i;
 
-	if (hfunc)
-		*hfunc = ETH_RSS_HASH_TOP;
-	if (!indir)
+	rxfh->hfunc = ETH_RSS_HASH_TOP;
+	if (!rxfh->indir)
 		return 0;
 	for (i = 0; i < IGC_RETA_SIZE; i++)
-		indir[i] = adapter->rss_indir_tbl[i];
+		rxfh->indir[i] = adapter->rss_indir_tbl[i];
 
 	return 0;
 }
 
-static int igc_ethtool_set_rxfh(struct net_device *netdev, const u32 *indir,
-				const u8 *key, const u8 hfunc)
+static int igc_ethtool_set_rxfh(struct net_device *netdev,
+				struct ethtool_rxfh_param *rxfh,
+				struct netlink_ext_ack *extack)
 {
 	struct igc_adapter *adapter = netdev_priv(netdev);
 	u32 num_queues;
 	int i;
 
 	/* We do not allow change in unsupported parameters */
-	if (key ||
-	    (hfunc != ETH_RSS_HASH_NO_CHANGE && hfunc != ETH_RSS_HASH_TOP))
+	if (rxfh->key ||
+	    (rxfh->hfunc != ETH_RSS_HASH_NO_CHANGE &&
+	     rxfh->hfunc != ETH_RSS_HASH_TOP))
 		return -EOPNOTSUPP;
-	if (!indir)
+	if (!rxfh->indir)
 		return 0;
 
 	num_queues = adapter->rss_queues;
 
 	/* Verify user input. */
 	for (i = 0; i < IGC_RETA_SIZE; i++)
-		if (indir[i] >= num_queues)
+		if (rxfh->indir[i] >= num_queues)
 			return -EINVAL;
 
 	for (i = 0; i < IGC_RETA_SIZE; i++)
-		adapter->rss_indir_tbl[i] = indir[i];
+		adapter->rss_indir_tbl[i] = rxfh->indir[i];
 
 	igc_write_rss_indir_tbl(adapter);
 
@@ -1504,6 +1540,10 @@ static int igc_ethtool_set_channels(struct net_device *netdev,
 	if (ch->other_count != NON_Q_VECTORS)
 		return -EINVAL;
 
+	/* Do not allow channel reconfiguration when mqprio is enabled */
+	if (adapter->strict_priority_enable)
+		return -EINVAL;
+
 	/* Verify the number of channels doesn't exceed hw limits */
 	max_combined = igc_get_max_rss_queues(adapter);
 	if (count > max_combined)
@@ -1523,21 +1563,17 @@ static int igc_ethtool_set_channels(struct net_device *netdev,
 }
 
 static int igc_ethtool_get_ts_info(struct net_device *dev,
-				   struct ethtool_ts_info *info)
+				   struct kernel_ethtool_ts_info *info)
 {
 	struct igc_adapter *adapter = netdev_priv(dev);
 
 	if (adapter->ptp_clock)
 		info->phc_index = ptp_clock_index(adapter->ptp_clock);
-	else
-		info->phc_index = -1;
 
 	switch (adapter->hw.mac.type) {
 	case igc_i225:
 		info->so_timestamping =
 			SOF_TIMESTAMPING_TX_SOFTWARE |
-			SOF_TIMESTAMPING_RX_SOFTWARE |
-			SOF_TIMESTAMPING_SOFTWARE |
 			SOF_TIMESTAMPING_TX_HARDWARE |
 			SOF_TIMESTAMPING_RX_HARDWARE |
 			SOF_TIMESTAMPING_RAW_HARDWARE;
@@ -1587,18 +1623,89 @@ static int igc_ethtool_set_priv_flags(struct net_device *netdev, u32 priv_flags)
 }
 
 static int igc_ethtool_get_eee(struct net_device *netdev,
-			       struct ethtool_eee *edata)
+			       struct ethtool_keee *edata)
 {
 	struct igc_adapter *adapter = netdev_priv(netdev);
 	struct igc_hw *hw = &adapter->hw;
-	u32 eeer;
+	struct igc_phy_info *phy = &hw->phy;
+	u16 eee_advert, eee_lp_advert;
+	u32 eeer, ret_val;
 
-	if (hw->dev_spec._base.eee_enable)
-		edata->advertised =
-			mmd_eee_adv_to_ethtool_adv_t(adapter->eee_advert);
+	/* EEE supported */
+	linkmode_set_bit(ETHTOOL_LINK_MODE_2500baseT_Full_BIT,
+			 edata->supported);
+	linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
+			 edata->supported);
+	linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT,
+			 edata->supported);
 
-	*edata = adapter->eee;
-	edata->supported = SUPPORTED_Autoneg;
+	/* EEE Advertisement 1 - reg 7.60 */
+	ret_val = phy->ops.read_reg(hw, (STANDARD_AN_REG_MASK <<
+				    MMD_DEVADDR_SHIFT) |
+				    IGC_ANEG_EEE_AB1,
+				    &eee_advert);
+	if (ret_val) {
+		netdev_err(adapter->netdev,
+			   "Failed to read IEEE 7.60 register\n");
+		return -EINVAL;
+	}
+
+	if (eee_advert & IGC_EEE_1000BT_MASK)
+		linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
+				 edata->advertised);
+
+	if (eee_advert & IGC_EEE_100BT_MASK)
+		linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT,
+				 edata->advertised);
+
+	/* EEE Advertisement 2 - reg 7.62 */
+	ret_val = phy->ops.read_reg(hw, (STANDARD_AN_REG_MASK <<
+				    MMD_DEVADDR_SHIFT) |
+				    IGC_ANEG_EEE_AB2,
+				    &eee_advert);
+	if (ret_val) {
+		netdev_err(adapter->netdev,
+			   "Failed to read IEEE 7.62 register\n");
+		return -EINVAL;
+	}
+
+	if (eee_advert & IGC_EEE_2500BT_MASK)
+		linkmode_set_bit(ETHTOOL_LINK_MODE_2500baseT_Full_BIT,
+				 edata->advertised);
+
+	/* EEE Link-Partner Ability 1 - reg 7.61 */
+	ret_val = phy->ops.read_reg(hw, (STANDARD_AN_REG_MASK <<
+				    MMD_DEVADDR_SHIFT) |
+				    IGC_ANEG_EEE_LP_AB1,
+				    &eee_lp_advert);
+	if (ret_val) {
+		netdev_err(adapter->netdev,
+			   "Failed to read IEEE 7.61 register\n");
+		return -EINVAL;
+	}
+
+	if (eee_lp_advert & IGC_LP_EEE_1000BT_MASK)
+		linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT,
+				 edata->lp_advertised);
+
+	if (eee_lp_advert & IGC_LP_EEE_100BT_MASK)
+		linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT,
+				 edata->lp_advertised);
+
+	/* EEE Link-Partner Ability 2 - reg 7.63 */
+	ret_val = phy->ops.read_reg(hw, (STANDARD_AN_REG_MASK <<
+				    MMD_DEVADDR_SHIFT) |
+				    IGC_ANEG_EEE_LP_AB2,
+				    &eee_lp_advert);
+	if (ret_val) {
+		netdev_err(adapter->netdev,
+			   "Failed to read IEEE 7.63 register\n");
+		return -EINVAL;
+	}
+
+	if (eee_lp_advert & IGC_LP_EEE_2500BT_MASK)
+		linkmode_set_bit(ETHTOOL_LINK_MODE_2500baseT_Full_BIT,
+				 edata->lp_advertised);
 
 	eeer = rd32(IGC_EEER);
 
@@ -1611,9 +1718,6 @@ static int igc_ethtool_get_eee(struct net_device *netdev,
 
 	edata->eee_enabled = hw->dev_spec._base.eee_enable;
 
-	edata->advertised = SUPPORTED_Autoneg;
-	edata->lp_advertised = SUPPORTED_Autoneg;
-
 	/* Report correct negotiated EEE status for devices that
 	 * wrongly report EEE at half-duplex
 	 */
@@ -1621,21 +1725,21 @@ static int igc_ethtool_get_eee(struct net_device *netdev,
 		edata->eee_enabled = false;
 		edata->eee_active = false;
 		edata->tx_lpi_enabled = false;
-		edata->advertised &= ~edata->advertised;
+		linkmode_zero(edata->advertised);
 	}
 
 	return 0;
 }
 
 static int igc_ethtool_set_eee(struct net_device *netdev,
-			       struct ethtool_eee *edata)
+			       struct ethtool_keee *edata)
 {
 	struct igc_adapter *adapter = netdev_priv(netdev);
 	struct igc_hw *hw = &adapter->hw;
-	struct ethtool_eee eee_curr;
+	struct ethtool_keee eee_curr;
 	s32 ret_val;
 
-	memset(&eee_curr, 0, sizeof(struct ethtool_eee));
+	memset(&eee_curr, 0, sizeof(struct ethtool_keee));
 
 	ret_val = igc_ethtool_get_eee(netdev, &eee_curr);
 	if (ret_val) {
@@ -1663,7 +1767,6 @@ static int igc_ethtool_set_eee(struct net_device *netdev,
 		return -EINVAL;
 	}
 
-	adapter->eee_advert = ethtool_adv_to_mmd_eee_adv_t(edata->advertised);
 	if (hw->dev_spec._base.eee_enable != edata->eee_enabled) {
 		hw->dev_spec._base.eee_enable = edata->eee_enabled;
 		adapter->flags |= IGC_FLAG_EEE;
@@ -1676,21 +1779,6 @@ static int igc_ethtool_set_eee(struct net_device *netdev,
 	}
 
 	return 0;
-}
-
-static int igc_ethtool_begin(struct net_device *netdev)
-{
-	struct igc_adapter *adapter = netdev_priv(netdev);
-
-	pm_runtime_get_sync(&adapter->pdev->dev);
-	return 0;
-}
-
-static void igc_ethtool_complete(struct net_device *netdev)
-{
-	struct igc_adapter *adapter = netdev_priv(netdev);
-
-	pm_runtime_put(&adapter->pdev->dev);
 }
 
 static int igc_ethtool_get_link_ksettings(struct net_device *netdev,
@@ -1992,8 +2080,6 @@ static const struct ethtool_ops igc_ethtool_ops = {
 	.set_priv_flags		= igc_ethtool_set_priv_flags,
 	.get_eee		= igc_ethtool_get_eee,
 	.set_eee		= igc_ethtool_set_eee,
-	.begin			= igc_ethtool_begin,
-	.complete		= igc_ethtool_complete,
 	.get_link_ksettings	= igc_ethtool_get_link_ksettings,
 	.set_link_ksettings	= igc_ethtool_set_link_ksettings,
 	.self_test		= igc_ethtool_diag_test,

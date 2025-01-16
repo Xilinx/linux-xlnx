@@ -156,7 +156,7 @@ static int xscd_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int xscd_remove(struct platform_device *pdev)
+static void xscd_remove(struct platform_device *pdev)
 {
 	struct xscd_device *xscd = platform_get_drvdata(pdev);
 	struct device_node *subdev_node;
@@ -169,8 +169,6 @@ static int xscd_remove(struct platform_device *pdev)
 
 	xscd_dma_cleanup(xscd);
 	clk_disable_unprepare(xscd->clk);
-
-	return 0;
 }
 
 static const struct of_device_id xscd_of_id_table[] = {

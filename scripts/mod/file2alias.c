@@ -567,12 +567,12 @@ static int do_acpi_entry(const char *filename,
 			void *symval, char *alias)
 {
 	DEF_FIELD_ADDR(symval, acpi_device_id, id);
-	DEF_FIELD_ADDR(symval, acpi_device_id, cls);
-	DEF_FIELD_ADDR(symval, acpi_device_id, cls_msk);
+	DEF_FIELD(symval, acpi_device_id, cls);
+	DEF_FIELD(symval, acpi_device_id, cls_msk);
 
 	if (id && strlen((const char *)*id))
 		sprintf(alias, "acpi*:%s:*", *id);
-	else if (cls) {
+	else {
 		int i, byte_shift, cnt = 0;
 		unsigned int msk;
 
@@ -580,10 +580,10 @@ static int do_acpi_entry(const char *filename,
 		cnt = 6;
 		for (i = 1; i <= 3; i++) {
 			byte_shift = 8 * (3-i);
-			msk = (*cls_msk >> byte_shift) & 0xFF;
+			msk = (cls_msk >> byte_shift) & 0xFF;
 			if (msk)
 				sprintf(&alias[cnt], "%02x",
-					(*cls >> byte_shift) & 0xFF);
+					(cls >> byte_shift) & 0xFF);
 			else
 				sprintf(&alias[cnt], "??");
 			cnt += 2;
@@ -743,7 +743,7 @@ static void do_input(char *alias,
 	for (i = min / BITS_PER_LONG; i < max / BITS_PER_LONG + 1; i++)
 		arr[i] = TO_NATIVE(arr[i]);
 	for (i = min; i < max; i++)
-		if (arr[i / BITS_PER_LONG] & (1L << (i%BITS_PER_LONG)))
+		if (arr[i / BITS_PER_LONG] & (1ULL << (i%BITS_PER_LONG)))
 			sprintf(alias + strlen(alias), "%X,*", i);
 }
 
@@ -956,6 +956,16 @@ static int do_i3c_entry(const char *filename, void *symval,
 	ADD(alias, "manuf", match_flags & I3C_MATCH_MANUF, manuf_id);
 	ADD(alias, "part", match_flags & I3C_MATCH_PART, part_id);
 	ADD(alias, "ext", match_flags & I3C_MATCH_EXTRA_INFO, extra_info);
+
+	return 1;
+}
+
+static int do_slim_entry(const char *filename, void *symval, char *alias)
+{
+	DEF_FIELD(symval, slim_device_id, manf_id);
+	DEF_FIELD(symval, slim_device_id, prod_code);
+
+	sprintf(alias, "slim:%x:%x:*", manf_id, prod_code);
 
 	return 1;
 }
@@ -1348,13 +1358,13 @@ static int do_typec_entry(const char *filename, void *symval, char *alias)
 /* Looks like: tee:uuid */
 static int do_tee_entry(const char *filename, void *symval, char *alias)
 {
-	DEF_FIELD(symval, tee_client_device_id, uuid);
+	DEF_FIELD_ADDR(symval, tee_client_device_id, uuid);
 
 	sprintf(alias, "tee:%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-		uuid.b[0], uuid.b[1], uuid.b[2], uuid.b[3], uuid.b[4],
-		uuid.b[5], uuid.b[6], uuid.b[7], uuid.b[8], uuid.b[9],
-		uuid.b[10], uuid.b[11], uuid.b[12], uuid.b[13], uuid.b[14],
-		uuid.b[15]);
+		uuid->b[0], uuid->b[1], uuid->b[2], uuid->b[3], uuid->b[4],
+		uuid->b[5], uuid->b[6], uuid->b[7], uuid->b[8], uuid->b[9],
+		uuid->b[10], uuid->b[11], uuid->b[12], uuid->b[13], uuid->b[14],
+		uuid->b[15]);
 
 	add_wildcard(alias);
 	return 1;
@@ -1401,10 +1411,10 @@ static int do_mhi_ep_entry(const char *filename, void *symval, char *alias)
 /* Looks like: ishtp:{guid} */
 static int do_ishtp_entry(const char *filename, void *symval, char *alias)
 {
-	DEF_FIELD(symval, ishtp_device_id, guid);
+	DEF_FIELD_ADDR(symval, ishtp_device_id, guid);
 
 	strcpy(alias, ISHTP_MODULE_PREFIX "{");
-	add_guid(alias, guid);
+	add_guid(alias, *guid);
 	strcat(alias, "}");
 
 	return 1;
@@ -1486,6 +1496,23 @@ static int do_cdx_entry(const char *filename, void *symval,
 	return 1;
 }
 
+static int do_vchiq_entry(const char *filename, void *symval, char *alias)
+{
+	DEF_FIELD_ADDR(symval, vchiq_device_id, name);
+	sprintf(alias, "vchiq:%s", *name);
+
+	return 1;
+}
+
+/* Looks like: coreboot:tN */
+static int do_coreboot_entry(const char *filename, void *symval, char *alias)
+{
+	DEF_FIELD(symval, coreboot_device_id, tag);
+	sprintf(alias, "coreboot:t%08X", tag);
+
+	return 1;
+}
+
 /* Does namelen bytes of name exactly match the symbol? */
 static bool sym_is(const char *name, unsigned namelen, const char *symbol)
 {
@@ -1538,6 +1565,7 @@ static const struct devtable devtable[] = {
 	{"rpmsg", SIZE_rpmsg_device_id, do_rpmsg_entry},
 	{"i2c", SIZE_i2c_device_id, do_i2c_entry},
 	{"i3c", SIZE_i3c_device_id, do_i3c_entry},
+	{"slim", SIZE_slim_device_id, do_slim_entry},
 	{"spi", SIZE_spi_device_id, do_spi_entry},
 	{"dmi", SIZE_dmi_system_id, do_dmi_entry},
 	{"platform", SIZE_platform_device_id, do_platform_entry},
@@ -1566,6 +1594,8 @@ static const struct devtable devtable[] = {
 	{"dfl", SIZE_dfl_device_id, do_dfl_entry},
 	{"ishtp", SIZE_ishtp_device_id, do_ishtp_entry},
 	{"cdx", SIZE_cdx_device_id, do_cdx_entry},
+	{"vchiq", SIZE_vchiq_device_id, do_vchiq_entry},
+	{"coreboot", SIZE_coreboot_device_id, do_coreboot_entry},
 };
 
 /* Create MODULE_ALIAS() statements.

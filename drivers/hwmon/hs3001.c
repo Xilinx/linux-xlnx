@@ -62,7 +62,7 @@ static u32 hs3001_extract_humidity(u16 raw)
 {
 	u32 hum = (raw & HS3001_MASK_HUMIDITY_0X3FFF) * HS3001_FIXPOINT_ARITH * 100;
 
-	return hum /= (1 << 14) - 1;
+	return hum / (1 << 14) - 1;
 }
 
 static int hs3001_data_fetch_command(struct i2c_client *client,
@@ -175,7 +175,7 @@ static const struct hwmon_chip_info hs3001_chip_info = {
 
 /* device ID table */
 static const struct i2c_device_id hs3001_ids[] = {
-	{ "hs3001", 0 },
+	{ "hs3001" },
 	{ },
 };
 

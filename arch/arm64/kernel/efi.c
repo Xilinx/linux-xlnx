@@ -9,7 +9,9 @@
 
 #include <linux/efi.h>
 #include <linux/init.h>
+#include <linux/kmemleak.h>
 #include <linux/screen_info.h>
+#include <linux/vmalloc.h>
 
 #include <asm/efi.h>
 #include <asm/stacktrace.h>
@@ -71,10 +73,6 @@ static __init pteval_t create_mapping_protection(efi_memory_desc_t *md)
 	return pgprot_val(PAGE_KERNEL_EXEC);
 }
 
-/* we will fill this structure from the stub, so don't put it in .bss */
-struct screen_info screen_info __section(".data");
-EXPORT_SYMBOL(screen_info);
-
 int __init efi_create_mapping(struct mm_struct *mm, efi_memory_desc_t *md)
 {
 	pteval_t prot_val = create_mapping_protection(md);
@@ -107,16 +105,15 @@ static int __init set_permissions(pte_t *ptep, unsigned long addr, void *data)
 {
 	struct set_perm_data *spd = data;
 	const efi_memory_desc_t *md = spd->md;
-	pte_t pte = READ_ONCE(*ptep);
+	pte_t pte = __ptep_get(ptep);
 
 	if (md->attribute & EFI_MEMORY_RO)
 		pte = set_pte_bit(pte, __pgprot(PTE_RDONLY));
 	if (md->attribute & EFI_MEMORY_XP)
 		pte = set_pte_bit(pte, __pgprot(PTE_PXN));
-	else if (IS_ENABLED(CONFIG_ARM64_BTI_KERNEL) &&
-		 system_supports_bti() && spd->has_bti)
+	else if (system_supports_bti_kernel() && spd->has_bti)
 		pte = set_pte_bit(pte, __pgprot(PTE_GP));
-	set_pte(ptep, pte);
+	__set_pte(ptep, pte);
 	return 0;
 }
 
@@ -217,6 +214,7 @@ l:	if (!p) {
 		return -ENOMEM;
 	}
 
+	kmemleak_not_leak(p);
 	efi_rt_stack_top = p + THREAD_SIZE;
 	return 0;
 }

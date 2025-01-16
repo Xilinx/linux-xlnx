@@ -9,7 +9,7 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
-#include <drm/drm_fbdev_generic.h>
+#include <drm/drm_fbdev_dma.h>
 #include <drm/drm_module.h>
 #include <drm/drm_of.h>
 #include "komeda_dev.h"
@@ -45,11 +45,23 @@ static void komeda_platform_remove(struct platform_device *pdev)
 	devm_kfree(dev, mdrv);
 }
 
+static void komeda_platform_shutdown(struct platform_device *pdev)
+{
+	struct device *dev = &pdev->dev;
+	struct komeda_drv *mdrv = dev_get_drvdata(dev);
+
+	komeda_kms_shutdown(mdrv->kms);
+}
+
 static int komeda_platform_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct komeda_drv *mdrv;
 	int err;
+
+	err = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(40));
+	if (err)
+		return dev_err_probe(dev, err, "DMA mask error\n");
 
 	mdrv = devm_kzalloc(dev, sizeof(*mdrv), GFP_KERNEL);
 	if (!mdrv)
@@ -72,7 +84,7 @@ static int komeda_platform_probe(struct platform_device *pdev)
 	}
 
 	dev_set_drvdata(dev, mdrv);
-	drm_fbdev_generic_setup(&mdrv->kms->base, 32);
+	drm_fbdev_dma_setup(&mdrv->kms->base, 32);
 
 	return 0;
 
@@ -142,6 +154,7 @@ static const struct dev_pm_ops komeda_pm_ops = {
 static struct platform_driver komeda_platform_driver = {
 	.probe	= komeda_platform_probe,
 	.remove_new = komeda_platform_remove,
+	.shutdown = komeda_platform_shutdown,
 	.driver	= {
 		.name = "komeda",
 		.of_match_table	= komeda_of_match,

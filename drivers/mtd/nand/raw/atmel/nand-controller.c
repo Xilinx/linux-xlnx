@@ -165,7 +165,7 @@ struct atmel_nand {
 	struct atmel_pmecc_user *pmecc;
 	struct gpio_desc *cdgpio;
 	int numcs;
-	struct atmel_nand_cs cs[];
+	struct atmel_nand_cs cs[] __counted_by(numcs);
 };
 
 static inline struct atmel_nand *to_atmel_nand(struct nand_chip *chip)
@@ -1378,7 +1378,7 @@ static int atmel_smc_nand_prepare_smcconf(struct atmel_nand *nand,
 		return ret;
 
 	/*
-	 * The write cycle timing is directly matching tWC, but is also
+	 * The read cycle timing is directly matching tRC, but is also
 	 * dependent on the setup and hold timings we calculated earlier,
 	 * which gives:
 	 *
@@ -2049,7 +2049,10 @@ static int atmel_nand_controller_init(struct atmel_nand_controller *nc,
 		dma_cap_set(DMA_MEMCPY, mask);
 
 		nc->dmac = dma_request_channel(mask, NULL, NULL);
-		if (!nc->dmac)
+		if (nc->dmac)
+			dev_info(nc->dev, "using %s for DMA transfers\n",
+				 dma_chan_name(nc->dmac));
+		else
 			dev_err(nc->dev, "Failed to request DMA channel\n");
 	}
 
