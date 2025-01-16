@@ -188,7 +188,7 @@ static int xlnx_i2s_probe(struct platform_device *pdev)
 	if (IS_ERR(drv_data->base))
 		return PTR_ERR(drv_data->base);
 
-	drv_data->axi_clk = devm_clk_get(&pdev->dev, "s_axi_ctrl_aclk");
+	drv_data->axi_clk = devm_clk_get_enabled(&pdev->dev, "s_axi_ctrl_aclk");
 	if (IS_ERR(drv_data->axi_clk)) {
 		ret = PTR_ERR(drv_data->axi_clk);
 		dev_err(&pdev->dev, "failed to get s_axi_ctrl_aclk(%d)\n", ret);
@@ -227,8 +227,8 @@ static int xlnx_i2s_probe(struct platform_device *pdev)
 		drv_data->dai_drv.playback.rates	= SNDRV_PCM_RATE_8000_192000;
 		drv_data->dai_drv.ops = &xlnx_i2s_dai_ops;
 
-		drv_data->axis_clk = devm_clk_get(&pdev->dev,
-						  "s_axis_aud_aclk");
+		drv_data->axis_clk = devm_clk_get_enabled(&pdev->dev,
+							  "s_axis_aud_aclk");
 		if (IS_ERR(drv_data->axis_clk)) {
 			ret = PTR_ERR(drv_data->axis_clk);
 			dev_err(&pdev->dev,
@@ -244,8 +244,8 @@ static int xlnx_i2s_probe(struct platform_device *pdev)
 		drv_data->dai_drv.capture.rates = SNDRV_PCM_RATE_8000_192000;
 		drv_data->dai_drv.ops = &xlnx_i2s_dai_ops;
 
-		drv_data->axis_clk = devm_clk_get(&pdev->dev,
-						  "m_axis_aud_aclk");
+		drv_data->axis_clk = devm_clk_get_enabled(&pdev->dev,
+							  "m_axis_aud_aclk");
 		if (IS_ERR(drv_data->axis_clk)) {
 			ret = PTR_ERR(drv_data->axis_clk);
 			dev_err(&pdev->dev,
@@ -258,32 +258,11 @@ static int xlnx_i2s_probe(struct platform_device *pdev)
 	drv_data->is_32bit_lrclk = readl(drv_data->base + I2S_CORE_CTRL_OFFSET) &
 				   I2S_CORE_CTRL_32BIT_LRCLK;
 
-	drv_data->aud_mclk = devm_clk_get(&pdev->dev, "aud_mclk");
+	drv_data->aud_mclk = devm_clk_get_enabled(&pdev->dev, "aud_mclk");
 	if (IS_ERR(drv_data->aud_mclk)) {
 		ret = PTR_ERR(drv_data->aud_mclk);
 		dev_err(&pdev->dev, "failed to get aud_mclk(%d)\n", ret);
 		return ret;
-	}
-
-	ret = clk_prepare_enable(drv_data->axi_clk);
-	if (ret) {
-		dev_err(&pdev->dev,
-			"failed to enable s_axi_ctrl_aclk(%d)\n", ret);
-		return ret;
-	}
-
-	ret = clk_prepare_enable(drv_data->axis_clk);
-	if (ret) {
-		dev_err(&pdev->dev,
-			"failed to enable axis_aud_aclk(%d)\n", ret);
-		goto err_axis_clk;
-	}
-
-	ret = clk_prepare_enable(drv_data->aud_mclk);
-	if (ret) {
-		dev_err(&pdev->dev,
-			"failed to enable aud_mclk(%d)\n", ret);
-		goto err_aud_mclk;
 	}
 
 	dev_set_drvdata(&pdev->dev, drv_data);
@@ -292,29 +271,12 @@ static int xlnx_i2s_probe(struct platform_device *pdev)
 					      &drv_data->dai_drv, 1);
 	if (ret) {
 		dev_err(&pdev->dev, "i2s component registration failed\n");
-		goto clk_err;
+		return ret;
 	}
 
 	dev_info(&pdev->dev, "%s DAI registered\n", drv_data->dai_drv.name);
 
 	return 0;
-clk_err:
-	clk_disable_unprepare(drv_data->aud_mclk);
-err_aud_mclk:
-	clk_disable_unprepare(drv_data->axis_clk);
-err_axis_clk:
-	clk_disable_unprepare(drv_data->axi_clk);
-
-	return ret;
-}
-
-static void xlnx_i2s_remove(struct platform_device *pdev)
-{
-	struct xlnx_i2s_drv_data *drv_data = dev_get_drvdata(&pdev->dev);
-
-	clk_disable_unprepare(drv_data->aud_mclk);
-	clk_disable_unprepare(drv_data->axis_clk);
-	clk_disable_unprepare(drv_data->axi_clk);
 }
 
 static struct platform_driver xlnx_i2s_aud_driver = {
@@ -323,7 +285,6 @@ static struct platform_driver xlnx_i2s_aud_driver = {
 		.of_match_table = xlnx_i2s_of_match,
 	},
 	.probe = xlnx_i2s_probe,
-	.remove = xlnx_i2s_remove,
 };
 
 module_platform_driver(xlnx_i2s_aud_driver);
