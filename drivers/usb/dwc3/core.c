@@ -1597,9 +1597,9 @@ int dwc3_core_init(struct dwc3 *dwc)
 			reg |= DWC3_GUCTL1_PARKMODE_DISABLE_HS;
 
 		if (DWC3_VER_IS_WITHIN(DWC3, 290A, ANY)) {
-			if (dwc->maximum_speed == USB_SPEED_FULL ||
-			    dwc->maximum_speed == USB_SPEED_HIGH ||
-			    dwc->dr_mode == USB_DR_MODE_PERIPHERAL)
+			if (dwc->dr_mode == USB_DR_MODE_PERIPHERAL &&
+			    (dwc->maximum_speed == USB_SPEED_FULL ||
+			    dwc->maximum_speed == USB_SPEED_HIGH))
 				reg |= DWC3_GUCTL1_DEV_FORCE_20_CLK_FOR_30_CLK;
 			else
 				reg &= ~DWC3_GUCTL1_DEV_FORCE_20_CLK_FOR_30_CLK;
