@@ -25565,6 +25565,13 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,axis-subsetconv.yaml
 F:	drivers/media/platform/xilinx/xilinx-axis-subsetconv.c
 
+XILINX HLS DRIVER
+M:	Kunal Rane <kunal.rane@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-hls.yaml
+F:	drivers/media/platform/xilinx/xilinx-hls.c
+
 XILINX MEDIA VTC DRIVER
 M:	Rajesh Gugulothu <rajesh.gugulothu@amd.com>
 L:	git@amd.com
