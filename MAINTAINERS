@@ -25615,6 +25615,13 @@ S:	Maintained
 F:	drivers/misc/xilinx_puf.c
 F:	include/uapi/misc/xilinx_puf.h
 
+XILINX TPG DRIVER
+M:	Kunal Rane <kunal.rane@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-tpg.yaml
+F:	drivers/media/platform/xilinx/xilinx-tpg.c
+
 XILINX VCU CLK DRIVER
 M:	Rohit Visavalia <rohit.visavalia@amd.com>
 R:	Vishal Sagar <vishal.sagar@amd.com>
