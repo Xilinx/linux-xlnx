@@ -17,6 +17,7 @@
 
 static int spi_nor_macronix_octal_dtr_enable(struct spi_nor *nor, bool enable)
 {
+	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
 	struct spi_mem_op op;
 	u8 *buf = nor->bouncebuf;
 	int ret;
@@ -68,6 +69,9 @@ static int spi_nor_macronix_octal_dtr_enable(struct spi_nor *nor, bool enable)
 		if (memcmp(buf, nor->info->id->bytes, nor->info->id->len))
 			return -EINVAL;
 	}
+
+	nor->flags &= ~SNOR_F_HAS_16BIT_SR;
+	params->wrsr_dummy = 4;
 
 	return 0;
 }
@@ -328,7 +332,7 @@ static const struct flash_info macronix_nor_parts[] = {
 		.name = "mx66um2g45g",
 		.size = SZ_256,
 		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
-			SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5,
+			SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5 | SPI_NOR_HAS_CR_TB,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
 			SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
 		.fixup_flags = SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE,
@@ -338,7 +342,7 @@ static const struct flash_info macronix_nor_parts[] = {
 		.name = "mx25um51345g",
 		.size = SZ_4M,
 		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
-			SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5,
+			SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5 | SPI_NOR_HAS_CR_TB,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
 			SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
 		.fixups = &mx25um51345g_fixups
