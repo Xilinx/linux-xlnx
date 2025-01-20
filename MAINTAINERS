@@ -25572,6 +25572,13 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-hls.yaml
 F:	drivers/media/platform/xilinx/xilinx-hls.c
 
+XILINX MULTISCALER DRIVER
+M:	Kunal Rane <kunal.rane@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-multi-scaler.yaml
+F:	drivers/media/platform/xilinx/xilinx-multi-scaler.c
+
 XILINX MEDIA VTC DRIVER
 M:	Rajesh Gugulothu <rajesh.gugulothu@amd.com>
 L:	git@amd.com
