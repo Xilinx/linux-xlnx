@@ -71,6 +71,9 @@ static void spi_nor_get_locked_range_sr(struct spi_nor *nor, u8 sr, loff_t *ofs,
 	u8 tb_mask = spi_nor_get_sr_tb_mask(nor);
 	u8 bp, val = sr & mask;
 
+	if (nor->flags & SNOR_F_HAS_CR_TB)
+		sr |= tb_mask;
+
 	if (nor->flags & SNOR_F_HAS_SR_BP3_BIT6 && val & SR_BP3_BIT6)
 		val = (val & ~SR_BP3_BIT6) | SR_BP3;
 
@@ -239,7 +242,7 @@ static int spi_nor_sr_lock(struct spi_nor *nor, loff_t ofs, u64 len)
 	if (!(nor->flags & SNOR_F_NO_WP))
 		status_new |= SR_SRWD;
 
-	if (!use_top)
+	if (!use_top && !(nor->flags & SNOR_F_HAS_CR_TB))
 		status_new |= tb_mask;
 
 	/* Don't bother if they're the same */
@@ -346,7 +349,7 @@ static int spi_nor_sr_unlock(struct spi_nor *nor, loff_t ofs, u64 len)
 	if (lock_len == 0)
 		status_new &= ~SR_SRWD;
 
-	if (!use_top)
+	if (!use_top && !(nor->flags & SNOR_F_HAS_CR_TB))
 		status_new |= tb_mask;
 
 	/* Don't bother if they're the same */

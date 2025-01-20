@@ -155,6 +155,7 @@ enum spi_nor_option_flags {
 	SNOR_F_HAS_STACKED      = BIT(17),
 	SNOR_F_HAS_PARALLEL	= BIT(18),
 	SNOR_F_HAS_SR_BP3_BIT5  = BIT(19),
+	SNOR_F_HAS_CR_TB	= BIT(20),
 };
 
 struct spi_nor_read_command {
@@ -363,6 +364,8 @@ struct spi_nor_otp {
  *			opcode correspondent.
  * @rdsr_dummy:		dummy cycles needed for Read Status Register command
  *			in octal DTR mode.
+ * @wrsr_dummy:		dummy cycles needed for Write Status Register command
+ *			in octal DTR mode.
  * @rdsr_addr_nbytes:	dummy address bytes needed for Read Status Register
  *			command in octal DTR mode.
  * @n_banks:		number of banks.
@@ -395,6 +398,7 @@ struct spi_nor_flash_parameter {
 	u8				addr_nbytes;
 	u8				addr_mode_nbytes;
 	u8				rdsr_dummy;
+	u8				wrsr_dummy;
 	u8				rdsr_addr_nbytes;
 	u8				n_banks;
 	u8				n_dice;
@@ -490,6 +494,8 @@ struct spi_nor_id {
  *   SPI_NOR_BP3_SR_BIT5:     BP3 is bit 5 of status register,
  *                            must be used with SPI_NOR_4BIT_BP
  *   SST_GLOBAL_PROT_UNLK:    Unlock the Global protection for sst flashes.
+ *   SPI_NOR_HAS_CR_TB:       Top/Bottom (TB) is in configuration register.
+ *                            Must be used with SPI_NOR_HAS_TB.
  *
  * @no_sfdp_flags:  flags that indicate support that can be discovered via SFDP.
  *                  Used when SFDP tables are not defined in the flash. These
@@ -545,6 +551,7 @@ struct flash_info {
 #define SPI_NOR_RWW			BIT(10)
 #define SPI_NOR_BP3_SR_BIT5		BIT(11)
 #define SST_GLOBAL_PROT_UNLK            BIT(12)
+#define SPI_NOR_HAS_CR_TB		BIT(13)
 
 	u8 no_sfdp_flags;
 #define SPI_NOR_SKIP_SFDP		BIT(0)
