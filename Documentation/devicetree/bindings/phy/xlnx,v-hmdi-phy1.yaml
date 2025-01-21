@@ -40,11 +40,13 @@ properties:
     items:
       - description: AXI Lite clock
       - description: DRP clock
+      - description: TMDS clock
 
   clock-names:
     items:
       - const: axi4lite_aclk
       - const: drpclk
+      - const: tmds_clock
 
   xlnx,transceiver-type:
     description: |
@@ -241,8 +243,8 @@ then:
 examples:
   - |
    v_hdmi_phy1@80040000 {
-           clock-names = "axi4lite_aclk", "drpclk";
-           clocks =  <&zynqmp_clk 71>, <&zynqmp_clk 71>;
+           clock-names = "axi4lite_aclk", "drpclk", "tmds_clock";
+           clocks = <&zynqmp_clk 71>, <&zynqmp_clk 71>, <&idt_241 1>;
            compatible = "xlnx,v-hdmi-phy1-1.0";
            interrupt-parent = <&gic>;
            interrupts = <0 89 4>;
@@ -271,8 +273,8 @@ examples:
            #phy-cells = <0>;
    };
    v_hdmi_gt@80050000 {
-           clock-names = "axi4lite_aclk", "drpclk";
-           clocks =  <&zynqmp_clk 71>, <&zynqmp_clk 71>;
+           clock-names = "axi4lite_aclk", "drpclk", "tmds_clock";
+           clocks = <&versal_clk 65>, <&versal_clk 65>, <&idt_241 1>;
            compatible = "xlnx,v-hdmi-gt-controller-1.0";
            interrupt-parent = <&gic>;
            interrupts = <0 89 4>;
