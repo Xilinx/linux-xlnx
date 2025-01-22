@@ -1,0 +1,134 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/media/xilinx/xlnx,v-gamma-lut.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx Gamma LUT IP.
+
+maintainers:
+  - Kunal Rane <kunal.rane@amd.com>
+
+description:
+  The Xilinx Gamma LUT IP is used to provide RGB Gamma correction.
+  The IP provides a look up table for each R,G and B components.
+
+properties:
+  compatible:
+    const: xlnx,v-gamma-lut
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    description: Reference to video core clock.
+    maxItems: 1
+
+  clock-names:
+    deprecated: true
+    maxItems: 1
+
+  xlnx,max-height:
+    description: Maximum number of lines.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 64
+    maximum: 4320
+
+  xlnx,max-width:
+    description: Maximum number of pixels in a line.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 64
+    maximum: 8192
+
+  reset-gpios:
+    description: Should contain GPIO reset phandle
+    maxItems: 1
+
+  ports:
+    type: object
+
+    properties:
+      "#address-cells":
+        const: 1
+
+      "#size-cells":
+        const: 0
+
+    patternProperties:
+      "^port@[0-1]$":
+        description: port@0 is input. port@1 is output.
+        type: object
+
+        properties:
+          reg:
+            enum: [0, 1]
+
+          xlnx,video-width:
+            description: Number of bits per color.
+            $ref: /schemas/types.yaml#/definitions/uint32
+            enum: [8, 16]
+
+          endpoint:
+            type: object
+
+            properties:
+              remote-endpoint: true
+
+            required:
+              - remote-endpoint
+
+            additionalProperties: false
+
+        required:
+          - reg
+          - xlnx,video-width
+          - endpoint
+
+        additionalProperties: false
+
+    required:
+      - "#address-cells"
+      - "#size-cells"
+      - port@0
+      - port@1
+
+    additionalProperties: false
+
+required:
+  - reg
+  - clocks
+  - xlnx,max-height
+  - xlnx,max-width
+  - reset-gpios
+  - ports
+
+additionalProperties: false
+
+examples:
+  - |
+    gamma_lut_1@a0080000 {
+        compatible = "xlnx,v-gamma-lut";
+        reg = <0xa0080000 0x10000>;
+        clocks = <&vid_stream_clk>;
+        reset-gpios = <&gpio 83 1>;
+        xlnx,max-height = <2160>;
+        xlnx,max-width = <3840>;
+        ports {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            port@0 {
+                reg = <0>;
+                xlnx,video-width = <8>;
+                gamma_in: endpoint {
+                    remote-endpoint = <&demosaic_out>;
+                };
+            };
+            port@1 {
+                reg = <1>;
+                xlnx,video-width = <8>;
+                gamma_out: endpoint {
+                    remote-endpoint = <&csc_in>;
+                };
+            };
+        };
+    };
