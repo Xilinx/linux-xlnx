@@ -1,0 +1,131 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/media/xilinx/xlnx,v-demosaic.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx Demosaic IP.
+
+maintainers:
+  - Kunal Rane <kunal.rane@amd.com>
+
+description:
+  The Xilinx Video Demosaic IP is used to interface to a Bayer video source.
+  The driver set default Sink Pad media bus format to RGB.
+  The IP and driver only support RGB as its Source Pad media format.
+
+properties:
+  compatible:
+    const: xlnx,v-demosaic-1.1
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    description: Reference to video core clock.
+    maxItems: 1
+
+  clock-names:
+    deprecated: true
+    maxItems: 1
+
+  xlnx,max-height:
+    description: Maximum number of lines.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 64
+    maximum: 4320
+
+  xlnx,max-width:
+    description: Maximum number of pixels in a line.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 64
+    maximum: 8192
+
+  reset-gpios:
+    description: Should contain GPIO reset phandle
+    maxItems: 1
+
+  ports:
+    type: object
+
+    properties:
+      "#address-cells":
+        const: 1
+
+      "#size-cells":
+        const: 0
+
+    patternProperties:
+      "^port@[0-1]$":
+        type: object
+        description: port@0 is input. port@1 is output.
+
+        properties:
+          reg:
+            enum: [0, 1]
+
+          endpoint:
+            type: object
+
+            properties:
+              remote-endpoint: true
+
+            required:
+              - remote-endpoint
+
+            additionalProperties: false
+
+        required:
+          - reg
+          - endpoint
+
+        additionalProperties: false
+
+    required:
+      - "#address-cells"
+      - "#size-cells"
+      - port@0
+      - port@1
+
+    additionalProperties: false
+
+required:
+  - reg
+  - clocks
+  - clock-names
+  - xlnx,max-height
+  - xlnx,max-width
+  - reset-gpios
+  - ports
+
+additionalProperties: false
+
+examples:
+  - |
+    v_demosaic@a0010000 {
+        compatible = "xlnx,v-demosaic-1.1";
+        reg = <0xa0010000 0x10000>;
+        clock-names = "ap_clk";
+        clocks = <&misc_clk_2>;
+        reset-gpios = <&gpio 0 1>;
+        xlnx,max-height = <2160>;
+        xlnx,max-width = <3840>;
+        ports {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            port@0 {
+                /* For cfa-pattern=rggb user needs to fill as per BAYER format */
+                reg = <0>;
+                demo_in: endpoint {
+                    remote-endpoint = <&mipi_csirx_outcsirx_0>;
+                };
+            };
+            port@1 {
+                /* For cfa-pattern=rggb user needs to fill as per BAYER format */
+                reg = <1>;
+                demo_out: endpoint {
+                    remote-endpoint = <&psng0_vg0psng0_dm0>;
+                };
+            };
+        };
+    };
