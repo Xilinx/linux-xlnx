@@ -22,7 +22,6 @@ obj-$(CONFIG_VIDEO_XILINX_M2M) += xilinx-m2m.o
 obj-$(CONFIG_VIDEO_XILINX_MULTISCALER) += xilinx-multi-scaler.o
 obj-$(CONFIG_VIDEO_XILINX_SCD) += xilinx-scd.o
 obj-$(CONFIG_VIDEO_XILINX_SDIRXSS) += xilinx-sdirxss.o
-obj-$(CONFIG_VIDEO_XILINX_SWITCH) += xilinx-switch.o
 obj-$(CONFIG_VIDEO_XILINX_TPG) += xilinx-tpg.o
 obj-$(CONFIG_VIDEO_XILINX_VPSS_CSC) += xilinx-vpss-csc.o
 obj-$(CONFIG_VIDEO_XILINX_VPSS_SCALER) += xilinx-vpss-scaler.o
