@@ -25535,6 +25535,13 @@ S:	Maintained
 F:	drivers/soc/xilinx/xlnx_event_manager.c
 F:	include/linux/firmware/xlnx-event-manager.h
 
+XILINX GAMMA DRIVER
+M:	Kunal Rane <kunal.rane@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-gamma-lut.yaml
+F:	drivers/media/platform/xilinx/xilinx-gamma.c
+
 XILINX GPIO DRIVER
 M:	Shubhrajyoti Datta <shubhrajyoti.datta@amd.com>
 R:	Srinivas Neeli <srinivas.neeli@amd.com>
