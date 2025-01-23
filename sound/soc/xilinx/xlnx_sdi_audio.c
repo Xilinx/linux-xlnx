@@ -404,7 +404,6 @@ static int xlnx_sdi_audio_probe(struct platform_device *pdev)
 	u32 val, irq;
 	int ret;
 	struct dev_ctx *ctx;
-	struct resource *res;
 	struct device *video_dev;
 	struct device_node *video_node;
 	struct platform_device *video_pdev;
@@ -429,17 +428,9 @@ static int xlnx_sdi_audio_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		dev_err(&pdev->dev, "No IO MEM resource found\n");
-		return -ENODEV;
-	}
-
-	ctx->base = devm_ioremap_resource(&pdev->dev, res);
-	if (!ctx->base) {
-		dev_err(&pdev->dev, "ioremap failed\n");
-		return -EADDRNOTAVAIL;
-	}
+	ctx->base = devm_platform_ioremap_resource(pdev, 0);
+	if (IS_ERR(ctx->base))
+		return PTR_ERR(ctx->base);
 
 	ctx->dev = &pdev->dev;
 
