@@ -23,15 +23,14 @@
 #define VERSAL_DMA_BIT_MASK		64U
 #define ZYNQMP_AES_KEY_SIZE		AES_KEYSIZE_256
 #define ZYNQMP_AES_AUTH_SIZE		16U
-#define ZYNQMP_KEY_SRC_SEL_KEY_LEN	1U
 #define ZYNQMP_AES_BLK_SIZE		1U
 #define ZYNQMP_AES_MIN_INPUT_BLK_SIZE	4U
 #define ZYNQMP_AES_WORD_LEN		4U
 #define VERSAL_AES_QWORD_LEN		16U
-#define ZYNQMP_AES_DEVICE_KEY_LEN	1U
-#define ZYNQMP_AES_GCM_TAG_MISMATCH_ERR		0x01
-#define ZYNQMP_AES_WRONG_KEY_SRC_ERR		0x13
-#define ZYNQMP_AES_PUF_NOT_PROGRAMMED		0xE300
+#define ZYNQMP_AES_GCM_TAG_MISMATCH_ERR	0x01
+#define ZYNQMP_AES_WRONG_KEY_SRC_ERR	0x13
+#define ZYNQMP_AES_PUF_NOT_PROGRAMMED	0xE300
+#define XILINX_KEY_MAGIC		0x3EA0
 
 enum zynqmp_aead_op {
 	ZYNQMP_AES_DECRYPT = 0,
@@ -97,6 +96,11 @@ struct xilinx_aead_drv_ctx {
 	u8 dma_bit_mask;
 	int (*aes_aead_cipher)(struct aead_request *areq);
 };
+
+struct xilinx_hwkey_info {
+	u16 magic;
+	u16 type;
+} __packed;
 
 struct zynqmp_aead_hw_req {
 	u64 src;
@@ -246,12 +250,6 @@ static int versal_aes_aead_cipher(struct aead_request *req)
 	char *kbuf;
 	int ret;
 
-	if (tfm_ctx->keylen != XSECURE_AES_KEY_SIZE_128 &&
-	    tfm_ctx->keylen != XSECURE_AES_KEY_SIZE_256) {
-		ret = -EINVAL;
-		goto err;
-	}
-
 	kbuf_size = total_len + ZYNQMP_AES_AUTH_SIZE;
 	kbuf = kmalloc(kbuf_size, GFP_KERNEL);
 	if (unlikely(!kbuf)) {
@@ -299,7 +297,7 @@ static int versal_aes_aead_cipher(struct aead_request *req)
 
 	if (tfm_ctx->keylen == XSECURE_AES_KEY_SIZE_128)
 		hwreq->size = AES_KEY_SIZE_128;
-	else if (tfm_ctx->keylen == XSECURE_AES_KEY_SIZE_256)
+	else
 		hwreq->size = AES_KEY_SIZE_256;
 
 	/* Request aes key write for volatile user keys */
@@ -377,14 +375,12 @@ static int zynqmp_fallback_check(struct zynqmp_aead_tfm_ctx *tfm_ctx,
 
 	if (tfm_ctx->authsize != ZYNQMP_AES_AUTH_SIZE && rq_ctx->op == ZYNQMP_AES_DECRYPT)
 		return 1;
-	if ((tfm_ctx->keysrc == ZYNQMP_AES_KUP_KEY &&
-	     tfm_ctx->keylen != ZYNQMP_AES_KEY_SIZE) ||
-	    (tfm_ctx->keysrc == ZYNQMP_AES_DEV_KEY &&
-	     tfm_ctx->keylen != ZYNQMP_AES_DEVICE_KEY_LEN))
-		return 1;
 
 	if (req->assoclen != 0 ||
 	    req->cryptlen < ZYNQMP_AES_MIN_INPUT_BLK_SIZE)
+		return 1;
+	if (tfm_ctx->keylen == AES_KEYSIZE_128 ||
+	    tfm_ctx->keylen == AES_KEYSIZE_192)
 		return 1;
 
 	if ((req->cryptlen % ZYNQMP_AES_WORD_LEN) != 0)
@@ -405,8 +401,7 @@ static int versal_fallback_check(struct zynqmp_aead_tfm_ctx *tfm_ctx,
 	if (tfm_ctx->authsize != ZYNQMP_AES_AUTH_SIZE && rq_ctx->op == ZYNQMP_AES_DECRYPT)
 		return 1;
 
-	if (tfm_ctx->keylen != XSECURE_AES_KEY_SIZE_128 &&
-	    tfm_ctx->keylen != XSECURE_AES_KEY_SIZE_256)
+	if (tfm_ctx->keylen == AES_KEYSIZE_192)
 		return 1;
 
 	if (req->cryptlen < ZYNQMP_AES_MIN_INPUT_BLK_SIZE ||
@@ -444,22 +439,74 @@ static int zynqmp_aes_aead_setkey(struct crypto_aead *aead, const u8 *key,
 {
 	struct crypto_tfm *tfm = crypto_aead_tfm(aead);
 	struct zynqmp_aead_tfm_ctx *tfm_ctx = crypto_tfm_ctx(tfm);
+	struct xilinx_hwkey_info hwkey;
 	unsigned char keysrc;
+	int err;
 
-	if (keylen == ZYNQMP_KEY_SRC_SEL_KEY_LEN) {
-		keysrc = *key;
+	if (keylen == sizeof(struct xilinx_hwkey_info)) {
+		memcpy(&hwkey, key, sizeof(struct xilinx_hwkey_info));
+		if (hwkey.magic != XILINX_KEY_MAGIC)
+			return -EINVAL;
+		keysrc = hwkey.type;
 		if (keysrc == ZYNQMP_AES_KUP_KEY ||
 		    keysrc == ZYNQMP_AES_DEV_KEY ||
 		    keysrc == ZYNQMP_AES_PUF_KEY) {
 			tfm_ctx->keysrc = keysrc;
-			tfm_ctx->keylen = keylen;
+			tfm_ctx->keylen = sizeof(struct xilinx_hwkey_info);
+			return 0;
 		}
-		return 0;
+		return -EINVAL;
 	}
 
-	tfm_ctx->keylen = keylen;
-	if (keylen == ZYNQMP_AES_KEY_SIZE) {
-		tfm_ctx->keysrc = ZYNQMP_AES_KUP_KEY;
+	if (keylen == ZYNQMP_AES_KEY_SIZE && tfm_ctx->keysrc == ZYNQMP_AES_KUP_KEY) {
+		tfm_ctx->keylen = keylen;
+		memcpy(tfm_ctx->key, key, keylen);
+		dma_sync_single_for_device(tfm_ctx->dev, tfm_ctx->key_dma_addr,
+					   ZYNQMP_AES_KEY_SIZE,
+					   DMA_TO_DEVICE);
+	} else if (tfm_ctx->keysrc != ZYNQMP_AES_KUP_KEY) {
+		return -EINVAL;
+	}
+
+	tfm_ctx->fbk_cipher->base.crt_flags &= ~CRYPTO_TFM_REQ_MASK;
+	tfm_ctx->fbk_cipher->base.crt_flags |= (aead->base.crt_flags &
+					CRYPTO_TFM_REQ_MASK);
+
+	err = crypto_aead_setkey(tfm_ctx->fbk_cipher, key, keylen);
+	if (!err)
+		tfm_ctx->keylen = keylen;
+
+	return err;
+}
+
+static int versal_aes_aead_setkey(struct crypto_aead *aead, const u8 *key,
+				  unsigned int keylen)
+{
+	struct crypto_tfm *tfm = crypto_aead_tfm(aead);
+	struct zynqmp_aead_tfm_ctx *tfm_ctx = crypto_tfm_ctx(tfm);
+	struct xilinx_hwkey_info hwkey;
+	unsigned char keysrc;
+	int err;
+
+	if (keylen == sizeof(struct xilinx_hwkey_info)) {
+		memcpy(&hwkey, key, sizeof(struct xilinx_hwkey_info));
+		if (hwkey.magic != XILINX_KEY_MAGIC)
+			return -EINVAL;
+
+		keysrc = hwkey.type;
+		if ((keysrc >= VERSAL_AES_EFUSE_USER_KEY_0 &&
+		     keysrc  <= VERSAL_AES_USER_KEY_7) &&
+		     keysrc != VERSAL_AES_KUP_KEY) {
+			tfm_ctx->keysrc = keysrc;
+			tfm_ctx->keylen = sizeof(struct xilinx_hwkey_info);
+			return 0;
+		}
+		return -EINVAL;
+	}
+	if (tfm_ctx->keysrc < VERSAL_AES_USER_KEY_0 || tfm_ctx->keysrc > VERSAL_AES_USER_KEY_7)
+		return -EINVAL;
+	if (keylen == XSECURE_AES_KEY_SIZE_256 || keylen == XSECURE_AES_KEY_SIZE_128) {
+		tfm_ctx->keylen = keylen;
 		memcpy(tfm_ctx->key, key, keylen);
 		dma_sync_single_for_device(tfm_ctx->dev, tfm_ctx->key_dma_addr,
 					   ZYNQMP_AES_KEY_SIZE,
@@ -468,52 +515,12 @@ static int zynqmp_aes_aead_setkey(struct crypto_aead *aead, const u8 *key,
 
 	tfm_ctx->fbk_cipher->base.crt_flags &= ~CRYPTO_TFM_REQ_MASK;
 	tfm_ctx->fbk_cipher->base.crt_flags |= (aead->base.crt_flags &
-					CRYPTO_TFM_REQ_MASK);
+						CRYPTO_TFM_REQ_MASK);
+	err = crypto_aead_setkey(tfm_ctx->fbk_cipher, key, keylen);
+	if (!err)
+		tfm_ctx->keylen = keylen;
 
-	return crypto_aead_setkey(tfm_ctx->fbk_cipher, key, keylen);
-}
-
-static int versal_aes_aead_setkey(struct crypto_aead *aead, const u8 *key,
-				  unsigned int keylen)
-{
-	struct crypto_tfm *tfm = crypto_aead_tfm(aead);
-	struct zynqmp_aead_tfm_ctx *tfm_ctx = crypto_tfm_ctx(tfm);
-
-	if (keylen == ZYNQMP_KEY_SRC_SEL_KEY_LEN) {
-		unsigned char keysrc = VERSAL_AES_EFUSE_USER_KEY_0;
-
-		keysrc = *key;
-		if ((keysrc >= VERSAL_AES_EFUSE_USER_KEY_0 &&
-		     keysrc  <= VERSAL_AES_USER_KEY_7) &&
-		     keysrc != VERSAL_AES_KUP_KEY) {
-			tfm_ctx->keysrc = keysrc;
-			return 0;
-		}
-		return -EINVAL;
-	}
-	tfm_ctx->keylen = keylen;
-	if (keylen == XSECURE_AES_KEY_SIZE_256 ||
-	    keylen == XSECURE_AES_KEY_SIZE_128) {
-		if (tfm_ctx->keysrc >= VERSAL_AES_USER_KEY_0 &&
-		    tfm_ctx->keysrc <= VERSAL_AES_USER_KEY_7) {
-			memcpy(tfm_ctx->key, key, keylen);
-			dma_sync_single_for_device(tfm_ctx->dev, tfm_ctx->key_dma_addr,
-						   ZYNQMP_AES_KEY_SIZE,
-						   DMA_TO_DEVICE);
-		}
-	}
-
-	if (tfm_ctx->keysrc < VERSAL_AES_EFUSE_USER_KEY_0 ||
-	    tfm_ctx->keysrc > VERSAL_AES_USER_KEY_7 ||
-	    tfm_ctx->keysrc ==  VERSAL_AES_KUP_KEY) {
-		tfm_ctx->keysrc = VERSAL_AES_USER_KEY_0;
-	}
-
-	tfm_ctx->fbk_cipher->base.crt_flags &= ~CRYPTO_TFM_REQ_MASK;
-	tfm_ctx->fbk_cipher->base.crt_flags |= (aead->base.crt_flags &
-					CRYPTO_TFM_REQ_MASK);
-
-	return crypto_aead_setkey(tfm_ctx->fbk_cipher, key, keylen);
+	return err;
 }
 
 static int zynqmp_aes_aead_setauthsize(struct crypto_aead *aead,
@@ -537,6 +544,10 @@ static int zynqmp_aes_aead_encrypt(struct aead_request *req)
 	int err;
 
 	drv_ctx = container_of(alg, struct xilinx_aead_drv_ctx, aead.base);
+	if (tfm_ctx->keysrc == ZYNQMP_AES_KUP_KEY  &&
+	    tfm_ctx->keylen == sizeof(struct xilinx_hwkey_info))
+		return -EINVAL;
+
 	rq_ctx->op = ZYNQMP_AES_ENCRYPT;
 	err = zynqmp_fallback_check(tfm_ctx, req);
 	if (err && tfm_ctx->keysrc != ZYNQMP_AES_KUP_KEY)
@@ -571,6 +582,10 @@ static int versal_aes_aead_encrypt(struct aead_request *req)
 
 	drv_ctx = container_of(alg, struct xilinx_aead_drv_ctx, aead.base);
 	rq_ctx->op = ZYNQMP_AES_ENCRYPT;
+	if (tfm_ctx->keysrc >= VERSAL_AES_USER_KEY_0 &&
+	    tfm_ctx->keysrc <= VERSAL_AES_USER_KEY_7 &&
+	    tfm_ctx->keylen == sizeof(struct xilinx_hwkey_info))
+		return -EINVAL;
 	err = versal_fallback_check(tfm_ctx, req);
 	if (err && (tfm_ctx->keysrc < VERSAL_AES_USER_KEY_0 ||
 		    tfm_ctx->keysrc > VERSAL_AES_USER_KEY_7))
@@ -604,6 +619,9 @@ static int zynqmp_aes_aead_decrypt(struct aead_request *req)
 
 	drv_ctx = container_of(alg, struct xilinx_aead_drv_ctx, aead.base);
 	rq_ctx->op = ZYNQMP_AES_DECRYPT;
+	if (tfm_ctx->keysrc == ZYNQMP_AES_KUP_KEY  &&
+	    tfm_ctx->keylen == sizeof(struct xilinx_hwkey_info))
+		return -EINVAL;
 	err = zynqmp_fallback_check(tfm_ctx, req);
 	if (err && tfm_ctx->keysrc != ZYNQMP_AES_KUP_KEY)
 		return -EOPNOTSUPP;
@@ -637,6 +655,11 @@ static int versal_aes_aead_decrypt(struct aead_request *req)
 
 	drv_ctx = container_of(alg, struct xilinx_aead_drv_ctx, aead.base);
 	rq_ctx->op = ZYNQMP_AES_DECRYPT;
+	if (tfm_ctx->keysrc >= VERSAL_AES_USER_KEY_0 &&
+	    tfm_ctx->keysrc <= VERSAL_AES_USER_KEY_7 &&
+	    tfm_ctx->keylen == sizeof(struct xilinx_hwkey_info))
+		return -EINVAL;
+
 	err = versal_fallback_check(tfm_ctx, req);
 	if (err &&
 	    tfm_ctx->keysrc < VERSAL_AES_USER_KEY_0 &&
@@ -668,6 +691,7 @@ static int aes_aead_init(struct crypto_aead *aead)
 
 	drv_ctx = container_of(alg, struct xilinx_aead_drv_ctx, aead.base);
 	tfm_ctx->dev = drv_ctx->dev;
+	tfm_ctx->keylen = 0;
 	tfm_ctx->keysrc = drv_ctx->keysrc;
 
 	tfm_ctx->fbk_cipher = crypto_alloc_aead(drv_ctx->aead.base.base.cra_name,
