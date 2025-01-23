@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/media/xilinx/xlnx,mem2mem.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx Video IP MEM2MEM Pipeline (XVIM2M)
+
+maintainers:
+  - Vishal Sagar <vishal.sagar@amd.com>
+
+description:
+  Xilinx video IP mem2mem pipeline processes DMA transfers to achieve memory
+  copy from one physical memory to other. The data is copied by employing two
+  DMA transfers memory to device and device to memory transactions one after
+  the other. The DT node of the XVIM2M represents as a top level node of the
+  pipeline and defines mappings between DMAs.
+
+properties:
+  compatible:
+    const: xlnx,mem2mem
+
+  dmas:
+    description:
+      List of two DMA specifier (as defined in
+      Documentation/devicetree/bindings/dma/dma-controller.yaml) per port.
+    maxItems: 2
+
+  dma-names:
+    description:
+      List of two Corrsponding DMA specifier's identifier strings per port.
+      Identifier string of one DMA channel should be "tx" and other should be
+      "rx".
+    items:
+      - const: tx
+      - const: rx
+
+additionalProperties: false
+
+examples:
+  - |
+   video_m2m {
+        compatible = "xlnx,mem2mem";
+        dmas = <&dma_1 0>, <&dma_2 0>;
+        dma-names = "tx", "rx";
+   };
+...
