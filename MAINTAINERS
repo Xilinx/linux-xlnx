@@ -25517,6 +25517,13 @@ R:	Vishal Sagar <vishal.sagar@amd.com>
 S:	Maintained
 F:	drivers/gpu/drm/xlnx/hdcp/
 
+XILINX DEMOSAIC DRIVER
+M:	Kunal Rane <kunal.rane@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-demosaic.yaml
+F:	drivers/media/platform/xilinx/xilinx-demosaic.c
+
 XILINX ECDSA DRIVER
 M:	Harsha <harsha.harsha@amd.com>
 S:	Maintained
