@@ -23,6 +23,7 @@
 #include <linux/component.h>
 #include <linux/delay.h>
 #include <linux/hdmi.h>
+#include <linux/math64.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/mfd/syscon.h>
@@ -1859,9 +1860,9 @@ static void xlnx_hdmi_set_frl_timer(struct xlnx_hdmi *hdmi, u32 timer_val)
 
 	clkrate = clk_get_rate(hdmitx_clks[S_AXI_CPU_ACLK].clk);
 	if (timer_val == TIMEOUT_10US)
-		clk_cycles = clkrate / 100000;
+		clk_cycles = div_u64(clkrate, 100000);
 	else if (timer_val > 0)
-		clk_cycles = clkrate * timer_val / 1000;
+		clk_cycles = div_u64(clkrate * timer_val, 1000);
 
 	xlnx_hdmi_writel(hdmi, HDMI_TX_FRL_TMR, clk_cycles);
 }
@@ -3294,12 +3295,13 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 		}
 	} else {
 		if (hdmi->xvidc_colorfmt == HDMI_TX_CSF_YCRCB_422) {
-			vid_clk = (hdmi->tmds_clk / config->ppc) / 1000;
+			vid_clk = div_u64(div_u64(hdmi->tmds_clk, config->ppc),
+					  1000);
 			lnk_clk = vid_clk;
 		} else {
-			pixelrate = ((hdmi->tmds_clk * 8) / config->bpc) / 1000;
-			vid_clk = (pixelrate / config->ppc);
-			lnk_clk = (vid_clk *  config->bpc) / 8;
+			pixelrate = div_u64(hdmi->tmds_clk * 8, config->bpc * 1000);
+			vid_clk = div_u64(pixelrate, config->ppc);
+			lnk_clk = div_u64(vid_clk * config->bpc, 8);
 		}
 
 		xlnx_set_frl_link_clk(hdmi, lnk_clk);
@@ -3544,7 +3546,7 @@ static int xlnx_hdmi_initialize(struct xlnx_hdmi *hdmi)
 
 	/* ddc init */
 	clkrate = clk_get_rate(hdmitx_clks[S_AXI_CPU_ACLK].clk);
-	val = (clkrate / HDMI_TX_DDC_CLKDIV) / 2;
+	val = div_u64(clkrate, HDMI_TX_DDC_CLKDIV * 2);
 	val = (val << HDMI_TX_DDC_CTRL_CLK_DIV_SHIFT) &
 		HDMI_TX_DDC_CTRL_CLK_DIV;
 
