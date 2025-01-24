@@ -1,0 +1,140 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# %YAML 1.2
+---
+$id: http://devicetree.org/schemas/sound/xlnx,v-uhdsdi-audio.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx UHD SDI Playback/Capture audio system
+
+maintainers:
+  - Katta Dhanunjanrao <katta.dhanunjanrao@amd.com>
+
+description:
+  The IP core supports UHD SDI Embed/Extract of audio in SDI Tx and Rx protocol respectively.
+  Please note that v1.0 (xlnx,v-uhdsdi-audio-1.0) is deprecated and driver no longer supports it.
+  Mandatory to upgrade to v2.0.
+  Refer to the documentation -
+  https://www.xilinx.com/support/documentation/ip_documentation/v_uhdsdi_audio/v1_0/pg309-v-uhdsdi-audio.pdf
+
+properties:
+  compatible:
+    const: xlnx,v-uhdsdi-audio-2.0
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    maxItems: 1
+
+  clocks:
+    description: List of phandles to AXI lite, sdi embed  and axi stream clock.
+    items:
+      - description: AXI lite clock.
+      - description: AXI stream clock.
+          - s_axis_clk is clock for audio embed.
+          - m_axis_clk is clock for audio extract.
+      - description: SDI embed/extract clock.
+          - sdi_embed_clk is used for embedding the audio into SDI stream(Tx).
+          - sdi_extract_clk is used for extracting the audio from SDI stream(Rx).
+
+  clock-names:
+    items:
+      - const: s_axi_aclk
+      - enum: [s_axis_clk, m_axis_clk]
+      - enum: [sdi_embed_clk, sdi_extract_clk]
+
+  xlnx,snd-pcm:
+    description: Reference to audio formatter block.
+    $ref: /schemas/types.yaml#/definitions/phandle
+
+  ports:
+    type: object
+
+    properties:
+      "#address-cells":
+        const: 1
+
+      "#size-cells":
+        const: 0
+
+      port@0:
+        type: object
+        description: Output / source port node, endpoint describing modules
+                     connected the SDI Audio Embed.
+        properties:
+          reg:
+            const: 0
+
+          endpoint:
+            type: object
+
+            properties:
+              remote-endpoint: true
+
+            required:
+              - remote-endpoint
+
+            additionalProperties: false
+
+        additionalProperties: false
+
+    additionalProperties: false
+
+required:
+  - reg
+  - clock-names
+  - clocks
+  - interrupts
+  - xlnx,snd-pcm
+
+allOf:
+  - if:
+      properties:
+        clock-names:
+          contains:
+            const: s_axis_clk
+    then:
+      properties:
+        clock-names:
+          contains:
+            const: sdi_embed_clk
+
+      required:
+        - ports
+    else:
+      properties:
+        clock-names:
+          contains:
+            const: sdi_extract_clk
+
+additionalProperties: false
+
+examples:
+  - |
+    v-uhdsdi-audio@80090000 {
+        compatible = "xlnx,v-uhdsdi-audio-2.0";
+        reg = <0x80090000 0x10000>;
+        clock-names = "s_axi_aclk", "s_axis_clk", "sdi_embed_clk";
+        clocks = <&misc_clk_0>, <&misc_clk_0>, <&misc_clk_1>;
+        interrupts = <0 107 4>;
+        xlnx,snd-pcm = <&audio_formatter>;
+        ports {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            port@0 {
+                reg = <0>;
+                endpoint {
+                    remote-endpoint = <&sdi_audio_sink_port>;
+                };
+            };
+        };
+    };
+    v-uhdsdi-audio@80080000 {
+        compatible = "xlnx,v-uhdsdi-audio-2.0";
+        reg = <0x80080000 0x10000>;
+        clock-names = "s_axi_aclk", "m_axis_clk", "sdi_extract_clk";
+        clocks = <&misc_clk_0>, <&misc_clk_0>, <&misc_clk_1>;
+        interrupts = <0 106 4>;
+        xlnx,snd-pcm = <&audio_formatter>;
+    };
+...
