@@ -25657,6 +25657,13 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/clock/xlnx,vcu.yaml
 F:	drivers/clk/xilinx/xlnx_vcu.c
 
+XILINX VPSS CSC DRIVER
+M:	Kunal Rane <kunal.rane@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-vpss-csc.yaml
+F:	drivers/media/platform/xilinx/xilinx-vpss-csc.c
+
 XILINX VERSAL SYSMON DRIVER
 M:	Salih Erim <salih.erim@amd.com>
 R:	Dragan Cvetic <dragan.cvetic@amd.com>
