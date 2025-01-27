@@ -16,6 +16,7 @@
 #include <linux/types.h>
 
 #include <linux/err.h>
+#include <linux/firmware/xlnx-zynqmp-fpga.h>
 #include <linux/firmware/xlnx-zynqmp-sem.h>
 
 #define ZYNQMP_PM_VERSION_MAJOR	1
@@ -140,22 +141,6 @@
 /* Loader commands */
 #define PM_LOAD_PDI	0x701
 #define PDI_SRC_DDR	0xF
-
-/*
- * Firmware FPGA Manager flags
- * XILINX_ZYNQMP_PM_FPGA_FULL:	FPGA full reconfiguration
- * XILINX_ZYNQMP_PM_FPGA_PARTIAL: FPGA partial reconfiguration
- */
-#define XILINX_ZYNQMP_PM_FPGA_FULL	0x0U
-#define XILINX_ZYNQMP_PM_FPGA_PARTIAL	BIT(0)
-#define XILINX_ZYNQMP_PM_FPGA_AUTHENTICATION_DDR	BIT(1)
-#define XILINX_ZYNQMP_PM_FPGA_AUTHENTICATION_OCM	BIT(2)
-#define XILINX_ZYNQMP_PM_FPGA_ENCRYPTION_USERKEY	BIT(3)
-#define XILINX_ZYNQMP_PM_FPGA_ENCRYPTION_DEVKEY		BIT(4)
-
-/* FPGA Status Reg */
-#define XILINX_ZYNQMP_PM_FPGA_CONFIG_STAT_OFFSET	7U
-#define XILINX_ZYNQMP_PM_FPGA_READ_CONFIG_REG		0U
 
 /* ZynqMP SD tap delay tuning */
 #define SD_ITAPDLY	0xFF180314
@@ -678,17 +663,10 @@ int zynqmp_pm_bbram_read_usrdata(const u64 outaddr);
 int zynqmp_pm_bbram_write_aeskey(u32 keylen, const u64 keyaddr);
 int zynqmp_pm_bbram_zeroize(void);
 int zynqmp_pm_bbram_lock_userdata(void);
-int zynqmp_pm_fpga_read(const u32 reg_numframes, const u64 phys_address,
-			u32 readback_type, u32 *value);
 int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_config_reg_access(u32 register_access_id, u32 address, u32 mask,
 				u32 value, u32 *out);
-int zynqmp_pm_fpga_load(const u64 address, const u32 size, const u32 flags);
-int zynqmp_pm_fpga_get_status(u32 *value);
-int zynqmp_pm_fpga_get_config_status(u32 *value);
-int zynqmp_pm_fpga_get_version(u32 *value);
-int zynqmp_pm_fpga_get_feature_list(u32 *value);
 int zynqmp_pm_write_ggs(u32 index, u32 value);
 int zynqmp_pm_read_ggs(u32 index, u32 *value);
 int zynqmp_pm_write_pggs(u32 index, u32 value);
@@ -918,32 +896,6 @@ static inline int zynqmp_pm_sha_hash(const u64 address, const u32 size,
 	return -ENODEV;
 }
 
-static inline int zynqmp_pm_fpga_load(const u64 address, const u32 size,
-				      const u32 flags)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_fpga_get_status(u32 *value)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_fpga_get_config_status(u32 *value)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_fpga_get_version(u32 *value)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_fpga_get_feature_list(u32 *value)
-{
-	return -ENODEV;
-}
-
 static inline int zynqmp_pm_write_ggs(u32 index, u32 value)
 {
 	return -ENODEV;
@@ -1022,13 +974,6 @@ static inline int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param,
 }
 
 static inline int zynqmp_pm_load_pdi(const u32 src, const u64 address)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_fpga_read(const u32 reg_numframes,
-				      const u64 phys_address, u32 readback_type,
-				      u32 *value)
 {
 	return -ENODEV;
 }
