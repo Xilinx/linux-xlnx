@@ -18,6 +18,7 @@
 #include <linux/err.h>
 #include <linux/firmware/xlnx-zynqmp-fpga.h>
 #include <linux/firmware/xlnx-zynqmp-nvm.h>
+#include <linux/firmware/xlnx-zynqmp-pdi.h>
 #include <linux/firmware/xlnx-zynqmp-secure.h>
 #include <linux/firmware/xlnx-zynqmp-sem.h>
 
@@ -80,11 +81,6 @@
 #define PM_SET_SUSPEND_MODE		0xa02
 #define GET_CALLBACK_DATA		0xa01
 
-/* To Get UID info list */
-#define PM_GET_UID_INFO_LIST		0x705
-
-#define PM_GET_META_HEADER_INFO_LIST	0x706
-
 /* Number of 32bits values in payload */
 #define PAYLOAD_ARG_CNT	7U
 
@@ -109,10 +105,6 @@
 #define	ZYNQMP_PM_CAPABILITY_CONTEXT	0x2U
 #define	ZYNQMP_PM_CAPABILITY_WAKEUP	0x4U
 #define	ZYNQMP_PM_CAPABILITY_UNUSABLE	0x8U
-
-/* Loader commands */
-#define PM_LOAD_PDI	0x701
-#define PDI_SRC_DDR	0xF
 
 /* ZynqMP SD tap delay tuning */
 #define SD_ITAPDLY	0xFF180314
@@ -607,7 +599,6 @@ int zynqmp_pm_release_node(const u32 node);
 int zynqmp_pm_set_requirement(const u32 node, const u32 capabilities,
 			      const u32 qos,
 			      const enum zynqmp_pm_request_ack ack);
-int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_config_reg_access(u32 register_access_id, u32 address, u32 mask,
 				u32 value, u32 *out);
 int zynqmp_pm_write_ggs(u32 index, u32 value);
@@ -626,14 +617,12 @@ int zynqmp_pm_pinctrl_get_config(const u32 pin, const u32 param,
 				 u32 *value);
 int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param,
 				 u32 value);
-int zynqmp_pm_load_pdi(const u32 src, const u64 address);
 int zynqmp_pm_register_notifier(const u32 node, const u32 event,
 				const u32 wake, const u32 enable);
 int zynqmp_pm_feature(const u32 api_id);
 int zynqmp_pm_is_function_supported(const u32 api_id, const u32 id);
 int zynqmp_pm_set_feature_config(enum pm_feature_config_id id, u32 value);
 int zynqmp_pm_get_feature_config(enum pm_feature_config_id id, u32 *payload);
-int zynqmp_pm_get_uid_info(const u64 address, const u32 size, u32 *count);
 int zynqmp_pm_sec_read_reg(u32 node_id, u32 offset, u32 *ret_value);
 int zynqmp_pm_sec_mask_write_reg(const u32 node_id, const u32 offset,
 				 u32 mask, u32 value);
@@ -651,8 +640,6 @@ int zynqmp_pm_set_sd_config(u32 node, enum pm_sd_config_type config, u32 value);
 int zynqmp_pm_set_gem_config(u32 node, enum pm_gem_config_type config,
 			     u32 value);
 int zynqmp_pm_get_last_reset_reason(u32 *reset_reason);
-int zynqmp_pm_get_meta_header(const u64 src, const u64 dst,
-			      const u32 size, u32 *count);
 int zynqmp_pm_aie_operation(u32 node, u16 start_col, u16 num_col, u32 operation);
 int zynqmp_pm_get_qos(u32 node, u32 *const def_qos, u32 *const qos);
 #else
@@ -875,11 +862,6 @@ static inline int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param,
 	return -ENODEV;
 }
 
-static inline int zynqmp_pm_load_pdi(const u32 src, const u64 address)
-{
-	return -ENODEV;
-}
-
 static inline int zynqmp_pm_config_reg_access(u32 register_access_id,
 					      u32 address, u32 mask, u32 value,
 					      u32 *out)
@@ -910,12 +892,6 @@ static inline int zynqmp_pm_get_feature_config(enum pm_feature_config_id id,
 	return -ENODEV;
 }
 
-static inline int zynqmp_pm_get_uid_info(const u64 address, const u32 size,
-					 u32 *count)
-{
-	return -ENODEV;
-}
-
 static inline int zynqmp_pm_register_sgi(u32 sgi_num, u32 reset)
 {
 	return -ENODEV;
@@ -931,12 +907,6 @@ static inline int zynqmp_pm_request_wake(const u32 node,
 					 const bool set_addr,
 					 const u64 address,
 					 const enum zynqmp_pm_request_ack ack)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_rsa(const u64 address, const u32 size,
-				const u32 flags)
 {
 	return -ENODEV;
 }
@@ -987,12 +957,6 @@ static inline int zynqmp_pm_set_gem_config(u32 node,
 }
 
 static inline int zynqmp_pm_get_last_reset_reason(u32 *reset_reason)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_get_meta_header(const u64 src, const u64 dst,
-					    const u32 size, u32 *count)
 {
 	return -ENODEV;
 }
