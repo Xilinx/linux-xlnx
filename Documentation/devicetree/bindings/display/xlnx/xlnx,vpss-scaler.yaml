@@ -1,0 +1,98 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/display/xlnx/xlnx,vpss-scaler.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx VPROC_SS IP.
+
+maintainers:
+  - Kunal Rane <kunal.rane@amd.com>
+
+description:
+  The Xilinx VPSS Scaler is a Video IP that supports up scaling,
+  down scaling and no scaling functionailty. This supports custom
+  resolution values between 0 to 4096.
+
+properties:
+  compatible:
+    const: xlnx,vpss-scaler
+
+  reg:
+    maxItems: 1
+
+  clock-names:
+    items:
+      - const: aclk_ctrl
+      - const: aclk_axis
+
+  clocks:
+    description: List of clock specifiers.
+    items:
+      - description: AXI Lite CPU clock
+      - description: Video clock
+
+  reset-gpios:
+    description: Should contain GPIO reset phandle
+    maxItems: 1
+
+  xlnx,num-hori-taps:
+    description: The number of horizontal taps for scaling filter.
+      A value of 2 represents bilinear filters.
+      A value of 4 represents bicubic. Values 6, 8, 10, 12 represent
+      polyphase filters.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [2, 4, 6, 8, 10, 12]
+
+  xlnx,num-vert-taps:
+    description: The number of vertical taps for scaling filter.
+      A value of 2 represents bilinear filters.
+      A value of 4 represents bicubic. Values 6, 8, 10, 12 represent
+      polyphase filters.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [2, 4, 6, 8, 10, 12]
+
+  xlnx,max-height:
+    description: Maximum number of lines.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 64
+    maximum: 4320
+
+  xlnx,max-width:
+    description: Maximum number of pixels in a line.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 64
+    maximum: 8192
+
+  xlnx,pix-per-clk:
+    description: The pixels per clock property of the IP.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [1, 2, 4, 8]
+
+required:
+  - reg
+  - clock-names
+  - clocks
+  - reset-gpios
+  - xlnx,num-hori-taps
+  - xlnx,num-vert-taps
+  - xlnx,max-height
+  - xlnx,max-width
+  - xlnx,pix-per-clk
+
+additionalProperties: false
+
+examples:
+  - |
+    scaler@a0040000 {
+        compatible = "xlnx,vpss-scaler";
+        reg = <0xa0000000 0x40000>;
+        clock-names = "aclk_ctrl", "aclk_axis";
+        clocks = <&misc_clk_0>, <&misc_clk_1>;
+        reset-gpios = <&gpio 0 1>;
+        xlnx,num-hori-taps = <8>;
+        xlnx,num-vert-taps = <8>;
+        xlnx,max-height = <2160>;
+        xlnx,max-width = <3840>;
+        xlnx,pix-per-clk = <2>;
+    };
