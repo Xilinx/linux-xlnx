@@ -25465,6 +25465,14 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/net/xlnx,axi-ethernet.yaml
 F:	drivers/net/ethernet/xilinx/xilinx_axienet*
 
+XILINX XADC DRIVER
+M:	Salih Erim <salih.erim@amd.com>
+R:	Conall O'Griofa <conall.ogriofa@amd.com>
+L:	linux-iio@vger.kernel.org
+S:	Maintained
+F:	Documentation/devicetree/bindings/iio/adc/xilinx-xadc.txt
+F:	drivers/iio/adc/xilinx-xadc*
+
 RENESAS PTP AND RSMU DRIVERS
 M:	Suraj Gupta <suraj.gupta2@amd.com>
 S:	Maintained
