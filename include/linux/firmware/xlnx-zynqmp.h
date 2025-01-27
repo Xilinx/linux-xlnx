@@ -17,6 +17,7 @@
 
 #include <linux/err.h>
 #include <linux/firmware/xlnx-zynqmp-fpga.h>
+#include <linux/firmware/xlnx-zynqmp-nvm.h>
 #include <linux/firmware/xlnx-zynqmp-sem.h>
 
 #define ZYNQMP_PM_VERSION_MAJOR	1
@@ -77,14 +78,6 @@
 #define PM_GET_TRUSTZONE_VERSION	0xa03
 #define PM_SET_SUSPEND_MODE		0xa02
 #define GET_CALLBACK_DATA		0xa01
-
-/* NVM Commands */
-#define PM_BBRAM_WRITE_KEY		0xB01
-#define PM_BBRAM_ZEROIZE		0xB02
-#define PM_BBRAM_WRITE_USERDATA		0xB03
-#define PM_BBRAM_READ_USERDATA		0xB04
-#define PM_BBRAM_LOCK_USERDATA		0xB05
-#define PM_EFUSE_READ_VERSAL		0xB17
 
 /* xilSecure API commands  module id + api id */
 #define XSECURE_API_RSA_SIGN_VERIFY	0x501
@@ -658,11 +651,6 @@ int zynqmp_pm_set_requirement(const u32 node, const u32 capabilities,
 int zynqmp_pm_aes_engine(const u64 address, u32 *out);
 int zynqmp_pm_efuse_access(const u64 address, u32 *out);
 int zynqmp_pm_secure_load(const u64 src_addr, u64 key_addr, u64 *dst);
-int zynqmp_pm_bbram_write_usrdata(u32 data);
-int zynqmp_pm_bbram_read_usrdata(const u64 outaddr);
-int zynqmp_pm_bbram_write_aeskey(u32 keylen, const u64 keyaddr);
-int zynqmp_pm_bbram_zeroize(void);
-int zynqmp_pm_bbram_lock_userdata(void);
 int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_config_reg_access(u32 register_access_id, u32 address, u32 mask,
@@ -974,31 +962,6 @@ static inline int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param,
 }
 
 static inline int zynqmp_pm_load_pdi(const u32 src, const u64 address)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_bbram_write_usrdata(u32 data)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_bbram_read_usrdata(const u64 outaddr)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_bbram_write_aeskey(const u64 keyaddr, u16 keylen)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_bbram_zeroize(void)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_bbram_lock_userdata(void)
 {
 	return -ENODEV;
 }
