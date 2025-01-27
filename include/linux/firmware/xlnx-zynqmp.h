@@ -18,6 +18,7 @@
 #include <linux/err.h>
 #include <linux/firmware/xlnx-zynqmp-fpga.h>
 #include <linux/firmware/xlnx-zynqmp-nvm.h>
+#include <linux/firmware/xlnx-zynqmp-secure.h>
 #include <linux/firmware/xlnx-zynqmp-sem.h>
 
 #define ZYNQMP_PM_VERSION_MAJOR	1
@@ -79,28 +80,6 @@
 #define PM_SET_SUSPEND_MODE		0xa02
 #define GET_CALLBACK_DATA		0xa01
 
-/* xilSecure API commands  module id + api id */
-#define XSECURE_API_RSA_SIGN_VERIFY	0x501
-#define XSECURE_API_RSA_PUBLIC_ENCRYPT	0x502
-#define XSECURE_API_RSA_PRIVATE_DECRYPT	0x503
-#define XSECURE_API_SHA3_UPDATE		0x504
-#define XSECURE_API_ELLIPTIC_VALIDATE_KEY	0x507
-#define XSECURE_API_ELLIPTIC_VERIFY_SIGN	0x508
-#define XSECURE_API_AES_INIT		0x509
-#define XSECURE_API_AES_OP_INIT		0x50a
-#define XSECURE_API_AES_UPDATE_AAD	0x50b
-#define XSECURE_API_AES_ENCRYPT_UPDATE	0x50c
-#define XSECURE_API_AES_ENCRYPT_FINAL	0x50d
-#define XSECURE_API_AES_DECRYPT_UPDATE	0x50e
-#define XSECURE_API_AES_DECRYPT_FINAL	0x50f
-#define XSECURE_API_AES_KEY_ZERO	0x510
-#define XSECURE_API_AES_WRITE_KEY	0x511
-
-/* XilPuf API commands module id + api id */
-#define XPUF_API_PUF_REGISTRATION	0xc01
-#define XPUF_API_PUF_REGENERATION	0xc02
-#define XPUF_API_PUF_CLEAR_PUF_ID	0xc03
-
 /* To Get UID info list */
 #define PM_GET_UID_INFO_LIST		0x705
 
@@ -157,11 +136,6 @@ enum pm_module_id {
 #define XILINX_AIE_OPS_DATA_MEM_ZEROIZATION		BIT(8U)
 #define XILINX_AIE_OPS_MEM_TILE_ZEROIZATION		BIT(9U)
 
-
-enum xsecure_aeskeysize {
-	XSECURE_AES_KEY_SIZE_128 = 16,
-	XSECURE_AES_KEY_SIZE_256 = 32,
-};
 
 enum pm_api_cb_id {
 	PM_INIT_SUSPEND_CB = 30,
@@ -601,25 +575,10 @@ struct zynqmp_pm_query_data {
 int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...);
 int zynqmp_pm_invoke_fw_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...);
 
-/**
- * struct xlnx_feature - Feature data
- * @family:	Family code of platform
- * @subfamily:	Subfamily code of platform
- * @feature_id:	Feature id of module
- * @data:	Collection of all supported platform data
- */
-struct xlnx_feature {
-	u32 family;
-	u32 subfamily;
-	u32 feature_id;
-	void *data;
-};
-
 #if IS_REACHABLE(CONFIG_ZYNQMP_FIRMWARE)
 int zynqmp_pm_get_api_version(u32 *version);
 int zynqmp_pm_get_chipid(u32 *idcode, u32 *version);
 int zynqmp_pm_get_family_info(u32 *family, u32 *subfamily);
-void *xlnx_get_crypto_dev_data(struct xlnx_feature *feature_map);
 int zynqmp_pm_query_data(struct zynqmp_pm_query_data qdata, u32 *out);
 int zynqmp_pm_clock_enable(u32 clock_id);
 int zynqmp_pm_clock_disable(u32 clock_id);
@@ -648,10 +607,6 @@ int zynqmp_pm_release_node(const u32 node);
 int zynqmp_pm_set_requirement(const u32 node, const u32 capabilities,
 			      const u32 qos,
 			      const enum zynqmp_pm_request_ack ack);
-int zynqmp_pm_aes_engine(const u64 address, u32 *out);
-int zynqmp_pm_efuse_access(const u64 address, u32 *out);
-int zynqmp_pm_secure_load(const u64 src_addr, u64 key_addr, u64 *dst);
-int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_config_reg_access(u32 register_access_id, u32 address, u32 mask,
 				u32 value, u32 *out);
@@ -699,27 +654,7 @@ int zynqmp_pm_get_last_reset_reason(u32 *reset_reason);
 int zynqmp_pm_get_meta_header(const u64 src, const u64 dst,
 			      const u32 size, u32 *count);
 int zynqmp_pm_aie_operation(u32 node, u16 start_col, u16 num_col, u32 operation);
-int versal_pm_puf_registration(const u64 in_addr);
-int versal_pm_puf_regeneration(const u64 in_addr);
 int zynqmp_pm_get_qos(u32 node, u32 *const def_qos, u32 *const qos);
-int versal_pm_sha_hash(const u64 src, const u64 dst, const u32 size);
-int versal_pm_aes_key_write(const u32 keylen,
-			    const u32 keysrc, const u64 keyaddr);
-int versal_pm_aes_key_zero(const u32 keysrc);
-int versal_pm_aes_op_init(const u64 hw_req);
-int versal_pm_aes_update_aad(const u64 aad_addr, const u32 aad_len);
-int versal_pm_aes_enc_update(const u64 in_params, const u64 in_addr);
-int versal_pm_aes_dec_update(const u64 in_params, const u64 in_addr);
-int versal_pm_aes_dec_final(const u64 gcm_addr);
-int versal_pm_aes_enc_final(const u64 gcm_addr);
-int versal_pm_efuse_read(const u64 address, u32 offset, u32 size);
-int versal_pm_efuse_write(const u64 address, const u32 operationid, const u8 envdis);
-int versal_pm_ecdsa_validate_key(const u64 key_addr, const u32 curveid);
-int versal_pm_ecdsa_verify_sign(const u64 sign_param_addr);
-int versal_pm_rsa_encrypt(const u64 in_params, const u64 in_addr);
-int versal_pm_rsa_decrypt(const u64 in_params, const u64 in_addr);
-int versal_pm_puf_clear_id(void);
-int versal_pm_aes_init(void);
 #else
 static inline int zynqmp_pm_get_api_version(u32 *version)
 {
@@ -734,11 +669,6 @@ static inline int zynqmp_pm_get_chipid(u32 *idcode, u32 *version)
 static inline int zynqmp_pm_get_family_info(u32 *family, u32 *subfamily)
 {
 	return -ENODEV;
-}
-
-static inline void *xlnx_get_crypto_dev_data(struct xlnx_feature *feature_map)
-{
-	return ERR_PTR(-ENODEV);
 }
 
 static inline int zynqmp_pm_query_data(struct zynqmp_pm_query_data qdata,
@@ -868,22 +798,6 @@ static inline int zynqmp_pm_set_requirement(const u32 node,
 	return -ENODEV;
 }
 
-static inline int zynqmp_pm_aes_engine(const u64 address, u32 *out)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_efuse_access(const u64 address, u32 *out)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_sha_hash(const u64 address, const u32 size,
-				     const u32 flags)
-{
-	return -ENODEV;
-}
-
 static inline int zynqmp_pm_write_ggs(u32 index, u32 value)
 {
 	return -ENODEV;
@@ -962,11 +876,6 @@ static inline int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param,
 }
 
 static inline int zynqmp_pm_load_pdi(const u32 src, const u64 address)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_secure_load(const u64 src_addr, u64 key_addr, u64 *dst)
 {
 	return -ENODEV;
 }
@@ -1090,107 +999,6 @@ static inline int zynqmp_pm_get_meta_header(const u64 src, const u64 dst,
 
 static inline int zynqmp_pm_aie_operation(u32 node, u16 start_col,
 					  u16 num_col, u32 operation)
-{
-	return -ENODEV;
-}
-
-static inline int versal_pm_puf_registration(const u64 in_addr)
-{
-	return -ENODEV;
-}
-
-static inline int versal_pm_puf_regeneration(const u64 in_addr)
-{
-	return -ENODEV;
-}
-
-static inline int versal_pm_sha_hash(const u64 src, const u64 dst, const u32 size)
-{
-	return -ENODEV;
-}
-
-static inline int versal_pm_aes_key_write(const u32 keylen,
-					  const u32 keysrc, const u64 keyaddr)
-{
-	return -ENODEV;
-}
-
-static inline int versal_pm_aes_key_zero(const u32 keysrc)
-{
-	return -ENODEV;
-}
-
-static inline int versal_pm_aes_op_init(const u64 hw_req)
-{
-	return -ENODEV;
-}
-
-static inline int versal_pm_aes_update_aad(const u64 aad_addr,
-					   const u32 aad_len)
-{
-	return -ENODEV;
-}
-
-static inline int versal_pm_aes_enc_update(const u64 in_params,
-					   const u64 in_addr)
-{
-	return -ENODEV;
-}
-
-static inline int versal_pm_aes_dec_update(const u64 in_params,
-					   const u64 in_addr)
-{
-	return -ENODEV;
-}
-
-static inline int versal_pm_aes_enc_final(const u64 gcm_addr)
-{
-	return -ENODEV;
-}
-
-static inline int versal_pm_aes_dec_final(const u64 gcm_addr)
-{
-	return -ENODEV;
-}
-
-static inline int versal_pm_efuse_read(const u64 address, u32 offset, u32 size)
-{
-	return -ENODEV;
-}
-
-static inline int versal_pm_efuse_write(const u64 address, const u32 operationid, const u8 envdis)
-{
-	return -ENODEV;
-}
-
-static inline int versal_pm_ecdsa_validate_key(const u64 key_addr,
-					       const u32 curveid)
-{
-	return -ENODEV;
-}
-
-static inline int versal_pm_ecdsa_verify_sign(const u64 sign_param_addr)
-{
-	return -ENODEV;
-}
-
-static inline int versal_pm_rsa_encrypt(const u64 in_params,
-					const u64 in_addr)
-{
-	return -ENODEV;
-}
-
-static inline int versal_pm_rsa_decrypt(const u64 in_params,
-					const u64 in_addr)
-{
-	return -ENODEV;
-}
-static inline int versal_pm_puf_clear_id(void)
-{
-	return -ENODEV;
-}
-
-static inline int versal_pm_aes_init(void)
 {
 	return -ENODEV;
 }
