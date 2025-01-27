@@ -3,7 +3,7 @@
  * Xilinx Zynq MPSoC Firmware layer
  *
  *  Copyright (C) 2014-2021 Xilinx
- *  Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc.
+ *  Copyright (C) 2022 - 2025, Advanced Micro Devices, Inc.
  *
  *  Michal Simek <michal.simek@amd.com>
  *  Davorin Mista <davorin.mista@aggios.com>
@@ -16,6 +16,7 @@
 #include <linux/types.h>
 
 #include <linux/err.h>
+#include <linux/firmware/xlnx-zynqmp-sem.h>
 
 #define ZYNQMP_PM_VERSION_MAJOR	1
 #define ZYNQMP_PM_VERSION_MINOR	0
@@ -105,12 +106,6 @@
 #define XPUF_API_PUF_REGISTRATION	0xc01
 #define XPUF_API_PUF_REGENERATION	0xc02
 #define XPUF_API_PUF_CLEAR_PUF_ID	0xc03
-
-/* XilSEM commands */
-#define PM_XSEM_HEADER			0x300
-#define PM_XSEM_CRAM_ERRINJ		0x304
-#define PM_XSEM_RD_CONFIG		0x309
-#define PM_XSEM_CRAM_RD_ECC		0x30B
 
 /* To Get UID info list */
 #define PM_GET_UID_INFO_LIST		0x705
@@ -735,10 +730,6 @@ int zynqmp_pm_set_sd_config(u32 node, enum pm_sd_config_type config, u32 value);
 int zynqmp_pm_set_gem_config(u32 node, enum pm_gem_config_type config,
 			     u32 value);
 int zynqmp_pm_get_last_reset_reason(u32 *reset_reason);
-int zynqmp_pm_xilsem_cntrl_ops(u32 cmd, u32 *const response);
-int zynqmp_pm_xilsem_cram_errinj(u32 frame, u32 qword, u32 bit, u32 row, u32 *const response);
-int zynqmp_pm_xilsem_cram_readecc(u32 frame, u32 row, u32 *const response);
-int zynqmp_pm_xilsem_read_cfg(u32 *const response);
 int zynqmp_pm_get_meta_header(const u64 src, const u64 dst,
 			      const u32 size, u32 *count);
 int zynqmp_pm_aie_operation(u32 node, u16 start_col, u16 num_col, u32 operation);
@@ -1179,27 +1170,6 @@ static inline int zynqmp_pm_set_gem_config(u32 node,
 }
 
 static inline int zynqmp_pm_get_last_reset_reason(u32 *reset_reason)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_xilsem_cntrl_ops(u32 cmd, u32 *const response)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_xilsem_cram_readecc(u32 frame, u32 row, u32 *const response)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_xilsem_cram_errinj(u32 frame, u32 qword, u32 bit,
-					       u32 row, u32 *const response)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_xilsem_read_cfg(u32 *const response)
 {
 	return -ENODEV;
 }
