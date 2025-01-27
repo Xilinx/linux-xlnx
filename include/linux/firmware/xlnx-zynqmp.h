@@ -564,13 +564,26 @@ struct zynqmp_pm_query_data {
 	u32 arg3;
 };
 
+/**
+ * struct zynqmp_devinfo - Structure for Zynqmp device instance
+ * @dev:		Device Pointer
+ * @feature_conf_id:	Feature conf id
+ */
+struct zynqmp_devinfo {
+	struct device *dev;
+	u32 feature_conf_id;
+};
+
 int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...);
 int zynqmp_pm_invoke_fw_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...);
+int zynqmp_firmware_pm_sysfs_entry(struct platform_device *pdev);
 
 #if IS_REACHABLE(CONFIG_ZYNQMP_FIRMWARE)
 int zynqmp_pm_get_api_version(u32 *version);
 int zynqmp_pm_get_chipid(u32 *idcode, u32 *version);
 int zynqmp_pm_get_family_info(u32 *family, u32 *subfamily);
+int zynqmp_pm_get_trustzone_version(u32 *version);
+int zynqmp_pm_get_sip_svc_version(u32 *version);
 int zynqmp_pm_query_data(struct zynqmp_pm_query_data qdata, u32 *out);
 int zynqmp_pm_clock_enable(u32 clock_id);
 int zynqmp_pm_clock_disable(u32 clock_id);
@@ -654,6 +667,16 @@ static inline int zynqmp_pm_get_chipid(u32 *idcode, u32 *version)
 }
 
 static inline int zynqmp_pm_get_family_info(u32 *family, u32 *subfamily)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_get_trustzone_version(u32 *version)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_get_sip_svc_version(u32 *version)
 {
 	return -ENODEV;
 }
