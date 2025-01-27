@@ -25671,6 +25671,13 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-vpss-scaler.yaml
 F:	drivers/media/platform/xilinx/xilinx-vpss-scaler.c
 
+XILINX VPSS BRIDGE CSC DRIVER
+M:	Kunal Rane <kunal.rane@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/display/xlnx/xlnx,vpss-csc.yaml
+F:	drivers/gpu/drm/xlnx/xlnx_csc.c
+
 XILINX VERSAL SYSMON DRIVER
 M:	Salih Erim <salih.erim@amd.com>
 R:	Dragan Cvetic <dragan.cvetic@amd.com>
