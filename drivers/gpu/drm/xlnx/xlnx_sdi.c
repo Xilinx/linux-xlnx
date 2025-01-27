@@ -1312,12 +1312,21 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
 		goto err_disable_sditx_clk;
 	}
 
-	sdi->qpll1_enabled = of_property_read_bool(sdi->dev->of_node,
-						   "xlnx,qpll1_enabled");
+	sdi->qpll1_enabled = of_property_read_bool(sdi->dev->of_node, "xlnx,qpll1-enabled");
+	if (!sdi->qpll1_enabled) {
+		sdi->qpll1_enabled = of_property_read_bool(sdi->dev->of_node, "xlnx,qpll1_enabled");
+		if (sdi->qpll1_enabled)
+			dev_warn(dev, "xlnx,qpll1_enabled is deprecated. Use xlnx,qpll1-enabled instead.\n");
+	}
 
-	sdi->picxo_enabled = of_property_read_bool(sdi->dev->of_node,
-						   "xlnx,picxo_enabled");
-	dev_dbg(dev, "sdi-tx: value of qpll1_en = %d picxo_en = %d\n",
+	sdi->picxo_enabled = of_property_read_bool(sdi->dev->of_node, "xlnx,picxo-enabled");
+	if (!sdi->picxo_enabled) {
+		sdi->picxo_enabled = of_property_read_bool(sdi->dev->of_node, "xlnx,picxo_enabled");
+		if (sdi->picxo_enabled)
+			dev_warn(dev, "xlnx,picxo_enabled is deprecated. Use xlnx,picxo-enabled instead.\n");
+	}
+
+	dev_dbg(dev, "Values - qpll1-enabled: %d, picxo-enabled: %d\n",
 		sdi->qpll1_enabled, sdi->picxo_enabled);
 
 	if (sdi->qpll1_enabled)
