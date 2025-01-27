@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/display/xlnx/xlnx,vpss-csc.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx VPROC_SS IP.
+
+maintainers:
+  - Kunal Rane <kunal.rane@amd.com>
+
+description:
+  The Xilinx VPSS Color Space Converter is a Video IP that supports
+  color space conversion from RGB to YUV 444/422/420 and vice versa.
+
+properties:
+  compatible:
+    const: xlnx,vpss-csc
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    description: Reference to video core clock.
+    maxItems: 1
+
+  reset-gpios:
+    description: Should contain GPIO reset phandle
+    maxItems: 1
+
+  xlnx,max-height:
+    description: Maximum number of lines.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 64
+    maximum: 4320
+
+  xlnx,max-width:
+    description: Maximum number of pixels in a line.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 64
+    maximum: 8192
+
+  xlnx,video-width:
+    description: Video width set for the IP.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [8, 10, 12, 16]
+
+required:
+  - reg
+  - clocks
+  - reset-gpios
+  - xlnx,max-width
+  - xlnx,max-height
+  - xlnx,video-width
+
+additionalProperties: false
+
+examples:
+  - |
+    csc@a0040000 {
+        compatible = "xlnx,vpss-csc";
+        reg = <0xa0040000 0x10000>;
+        clocks = <&misc_clk_0>;
+        reset-gpios = <&gpio 0 1>;
+        xlnx,max-height = <2160>;
+        xlnx,max-width = <3840>;
+        xlnx,video-width = <8>;
+    };
