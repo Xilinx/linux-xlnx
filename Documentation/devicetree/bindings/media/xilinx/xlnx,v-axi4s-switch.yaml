@@ -1,0 +1,179 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/media/xilinx/xlnx,v-axi4s-switch.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx AXI4S Switch IP.
+
+maintainers:
+  - Kunal Rane <kunal.rane@amd.com>
+
+description:
+  The AXI4-Stream Switch provides configurable routing between masters and slaves.
+  It supports up to 16 masters/sources and 16 slaves/sinks and two routing options.
+  There is at least one slave/sink port and two master/source ports.
+  The two routing options available are TDEST routing and control register routing.
+  The TDEST based routing uses design parameters and hence there no software control.
+  Each port is mapped as a pad and has its own format specified.
+  Control register routing introduces an AXI4-Lite interface to configure the
+  routing table. There is one register for each of the master interfaces to
+  control each of the selectors. This routing mode requires that there is
+  precisely only one path between master and slave. When attempting to map the
+  same slave interface to multiple master interfaces, only the lowest master
+  interface is able to access the slave interface.
+  Here only the slave/sink ports have formats as master/source ports will inherit
+  the corresponding slave ports formats. A routing table is maintained in this case.
+  Please refer to PG085 AXI4-Stream Infrastructure IP Suite v2.2 for more details.
+
+properties:
+  compatible:
+    const: xlnx,v-axis-switch-1.1
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    description: Reference to video core clock.
+    maxItems: 1
+
+  clock-names:
+    deprecated: true
+    maxItems: 1
+
+  xlnx,num-mi-slots:
+    description: Number of master/ output ports.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 1
+    maximum: 16
+
+  xlnx,num-si-slots:
+    description: Number of slave/ Input ports.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 1
+    maximum: 16
+
+  xlnx,routing-mode:
+    description: Can be 0 (TDEST routing) or 1 (Control reg routing)
+    type: boolean
+
+  ports:
+    type: object
+
+    properties:
+      "#address-cells":
+        const: 1
+
+      "#size-cells":
+        const: 0
+
+      port@0:
+        type: object
+        description: Sink port.
+
+        properties:
+          reg:
+            description: Input/sink port number.
+            const: 0
+
+          endpoint:
+            type: object
+
+            properties:
+              remote-endpoint: true
+
+            required:
+              - remote-endpoint
+
+            additionalProperties: false
+
+        required:
+          - reg
+          - endpoint
+
+        additionalProperties: false
+
+    patternProperties:
+      "^port@([1-9]|1[0-6])$":
+        type: object
+        description:
+          Output/source port node, describing module connected to the
+          output of AXI4-Stream Broadcaster.
+
+        properties:
+          reg:
+            description:
+              Output/source port number. It can have min 2 ports and
+              max 16 ports, numbered from 1 to 16.
+            items:
+              minimum: 1
+              maximum: 16
+
+          endpoint:
+            type: object
+
+            properties:
+              remote-endpoint: true
+
+            required:
+              - remote-endpoint
+
+            additionalProperties: false
+
+        required:
+          - reg
+          - endpoint
+
+        additionalProperties: false
+
+    required:
+      - "#address-cells"
+      - "#size-cells"
+      - port@0
+      - port@1
+      - port@2
+
+    additionalProperties: false
+
+required:
+  - reg
+  - clocks
+  - xlnx,num-mi-slots
+  - xlnx,num-si-slots
+  - xlnx,routing-mode
+  - ports
+
+additionalProperties: false
+
+examples:
+  - |
+    axis_switch@0 {
+        compatible = "xlnx,v-axis-switch-1.1";
+        reg = <0xa0050000 0x1000>;
+        clocks = <&vid_stream_clk>;
+        xlnx,num-mi-slots = <2>;
+        xlnx,num-si-slots = <1>;
+        xlnx,routing-mode;
+        ports {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            port@0 {
+                reg = <0>;
+                switch_in0: endpoint {
+                    remote-endpoint = <&csirxss_out>;
+                };
+            };
+            port@1 {
+                reg = <1>;
+                switch_out0: endpoint {
+                    remote-endpoint = <&vcap_csirxss0_in>;
+                };
+            };
+            port@2 {
+                reg = <2>;
+                switch_out1: endpoint {
+                    remote-endpoint = <&vcap_csirxss1_in>;
+                };
+            };
+        };
+    };
