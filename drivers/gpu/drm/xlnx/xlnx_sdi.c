@@ -1251,7 +1251,6 @@ static const struct component_ops xlnx_sdi_component_ops = {
 static int xlnx_sdi_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct resource *res;
 	struct xlnx_sdi *sdi;
 	struct device_node *vpss_node;
 	int ret, irq;
@@ -1265,8 +1264,7 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	sdi->dev = dev;
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	sdi->base = devm_ioremap_resource(dev, res);
+	sdi->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(sdi->base)) {
 		dev_err(dev, "failed to remap io region\n");
 		return PTR_ERR(sdi->base);
