@@ -1317,12 +1317,9 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
 	sdi->gt_rst_gpio = devm_gpiod_get_optional(&pdev->dev, "phy-reset",
 						   flags);
 
-	if (IS_ERR(sdi->gt_rst_gpio)) {
-		ret = PTR_ERR(sdi->gt_rst_gpio);
-		if (ret != -EPROBE_DEFER)
-			dev_err(&pdev->dev, "Unable to get phy gpio\n");
-		return ret;
-	}
+	if (IS_ERR(sdi->gt_rst_gpio))
+		return dev_err_probe(&pdev->dev, PTR_ERR(sdi->gt_rst_gpio),
+				     "Unable to get phy gpio\n");
 
 	ret = clk_set_rate(sdi->sditx_clk, CLK_RATE);
 	if (ret)
