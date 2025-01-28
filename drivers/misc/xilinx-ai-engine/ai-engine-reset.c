@@ -11,6 +11,8 @@
 
 #include "ai-engine-internal.h"
 
+#include "ai-engine-trace.h"
+
 static void aie_part_core_regs_clr_iowrite(struct aie_partition *apart,
 					   u32 addr, u32 width)
 {
@@ -459,6 +461,7 @@ int aie_part_initialize(struct aie_partition *apart, void __user *user_args)
 	struct aie_partition_init_args args;
 	struct aie_location *locs = NULL;
 	int ret;
+	int i;
 
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
@@ -466,7 +469,7 @@ int aie_part_initialize(struct aie_partition *apart, void __user *user_args)
 	ret = mutex_lock_interruptible(&apart->mlock);
 	if (ret)
 		return ret;
-
+	trace_aie_part_initialize(apart, args.init_opts, args.num_tiles);
 	/* Clear resources */
 	aie_part_clear_cached_events(apart);
 	aie_part_rscmgr_reset(apart);
@@ -538,6 +541,9 @@ int aie_part_initialize(struct aie_partition *apart, void __user *user_args)
 			ret = -EFAULT;
 			goto exit;
 		}
+		for (i = 0; i < args.num_tiles; i++)
+			trace_aie_part_initialize_tiles(apart, args.locs[i]);
+
 	}
 	ret = aie_part_request_tiles(apart, args.num_tiles, locs);
 	kfree(locs);

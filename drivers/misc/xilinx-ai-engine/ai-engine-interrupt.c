@@ -13,6 +13,7 @@
 
 #include "ai-engine-internal.h"
 #include "linux/xlnx-ai-engine.h"
+#include "ai-engine-trace.h"
 
 #define AIE_ARRAY_TILE_ERROR_BC_ID		0U
 #define AIE_SHIM_TILE_ERROR_IRQ_ID		16U
@@ -510,21 +511,25 @@ static bool aie_tile_backtrack(struct aie_partition *apart,
 	u8 n, grevent, eevent;
 	bool ret = false;
 
+	trace_aie_tile_backtrack(apart, loc, module, sw, bc_id);
 	if (module == AIE_PL_MOD)
 		grevent = aie_get_l1_event(apart, &loc, sw, bc_id);
 	else
 		grevent = aie_get_broadcast_event(apart, &loc, module, bc_id);
 
 	aie_read_event_status(apart, &loc, module, status);
+	trace_aie_tile_status(apart, &loc, module, status);
 
 	if (!(status[grevent / 32] & BIT(grevent % 32)))
 		return ret;
 
 	grenabled = aie_check_group_errors_enabled(apart, &loc, module);
+	trace_aie_tile_grenabled(apart, &loc, module, grenabled);
 	for_each_set_bit(n, &grenabled, 32) {
 		eevent = aie_get_error_event(apart, &loc, module, n);
 		if (!(status[eevent / 32] & BIT(eevent % 32)))
 			continue;
+		trace_aie_tile_eevent(apart, &loc, module, eevent);
 		grenabled &= ~BIT(n);
 		aie_part_set_event_bitmap(apart, loc, module, eevent);
 		ret = true;
@@ -602,6 +607,7 @@ static bool aie_l1_backtrack(struct aie_partition *apart,
 	aie_map_l2_to_l1(apart, set_pos, loc.col, &l1_ctrl.col, &sw);
 	module = (sw == AIE_SHIM_SWITCH_A) ? AIE_CORE_MOD : AIE_MEM_MOD;
 	loc = l1_ctrl;
+	trace_aie_l1_backtrack(apart, loc.col, module);
 
 	/*
 	 * This should not be the case if the routing is generated based on
@@ -613,6 +619,7 @@ static bool aie_l1_backtrack(struct aie_partition *apart,
 		return false;
 
 	status = aie_get_l1_status(apart, &l1_ctrl, sw);
+	trace_aie_l1_status(apart, l1_ctrl.col, sw, status);
 
 	if (status & BIT(AIE_SHIM_TILE_ERROR_IRQ_ID)) {
 		u32 status[AIE_NUM_EVENT_STS_SHIMTILE] = {0};
@@ -718,6 +725,7 @@ static void aie_l2_backtrack(struct aie_partition *apart)
 	u32 n, ttype, num_nocs;
 	int ret;
 
+	trace_aie_l2_backtrack(apart);
 	ret = mutex_lock_interruptible(&apart->mlock);
 	if (ret) {
 		dev_err_ratelimited(&apart->dev,
@@ -790,6 +798,7 @@ void aie_aperture_backtrack(struct work_struct *work)
 	int ret;
 
 	aperture = container_of(work, struct aie_aperture, backtrack);
+	trace_aie_aperture_backtrack(aperture->adev);
 
 	ret = mutex_lock_interruptible(&aperture->mlock);
 	if (ret) {
@@ -835,6 +844,7 @@ irqreturn_t aie_interrupt(int irq, void *data)
 	int l2_mask_count = aperture->l2_mask.count;
 	int l2_mask_index = 0;
 
+	trace_aie_interrupt(adev);
 	for (loc.col = aperture->range.start.col, loc.row = 0;
 	     loc.col < aperture->range.start.col + aperture->range.size.col;
 	     loc.col++) {
@@ -848,12 +858,14 @@ irqreturn_t aie_interrupt(int irq, void *data)
 			break;
 
 		l2_mask = aie_aperture_get_l2_mask(aperture, &loc);
+		trace_aie_l2_mask(adev, loc.col, l2_mask);
 		if (l2_mask) {
 			aperture_l2_mask[l2_mask_index] = l2_mask;
 			aie_aperture_disable_l2_ctrl(aperture, &loc, l2_mask);
 		}
 
 		l2_status = aie_aperture_get_l2_status(aperture, &loc);
+		trace_aie_l2_status(adev, loc.col, l2_status);
 		if (l2_status) {
 			aie_aperture_clear_l2_intr(aperture, &loc,
 						   l2_status);

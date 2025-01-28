@@ -26,6 +26,7 @@
 #include <linux/xlnx-ai-engine.h>
 
 #include "ai-engine-internal.h"
+#include "ai-engine-trace.h"
 
 /**
  * aie_cal_loc() - calculate tile location from register offset to the AI
@@ -199,6 +200,7 @@ static int aie_part_write_register(struct aie_partition *apart, size_t offset,
 	int ret;
 	void __iomem *va;
 
+	trace_aie_part_write_register(apart, offset, len, data, mask);
 	if (mask && len > sizeof(u32)) {
 		/* For mask write, only allow 32bit. */
 		dev_err(&apart->dev,
@@ -223,13 +225,18 @@ static int aie_part_write_register(struct aie_partition *apart, size_t offset,
 		 * the destination address is 128 bit aligned when burst mode
 		 * is used.
 		 */
-		for (i = 0; i < len; i = i + 4)
-			iowrite32(*((u32 *)(data + i)), va + i);
+		for (i = 0; i < len; i = i + 4) {
+			u32 val = *((u32 *)(data + i));
+
+			trace_aie_part_write_register_data(apart, i, val, offset + i);
+			iowrite32(val, va + i);
+		}
 	} else {
 		u32 val = ioread32(va);
 
 		val &= ~mask;
 		val |= *((u32 *)data) & mask;
+		trace_aie_part_write_register_data(apart, 0, val, offset);
 		iowrite32(val, va);
 	}
 
@@ -506,6 +513,7 @@ static int aie_part_access_regs(struct aie_partition *apart, u32 num_reqs,
 		struct aie_reg_args *args = &reqs[i];
 		int ret;
 
+		trace_aie_part_access_reg(apart, args->op);
 		switch (args->op) {
 		case AIE_REG_WRITE:
 		{
@@ -835,6 +843,7 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 	void __user *argp = (void __user *)arg;
 	long ret;
 
+	trace_aie_part_ioctl(apart, _IOC_NR(cmd));
 	switch (cmd) {
 	case AIE_PARTITION_INIT_IOCTL:
 		return aie_part_initialize(apart, argp);

@@ -14,6 +14,7 @@
 #include <linux/types.h>
 #include <linux/uaccess.h>
 
+#include "ai-engine-trace.h"
 /**
  * struct aie_dmabuf - AI engine dmabuf information
  * @attach: dmabuf attachment pointer
@@ -201,8 +202,10 @@ static int aie_part_set_shimdma_bd(struct aie_partition *apart,
 	regoff = aie_aperture_cal_regoff(aperture, loc_adjust, intile_regoff);
 
 	for (i = 0; i < shim_dma->bd_len / (sizeof(*bd));
-	     i++, regoff += sizeof(*bd))
+	     i++, regoff += sizeof(*bd)) {
 		iowrite32(bd[i], aperture->base + regoff);
+		trace_aie_part_set_shimdma_bd(apart, loc, bd_id, bd[i], i);
+	}
 	return 0;
 }
 
@@ -498,6 +501,7 @@ long aie_part_attach_dmabuf_req(struct aie_partition *apart,
 	long ret;
 	int dmabuf_fd = (int)(uintptr_t)user_args;
 
+	trace_aie_part_attach_dmabuf_req(apart, dmabuf_fd);
 	dbuf = dma_buf_get(dmabuf_fd);
 	if (IS_ERR(dbuf)) {
 		dev_err(&apart->dev, "failed to get dmabuf from %d.\n",
@@ -549,6 +553,7 @@ long aie_part_detach_dmabuf_req(struct aie_partition *apart,
 
 	dmabuf_fd = (int)(uintptr_t)user_args;
 
+	trace_aie_part_detach_dmabuf_req(apart, dmabuf_fd);
 	dbuf = dma_buf_get(dmabuf_fd);
 	if (IS_ERR(dbuf)) {
 		dev_err(&apart->dev, "failed to get dmabuf %d.\n", dmabuf_fd);

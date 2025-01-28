@@ -6,6 +6,7 @@
  */
 
 #include "ai-engine-internal.h"
+#include "ai-engine-trace.h"
 #include <linux/slab.h>
 #include <linux/xlnx-ai-engine.h>
 
@@ -531,10 +532,12 @@ long aie_part_rscmgr_rsc_req(struct aie_partition *apart,
 	long ret;
 	int mod_num_rscs, start_bit;
 	struct aie_rsc *rscs;
+	int i;
 
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
+	trace_aie_part_rsc_req_rsp(apart, &args);
 	if (!args.rscs) {
 		dev_err(&apart->dev,
 			"invalid resource request, empty resources list.\n");
@@ -625,7 +628,8 @@ long aie_part_rscmgr_rsc_req(struct aie_partition *apart,
 		ret = -EFAULT;
 	else
 		ret = 0;
-
+	for (i = 0; i < args.req.num_rscs; i++)
+		trace_aie_part_rsc(apart, &rscs[i]);
 	kfree(rscs);
 	return ret;
 }
@@ -656,6 +660,7 @@ static long aie_part_rscmgr_rsc_clearbit(struct aie_partition *apart,
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
+	trace_aie_part_rsc(apart, &args);
 	rloc.col = (u32)(args.loc.col & 0xFF);
 	rloc.row = (u32)(args.loc.row & 0xFF);
 	ret = aie_part_adjust_loc(apart, rloc, &loc);
@@ -769,6 +774,7 @@ long aie_part_rscmgr_rsc_req_specific(struct aie_partition *apart,
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
+	trace_aie_part_rsc(apart, &args);
 	rloc.col = (u32)(args.loc.col & 0xFF);
 	rloc.row = (u32)(args.loc.row & 0xFF);
 	ret = aie_part_adjust_loc(apart, rloc, &loc);
@@ -845,6 +851,7 @@ long aie_part_rscmgr_rsc_check_avail(struct aie_partition *apart,
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
+	trace_aie_part_rsc_req(apart, &args);
 	ret = aie_part_adjust_loc(apart, args.loc, &loc);
 	if (ret < 0)
 		return ret;
@@ -878,6 +885,7 @@ long aie_part_rscmgr_rsc_check_avail(struct aie_partition *apart,
 							mod_num_rscs);
 	mutex_unlock(&apart->mlock);
 
+	trace_aie_part_rsc_req(apart, &args);
 	if (copy_to_user(user_args, &args, sizeof(args)))
 		return -EFAULT;
 
@@ -1213,6 +1221,7 @@ long aie_part_rscmgr_get_broadcast(struct aie_partition *apart,
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
+	trace_aie_part_rsc_bc_rsp(apart, &args);
 	rscs = kmalloc_array(args.num_rscs, sizeof(*rscs), GFP_KERNEL);
 	if (!rscs)
 		return -ENOMEM;
@@ -1223,6 +1232,9 @@ long aie_part_rscmgr_get_broadcast(struct aie_partition *apart,
 			kfree(rscs);
 			return -EFAULT;
 		}
+		for (i = 0; i < args.num_rscs; i++)
+			trace_aie_part_rsc(apart, &rscs[i]);
+
 	}
 
 	ret = mutex_lock_interruptible(&apart->mlock);
@@ -1287,6 +1299,8 @@ long aie_part_rscmgr_get_broadcast(struct aie_partition *apart,
 		kfree(rscs);
 		return -EFAULT;
 	}
+	for (i = 0; i < args.num_rscs; i++)
+		trace_aie_part_rsc(apart, &rscs[i]);
 
 	/*
 	 * If it is required to broadcast to whole partition, it needs to
@@ -1599,6 +1613,7 @@ long aie_part_rscmgr_get_statistics(struct aie_partition *apart,
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
+	trace_aie_part_rsc_user_stat_array(apart, &args);
 	if (args.stats_type >= AIE_RSC_STAT_TYPE_MAX) {
 		dev_err(&apart->dev,
 			"get rsc statistics failed, invalid rsc stat type %u.\n",
@@ -1666,6 +1681,7 @@ long aie_part_rscmgr_get_statistics(struct aie_partition *apart,
 		if (copy_to_user((void __user *)ustat_ptr, &ustat,
 				 sizeof(ustat)))
 			return -EFAULT;
+		trace_aie_part_user_stat(apart, &ustat);
 
 		ustat_ptr++;
 	}

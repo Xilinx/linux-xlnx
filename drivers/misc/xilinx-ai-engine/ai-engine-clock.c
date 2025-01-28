@@ -12,6 +12,7 @@
 #include <linux/uaccess.h>
 #include <linux/xlnx-ai-engine.h>
 
+#include "ai-engine-trace.h"
 /**
  * aie_part_get_clk_state_bit() - return bit position of the clock state of a
  *				  tile
@@ -76,6 +77,7 @@ bool aie_part_check_clk_enable_loc(struct aie_partition *apart,
 int aie_part_request_tiles(struct aie_partition *apart, int num_tiles,
 			   struct aie_location *locs)
 {
+	trace_aie_part_request_tiles(apart, num_tiles);
 	if (num_tiles == 0) {
 		aie_resource_set(&apart->tiles_inuse, 0,
 				 apart->tiles_inuse.total);
@@ -86,6 +88,7 @@ int aie_part_request_tiles(struct aie_partition *apart, int num_tiles,
 			return -EINVAL;
 
 		for (n = 0; n < num_tiles; n++) {
+			trace_aie_part_request_tile(apart, locs[n]);
 			int bit = aie_part_get_clk_state_bit(apart, &locs[n]);
 
 			if (bit >= 0)
@@ -108,6 +111,7 @@ int aie_part_request_tiles(struct aie_partition *apart, int num_tiles,
 int aie_part_release_tiles(struct aie_partition *apart, int num_tiles,
 			   struct aie_location *locs)
 {
+	trace_aie_part_release_tiles(apart, num_tiles);
 	if (num_tiles == 0) {
 		aie_resource_clear(&apart->tiles_inuse, 0,
 				   apart->tiles_inuse.total);
@@ -118,6 +122,7 @@ int aie_part_release_tiles(struct aie_partition *apart, int num_tiles,
 			return -EINVAL;
 
 		for (n = 0; n < num_tiles; n++) {
+			trace_aie_part_release_tile(apart, locs[n]);
 			int bit = aie_part_get_clk_state_bit(apart, &locs[n]);
 
 			if (bit >= 0)
@@ -272,6 +277,7 @@ int aie_part_set_column_clock_from_user(struct aie_partition *apart,
 
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
+	trace_aie_part_set_column_clock_from_user(apart, &args);
 
 	if ((args.start_col + args.num_cols - 1) > part_end_col) {
 		dev_err(&apart->dev, "invalid start column/size column\n");
