@@ -541,7 +541,7 @@ static int aie_part_access_regs(struct aie_partition *apart, u32 num_reqs,
 		{
 			struct aie_part_pinned_region data_region;
 
-			data_region.len = sizeof(struct aie_dmabuf_bd_args);
+			data_region.len = sizeof(struct aie_dma_bd_args);
 			ret = aie_part_copy_user_region(apart, &data_region,
 							(void *)args->dataptr);
 			if (ret)
