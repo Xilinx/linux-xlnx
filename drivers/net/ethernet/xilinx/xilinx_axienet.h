@@ -762,6 +762,7 @@ enum temac_stat {
 #define DCMAC_RXPHY_RX_ALIGN_MASK	BIT(2)
 #define DCMAC_RELEASE_RESET		0x0
 #define DCMAC_GT_RESET_DONE_MASK	GENMASK(3, 0)
+#define DCMAC_STS_ALL_MASK		GENMASK(31, 0)
 
 /* DCMAC GT wrapper bitmasks */
 #define DCMAC_GT_RESET_ALL	BIT(0)
