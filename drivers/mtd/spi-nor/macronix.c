@@ -14,6 +14,9 @@
 #define SPINOR_REG_MX_CFR0V	0x00	/* For setting octal DTR mode */
 #define SPINOR_MX_OCT_DTR	0x02	/* Enable Octal DTR. */
 #define SPINOR_MX_EXSPI		0x00	/* Enable Extended SPI (default) */
+#define SPINOR_REG_MX_CFR2V		0x00000300
+#define SPINOR_REG_MX_CFR2V_ECC		0x00000000
+#define SPINOR_MX_CFR2_DC_VALUE		0x000  /* For setting dummy cycles to 20(default) */
 
 static int spi_nor_macronix_octal_dtr_enable(struct spi_nor *nor, bool enable)
 {
@@ -134,6 +137,64 @@ static int mx25um51345g_post_sfdp_fixup(struct spi_nor *nor)
 
 	return 0;
 }
+
+static int mx25um51345g_config_dummy(struct spi_nor *nor)
+{
+	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
+	struct spi_mem_op op;
+	int ret;
+	u8 *buf = nor->bouncebuf;
+
+	params->writesize = 1;
+	op = (struct spi_mem_op)
+		SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_MX_RD_ANY_REG, 0),
+			   SPI_MEM_OP_ADDR(4, SPINOR_REG_MX_CFR2V, 1),
+			   SPI_MEM_OP_NO_DUMMY,
+			   SPI_MEM_OP_DATA_IN(1, buf, 1));
+
+	ret = spi_nor_read_any_reg(nor, &op, nor->reg_proto);
+	if (ret)
+		return ret;
+
+	*(buf) &= SPINOR_MX_CFR2_DC_VALUE;
+	op = (struct spi_mem_op)
+		SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_MX_WR_ANY_REG, 1),
+			   SPI_MEM_OP_ADDR(4, SPINOR_REG_MX_CFR2V, 1),
+			   SPI_MEM_OP_NO_DUMMY,
+			   SPI_MEM_OP_DATA_OUT(1, buf, 1));
+
+	ret = spi_nor_write_any_volatile_reg(nor, &op, nor->reg_proto);
+	if (ret)
+		return ret;
+	op = (struct spi_mem_op)
+		SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_MX_RD_ANY_REG, 0),
+			   SPI_MEM_OP_ADDR(4, SPINOR_REG_MX_CFR2V, 1),
+			   SPI_MEM_OP_NO_DUMMY,
+			   SPI_MEM_OP_DATA_IN(1, buf, 1));
+
+	ret = spi_nor_read_any_reg(nor, &op, nor->reg_proto);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
+static int mx25um51345g_late_init(struct spi_nor *nor)
+{
+	int ret = 0;
+
+	ret = mx25um51345g_config_dummy(nor);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
+static struct spi_nor_fixups mx25uw51345g_fixups = {
+	.default_init = mx25um51345g_default_init_fixups,
+	.post_sfdp = mx25um51345g_post_sfdp_fixup,
+	.late_init = mx25um51345g_late_init,
+};
 
 static struct spi_nor_fixups mx25um51345g_fixups = {
 	.default_init = mx25um51345g_default_init_fixups,
@@ -337,6 +398,16 @@ static const struct flash_info macronix_nor_parts[] = {
 			SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
 		.fixup_flags = SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE,
 		.fixups = &mx25um51345g_fixups
+	}, {
+		.id = SNOR_ID(0xc2, 0x94, 0x3c),
+		.name = "mx66uw2g345gxrix0",
+		.size = SZ_256,
+		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
+			SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5 | SPI_NOR_HAS_CR_TB,
+		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
+			SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
+		.fixup_flags = SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE,
+		.fixups = &mx25uw51345g_fixups
 	}, {
 		.id = SNOR_ID(0xc2, 0x81, 0x3a),
 		.name = "mx25um51345g",
