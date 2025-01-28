@@ -3,6 +3,9 @@
 # Makefile for Xilinx AI engine device driver
 #
 
+# Necessary for CREATE_TRACE_POINTS
+CFLAGS_ai-engine-dev.o = -I$(src)
+
 obj-$(CONFIG_XILINX_AIE)	+= xilinx-aie.o
 
 xilinx-aie-$(CONFIG_XILINX_AIE) := ai-engine-aie.o		\

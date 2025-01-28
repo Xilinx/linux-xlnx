@@ -27,6 +27,9 @@
 
 #include "ai-engine-internal.h"
 
+#define CREATE_TRACE_POINTS
+#include "ai-engine-trace.h"
+
 #define AIE_DEV_MAX			(MINORMASK + 1)
 
 static dev_t aie_major;
@@ -358,6 +361,7 @@ static long xilinx_ai_engine_ioctl(struct file *filp, unsigned int cmd,
 	void __user *argp = (void __user *)arg;
 	int ret;
 
+	trace_xilinx_ai_engine_ioctl(adev, cmd);
 	switch (cmd) {
 	case AIE_ENQUIRE_PART_IOCTL:
 	{

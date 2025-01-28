@@ -1236,6 +1236,22 @@ static inline int aie_validate_location(struct aie_partition *apart,
 	return 0;
 }
 
+static inline int aie_get_tile_status_size(struct aie_partition *apart,
+					   struct aie_location *loc)
+{
+	switch (apart->adev->ops->get_tile_type(apart->adev, loc)) {
+	case AIE_TILE_TYPE_MEMORY:
+		return AIE_NUM_EVENT_STS_MEMTILE;
+	case AIE_TILE_TYPE_TILE:
+		return AIE_NUM_EVENT_STS_CORETILE;
+	case AIE_TILE_TYPE_SHIMPL:
+	case AIE_TILE_TYPE_SHIMNOC:
+		return AIE_NUM_EVENT_STS_SHIMTILE;
+	default:
+		return 1;
+	}
+}
+
 /**
  * aie_resource_or_get_valueul() - get unsigned long value of specified
  *				   number of bits starting from specified
