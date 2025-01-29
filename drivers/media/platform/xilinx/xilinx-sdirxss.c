@@ -2548,8 +2548,12 @@ static int xsdirxss_probe(struct platform_device *pdev)
 	xsdirxss->core.dev = &pdev->dev;
 	core = &xsdirxss->core;
 
-	core->rst_gt_gpio = devm_gpiod_get_optional(&pdev->dev, "reset_gt",
-						    GPIOD_OUT_HIGH);
+	core->rst_gt_gpio = devm_gpiod_get_optional(&pdev->dev, "reset-gt", GPIOD_OUT_HIGH);
+	if (!core->rst_gt_gpio) {
+		core->rst_gt_gpio = devm_gpiod_get_optional(&pdev->dev, "reset_gt", GPIOD_OUT_HIGH);
+		if (core->rst_gt_gpio)
+			dev_warn(&pdev->dev, "reset_gt is deprecated. Use reset-gt instead.\n");
+	}
 	if (IS_ERR(core->rst_gt_gpio)) {
 		ret = PTR_ERR(core->rst_gt_gpio);
 		if (ret != -EPROBE_DEFER)
@@ -2557,9 +2561,13 @@ static int xsdirxss_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	core->rst_picxo_gpio = devm_gpiod_get_optional(&pdev->dev,
-						       "picxo_reset",
-						       GPIOD_OUT_LOW);
+	core->rst_picxo_gpio = devm_gpiod_get_optional(&pdev->dev, "picxo-reset", GPIOD_OUT_LOW);
+	if (!core->rst_picxo_gpio) {
+		core->rst_picxo_gpio = devm_gpiod_get_optional(&pdev->dev, "picxo_reset",
+							       GPIOD_OUT_LOW);
+		if (core->rst_picxo_gpio)
+			dev_warn(&pdev->dev, "picxo_reset is deprecated. Use picxo-reset instead.\n");
+	}
 	if (IS_ERR(core->rst_picxo_gpio)) {
 		ret = PTR_ERR(core->rst_picxo_gpio);
 		if (ret != -EPROBE_DEFER)
