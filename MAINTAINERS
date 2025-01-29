@@ -25653,6 +25653,14 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/display/xlnx/xlnx,sdi-tx.yaml
 F:	drivers/gpu/drm/xlnx/xlnx_sdi*
 
+XILINX SPDIF SOUND CARD DRIVER
+M:	Katta Dhanunjanrao <katta.dhanunjanrao@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/sound/xlnx,spdif.yaml
+F:	sound/soc/xilinx/xlnx_spdif.c
+
 XILINX PUF driver
 M:	Kundanala Praveen Teja <praveen.teja.kundanala@amd.com>
 R:	Michal Simek <michal.simek@amd.com>
