@@ -25628,6 +25628,14 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/clock/idt,idt8t49n24x.txt
 F:	drivers/clk/idt/
 
+XILINX I2S SOUND CARD DRIVER
+M:	Katta Dhanunjanrao <katta.dhanunjanrao@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/sound/xlnx,i2s.yaml
+F:	sound/soc/xilinx/xlnx_i2s.c
+
 XILINX PWM DRIVER
 M:	Sean Anderson <sean.anderson@seco.com>
 S:	Maintained
