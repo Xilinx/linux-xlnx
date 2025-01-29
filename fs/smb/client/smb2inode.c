@@ -315,7 +315,7 @@ replay_again:
 							  SMB2_O_INFO_FILE, 0,
 							  sizeof(struct smb311_posix_qinfo *) +
 							  (PATH_MAX * 2) +
-							  (sizeof(struct cifs_sid) * 2), 0, NULL);
+							  (sizeof(struct smb_sid) * 2), 0, NULL);
 			} else {
 				rc = SMB2_query_info_init(tcon, server,
 							  &rqst[num_rqst],
@@ -325,7 +325,7 @@ replay_again:
 							  SMB2_O_INFO_FILE, 0,
 							  sizeof(struct smb311_posix_qinfo *) +
 							  (PATH_MAX * 2) +
-							  (sizeof(struct cifs_sid) * 2), 0, NULL);
+							  (sizeof(struct smb_sid) * 2), 0, NULL);
 			}
 			if (!rc && (!cfile || num_rqst > 1)) {
 				smb2_set_next_command(tcon, &rqst[num_rqst]);
@@ -828,6 +828,7 @@ finished:
 
 static int parse_create_response(struct cifs_open_info_data *data,
 				 struct cifs_sb_info *cifs_sb,
+				 const char *full_path,
 				 const struct kvec *iov)
 {
 	struct smb2_create_rsp *rsp = iov->iov_base;
@@ -841,6 +842,7 @@ static int parse_create_response(struct cifs_open_info_data *data,
 		break;
 	case STATUS_STOPPED_ON_SYMLINK:
 		rc = smb2_parse_symlink_response(cifs_sb, iov,
+						 full_path,
 						 &data->symlink_target);
 		if (rc)
 			return rc;
@@ -930,18 +932,19 @@ int smb2_query_path_info(const unsigned int xid,
 
 	switch (rc) {
 	case 0:
-		rc = parse_create_response(data, cifs_sb, &out_iov[0]);
+		rc = parse_create_response(data, cifs_sb, full_path, &out_iov[0]);
 		break;
 	case -EOPNOTSUPP:
 		/*
 		 * BB TODO: When support for special files added to Samba
 		 * re-verify this path.
 		 */
-		rc = parse_create_response(data, cifs_sb, &out_iov[0]);
+		rc = parse_create_response(data, cifs_sb, full_path, &out_iov[0]);
 		if (rc || !data->reparse_point)
 			goto out;
 
-		cmds[num_cmds++] = SMB2_OP_QUERY_WSL_EA;
+		if (!tcon->posix_extensions)
+			cmds[num_cmds++] = SMB2_OP_QUERY_WSL_EA;
 		/*
 		 * Skip SMB2_OP_GET_REPARSE if symlink already parsed in create
 		 * response.

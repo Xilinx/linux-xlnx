@@ -1053,8 +1053,8 @@ static int gfs2_drop_inode(struct inode *inode)
 		struct gfs2_glock *gl = ip->i_iopen_gh.gh_gl;
 
 		gfs2_glock_hold(gl);
-		if (!gfs2_queue_try_to_evict(gl))
-			gfs2_glock_queue_put(gl);
+		if (!gfs2_queue_verify_delete(gl, true))
+			gfs2_glock_put_async(gl);
 		return 0;
 	}
 
@@ -1270,7 +1270,7 @@ out_qs:
 static void gfs2_glock_put_eventually(struct gfs2_glock *gl)
 {
 	if (current->flags & PF_MEMALLOC)
-		gfs2_glock_queue_put(gl);
+		gfs2_glock_put_async(gl);
 	else
 		gfs2_glock_put(gl);
 }
@@ -1567,11 +1567,13 @@ static struct inode *gfs2_alloc_inode(struct super_block *sb)
 	if (!ip)
 		return NULL;
 	ip->i_no_addr = 0;
+	ip->i_no_formal_ino = 0;
 	ip->i_flags = 0;
 	ip->i_gl = NULL;
 	gfs2_holder_mark_uninitialized(&ip->i_iopen_gh);
 	memset(&ip->i_res, 0, sizeof(ip->i_res));
 	RB_CLEAR_NODE(&ip->i_res.rs_node);
+	ip->i_diskflags = 0;
 	ip->i_rahead = 0;
 	return &ip->i_inode;
 }
