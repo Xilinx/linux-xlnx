@@ -630,7 +630,6 @@ struct aie_event_attr {
 /**
  * struct aie_l1_intr_ctrl_attr - AI engine level 1 interrupt controller
  *				  attributes structure.
- * @mask: level 1 interrupt controller mask attribute.
  * @swa_status: switch A level 1 interrupt controller status attribute.
  * @swb_status: switch A level 1 interrupt controller status attribute.
  * @swa_event: switch A level 1 interrupt controller event attribute.
@@ -907,7 +906,6 @@ struct aie_tile {
  * @mlock: protection for AI engine device operations
  * @clk: AI enigne device clock
  * @kernel_regs: array of kernel only registers
- * @core_regs: array of core registers
  * @core_regs_clr: array of core registers to be cleared
  * @ops: tile operations
  * @col_rst: column reset attribute
@@ -935,8 +933,6 @@ struct aie_tile {
  * @col_shift: column address shift
  * @row_shift: row address shift
  * @dev_gen: aie hardware device generation
- * @cols_res: AI engine columns resources to indicate
- *	      while columns are occupied by partitions.
  * @num_kernel_regs: number of kernel only registers range
  * @num_core_regs_clr: number of core registers to clear
  * @pm_node_id: AI Engine platform management node ID
@@ -950,8 +946,6 @@ struct aie_tile {
  * @core_pc: program counter attribute
  * @core_lr: link register attribute
  * @core_sp: stack pointer attribute
- * @dma_status_str: DMA channel status in string format
- * @queue_status_str: DMA queue status in string format
  */
 struct aie_device {
 	struct list_head apertures;
