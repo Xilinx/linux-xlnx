@@ -25596,6 +25596,13 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,axis-subsetconv.yaml
 F:	drivers/media/platform/xilinx/xilinx-axis-subsetconv.c
 
+XILINX AXI4S SWITCH DRIVER
+M:	Kunal Rane <kunal.rane@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-axi4s-switch.yaml
+F:	drivers/media/platform/xilinx/xilinx-axis-switch.c
+
 XILINX HLS DRIVER
 M:	Kunal Rane <kunal.rane@amd.com>
 L:	git@amd.com
