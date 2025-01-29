@@ -25653,6 +25653,14 @@ F:	drivers/misc/Makefile
 F:	drivers/misc/xilinx_sdfec.c
 F:	include/uapi/misc/xilinx_sdfec.h
 
+XILINX SDI AUDIO DRIVER
+M:	Katta Dhanunjanrao <katta.dhanunjanrao@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/sound/xlnx,v-uhdsdi-audio.yaml
+F:	sound/soc/xilinx/xlnx_sdi_audio.c
+
 XILINX SDITXSS DRIVER
 M:	Katta Dhanunjanrao <katta.dhanunjanrao@amd.com>
 R:	Vishal Sagar <vishal.sagar@amd.com>
