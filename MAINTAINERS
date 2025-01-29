@@ -25645,6 +25645,14 @@ F:	drivers/misc/Makefile
 F:	drivers/misc/xilinx_sdfec.c
 F:	include/uapi/misc/xilinx_sdfec.h
 
+XILINX SDITXSS DRIVER
+M:	Katta Dhanunjanrao <katta.dhanunjanrao@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/display/xlnx/xlnx,sdi-tx.yaml
+F:	drivers/gpu/drm/xlnx/xlnx_sdi*
+
 XILINX PUF driver
 M:	Kundanala Praveen Teja <praveen.teja.kundanala@amd.com>
 R:	Michal Simek <michal.simek@amd.com>
