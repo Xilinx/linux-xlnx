@@ -923,6 +923,7 @@ void virtio_transport_destruct(struct vsock_sock *vsk)
 	struct virtio_vsock_sock *vvs = vsk->trans;
 
 	kfree(vvs);
+	vsk->trans = NULL;
 }
 EXPORT_SYMBOL_GPL(virtio_transport_destruct);
 
@@ -1311,6 +1312,14 @@ virtio_transport_recv_listen(struct sock *sk, struct sk_buff *skb,
 	if (sk_acceptq_is_full(sk)) {
 		virtio_transport_reset_no_sock(t, skb);
 		return -ENOMEM;
+	}
+
+	/* __vsock_release() might have already flushed accept_queue.
+	 * Subsequent enqueues would lead to a memory leak.
+	 */
+	if (sk->sk_shutdown == SHUTDOWN_MASK) {
+		virtio_transport_reset_no_sock(t, skb);
+		return -ESHUTDOWN;
 	}
 
 	child = vsock_create_connected(sk);

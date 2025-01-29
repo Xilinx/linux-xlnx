@@ -37,6 +37,7 @@ static int process_legacy_output(struct snd_ump_endpoint *ump,
 				 u32 *buffer, int count);
 static void process_legacy_input(struct snd_ump_endpoint *ump, const u32 *src,
 				 int words);
+static void update_legacy_names(struct snd_ump_endpoint *ump);
 #else
 static inline int process_legacy_output(struct snd_ump_endpoint *ump,
 					u32 *buffer, int count)
@@ -45,6 +46,9 @@ static inline int process_legacy_output(struct snd_ump_endpoint *ump,
 }
 static inline void process_legacy_input(struct snd_ump_endpoint *ump,
 					const u32 *src, int words)
+{
+}
+static inline void update_legacy_names(struct snd_ump_endpoint *ump)
 {
 }
 #endif
@@ -524,6 +528,59 @@ static void snd_ump_proc_read(struct snd_info_entry *entry,
 	}
 }
 
+/* update dir_bits and active flag for all groups in the client */
+void snd_ump_update_group_attrs(struct snd_ump_endpoint *ump)
+{
+	struct snd_ump_block *fb;
+	struct snd_ump_group *group;
+	int i;
+
+	for (i = 0; i < SNDRV_UMP_MAX_GROUPS; i++) {
+		group = &ump->groups[i];
+		*group->name = 0;
+		group->dir_bits = 0;
+		group->active = 0;
+		group->group = i;
+		group->valid = false;
+	}
+
+	list_for_each_entry(fb, &ump->block_list, list) {
+		if (fb->info.first_group + fb->info.num_groups > SNDRV_UMP_MAX_GROUPS)
+			break;
+		group = &ump->groups[fb->info.first_group];
+		for (i = 0; i < fb->info.num_groups; i++, group++) {
+			group->valid = true;
+			if (fb->info.active)
+				group->active = 1;
+			switch (fb->info.direction) {
+			case SNDRV_UMP_DIR_INPUT:
+				group->dir_bits |= (1 << SNDRV_RAWMIDI_STREAM_INPUT);
+				break;
+			case SNDRV_UMP_DIR_OUTPUT:
+				group->dir_bits |= (1 << SNDRV_RAWMIDI_STREAM_OUTPUT);
+				break;
+			case SNDRV_UMP_DIR_BIDIRECTION:
+				group->dir_bits |= (1 << SNDRV_RAWMIDI_STREAM_INPUT) |
+					(1 << SNDRV_RAWMIDI_STREAM_OUTPUT);
+				break;
+			}
+			if (!*fb->info.name)
+				continue;
+			if (!*group->name) {
+				/* store the first matching name */
+				strscpy(group->name, fb->info.name,
+					sizeof(group->name));
+			} else {
+				/* when overlapping, concat names */
+				strlcat(group->name, ", ", sizeof(group->name));
+				strlcat(group->name, fb->info.name,
+					sizeof(group->name));
+			}
+		}
+	}
+}
+EXPORT_SYMBOL_GPL(snd_ump_update_group_attrs);
+
 /*
  * UMP endpoint and function block handling
  */
@@ -724,7 +781,10 @@ static void fill_fb_info(struct snd_ump_endpoint *ump,
 	info->ui_hint = buf->fb_info.ui_hint;
 	info->first_group = buf->fb_info.first_group;
 	info->num_groups = buf->fb_info.num_groups;
-	info->flags = buf->fb_info.midi_10;
+	if (buf->fb_info.midi_10 < 2)
+		info->flags = buf->fb_info.midi_10;
+	else
+		info->flags = SNDRV_UMP_BLOCK_IS_MIDI1 | SNDRV_UMP_BLOCK_IS_LOWSPEED;
 	info->active = buf->fb_info.active;
 	info->midi_ci_version = buf->fb_info.midi_ci_version;
 	info->sysex8_streams = buf->fb_info.sysex8_streams;
@@ -792,8 +852,11 @@ static int ump_handle_fb_info_msg(struct snd_ump_endpoint *ump,
 
 	if (fb) {
 		fill_fb_info(ump, &fb->info, buf);
-		if (ump->parsed)
+		if (ump->parsed) {
+			snd_ump_update_group_attrs(ump);
+			update_legacy_names(ump);
 			seq_notify_fb_change(ump, fb);
+		}
 	}
 
 	return 1; /* finished */
@@ -822,8 +885,11 @@ static int ump_handle_fb_name_msg(struct snd_ump_endpoint *ump,
 	ret = ump_append_string(ump, fb->info.name, sizeof(fb->info.name),
 				buf->raw, 3);
 	/* notify the FB name update to sequencer, too */
-	if (ret > 0 && ump->parsed)
+	if (ret > 0 && ump->parsed) {
+		snd_ump_update_group_attrs(ump);
+		update_legacy_names(ump);
 		seq_notify_fb_change(ump, fb);
+	}
 	return ret;
 }
 
@@ -995,6 +1061,9 @@ int snd_ump_parse_endpoint(struct snd_ump_endpoint *ump)
 			continue;
 	}
 
+	/* initialize group attributions */
+	snd_ump_update_group_attrs(ump);
+
  error:
 	ump->parsed = true;
 	ump_request_close(ump);
@@ -1013,13 +1082,13 @@ static int snd_ump_legacy_open(struct snd_rawmidi_substream *substream)
 	struct snd_ump_endpoint *ump = substream->rmidi->private_data;
 	int dir = substream->stream;
 	int group = ump->legacy_mapping[substream->number];
-	int err = 0;
+	int err;
 
-	mutex_lock(&ump->open_mutex);
-	if (ump->legacy_substreams[dir][group]) {
-		err = -EBUSY;
-		goto unlock;
-	}
+	guard(mutex)(&ump->open_mutex);
+	if (ump->legacy_substreams[dir][group])
+		return -EBUSY;
+	if (!ump->groups[group].active)
+		return -ENODEV;
 	if (dir == SNDRV_RAWMIDI_STREAM_OUTPUT) {
 		if (!ump->legacy_out_opens) {
 			err = snd_rawmidi_kernel_open(&ump->core, 0,
@@ -1027,17 +1096,14 @@ static int snd_ump_legacy_open(struct snd_rawmidi_substream *substream)
 						      SNDRV_RAWMIDI_LFLG_APPEND,
 						      &ump->legacy_out_rfile);
 			if (err < 0)
-				goto unlock;
+				return err;
 		}
 		ump->legacy_out_opens++;
 		snd_ump_convert_reset(&ump->out_cvts[group]);
 	}
-	spin_lock_irq(&ump->legacy_locks[dir]);
+	guard(spinlock_irq)(&ump->legacy_locks[dir]);
 	ump->legacy_substreams[dir][group] = substream;
-	spin_unlock_irq(&ump->legacy_locks[dir]);
- unlock:
-	mutex_unlock(&ump->open_mutex);
-	return err;
+	return 0;
 }
 
 static int snd_ump_legacy_close(struct snd_rawmidi_substream *substream)
@@ -1046,15 +1112,13 @@ static int snd_ump_legacy_close(struct snd_rawmidi_substream *substream)
 	int dir = substream->stream;
 	int group = ump->legacy_mapping[substream->number];
 
-	mutex_lock(&ump->open_mutex);
-	spin_lock_irq(&ump->legacy_locks[dir]);
-	ump->legacy_substreams[dir][group] = NULL;
-	spin_unlock_irq(&ump->legacy_locks[dir]);
+	guard(mutex)(&ump->open_mutex);
+	scoped_guard(spinlock_irq, &ump->legacy_locks[dir])
+		ump->legacy_substreams[dir][group] = NULL;
 	if (dir == SNDRV_RAWMIDI_STREAM_OUTPUT) {
 		if (!--ump->legacy_out_opens)
 			snd_rawmidi_kernel_release(&ump->legacy_out_rfile);
 	}
-	mutex_unlock(&ump->open_mutex);
 	return 0;
 }
 
@@ -1106,12 +1170,11 @@ static int process_legacy_output(struct snd_ump_endpoint *ump,
 	const int dir = SNDRV_RAWMIDI_STREAM_OUTPUT;
 	unsigned char c;
 	int group, size = 0;
-	unsigned long flags;
 
 	if (!ump->out_cvts || !ump->legacy_out_opens)
 		return 0;
 
-	spin_lock_irqsave(&ump->legacy_locks[dir], flags);
+	guard(spinlock_irqsave)(&ump->legacy_locks[dir]);
 	for (group = 0; group < SNDRV_UMP_MAX_GROUPS; group++) {
 		substream = ump->legacy_substreams[dir][group];
 		if (!substream)
@@ -1127,7 +1190,6 @@ static int process_legacy_output(struct snd_ump_endpoint *ump,
 			break;
 		}
 	}
-	spin_unlock_irqrestore(&ump->legacy_locks[dir], flags);
 	return size;
 }
 
@@ -1137,18 +1199,16 @@ static void process_legacy_input(struct snd_ump_endpoint *ump, const u32 *src,
 	struct snd_rawmidi_substream *substream;
 	unsigned char buf[16];
 	unsigned char group;
-	unsigned long flags;
 	const int dir = SNDRV_RAWMIDI_STREAM_INPUT;
 	int size;
 
 	size = snd_ump_convert_from_ump(src, buf, &group);
 	if (size <= 0)
 		return;
-	spin_lock_irqsave(&ump->legacy_locks[dir], flags);
+	guard(spinlock_irqsave)(&ump->legacy_locks[dir]);
 	substream = ump->legacy_substreams[dir][group];
 	if (substream)
 		snd_rawmidi_receive(substream, buf, size);
-	spin_unlock_irqrestore(&ump->legacy_locks[dir], flags);
 }
 
 /* Fill ump->legacy_mapping[] for groups to be used for legacy rawmidi */
@@ -1183,10 +1243,26 @@ static void fill_substream_names(struct snd_ump_endpoint *ump,
 				 struct snd_rawmidi *rmidi, int dir)
 {
 	struct snd_rawmidi_substream *s;
+	const char *name;
+	int idx;
 
-	list_for_each_entry(s, &rmidi->streams[dir].substreams, list)
-		snprintf(s->name, sizeof(s->name), "Group %d (%.16s)",
-			 ump->legacy_mapping[s->number] + 1, ump->info.name);
+	list_for_each_entry(s, &rmidi->streams[dir].substreams, list) {
+		idx = ump->legacy_mapping[s->number];
+		name = ump->groups[idx].name;
+		if (!*name)
+			name = ump->info.name;
+		scnprintf(s->name, sizeof(s->name), "Group %d (%.16s)%s",
+			  idx + 1, name,
+			  ump->groups[idx].active ? "" : " [Inactive]");
+	}
+}
+
+static void update_legacy_names(struct snd_ump_endpoint *ump)
+{
+	struct snd_rawmidi *rmidi = ump->legacy_rmidi;
+
+	fill_substream_names(ump, rmidi, SNDRV_RAWMIDI_STREAM_INPUT);
+	fill_substream_names(ump, rmidi, SNDRV_RAWMIDI_STREAM_OUTPUT);
 }
 
 int snd_ump_attach_legacy_rawmidi(struct snd_ump_endpoint *ump,
@@ -1225,10 +1301,7 @@ int snd_ump_attach_legacy_rawmidi(struct snd_ump_endpoint *ump,
 	rmidi->ops = &snd_ump_legacy_ops;
 	rmidi->private_data = ump;
 	ump->legacy_rmidi = rmidi;
-	if (input)
-		fill_substream_names(ump, rmidi, SNDRV_RAWMIDI_STREAM_INPUT);
-	if (output)
-		fill_substream_names(ump, rmidi, SNDRV_RAWMIDI_STREAM_OUTPUT);
+	update_legacy_names(ump);
 
 	ump_dbg(ump, "Created a legacy rawmidi #%d (%s)\n", device, id);
 	return 0;
