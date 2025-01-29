@@ -1,0 +1,147 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# %YAML 1.2
+---
+$id: http://devicetree.org/schemas/media/xilinx/xlnx,sdirxss.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx SDI Receiver Subsystem
+
+maintainers:
+  - katta Dhanunjanrao <katta.dhanunjanrao@amd.com>
+
+description:
+  The Xilinx SDI Rx Subsystem is used to capture SDI Video in upto 12G mode.
+  It outputs the video as an AXI4 Stream video data in YUV 422 10bpc mode.
+  The subsystem consists of the SDI Rx IP whose SDI native output is connected
+  to a SDI to Native conversion Bridge. The output of the Native bridge is
+  connected to a Native to AXI4S Bridge which generates the AXI4 Stream of
+  YUV422 or YUV420 10 bpc in dual pixel per clock.
+
+properties:
+  compatible:
+    const: xlnx,v-smpte-uhdsdi-rx-ss
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    maxItems: 1
+
+  clocks:
+    description: Input clock specifier. Refer to common clock bindings.
+    items:
+      - description: AXI4-Lite clock.
+      - description: SMPTE UHD SDI Rx core clock.
+      - description: Video output clock.
+
+  clock-names:
+    items:
+      - const: s_axi_aclk
+      - const: sdi_rx_clk
+      - const: video_out_clk
+
+  picxo-reset-gpios:
+    description: It contains the GPIO reset phandle for PICXO done pin for PICXO module.
+                 This GPIO pin is active high.
+
+  reset-gt-gpios:
+    description: It contains the GPIO reset phandle for FMC init done pin in GT.
+                 This GPIO pin is active low.
+
+  xlnx,bpp:
+    description: This denotes the bit depth as 10 or 12 based on IP configuration.
+                 The default value is 10 for backward compatibility.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [10, 12]
+
+  xlnx,include-edh:
+    description: Whether the EDH processor is enabled or not in the design.
+    type: boolean
+
+  xlnx,line-rate:
+    description: The maximum mode supported by the design.
+    $ref: /schemas/types.yaml#/definitions/string
+
+  xlnx,video-format:
+    description: The video format is fixed to either YUV422 or YUV420.
+                 Here, 0 is for YUV422 and 1 for YUV420
+
+  xlnx,video-width:
+    description: The video width supported value is 10.
+
+  ports:
+    type: object
+
+    properties:
+      "#address-cells":
+        const: 1
+
+      "#size-cells":
+        const: 0
+
+      port@0:
+        type: object
+        description: Output / source port node, endpoint describing modules
+                     connected to the SDI receiver.
+        properties:
+          reg:
+            const: 0
+          xlnx,video-format:
+            description: Video format identifier.
+          xlnx,video-width:
+            description: Width of the video stream.
+
+          endpoint:
+            type: object
+
+            properties:
+              remote-endpoint: true
+
+            required:
+              - remote-endpoint
+
+            additionalProperties: false
+
+        additionalProperties: false
+
+    additionalProperties: false
+
+required:
+  - reg
+  - clocks
+  - clock-names
+  - interrupts
+  - xlnx,bpp
+  - xlnx,include-edh
+  - xlnx,line-rate
+  - ports
+
+additionalProperties: false
+
+examples:
+  - |
+    v-smpte-uhdsdi-rx-ss@80000000 {
+        compatible = "xlnx,v-smpte-uhdsdi-rx-ss";
+        reg = <0x80000000 0x10000>;
+        clocks = <&clk_1>, <&si570_1>, <&clk_2>;
+        clock-names = "s_axi_aclk", "sdi_rx_clk", "video_out_clk";
+        interrupts = <0 89 4>;
+        xlnx,bpp = <10>;
+        xlnx,include-edh;
+        xlnx,line-rate = "12G_SDI_8DS";
+        ports {
+            #address-cells = <1>;
+            #size-cells = <0>;
+
+            port@0 {
+                reg = <0>;
+                xlnx,video-format = <0>;
+                xlnx,video-width = <10>;
+
+                endpoint {
+                    remote-endpoint = <&vcap_sdirx_in>;
+                };
+            };
+        };
+    };
+...
