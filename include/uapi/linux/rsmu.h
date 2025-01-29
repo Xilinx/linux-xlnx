@@ -85,7 +85,7 @@ struct rsmu_reference_monitor_status {
 
 /* Get a TDC single-shot measurement in nanosecond */
 struct rsmu_get_tdc_meas {
-	bool continuous;
+	_Bool continuous;
 	__s64 offset;
 };
 
