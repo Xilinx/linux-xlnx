@@ -46,6 +46,22 @@ properties:
       size of cell to describe AI engine range of tiles size.
       As the AI engine tiles are 2D array, the size cell is 2.
 
+  clock-names:
+    description:
+      The clock-names property specifies a list of clock names for the clock inputs
+      used by the AI Engine device core.
+      It must include "aclk0", while "aclk1" is optional.
+    minItems: 1
+    items:
+      - const: aclk0
+      - const: aclk1
+
+  clocks:
+    description:
+      Clock input to the AI engine device core.
+    minItems: 1
+    maxItems: 2
+
   interrupts:
     deprecated: true
     maxItems: 3
@@ -88,6 +104,8 @@ required:
   - xlnx,shim-rows
   - xlnx,core-rows
   - xlnx,mem-rows
+  - clock-names
+  - clocks
 
 patternProperties:
   "^aperture@[0-9]+$":
@@ -184,6 +202,8 @@ examples:
         #address-cells = <2>;
         #size-cells = <2>;
         ranges;
+        clock-names = "aclk0";
+        clocks = <&aie_core_ref_clk_0>;
 
         aperture0: aperture@0 {
           /* 50 columns and 8 core tile rows + 1 SHIM row */
