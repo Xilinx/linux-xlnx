@@ -2554,12 +2554,9 @@ static int xsdirxss_probe(struct platform_device *pdev)
 		if (core->rst_gt_gpio)
 			dev_warn(&pdev->dev, "reset_gt is deprecated. Use reset-gt instead.\n");
 	}
-	if (IS_ERR(core->rst_gt_gpio)) {
-		ret = PTR_ERR(core->rst_gt_gpio);
-		if (ret != -EPROBE_DEFER)
-			dev_err(&pdev->dev, "Reset GT GPIO not setup in DT\n");
-		return ret;
-	}
+	if (IS_ERR(core->rst_gt_gpio))
+		return dev_err_probe(&pdev->dev, PTR_ERR(core->rst_gt_gpio),
+				     "Reset GT GPIO not setup in DT\n");
 
 	core->rst_picxo_gpio = devm_gpiod_get_optional(&pdev->dev, "picxo-reset", GPIOD_OUT_LOW);
 	if (!core->rst_picxo_gpio) {
@@ -2568,12 +2565,9 @@ static int xsdirxss_probe(struct platform_device *pdev)
 		if (core->rst_picxo_gpio)
 			dev_warn(&pdev->dev, "picxo_reset is deprecated. Use picxo-reset instead.\n");
 	}
-	if (IS_ERR(core->rst_picxo_gpio)) {
-		ret = PTR_ERR(core->rst_picxo_gpio);
-		if (ret != -EPROBE_DEFER)
-			dev_err(&pdev->dev, "PICXO Reset GPIO not setup in DT\n");
-		return ret;
-	}
+	if (IS_ERR(core->rst_picxo_gpio))
+		return dev_err_probe(&pdev->dev, PTR_ERR(core->rst_picxo_gpio),
+				     "PICXO Reset GPIO not setup in DT\n");
 
 	core->num_clks = ARRAY_SIZE(xsdirxss_clks);
 	core->clks = devm_kcalloc(&pdev->dev, core->num_clks,
