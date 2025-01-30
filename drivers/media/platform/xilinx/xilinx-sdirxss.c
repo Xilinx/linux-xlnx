@@ -1768,14 +1768,14 @@ static int xsdirxss_s_ctrl(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_XILINX_SDIRX_SEARCH_MODES:
 		if (ctrl->val) {
 			if (core->mode == XSDIRXSS_SDI_STD_3G) {
-				dev_dbg(core->dev, "Upto 3G supported\n");
+				dev_dbg(core->dev, "Up to 3G supported\n");
 				ctrl->val &= ~(BIT(XSDIRX_MODE_6G_OFFSET) |
 					       BIT(XSDIRX_MODE_12GI_OFFSET) |
 					       BIT(XSDIRX_MODE_12GF_OFFSET));
 			}
 
 			if (core->mode == XSDIRXSS_SDI_STD_6G) {
-				dev_dbg(core->dev, "Upto 6G supported\n");
+				dev_dbg(core->dev, "Up to 6G supported\n");
 				ctrl->val &= ~(BIT(XSDIRX_MODE_12GI_OFFSET) |
 					       BIT(XSDIRX_MODE_12GF_OFFSET));
 			}
