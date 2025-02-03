@@ -25676,6 +25676,14 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/sound/xlnx,v-uhdsdi-audio.yaml
 F:	sound/soc/xilinx/xlnx_sdi_audio.c
 
+XILINX SDIRXSS DRIVER
+M:	Katta Dhanunjanrao <katta.dhanunjanrao@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,sdirxss.yaml
+F:	drivers/media/platform/xilinx/xilinx-sdirxss.c
+
 XILINX SDITXSS DRIVER
 M:	Katta Dhanunjanrao <katta.dhanunjanrao@amd.com>
 R:	Vishal Sagar <vishal.sagar@amd.com>
