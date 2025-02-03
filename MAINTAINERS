@@ -25651,6 +25651,14 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/sound/xlnx,i2s.yaml
 F:	sound/soc/xilinx/xlnx_i2s.c
 
+XILINX PL SOUND CARD DRIVER
+M:	Katta Dhanunjanrao <katta.dhanunjanrao@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	sound/soc/xilinx/xlnx_pl_snd_card.c
+F:	sound/soc/xilinx/xlnx_snd_common.h
+
 XILINX PWM DRIVER
 M:	Sean Anderson <sean.anderson@seco.com>
 S:	Maintained
