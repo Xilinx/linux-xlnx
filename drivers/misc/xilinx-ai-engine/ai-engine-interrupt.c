@@ -917,15 +917,6 @@ bool aie_part_has_error(struct aie_partition *apart)
 	u32 *l2_mask = aperture->l2_mask.val;
 	int i;
 
-	/*
-	 * TODO: errors backtracking is not support for AIEML. for now, return
-	 * false based on device generation.
-	 */
-	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
-		dev_dbg(&apart->dev, "Skipping error backtracking.\n");
-		return false;
-	}
-
 	ret = mutex_lock_interruptible(&aperture->mlock);
 	if (ret) {
 		dev_err(&apart->dev,
@@ -1266,10 +1257,6 @@ int aie_register_error_notification(struct device *dev,
 		return -EINVAL;
 
 	apart = container_of(dev, struct aie_partition, dev);
-	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
-		dev_err(&apart->dev,
-			"error handling is not supported for aieml device\n");
-	}
 
 	ret = mutex_lock_interruptible(&apart->mlock);
 	if (ret) {
@@ -1320,11 +1307,6 @@ int aie_unregister_error_notification(struct device *dev)
 		return -EINVAL;
 
 	apart = container_of(dev, struct aie_partition, dev);
-	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
-		dev_err(&apart->dev,
-			"error handling is not supported for aieml device\n");
-		return -EINVAL;
-	}
 
 	ret = mutex_lock_interruptible(&apart->mlock);
 	if (ret) {
@@ -1362,11 +1344,6 @@ struct aie_errors *aie_get_errors(struct device *dev)
 		return ERR_PTR(-EINVAL);
 
 	apart = container_of(dev, struct aie_partition, dev);
-	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
-		dev_err(&apart->dev,
-			"error handling is not supported for aieml device\n");
-		return NULL;
-	}
 
 	ret = mutex_lock_interruptible(&apart->mlock);
 	if (ret) {
@@ -1453,11 +1430,6 @@ const char *aie_get_error_string(struct aie_errors *aie_errs,
 		return ERR_PTR(-EINVAL);
 
 	apart = container_of(aie_errs->dev, struct aie_partition, dev);
-	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
-		dev_err(&apart->dev,
-			"error handling is not supported for aieml device\n");
-		return NULL;
-	}
 
 	ret = mutex_lock_interruptible(&apart->mlock);
 	if (ret) {
@@ -1506,11 +1478,6 @@ int aie_flush_errors(struct device *dev)
 		return -EINVAL;
 
 	apart = container_of(dev, struct aie_partition, dev);
-	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
-		dev_err(&apart->dev,
-			"error handling is not supported for aieml device\n");
-		return -EINVAL;
-	}
 	aie_part_backtrack(apart);
 
 	return 0;
