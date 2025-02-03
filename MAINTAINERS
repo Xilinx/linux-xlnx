@@ -25552,6 +25552,18 @@ S:	Maintained
 F:	drivers/soc/xilinx/xlnx_event_manager.c
 F:	include/linux/firmware/xlnx-event-manager.h
 
+XILINX PM FIRMWARE DRIVER
+M:	Senthil Nathan Thangaraj <senthilnathan.thangaraj@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	drivers/firmware/xilinx/zynqmp-core.c
+F:	drivers/firmware/xilinx/zynqmp-debug.c
+F:	drivers/firmware/xilinx/zynqmp-pm.c
+F:	drivers/firmware/xilinx/zynqmp-debug.h
+F:	include/linux/firmware/xlnx-versal-error-events.h
+F:	include/linux/firmware/xlnx-versal-net-error-events.h
+F:	include/linux/firmware/xlnx-zynqmp.h
+
 XILINX GAMMA DRIVER
 M:	Kunal Rane <kunal.rane@amd.com>
 L:	git@amd.com
