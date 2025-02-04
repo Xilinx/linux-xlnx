@@ -314,6 +314,8 @@ static void bnxt_re_stop_irq(void *handle)
 	int indx;
 
 	rdev = en_info->rdev;
+	if (!rdev)
+		return;
 	rcfw = &rdev->rcfw;
 
 	for (indx = BNXT_RE_NQ_IDX; indx < rdev->nqr->num_msix; indx++) {
@@ -334,6 +336,8 @@ static void bnxt_re_start_irq(void *handle, struct bnxt_msix_entry *ent)
 	int indx, rc;
 
 	rdev = en_info->rdev;
+	if (!rdev)
+		return;
 	msix_ent = rdev->nqr->msix_entries;
 	rcfw = &rdev->rcfw;
 	if (!ent) {
@@ -2077,6 +2081,7 @@ static int bnxt_re_suspend(struct auxiliary_device *adev, pm_message_t state)
 	ibdev_info(&rdev->ibdev, "%s: L2 driver notified to stop en_state 0x%lx",
 		   __func__, en_dev->en_state);
 	bnxt_re_remove_device(rdev, BNXT_RE_PRE_RECOVERY_REMOVE, adev);
+	bnxt_re_update_en_info_rdev(NULL, en_info, adev);
 	mutex_unlock(&bnxt_re_mutex);
 
 	return 0;
