@@ -370,7 +370,7 @@ xfs_initialize_perag(
 	int			error;
 
 	for (index = old_agcount; index < new_agcount; index++) {
-		pag = kmem_zalloc(sizeof(*pag), KM_MAYFAIL);
+		pag = kmem_zalloc(sizeof(*pag), 0);
 		if (!pag) {
 			error = -ENOMEM;
 			goto out_unwind_new_pags;
