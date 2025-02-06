@@ -5167,6 +5167,10 @@ static int axienet_probe(struct platform_device *pdev)
 		 * Those MSB registers were introduced in IP v7.1, which we check first.
 		 */
 		if (lp->axienet_config->mactype == XAXIENET_1_2p5G) {
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+			if (lp->dma_mask > XAE_DMA_MASK_MIN)
+				lp->features |= XAE_FEATURE_DMA_64BIT;
+#else
 			if ((axienet_ior(lp, XAE_ID_OFFSET) >> 24) >= 0x9) {
 				void __iomem *desc = lp->dq[0]->dma_regs +
 						     XAXIDMA_TX_CDESC_OFFSET + 4;
@@ -5186,6 +5190,10 @@ static int axienet_probe(struct platform_device *pdev)
 				ret = -EINVAL;
 				goto err_disable_clk;
 			}
+#endif
+		} else if (lp->dma_mask > XAE_DMA_MASK_MIN) {
+			/* High speed MACs with 64-bit DMA */
+			lp->features |= XAE_FEATURE_DMA_64BIT;
 		}
 
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
