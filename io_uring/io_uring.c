@@ -1779,6 +1779,7 @@ int io_req_prep_async(struct io_kiocb *req)
 {
 	const struct io_cold_def *cdef = &io_cold_defs[req->opcode];
 	const struct io_issue_def *def = &io_issue_defs[req->opcode];
+	int ret;
 
 	/* assign early for deferred execution for non-fixed file */
 	if (def->needs_file && !(req->flags & REQ_F_FIXED_FILE) && !req->file)
@@ -1791,7 +1792,9 @@ int io_req_prep_async(struct io_kiocb *req)
 		if (io_alloc_async_data(req))
 			return -EAGAIN;
 	}
-	return cdef->prep_async(req);
+	ret = cdef->prep_async(req);
+	io_kbuf_recycle(req, 0);
+	return ret;
 }
 
 static u32 io_get_sequence(struct io_kiocb *req)
