@@ -192,6 +192,8 @@ static int rsmu_cm_set_output_tdc_go(struct rsmu_cdev *rsmu, u8 tdc, u8 enable)
 
 	err = regmap_bulk_read(rsmu->regmap, tdc_n + tdc_ctrl4_offset,
 			       &reg, sizeof(reg));
+	if (err)
+		return err;
 
 	if (enable)
 		reg |= 0x01;
