@@ -330,7 +330,7 @@ static int rsmu_cm_get_fw_version(struct rsmu_cdev *rsmu)
 static int rsmu_cm_load_firmware(struct rsmu_cdev *rsmu,
 				 char fwname[FW_NAME_LEN_MAX])
 {
-	u16 scratch = IDTCM_FW_REG(rsmu->fw_version, V520, SCRATCH);
+	u32 scratch = IDTCM_FW_REG(rsmu->fw_version, V520, SCRATCH);
 	char fname[FW_NAME_LEN_MAX] = FW_FILENAME;
 	const struct firmware *fw;
 	struct idtcm_fwrc *rec;
