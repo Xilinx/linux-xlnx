@@ -170,6 +170,7 @@ int __maybe_unused axienet_eoe_mcdma_gro_q_init(struct net_device *ndev,
 						struct axienet_dma_q *q,
 						int i)
 {
+	struct axienet_local *lp = netdev_priv(ndev);
 	dma_addr_t mapping;
 	struct page *page;
 
@@ -185,7 +186,7 @@ int __maybe_unused axienet_eoe_mcdma_gro_q_init(struct net_device *ndev,
 		netdev_err(ndev, "dma mapping error\n");
 		goto free_page;
 	}
-	q->rxq_bd_v[i].phys = mapping;
+	mcdma_desc_set_phys_addr(lp, mapping, &q->rxq_bd_v[i]);
 	q->rxq_bd_v[i].cntrl = PAGE_SIZE;
 
 	return 0;
@@ -200,14 +201,16 @@ void __maybe_unused axienet_eoe_mcdma_gro_bd_free(struct net_device *ndev,
 						  struct axienet_dma_q *q)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
+	dma_addr_t phys;
 	int i;
 
 	if (!q->rxq_bd_v)
 		return;
 
 	for (i = 0; i < lp->rx_bd_num; i++) {
-		if (q->rxq_bd_v[i].phys) {
-			dma_unmap_page(ndev->dev.parent, q->rxq_bd_v[i].phys, PAGE_SIZE,
+		phys = mcdma_desc_get_phys_addr(lp, &q->rxq_bd_v[i]);
+		if (phys) {
+			dma_unmap_page(ndev->dev.parent, phys, PAGE_SIZE,
 				       DMA_FROM_DEVICE);
 			__free_pages(q->rxq_bd_v[i].page, 0);
 		}
@@ -226,9 +229,9 @@ int axienet_eoe_recv_gro(struct net_device *ndev, int budget,
 {
 	struct axienet_local *lp = netdev_priv(ndev);
 	u32 length, packets = 0, size = 0;
+	dma_addr_t phys, tail_p = 0;
 	unsigned int numbdfree = 0;
 	struct aximcdma_bd *cur_p;
-	dma_addr_t tail_p = 0;
 	struct iphdr *iphdr;
 	struct page *page;
 	struct udphdr *uh;
@@ -241,7 +244,8 @@ int axienet_eoe_recv_gro(struct net_device *ndev, int budget,
 	while ((numbdfree < budget) &&
 	       (cur_p->status & XAXIDMA_BD_STS_COMPLETE_MASK)) {
 		tail_p = q->rx_bd_p + sizeof(*q->rxq_bd_v) * q->rx_bd_ci;
-		dma_unmap_page(ndev->dev.parent, cur_p->phys, PAGE_SIZE,
+		phys = mcdma_desc_get_phys_addr(lp, cur_p);
+		dma_unmap_page(ndev->dev.parent, phys, PAGE_SIZE,
 			       DMA_FROM_DEVICE);
 
 		length = cur_p->status & XAXIDMA_BD_STS_ACTUAL_LEN_MASK;
@@ -305,15 +309,17 @@ int axienet_eoe_recv_gro(struct net_device *ndev, int budget,
 			break;
 		}
 		cur_p->page = page;
-		cur_p->phys = dma_map_page(ndev->dev.parent, page, 0,
-					   PAGE_SIZE, DMA_FROM_DEVICE);
-		if (unlikely(dma_mapping_error(ndev->dev.parent, cur_p->phys))) {
-			cur_p->phys = 0;
+		phys = dma_map_page(ndev->dev.parent, page, 0,
+				    PAGE_SIZE, DMA_FROM_DEVICE);
+
+		if (unlikely(dma_mapping_error(ndev->dev.parent, phys))) {
+			phys = 0;
+			mcdma_desc_set_phys_addr(lp, phys, cur_p);
 			__free_pages(cur_p->page, 0);
 			netdev_err(ndev, "dma mapping failed\n");
 			break;
 		}
-
+		mcdma_desc_set_phys_addr(lp, phys, cur_p);
 		cur_p->cntrl = PAGE_SIZE;
 
 		if (++q->rx_bd_ci >= lp->rx_bd_num)
