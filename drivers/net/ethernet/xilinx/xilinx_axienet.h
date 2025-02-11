@@ -1155,6 +1155,8 @@ struct axienet_local {
  * @txq_bytes:   Number of transmit bytes processed by the dma queue.
  * @rxq_packets: Number of receive packets processed by the dma queue.
  * @rxq_bytes:	Number of receive bytes processed by the dma queue.
+ * @skb:	Socket buffer for GRO.
+ * @rx_data:	stores the length of GRO skb fragments.
  */
 struct axienet_dma_q {
 	struct axienet_local	*lp; /* parent */
@@ -1193,6 +1195,8 @@ struct axienet_dma_q {
 	unsigned long txq_bytes;
 	unsigned long rxq_packets;
 	unsigned long rxq_bytes;
+	struct sk_buff *skb;
+	u32 rx_data;
 };
 
 #define AXIENET_ETHTOOLS_SSTATS_LEN 6
