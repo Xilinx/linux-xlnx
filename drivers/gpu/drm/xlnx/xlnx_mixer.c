@@ -2363,6 +2363,11 @@ static int xlnx_mix_dt_parse(struct device *dev, struct xlnx_mix *mixer)
 		dev_err(dev, "Failed to map io mem space for mixer\n");
 		return PTR_ERR(mixer_hw->base);
 	}
+
+	if (of_device_is_compatible(dev->of_node, "xlnx,mixer-3.0") ||
+	    of_device_is_compatible(dev->of_node, "xlnx,mixer-4.0"))
+		dev_warn(dev, "xlnx,mixer-3.0/4.0 are deprecated.\n");
+
 	if (of_device_is_compatible(dev->of_node, "xlnx,mixer-4.0") ||
 	    of_device_is_compatible(dev->of_node, "xlnx,mixer-5.0")) {
 		mixer_hw->max_layers = 18;
