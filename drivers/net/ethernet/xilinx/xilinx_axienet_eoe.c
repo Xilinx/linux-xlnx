@@ -225,8 +225,6 @@ int axienet_eoe_recv_gro(struct net_device *ndev, int budget,
 			 struct axienet_dma_q *q)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
-	static struct sk_buff *skb[XAE_MAX_QUEUES];
-	static u32 rx_data[XAE_MAX_QUEUES];
 	u32 length, packets = 0, size = 0;
 	unsigned int numbdfree = 0;
 	struct aximcdma_bd *cur_p;
@@ -256,39 +254,39 @@ int axienet_eoe_recv_gro(struct net_device *ndev, int budget,
 
 		page_addr = page_address(page);
 
-		rx_data[q->chan_id - 1] += length;
+		q->rx_data += length;
 
-		if (skb[q->chan_id - 1]) {
-			skb_add_rx_frag(skb[q->chan_id - 1],
-					skb_shinfo(skb[q->chan_id - 1])->nr_frags,
-					page, 0, length, rx_data[q->chan_id - 1]);
+		if (q->skb) {
+			skb_add_rx_frag(q->skb,
+					skb_shinfo(q->skb)->nr_frags,
+					page, 0, length, q->rx_data);
 		}
 
 		if (((cur_p->app0 & XEOE_UDP_GRO_RXSOP_MASK) >> XEOE_UDP_GRO_RXSOP_SHIFT)) {
 			/* Allocate new skb and update in BD */
-			skb[q->chan_id - 1] = netdev_alloc_skb(ndev, length);
-			memcpy(skb[q->chan_id - 1]->data, page_addr, length);
-			skb_put(skb[q->chan_id - 1], length);
+			q->skb = netdev_alloc_skb(ndev, length);
+			memcpy(q->skb->data, page_addr, length);
+			skb_put(q->skb, length);
 			put_page(page);
 		} else if (((cur_p->app0 & XEOE_UDP_GRO_RXEOP_MASK) >> XEOE_UDP_GRO_RXEOP_SHIFT)) {
-			skb_set_network_header(skb[q->chan_id - 1], XEOE_MAC_HEADER_LENGTH);
-			iphdr = (struct iphdr *)skb_network_header(skb[q->chan_id - 1]);
-			skb_set_transport_header(skb[q->chan_id - 1],
+			skb_set_network_header(q->skb, XEOE_MAC_HEADER_LENGTH);
+			iphdr = (struct iphdr *)skb_network_header(q->skb);
+			skb_set_transport_header(q->skb,
 						 iphdr->ihl * 4 + XEOE_MAC_HEADER_LENGTH);
-			uh = (struct udphdr *)skb_transport_header(skb[q->chan_id - 1]);
+			uh = (struct udphdr *)skb_transport_header(q->skb);
 
 			/* App Fields are in Little Endian Byte Order */
 			iphdr->tot_len = htons(cur_p->app1 & XEOE_UDP_GRO_PKT_LEN_MASK);
 			iphdr->check = (__force __sum16)htons((cur_p->app1 &
 					XEOE_UDP_GRO_RX_CSUM_MASK) >> XEOE_UDP_GRO_RX_CSUM_SHIFT);
 			uh->len = htons((cur_p->app1 & XEOE_UDP_GRO_PKT_LEN_MASK) - iphdr->ihl * 4);
-			skb[q->chan_id - 1]->protocol = eth_type_trans(skb[q->chan_id - 1], ndev);
-			skb[q->chan_id - 1]->ip_summed = CHECKSUM_UNNECESSARY;
-			rx_data[q->chan_id - 1] = 0;
+			q->skb->protocol = eth_type_trans(q->skb, ndev);
+			q->skb->ip_summed = CHECKSUM_UNNECESSARY;
+			q->rx_data = 0;
 			/* This will give SKB to n/w Stack */
-			if (skb_shinfo(skb[q->chan_id - 1])->nr_frags <= XEOE_UDP_GRO_MAX_FRAG) {
-				netif_receive_skb(skb[q->chan_id - 1]);
-				skb[q->chan_id - 1] = NULL;
+			if (skb_shinfo(q->skb)->nr_frags <= XEOE_UDP_GRO_MAX_FRAG) {
+				netif_receive_skb(q->skb);
+				q->skb = NULL;
 			}
 		}
 
