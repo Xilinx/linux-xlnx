@@ -1180,7 +1180,7 @@ static u16 xhdmiphy_set_videoclk_outdiv(struct xhdmiphy_dev *inst,
 					enum color_depth bpc, enum ppc ppc,
 					enum dir dir, u16 mult_div)
 {
-	u16 clkout_div;
+	u16 clkout_div = 0;
 
 	switch (bpc) {
 	case XVIDC_BPC_10:
