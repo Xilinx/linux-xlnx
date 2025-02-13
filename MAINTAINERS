@@ -25542,6 +25542,7 @@ F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-demosaic.yaml
 F:	drivers/media/platform/xilinx/xilinx-demosaic.c
 
 XILINX ECDSA DRIVER
+M:	Harsh Jain <h.jain@amd.com>
 M:	Harsha <harsha.harsha@amd.com>
 S:	Maintained
 F:	drivers/crypto/xilinx/xilinx-ecdsa.c
@@ -25671,6 +25672,12 @@ S:	Maintained
 F:	sound/soc/xilinx/xlnx_pl_snd_card.c
 F:	sound/soc/xilinx/xlnx_snd_common.h
 
+XILINX PUF DRIVER
+M:	Harsh Jain <h.jain@amd.com>
+S:	Maintained
+F:	drivers/misc/xilinx_puf.c
+F:	include/uapi/misc/xilinx_puf.h
+
 XILINX PWM DRIVER
 M:	Sean Anderson <sean.anderson@seco.com>
 S:	Maintained
@@ -25720,13 +25727,6 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/sound/xlnx,spdif.yaml
 F:	sound/soc/xilinx/xlnx_spdif.c
 
-XILINX PUF driver
-M:	Kundanala Praveen Teja <praveen.teja.kundanala@amd.com>
-R:	Michal Simek <michal.simek@amd.com>
-S:	Maintained
-F:	drivers/misc/xilinx_puf.c
-F:	include/uapi/misc/xilinx_puf.h
-
 XILINX TPG DRIVER
 M:	Kunal Rane <kunal.rane@amd.com>
 L:	git@amd.com
@@ -25769,6 +25769,13 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/display/xlnx/xlnx,vpss-scaler.yaml
 F:	drivers/gpu/drm/xlnx/xlnx_scaler.c
 
+XILINX VERSAL SECURE CONFIGURATION DRIVER
+M:	Harsh Jain <h.jain@amd.com>
+M:	Harsha <harsha.harsha@xilinx.com>
+S:	Maintained
+F:	Documentation/devicetree/bindings/nvmem/xlnx,versal-sec-cfg.yaml
+F:	drivers/nvmem/xlnx_secure_config.c
+
 XILINX VERSAL SYSMON DRIVER
 M:	Salih Erim <salih.erim@amd.com>
 R:	Dragan Cvetic <dragan.cvetic@amd.com>
@@ -25778,13 +25785,6 @@ F:	Documentation/devicetree/bindings/iio/adc/xlnx,versal-sysmon.yaml
 F:	drivers/iio/adc/versal-sysmon.c
 F:	drivers/iio/adc/versal-sysmon.h
 F:	include/linux/iio/adc/versal-sysmon-events.h
-
-XILINX VERSAL SECURE CONFIGURATION DRIVER
-M:	Harsha <harsha.harsha@xilinx.com>
-R:	Michal Simek <michal.simek@xilinx.com>
-S:	Maintained
-F:	Documentation/devicetree/bindings/nvmem/xlnx,versal-sec-cfg.yaml
-F:	drivers/nvmem/xlnx_secure_config.c
 
 XILINX VERSAL THERMAL DRIVER
 M:	Salih Erim <salih.erim@amd.com>
@@ -25844,6 +25844,13 @@ F:	drivers/dma/xilinx/xdma.c
 F:	include/linux/dma/amd_xdma.h
 F:	include/linux/platform_data/amd_xdma.h
 
+XILINX ZYNQMP AES GCM DRIVER
+M:	Harsh Jain <h.jain@amd.com>
+M:	Kalyani Akula <kalyani.akula@amd.com>
+L:	linux-crypto@vger.kernel.org
+S:	Supported
+F:	drivers/crypto/xilinx/zynqmp-aes-gcm.c
+
 XILINX ZYNQMP DPDMA DRIVER
 M:	Laurent Pinchart <laurent.pinchart@ideasonboard.com>
 L:	dmaengine@vger.kernel.org
@@ -25867,15 +25874,27 @@ T:	git https://github.com/Xilinx/linux-xlnx.git
 F:	Documentation/devicetree/bindings/phy/xlnx,zynqmp-psgtr.yaml
 F:	drivers/phy/xilinx/phy-zynqmp.c
 
+XILINX ZYNQMP RSA DRIVER
+M:	Harsh Jain <h.jain@amd.com>
+L:	linux-crypto@vger.kernel.org
+S:	Supported
+F:	drivers/crypto/xilinx/xilinx-rsa.c
+
+XILINX ZYNQMP SECURE FW LOAD
+M:	Harsh Jain <h.jain@amd.com>
+S:	Supported
+F:	drivers/firmware/xilinx/zynqmp-secure.c
+
 XILINX ZYNQMP SHA3 DRIVER
+M:	Harsh Jain <h.jain@amd.com>
 M:	Harsha <harsha.harsha@amd.com>
+L:	linux-crypto@vger.kernel.org
 S:	Maintained
 F:	drivers/crypto/xilinx/zynqmp-sha.c
 
 XILINX ZYNQMP NVMEM DRIVER
-M:	Praveen Teja Kundanala <praveen.teja.kundanala@amd.com>
+M:	Harsh Jain <h.jain@amd.com>
 M:	Kalyani Akula <kalyani.akula@amd.com>
-R:	Michal Simek <michal.simek@amd.com>
 S:	Maintained
 F:	Documentation/devicetree/bindings/nvmem/xlnx,zynqmp-nvmem.yaml
 F:	drivers/nvmem/zynqmp_nvmem.c
