@@ -260,6 +260,14 @@ properties:
     description: Phandle and specifier for the GPIO used to
       reset Tx and Rx serdes.
 
+  xlnx,gt-mode:
+    description: Describes GT Quad interface operating mode.
+    $ref: /schemas/types.yaml#/definitions/string
+
+  xlnx,axistream-dwidth:
+    description: Describes AXI4-stream data width.
+    $ref: /schemas/types.yaml#/definitions/uint32
+
   reg-names:
     oneOf:
       - items:
@@ -331,6 +339,22 @@ allOf:
 
         xlnx,phcindex:
           enum: [0, 1, 2, 3]
+
+        xlnx,gt-mode:
+          enum:
+            - narrow  # 10G/25G
+            - wide  # 10G/25G
+            - xlaui4_narrow # 40G
+            - xlaui4_wide # 40G
+            - laui2_narrow # 50G
+            - laui2_wide  # 50G
+            - 50laui1_narrow  # 50G
+            - caui2_narrow  # 100G
+            - caui4_narrow  # 100G
+            - caui4_wide  # 100G
+
+        xlnx,axistream-dwidth:
+          enum: [32, 64, 128, 256, 384]
 
       required:
         - max-speed
