@@ -583,7 +583,7 @@ static void xxvenet_setoptions(struct net_device *ndev, u32 options)
 
 static inline void axienet_mrmac_reset(struct axienet_local *lp)
 {
-	u32 val, reg;
+	u32 val, reg, serdes_width, axis_cfg;
 
 	val = axienet_ior(lp, MRMAC_RESET_OFFSET);
 	val |= (MRMAC_RX_SERDES_RST_MASK | MRMAC_TX_SERDES_RST_MASK |
@@ -592,19 +592,25 @@ static inline void axienet_mrmac_reset(struct axienet_local *lp)
 	mdelay(DELAY_1MS);
 
 	reg = axienet_ior(lp, MRMAC_MODE_OFFSET);
+	reg &= ~MRMAC_CTL_RATE_CFG_MASK;
+
 	if (lp->max_speed == SPEED_25000) {
-		reg &= ~MRMAC_CTL_RATE_CFG_MASK;
+		axis_cfg = (lp->mrmac_stream_dwidth == MRMAC_STREAM_DWIDTH_128 ?
+			    MRMAC_CTL_AXIS_CFG_25G_IND_128 :
+			    MRMAC_CTL_AXIS_CFG_25G_IND_64);
+		serdes_width = (lp->gt_mode_narrow ?
+				MRMAC_CTL_SERDES_WIDTH_25G_NRW :
+				MRMAC_CTL_SERDES_WIDTH_25G_WIDE);
 		reg |= MRMAC_CTL_DATA_RATE_25G;
-		reg |= (MRMAC_CTL_AXIS_CFG_25G_IND << MRMAC_CTL_AXIS_CFG_SHIFT);
-		reg |= (MRMAC_CTL_SERDES_WIDTH_25G <<
-			MRMAC_CTL_SERDES_WIDTH_SHIFT);
 	} else {
-		reg &= ~MRMAC_CTL_RATE_CFG_MASK;
+		axis_cfg = MRMAC_CTL_AXIS_CFG_10G_IND;
+		serdes_width = (lp->gt_mode_narrow ?
+				MRMAC_CTL_SERDES_WIDTH_10G_NRW :
+				MRMAC_CTL_SERDES_WIDTH_10G_WIDE);
 		reg |= MRMAC_CTL_DATA_RATE_10G;
-		reg |= (MRMAC_CTL_AXIS_CFG_10G_IND << MRMAC_CTL_AXIS_CFG_SHIFT);
-		reg |= (MRMAC_CTL_SERDES_WIDTH_10G <<
-			MRMAC_CTL_SERDES_WIDTH_SHIFT);
 	}
+	reg |= (axis_cfg << MRMAC_CTL_AXIS_CFG_SHIFT);
+	reg |= (serdes_width <<	MRMAC_CTL_SERDES_WIDTH_SHIFT);
 
 	/* For tick reg */
 	reg |= MRMAC_CTL_PM_TICK_MASK;
@@ -849,7 +855,7 @@ static inline int axienet_mrmac_gt_reset(struct net_device *ndev)
 		/* Wait for PLL lock with timeout */
 		err = readl_poll_timeout(lp->gt_pll + MRMAC_GT_PLL_STS_OFFSET,
 					 val, (val & MRMAC_GT_PLL_DONE_MASK),
-					 10, DELAY_OF_ONE_MILLISEC);
+					 10, DELAY_OF_ONE_MILLISEC * 100);
 		if (err) {
 			netdev_err(ndev, "MRMAC PLL lock not complete! Cross-check the MAC ref clock configuration\n");
 			return -ENODEV;
@@ -2860,7 +2866,7 @@ static int axienet_open(struct net_device *ndev)
 		/* Reset MRMAC */
 		axienet_mrmac_reset(lp);
 
-		mdelay(DELAY_1MS);
+		mdelay(DELAY_1MS * 100);
 		/* Check for block lock bit to be set. This ensures that
 		 * MRMAC ethernet IP is functioning normally.
 		 */
@@ -4962,6 +4968,27 @@ static int axienet_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "couldn't find MAC Rate\n");
 			goto cleanup_clk;
 		}
+	}
+	if (lp->axienet_config->mactype == XAXIENET_MRMAC) {
+		const char *gt_mode;
+
+		/* Default to GT wide mode */
+		lp->gt_mode_narrow = false;
+
+		of_property_read_string(pdev->dev.of_node, "xlnx,gt-mode",
+					&gt_mode);
+		if (!strcasecmp(gt_mode, GT_MODE_NARROW))
+			lp->gt_mode_narrow = true;
+
+		/* Default AXI4-stream data widths */
+		if (lp->max_speed == SPEED_10000)
+			lp->mrmac_stream_dwidth = MRMAC_STREAM_DWIDTH_32;
+		else
+			lp->mrmac_stream_dwidth = MRMAC_STREAM_DWIDTH_64;
+
+		of_property_read_u32(pdev->dev.of_node,
+				     "xlnx,axistream-dwidth",
+				     &lp->mrmac_stream_dwidth);
 	}
 
 	lp->eth_hasnobuf = of_property_read_bool(pdev->dev.of_node,

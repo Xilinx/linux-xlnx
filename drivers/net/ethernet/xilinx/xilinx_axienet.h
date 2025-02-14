@@ -682,12 +682,19 @@ enum temac_stat {
 #define MRMAC_CTL_AXIS_CFG_MASK		GENMASK(11, 9)
 #define MRMAC_CTL_AXIS_CFG_SHIFT	9
 #define MRMAC_CTL_AXIS_CFG_10G_IND	1
-#define MRMAC_CTL_AXIS_CFG_25G_IND	1
+#define MRMAC_CTL_AXIS_CFG_25G_IND_64	1
+#define MRMAC_CTL_AXIS_CFG_25G_IND_128	5
+
+#define MRMAC_STREAM_DWIDTH_32		0x20
+#define MRMAC_STREAM_DWIDTH_64		0x40
+#define MRMAC_STREAM_DWIDTH_128	0x80
 
 #define MRMAC_CTL_SERDES_WIDTH_MASK	GENMASK(6, 4)
 #define MRMAC_CTL_SERDES_WIDTH_SHIFT	4
-#define MRMAC_CTL_SERDES_WIDTH_10G	4
-#define MRMAC_CTL_SERDES_WIDTH_25G	6
+#define MRMAC_CTL_SERDES_WIDTH_10G_NRW		0
+#define MRMAC_CTL_SERDES_WIDTH_10G_WIDE	4
+#define MRMAC_CTL_SERDES_WIDTH_25G_NRW		2
+#define MRMAC_CTL_SERDES_WIDTH_25G_WIDE	6
 
 #define MRMAC_CTL_RATE_CFG_MASK		(MRMAC_CTL_DATA_RATE_MASK |	\
 					 MRMAC_CTL_AXIS_CFG_MASK |	\
@@ -713,6 +720,7 @@ enum temac_stat {
 
 #define MRMAC_GT_LANE_OFFSET		BIT(16)
 #define MRMAC_MAX_GT_LANES		4
+#define GT_MODE_NARROW			"Narrow"
 
 /* DCMAC Register Definitions */
 /* Global registers */
@@ -992,6 +1000,8 @@ struct skbuf_dma_descriptor {
  * @gds_gt_rx_reset_done: GPIO descriptor array to get Rx reset status.
  * @phc_index: Index to corresponding PTP clock used.
  * @gt_lane: MRMAC GT lane index used.
+ * @gt_mode_narrow: true if GT is configured to operate in Narrow mode, false for Wide mode.
+ * @mrmac_stream_dwidth: MRMAC AXI4-Stream data width (bits).
  * @switch_lock: Spinlock for switchable IP.
  * @restart_work: delayable work queue.
  * @eoe_regs: Ethernet offload IP base address.
@@ -1110,6 +1120,8 @@ struct axienet_local {
 	struct gpio_descs *gds_gt_rx_reset_done;
 	u32 phc_index;		/* Index to corresponding PTP clock used  */
 	u32 gt_lane;		/* MRMAC GT lane index used */
+	bool gt_mode_narrow;
+	int mrmac_stream_dwidth;
 	spinlock_t switch_lock;	/* To protect Link training programming from multiple context */
 	struct delayed_work restart_work;
 	void __iomem *eoe_regs;
