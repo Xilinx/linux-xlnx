@@ -47,7 +47,7 @@ static_assert(CQSPI_MAX_CHIPSELECT <= SPI_CS_CNT_MAX);
 #define CQSPI_RD_NO_IRQ			BIT(6)
 #define CQSPI_DMA_SET_MASK		BIT(7)
 #define CQSPI_SUPPORT_DEVICE_RESET	BIT(8)
-#define CQSPI_BROKEN_STIG_DATA		BIT(9)
+#define CQSPI_DISABLE_STIG_MODE		BIT(9)
 
 /* Capabilities */
 #define CQSPI_SUPPORTS_OCTAL		BIT(0)
@@ -107,9 +107,9 @@ struct cqspi_st {
 	bool			wr_completion;
 	bool			slow_sram;
 	bool			apb_ahb_hazard;
-	bool			broken_stig_data_xfer;
 
 	bool			is_jh7110; /* Flag for StarFive JH7110 SoC */
+	bool			disable_stig_mode;
 
 	const struct cqspi_driver_platdata *ddata;
 	bool			extra_dummy;
@@ -1803,10 +1803,11 @@ static int cqspi_mem_process(struct spi_mem *mem, const struct spi_mem_op *op)
 	/*
 	 * Performing reads in DAC mode forces to read minimum 4 bytes
 	 * which is unsupported on some flash devices during register
-	 * reads, prefer STIG mode for such small reads if broken_stig_data_xfer flag is not set.
+	 * reads, prefer STIG mode for such small reads.
 	 */
 		if (!op->addr.nbytes ||
-		    (!cqspi->broken_stig_data_xfer && op->data.nbytes <= CQSPI_STIG_DATA_LEN_MAX))
+		    (op->data.nbytes <= CQSPI_STIG_DATA_LEN_MAX &&
+		     !cqspi->disable_stig_mode))
 			return cqspi_command_read(f_pdata, op);
 
 		return cqspi_read(f_pdata, op);
@@ -1820,10 +1821,10 @@ static int cqspi_mem_process(struct spi_mem *mem, const struct spi_mem_op *op)
 
 static int cqspi_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)
 {
+	int ret;
 	struct cqspi_st *cqspi = spi_controller_get_devdata(mem->spi->controller);
 	struct device *dev = &cqspi->pdev->dev;
 	struct cqspi_flash_pdata *f_pdata;
-	int ret;
 
 	ret = pm_runtime_resume_and_get(dev);
 	if (ret) {
@@ -2317,14 +2318,14 @@ static int cqspi_probe(struct platform_device *pdev)
 			cqspi->slow_sram = true;
 		if (ddata->quirks & CQSPI_NEEDS_APB_AHB_HAZARD_WAR)
 			cqspi->apb_ahb_hazard = true;
-		if (ddata->quirks & CQSPI_BROKEN_STIG_DATA)
-			cqspi->broken_stig_data_xfer = true;
 
 		if (ddata->jh7110_clk_init) {
 			ret = cqspi_jh7110_clk_init(pdev, cqspi);
 			if (ret)
 				goto probe_reset_failed;
 		}
+		if (ddata->quirks & CQSPI_DISABLE_STIG_MODE)
+			cqspi->disable_stig_mode = true;
 
 		if (ddata->quirks & CQSPI_DMA_SET_MASK) {
 			ret = dma_set_mask(&pdev->dev, DMA_BIT_MASK(64));
@@ -2523,13 +2524,14 @@ static const struct cqspi_driver_platdata intel_lgm_qspi = {
 static const struct cqspi_driver_platdata socfpga_qspi = {
 	.quirks = CQSPI_DISABLE_DAC_MODE
 			| CQSPI_NO_SUPPORT_WR_COMPLETION
-			| CQSPI_SLOW_SRAM,
+			| CQSPI_SLOW_SRAM
+			| CQSPI_DISABLE_STIG_MODE,
 };
 
 static const struct cqspi_driver_platdata versal_ospi = {
 	.hwcaps_mask = CQSPI_SUPPORTS_OCTAL,
 	.quirks = CQSPI_DISABLE_DAC_MODE | CQSPI_SUPPORT_EXTERNAL_DMA
-			| CQSPI_BROKEN_STIG_DATA
+			| CQSPI_DISABLE_STIG_MODE
 			| CQSPI_DMA_SET_MASK,
 	.indirect_read_dma = cqspi_versal_indirect_read_dma,
 	.get_dma_status = cqspi_get_versal_dma_status,
