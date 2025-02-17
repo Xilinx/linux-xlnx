@@ -619,14 +619,21 @@ static void macb_usx_pcs_get_state(struct phylink_pcs *pcs,
 				   struct phylink_link_state *state)
 {
 	struct macb *bp = container_of(pcs, struct macb, phylink_usx_pcs);
+	u32 hs_mac_map[] = {SPEED_UNKNOWN, SPEED_1000, SPEED_2500,
+			    SPEED_5000, SPEED_10000};
 	u32 val;
 
-	state->speed = SPEED_10000;
 	state->duplex = 1;
 	state->an_complete = 1;
 
-	val = gem_readl(bp, USX_STATUS);
-	state->link = !!(val & GEM_BIT(USX_BLOCK_LOCK));
+	val = gem_readl(bp, HS_MAC_CONFIG);
+	val = GEM_BFEXT(HS_MAC_SPEED, val);
+	state->speed = hs_mac_map[val];
+
+	state->link = (state->speed < SPEED_5000) ?
+		!!(macb_readl(bp, NSR) & MACB_BIT(NSR_LINK)) :
+		!!(gem_readl(bp, USX_STATUS) & GEM_BIT(USX_BLOCK_LOCK));
+
 	val = gem_readl(bp, NCFGR);
 	if (val & GEM_BIT(PAE))
 		state->pause = MLO_PAUSE_RX;
