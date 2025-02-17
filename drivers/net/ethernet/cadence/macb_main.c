@@ -661,6 +661,8 @@ static void macb_mac_config(struct phylink_config *config, unsigned int mode,
 
 		if (state->interface == PHY_INTERFACE_MODE_SGMII) {
 			ctrl |= GEM_BIT(SGMIIEN) | GEM_BIT(PCSSEL);
+		} else if (state->interface == PHY_INTERFACE_MODE_1000BASEX) {
+			ctrl |= GEM_BIT(PCSSEL);
 		} else if (state->interface == PHY_INTERFACE_MODE_10GBASER) {
 			ctrl |= GEM_BIT(PCSSEL);
 			ncr |= GEM_BIT(ENABLE_HS_MAC);
@@ -681,7 +683,8 @@ static void macb_mac_config(struct phylink_config *config, unsigned int mode,
 	 * Must be written after PCSSEL is set in NCFGR,
 	 * otherwise writes will not take effect.
 	 */
-	if (macb_is_gem(bp) && state->interface == PHY_INTERFACE_MODE_SGMII) {
+	if (macb_is_gem(bp) && (state->interface == PHY_INTERFACE_MODE_SGMII ||
+				state->interface == PHY_INTERFACE_MODE_1000BASEX)) {
 		u32 pcsctrl, old_pcsctrl;
 
 		old_pcsctrl = gem_readl(bp, PCSCNTRL);
@@ -792,7 +795,7 @@ static struct phylink_pcs *macb_mac_select_pcs(struct phylink_config *config,
 	struct net_device *ndev = to_net_dev(config->dev);
 	struct macb *bp = netdev_priv(ndev);
 
-	if (interface == PHY_INTERFACE_MODE_10GBASER)
+	if (interface == PHY_INTERFACE_MODE_10GBASER || PHY_INTERFACE_MODE_1000BASEX)
 		return &bp->phylink_usx_pcs;
 	else if (interface == PHY_INTERFACE_MODE_SGMII)
 		return &bp->phylink_sgmii_pcs;
