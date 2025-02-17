@@ -95,6 +95,7 @@ struct sifive_fu540_macb_mgmt {
 #define MACB_PM_TIMEOUT  100 /* ms */
 
 #define MACB_MDIO_TIMEOUT	1000000 /* in usecs */
+#define GEM_SYNC_TIMEOUT	2500000 /* in usecs */
 
 /* DMA buffer descriptor might be different size
  * depends on hardware configuration:
@@ -565,14 +566,53 @@ static void macb_usx_pcs_link_up(struct phylink_pcs *pcs, unsigned int neg_mode,
 				 int duplex)
 {
 	struct macb *bp = container_of(pcs, struct macb, phylink_usx_pcs);
-	u32 config;
+	u32 speed_val, serdes_rate, config;
+	bool hs_mac = false;
+
+	switch (speed) {
+	case SPEED_1000:
+		speed_val = HS_SPEED_1000M;
+		serdes_rate = MACB_SERDES_RATE_5G_2G5_1G;
+		break;
+	case SPEED_2500:
+		speed_val = HS_SPEED_2500M;
+		serdes_rate = MACB_SERDES_RATE_5G_2G5_1G;
+		break;
+	case SPEED_5000:
+		speed_val = HS_SPEED_5000M;
+		serdes_rate = MACB_SERDES_RATE_5G_2G5_1G;
+		hs_mac = true;
+		break;
+	case SPEED_10000:
+		speed_val = HS_SPEED_10000M;
+		serdes_rate = MACB_SERDES_RATE_10G;
+		hs_mac = true;
+		break;
+	default:
+		netdev_err(bp->dev, "Specified speed not supported\n");
+		return;
+	}
+
+	/* Configure HS MAC for specified speed */
+	config = gem_readl(bp, HS_MAC_CONFIG);
+	config = GEM_BFINS(HS_MAC_SPEED, speed_val, config);
+	gem_writel(bp, HS_MAC_CONFIG, config);
 
 	config = gem_readl(bp, USX_CONTROL);
-	config = GEM_BFINS(SERDES_RATE, MACB_SERDES_RATE_10G, config);
-	config = GEM_BFINS(USX_CTRL_SPEED, HS_SPEED_10000M, config);
+	config = GEM_BFINS(SERDES_RATE, serdes_rate, config);
+	config = GEM_BFINS(USX_CTRL_SPEED, speed_val, config);
 	config &= ~(GEM_BIT(TX_SCR_BYPASS) | GEM_BIT(RX_SCR_BYPASS));
+	config |= GEM_BIT(RX_SYNC_RESET);
+	gem_writel(bp, USX_CONTROL, config);
+	mdelay(250);
+	config &= ~GEM_BIT(RX_SYNC_RESET);
 	config |= GEM_BIT(TX_EN);
 	gem_writel(bp, USX_CONTROL, config);
+
+	if (hs_mac && readx_poll_timeout(MACB_READ_USX_STATUS, bp, config,
+					 config & GEM_BIT(USX_BLOCK_LOCK),
+					 1, GEM_SYNC_TIMEOUT))
+		netdev_err(bp->dev, "USX PCS block lock not achieved\n");
 }
 
 static void macb_usx_pcs_get_state(struct phylink_pcs *pcs,
@@ -769,10 +809,6 @@ static void macb_mac_link_up(struct phylink_config *config,
 	}
 
 	macb_or_gem_writel(bp, NCFGR, ctrl);
-
-	if (bp->phy_interface == PHY_INTERFACE_MODE_10GBASER)
-		gem_writel(bp, HS_MAC_CONFIG, GEM_BFINS(HS_MAC_SPEED, HS_SPEED_10000M,
-							gem_readl(bp, HS_MAC_CONFIG)));
 
 	spin_unlock_irqrestore(&bp->lock, flags);
 
