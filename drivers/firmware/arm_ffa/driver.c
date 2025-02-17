@@ -1449,6 +1449,10 @@ static int ffa_setup_partitions(void)
 
 	kfree(pbuf);
 
+	/* Check if the host is already added as part of partition info */
+	if (xa_load(&drv_info->partition_info, drv_info->vm_id))
+		return 0;
+
 	/* Allocate for the host */
 	info = kzalloc(sizeof(*info), GFP_KERNEL);
 	if (!info) {
