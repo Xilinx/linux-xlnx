@@ -88,9 +88,6 @@ struct sifive_fu540_macb_mgmt {
 
 #define MACB_WOL_ENABLED		BIT(0)
 
-#define HS_SPEED_10000M			4
-#define MACB_SERDES_RATE_10G		1
-
 /* Graceful stop timeouts in us. We should allow up to
  * 1 frame time (10 Mbits/s, full-duplex, ignoring collisions)
  */

@@ -563,10 +563,20 @@
 #define GEM_RX_SCR_BYPASS_SIZE			1
 #define GEM_TX_SCR_BYPASS_OFFSET		8
 #define GEM_TX_SCR_BYPASS_SIZE			1
+#define GEM_RX_SYNC_RESET_OFFSET		2
+#define GEM_RX_SYNC_RESET_SIZE			1
 #define GEM_TX_EN_OFFSET			1
 #define GEM_TX_EN_SIZE				1
 #define GEM_SIGNAL_OK_OFFSET			0
 #define GEM_SIGNAL_OK_SIZE			1
+
+/* Constants for USX_CONTROL */
+#define HS_SPEED_10000M				4
+#define HS_SPEED_5000M				3
+#define HS_SPEED_2500M				2
+#define HS_SPEED_1000M				1
+#define MACB_SERDES_RATE_10G			1
+#define MACB_SERDES_RATE_5G_2G5_1G		0
 
 /* Bitfields in USX_STATUS. */
 #define GEM_USX_BLOCK_LOCK_OFFSET		0
