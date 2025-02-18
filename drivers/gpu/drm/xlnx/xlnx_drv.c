@@ -173,6 +173,7 @@ static const struct file_operations xlnx_fops = {
 	.compat_ioctl	= drm_compat_ioctl,
 #endif
 	.llseek		= noop_llseek,
+	.fop_flags      = FOP_UNSIGNED_OFFSET,
 };
 
 static struct drm_driver xlnx_drm_driver = {
