@@ -195,6 +195,7 @@ static int zynqmp_rsa_probe(struct platform_device *pdev)
 		return PTR_ERR(rsa_dd->alg);
 	}
 
+	dev_warn(dev, "This driver is deprecated. Please migrate to xilinx-rsa driver\n");
 	rsa_dd->dev = dev;
 	platform_set_drvdata(pdev, rsa_dd);
 
