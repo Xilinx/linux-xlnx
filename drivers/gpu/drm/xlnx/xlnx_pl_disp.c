@@ -31,7 +31,7 @@
 #include "xlnx_drv.h"
 
 #define XLNX_PL_DISP_MAX_NUM_PLANES	3
-#define XLNX_PL_DISP_VFMT_SIZE		4
+#define XLNX_PL_DISP_VFMT_SIZE		5
 /*
  * Overview
  * --------
