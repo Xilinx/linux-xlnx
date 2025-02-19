@@ -162,6 +162,7 @@ config UIO_XILINX_APM
 
 config UIO_XILINX_AI_ENGINE
 	tristate "Xilinx AI Engine driver"
+	depends on HAS_DMA
 	select IRQ_SIM
 	select UIO_DMEM_GENIRQ
 	select UIO_PDRV_GENIRQ
