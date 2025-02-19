@@ -672,7 +672,7 @@ config CRYPTO_DEV_XILINX_ECDSA
 
 config CRYPTO_DEV_XILINX_RSA
 	tristate "Support for Xilinx ZynqMP RSA hw accelerator (DEPRECATED)"
-	depends on ARCH_ZYNQMP || COMPILE_TEST
+	depends on (ARCH_ZYNQMP || COMPILE_TEST) && (CRYPTO_DEV_XILINX_RSA_AKCIPHER=n)
 	select CRYPTO_AES
 	select CRYPTO_BLKCIPHER
 	help
