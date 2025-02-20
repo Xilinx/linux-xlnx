@@ -1269,7 +1269,6 @@ void axienet_tx_tstamp(struct work_struct *work);
 #endif
 #if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
 int axienet_qbv_init(struct net_device *ndev);
-void axienet_qbv_remove(struct net_device *ndev);
 int axienet_set_schedule(struct net_device *ndev, void __user *useraddr);
 int axienet_get_schedule(struct net_device *ndev, void __user *useraddr);
 int axienet_tsn_shaper_tc(struct net_device *dev, enum tc_setup_type type, void *type_data);

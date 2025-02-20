@@ -368,15 +368,10 @@ int axienet_qbv_init(struct net_device *ndev)
 
 	if (lp->qbv_irq > 0) {
 		sprintf(irq_name, "%s_qbv", ndev->name);
-		rc = request_irq(lp->qbv_irq, axienet_qbv_irq, 0, irq_name,
-				 ndev);
+		rc = devm_request_irq(lp->dev, lp->qbv_irq, axienet_qbv_irq,
+				      0, irq_name, ndev);
+		if (rc)
+			dev_err(&ndev->dev, "Failed to request qbv_irq: %d\n", rc);
 	}
 	return rc;
-}
-
-void axienet_qbv_remove(struct net_device *ndev)
-{
-	struct axienet_local *lp = netdev_priv(ndev);
-
-	free_irq(lp->qbv_irq, ndev);
 }

@@ -638,9 +638,6 @@ static void tsn_ep_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
 
-#if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
-	axienet_qbv_remove(ndev);
-#endif
 	unregister_netdev(ndev);
 
 	free_netdev(ndev);
