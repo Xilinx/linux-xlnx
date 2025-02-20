@@ -1726,6 +1726,13 @@ static const struct of_device_id axienet_of_match[] = {
 
 MODULE_DEVICE_TABLE(of, axienet_of_match);
 
+static void tsn_clk_bulk_disable_unprepare(void *data)
+{
+	struct axienet_local *lp = data;
+
+	clk_bulk_disable_unprepare(XAE_NUM_MISC_CLOCKS, lp->misc_clks);
+}
+
 /**
  * axienet_probe - Axi Ethernet probe function.
  * @pdev:	Pointer to platform device structure.
@@ -1754,10 +1761,7 @@ static int axienet_probe(struct platform_device *pdev)
 
 	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-queues",
 				   &num_queues);
-	if (num_queues < XAE_TSN_MIN_QUEUES)
-		num_queues = XAE_TSN_MIN_QUEUES;
-	else if (num_queues > XAE_MAX_QUEUES)
-		num_queues = XAE_MAX_QUEUES;
+	num_queues = clamp_val(num_queues, XAE_TSN_MIN_QUEUES, XAE_MAX_QUEUES);
 
 	ndev = alloc_etherdev_mq(sizeof(*lp), num_queues);
 	if (!ndev)
@@ -1796,10 +1800,20 @@ static int axienet_probe(struct platform_device *pdev)
 		ret = PTR_ERR(lp->axi_clk);
 		goto free_netdev;
 	}
-	ret = clk_prepare_enable(lp->axi_clk);
-	if (ret) {
-		dev_err(&pdev->dev, "Unable to enable AXI clock: %d\n", ret);
-		goto free_netdev;
+	if (lp->axi_clk) {
+		ret = clk_prepare_enable(lp->axi_clk);
+		if (ret) {
+			dev_err(&pdev->dev, "Unable to enable AXI clock: %d\n", ret);
+			goto free_netdev;
+		}
+
+		ret = devm_add_action_or_reset(&pdev->dev,
+					       (void (*)(void *))clk_disable_unprepare,
+					       lp->axi_clk);
+		if (ret) {
+			dev_err(&pdev->dev, "Failed to register clk cleanup action: %d\n", ret);
+			goto free_netdev;
+		}
 	}
 
 	lp->misc_clks[0].id = "axis_clk";
@@ -1807,12 +1821,26 @@ static int axienet_probe(struct platform_device *pdev)
 	lp->misc_clks[2].id = "mgt_clk";
 
 	ret = devm_clk_bulk_get_optional(&pdev->dev, XAE_NUM_MISC_CLOCKS, lp->misc_clks);
-	if (ret)
-		goto cleanup_clk;
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to get misc clocks: %d\n", ret);
+		goto free_netdev;
+	}
 
-	ret = clk_bulk_prepare_enable(XAE_NUM_MISC_CLOCKS, lp->misc_clks);
-	if (ret)
-		goto cleanup_clk;
+	if (lp->misc_clks[0].clk) {
+		ret = clk_bulk_prepare_enable(XAE_NUM_MISC_CLOCKS, lp->misc_clks);
+		if (ret) {
+			dev_err(&pdev->dev, "Failed to enable clocks: %d\n", ret);
+			goto free_netdev;
+		}
+
+		ret = devm_add_action_or_reset(&pdev->dev,
+					       tsn_clk_bulk_disable_unprepare,
+					       lp->misc_clks);
+		if (ret) {
+			dev_err(&pdev->dev, "Failed to register clock cleanup action: %d\n", ret);
+			goto free_netdev;
+		}
+	}
 	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-tc",
 				   &lp->num_tc);
 	if (ret || (lp->num_tc != 2 && lp->num_tc != 3))
@@ -1822,7 +1850,7 @@ static int axienet_probe(struct platform_device *pdev)
 	lp->regs = devm_platform_get_and_ioremap_resource(pdev, 0, &ethres);
 	if (IS_ERR(lp->regs)) {
 		ret = PTR_ERR(lp->regs);
-		goto cleanup_clk;
+		goto free_netdev;
 	}
 	lp->regs_start = ethres->start;
 
@@ -1919,14 +1947,14 @@ static int axienet_probe(struct platform_device *pdev)
 	ret = axienet_tsn_probe(pdev, lp, ndev);
 
 	if (ret)
-		goto cleanup_clk;
+		goto free_netdev;
 
 	ret = axienet_clk_init(pdev, &lp->aclk, &lp->eth_sclk,
 			       &lp->eth_refclk, &lp->eth_dclk);
 	if (ret) {
 		if (ret != -EPROBE_DEFER)
 			dev_err(&pdev->dev, "Ethernet clock init failed %d\n", ret);
-		goto err_disable_clk;
+		goto free_netdev;
 	}
 
 	lp->eth_irq = platform_get_irq(pdev, 0);
@@ -1954,36 +1982,40 @@ static int axienet_probe(struct platform_device *pdev)
 		lp->phy_flags = XAE_PHY_TYPE_1000BASE_X;
 
 	lp->phy_node = of_parse_phandle(pdev->dev.of_node, "phy-handle", 0);
-	if (lp->phy_node) {
-		ret = axienet_mdio_setup_tsn(lp);
-		if (ret)
-			dev_warn(&pdev->dev,
-				 "error registering MDIO bus: %d\n", ret);
+	if (!lp->phy_node) {
+		dev_err(&pdev->dev, "Failed to get 'phy-handle' from device tree\n");
+		ret = -EINVAL;
+		goto err_disable_clk;
+	}
+	ret = axienet_mdio_setup_tsn(lp);
+	if (ret) {
+		dev_warn(&pdev->dev, "error registering MDIO bus: %d\n", ret);
+		goto err_of_put;
 	}
 
 	/* Create sysfs file entries for the device */
 	ret = axeinet_mcdma_create_sysfs_tsn(&lp->dev->kobj);
 	if (ret < 0) {
 		dev_err(lp->dev, "unable to create sysfs entries\n");
-		return ret;
+		goto err_mdio;
 	}
 
 	ret = register_netdev(lp->ndev);
 	if (ret) {
 		dev_err(lp->dev, "register_netdev() error (%i)\n", ret);
-		axienet_mdio_teardown_tsn(lp);
-		goto cleanup_clk;
+		goto err_clear_sysfs;
 	}
 
 	return 0;
 
-cleanup_clk:
-	clk_bulk_disable_unprepare(XAE_NUM_MISC_CLOCKS, lp->misc_clks);
-	clk_disable_unprepare(lp->axi_clk);
-
+err_clear_sysfs:
+	axeinet_mcdma_remove_sysfs_tsn(&lp->dev->kobj);
+err_mdio:
+	axienet_mdio_teardown_tsn(lp);
+err_of_put:
+	of_node_put(lp->phy_node);
 err_disable_clk:
 	axienet_clk_disable(pdev);
-
 free_netdev:
 	free_netdev(ndev);
 
@@ -2000,9 +2032,6 @@ static void axienet_remove(struct platform_device *pdev)
 
 	if (lp->mii_bus)
 		axienet_mdio_teardown_tsn(lp);
-
-	clk_bulk_disable_unprepare(XAE_NUM_MISC_CLOCKS, lp->misc_clks);
-	clk_disable_unprepare(lp->axi_clk);
 
 	axeinet_mcdma_remove_sysfs_tsn(&lp->dev->kobj);
 	of_node_put(lp->phy_node);
