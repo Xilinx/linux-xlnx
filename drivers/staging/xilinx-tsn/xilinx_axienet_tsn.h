@@ -704,7 +704,7 @@ struct aximcdma_bd {
 
 #define TSN_BRIDGEEP_EPONLY	BIT(29)
 
-#ifdef CONFIG_AXIENET_HAS_TADMA
+#if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
 #define TADMA_MAX_NO_STREAM	128
 struct axitadma_bd {
 	u32 phys;
@@ -861,7 +861,7 @@ struct axienet_local {
 	struct net_device *ex_ep; /* extended endpoint*/
 	u8	packet_switch;
 	u8      switch_prt;	/* port on the switch */
-#ifdef CONFIG_XILINX_TSN_PTP
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 	void *timer_priv;
 	int ptp_tx_irq;
 	int ptp_rx_irq;
@@ -873,10 +873,10 @@ struct axienet_local {
 	struct sk_buff_head ptp_txq;
 	struct work_struct tx_tstamp_work;
 #endif
-#ifdef CONFIG_XILINX_TSN_QBV
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
 	void __iomem *qbv_regs;
 #endif
-#ifdef CONFIG_AXIENET_HAS_TADMA
+#if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
 	void __iomem *tadma_regs;
 	int tadma_irq;
 	void *t_cb;
@@ -913,7 +913,7 @@ struct axienet_local {
 	bool eth_hasptp;
 	const struct axienet_config *axienet_config;
 
-#if defined(CONFIG_XILINX_TSN_PTP)
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 	void __iomem *tx_ts_regs;
 	void __iomem *rx_ts_regs;
 	struct hwtstamp_config tstamp_config;
@@ -1008,7 +1008,7 @@ struct axienet_dma_q {
 	u32 tx_bd_tail;
 
 	/* MCDMA fields */
-#ifdef CONFIG_XILINX_TSN
+#if IS_ENABLED(CONFIG_XILINX_TSN)
 #define MCDMA_MGMT_CHAN		BIT(0)
 #define MCDMA_EP_EX_CHAN	BIT(1)
 	u32 flags;
@@ -1078,6 +1078,13 @@ extern void __iomem *mrmac_gt_pll;
 extern void __iomem *mrmac_gt_ctrl;
 extern int mrmac_pll_reg;
 extern int mrmac_pll_rst;
+
+extern struct platform_driver tsn_ex_ep_driver;
+#if IS_ENABLED(CONFIG_XILINX_TSN_SWITCH)
+extern struct platform_driver tsnswitch_driver;
+#endif
+extern struct platform_driver axienet_driver_tsn;
+extern struct platform_driver tsn_ep_driver;
 
 /**
  * axienet_ior - Memory mapped Axi Ethernet register read
@@ -1205,7 +1212,7 @@ static inline void axienet_dma_bdout(struct axienet_dma_q *q,
 #endif
 }
 
-#ifdef CONFIG_XILINX_TSN_QBV
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
 /**
  * axienet_qbv_ior - Memory mapped TSN QBV register read
  * @lp:         Pointer to axienet local structure
@@ -1256,12 +1263,12 @@ u16 axienet_tsn_pcp_to_queue(struct net_device *ndev, struct sk_buff *skb);
 int axienet_get_pcp_mask(struct axienet_local *lp, u16 num_tc);
 int tsn_data_path_open(struct net_device *ndev);
 int tsn_data_path_close(struct net_device *ndev);
-#ifdef CONFIG_XILINX_TSN_PTP
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 void *axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev);
 void axienet_tx_tstamp(struct work_struct *work);
 int axienet_ptp_timer_remove(void *priv);
 #endif
-#ifdef CONFIG_XILINX_TSN_QBV
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
 int axienet_qbv_init(struct net_device *ndev);
 void axienet_qbv_remove(struct net_device *ndev);
 int axienet_set_schedule(struct net_device *ndev, void __user *useraddr);
@@ -1269,7 +1276,7 @@ int axienet_get_schedule(struct net_device *ndev, void __user *useraddr);
 int axienet_tsn_shaper_tc(struct net_device *dev, enum tc_setup_type type, void *type_data);
 #endif
 
-#ifdef CONFIG_XILINX_TSN_QBR
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBR)
 int axienet_preemption(struct net_device *ndev, void __user *useraddr);
 int axienet_preemption_ctrl(struct net_device *ndev, void __user *useraddr);
 int axienet_preemption_sts(struct net_device *ndev, void __user *useraddr);
@@ -1279,7 +1286,7 @@ int axienet_preemption_sts_ethtool(struct net_device *ndev, struct ethtool_mm_st
 void axienet_preemption_cnt_ethtool(struct net_device *ndev, struct ethtool_mm_stats *stats);
 int axienet_preemption_ctrl_ethtool(struct net_device *ndev, struct ethtool_mm_cfg *config_data,
 				    struct netlink_ext_ack *extack);
-#ifdef CONFIG_XILINX_TSN_QBV
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
 int axienet_qbu_user_override(struct net_device *ndev, void __user *useraddr);
 int axienet_qbu_sts(struct net_device *ndev, void __user *useraddr);
 #endif
@@ -1289,7 +1296,7 @@ int axienet_mdio_wait_until_ready_tsn(struct axienet_local *lp);
 void __maybe_unused axienet_bd_free(struct net_device *ndev,
 				    struct axienet_dma_q *q);
 
-#ifdef CONFIG_AXIENET_HAS_TADMA
+#if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
 int axienet_tadma_add_stream(struct net_device *ndev, void __user *useraddr);
 int axienet_tadma_flush_stream(struct net_device *ndev, void __user *useraddr);
 int axienet_tadma_off(struct net_device *ndev, void __user *useraddr);
@@ -1347,7 +1354,7 @@ int axienet_ethtools_set_coalesce(struct net_device *ndev,
 				  struct ethtool_coalesce *ecoalesce,
 				  struct kernel_ethtool_coalesce *kernel_coal,
 				  struct netlink_ext_ack *extack);
-#if defined(CONFIG_XILINX_TSN_SWITCH)
+#if IS_ENABLED(CONFIG_XILINX_TSN_SWITCH)
 int tsn_switch_get_port_parent_id(struct net_device *dev,
 				  struct netdev_phys_item_id *ppid);
 #endif

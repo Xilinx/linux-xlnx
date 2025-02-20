@@ -92,7 +92,7 @@ int tsn_data_path_open(struct net_device *ndev)
 			goto err_dma_tx_irq;
 		irq_cnt++;
 	}
-#ifdef CONFIG_AXIENET_HAS_TADMA
+#if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
 	ret = axienet_tadma_open(ndev);
 	if (ret)
 		goto err_tadma;
@@ -117,7 +117,7 @@ int tsn_data_path_open(struct net_device *ndev)
 	netif_tx_start_all_queues(ndev);
 	return 0;
 
-#ifdef CONFIG_AXIENET_HAS_TADMA
+#if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
 err_tadma:
 	for_each_tx_dma_queue(lp, i) {
 		q = lp->dq[i];
@@ -177,7 +177,7 @@ int tsn_data_path_close(struct net_device *ndev)
 
 		free_irq(q->rx_irq, ndev);
 	}
-#ifdef CONFIG_AXIENET_HAS_TADMA
+#if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
 	axienet_tadma_stop(ndev);
 #endif
 	axienet_dma_bd_release_tsn(ndev);
@@ -214,13 +214,13 @@ static int tsn_ep_stop(struct net_device *ndev)
 static int tsn_ep_ioctl(struct net_device *dev, struct ifreq *rq, void __user *data, int cmd)
 {
 	switch (cmd) {
-#ifdef CONFIG_XILINX_TSN_QBV
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
 	case SIOCCHIOCTL:
 		return axienet_set_schedule(dev, data);
 	case SIOC_GET_SCHED:
 		return axienet_get_schedule(dev, data);
 #endif
-#ifdef CONFIG_AXIENET_HAS_TADMA
+#if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
 	case SIOC_TADMA_OFF:
 		return axienet_tadma_off(dev, data);
 	case SIOC_TADMA_STR_ADD:
@@ -252,7 +252,7 @@ u16 axienet_tsn_pcp_to_queue(struct net_device *ndev, struct sk_buff *skb)
 		vlan_tci = ntohs(vhdr->h_vlan_TCI);
 
 		pcp = (vlan_tci & VLAN_PRIO_MASK) >> VLAN_PRIO_SHIFT;
-#ifdef CONFIG_AXIENET_HAS_TADMA
+#if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
 		for (i = 0; i < st_count; i++) {
 			if (st_pcp[i] == pcp)
 				return ST_QUEUE_NUMBER;
@@ -288,7 +288,7 @@ static int tsn_ep_xmit(struct sk_buff *skb, struct net_device *ndev)
 {
 	u16 map = skb_get_queue_mapping(skb);
 
-#ifdef CONFIG_AXIENET_HAS_TADMA
+#if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
 	if (map == ST_QUEUE_NUMBER) /* ST Traffic */
 		return axienet_tadma_xmit(skb, ndev, map);
 #endif
@@ -323,7 +323,7 @@ static int netdev_set_mac_address(struct net_device *ndev, void *p)
 	return 0;
 }
 
-#if defined(CONFIG_XILINX_TSN_PTP)
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 /**
  * tsn_ethtools_get_ts_info - Get h/w timestamping capabilities.
  * @ndev:       Pointer to net_device structure
@@ -346,7 +346,7 @@ static const struct ethtool_ops ep_ethtool_ops = {
 	.get_coalesce   = axienet_ethtools_get_coalesce,
 	.set_coalesce   = axienet_ethtools_set_coalesce,
 	.get_strings = axienet_strings_tsn,
-#if defined(CONFIG_XILINX_TSN_PTP)
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 	.get_ts_info    = tsn_ethtools_get_ts_info,
 #endif
 };
@@ -358,10 +358,12 @@ static const struct net_device_ops ep_netdev_ops = {
 	.ndo_start_xmit = tsn_ep_xmit,
 	.ndo_set_mac_address = netdev_set_mac_address,
 	.ndo_select_queue = axienet_tsn_ep_select_queue,
-#if defined(CONFIG_XILINX_TSN_SWITCH)
+#if IS_ENABLED(CONFIG_XILINX_TSN_SWITCH)
 	.ndo_get_port_parent_id = tsn_switch_get_port_parent_id,
 #endif
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
 	.ndo_setup_tc = axienet_tsn_shaper_tc,
+#endif
 };
 
 bool xlnx_is_port_ep_netdev(const struct net_device *ndev)
@@ -519,7 +521,9 @@ static int tsn_ep_probe(struct platform_device *pdev)
 	u16 num_tc = 0;
 	struct device_node *np;
 	u8 mac_addr[ETH_ALEN];
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
 	char irq_name[32];
+#endif
 
 	ndev = alloc_netdev_mq(sizeof(*lp), "ep",
 			       NET_NAME_UNKNOWN, ether_setup, num_queues);
@@ -589,7 +593,7 @@ static int tsn_ep_probe(struct platform_device *pdev)
 		goto free_netdev;
 	}
 
-#ifdef CONFIG_AXIENET_HAS_TADMA
+#if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
 	ret = axienet_tadma_probe(pdev, ndev);
 	if (ret) {
 		dev_err(&pdev->dev, "Getting TADMA resource failed\n");
@@ -609,13 +613,11 @@ static int tsn_ep_probe(struct platform_device *pdev)
 		ret = PTR_ERR(lp->regs);
 		goto free_netdev;
 	}
-#ifdef CONFIG_XILINX_TSN_QBV
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
 	lp->qbv_regs = lp->regs;
-#endif
 
 	sprintf(irq_name, "tsn_ep_scheduler_irq");
 	lp->qbv_irq = platform_get_irq_byname(pdev, irq_name);
-#ifdef CONFIG_XILINX_TSN_QBV
 	axienet_qbv_init(ndev);
 #endif
 
@@ -636,7 +638,7 @@ static void tsn_ep_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
 
-#ifdef CONFIG_XILINX_TSN_QBV
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
 	axienet_qbv_remove(ndev);
 #endif
 	unregister_netdev(ndev);
@@ -644,7 +646,7 @@ static void tsn_ep_remove(struct platform_device *pdev)
 	free_netdev(ndev);
 }
 
-static struct platform_driver tsn_ep_driver = {
+struct platform_driver tsn_ep_driver = {
 	.probe = tsn_ep_probe,
 	.remove = tsn_ep_remove,
 	.driver = {
@@ -652,8 +654,6 @@ static struct platform_driver tsn_ep_driver = {
 		 .of_match_table = tsn_ep_of_match,
 	},
 };
-
-module_platform_driver(tsn_ep_driver);
 
 MODULE_DESCRIPTION("Xilinx Axi Ethernet driver");
 MODULE_AUTHOR("Xilinx");

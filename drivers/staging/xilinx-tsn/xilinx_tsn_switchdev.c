@@ -4,7 +4,7 @@
  *
  * Copyright (c) 2022 Xilinx, Inc. All rights reserved.
  */
-#ifdef CONFIG_XILINX_TSN_SWITCH
+#if IS_ENABLED(CONFIG_XILINX_TSN_SWITCH)
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/if_bridge.h>
