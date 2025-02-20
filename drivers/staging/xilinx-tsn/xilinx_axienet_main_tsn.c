@@ -1995,9 +1995,6 @@ static void axienet_remove(struct platform_device *pdev)
 	struct net_device *ndev = platform_get_drvdata(pdev);
 	struct axienet_local *lp = netdev_priv(ndev);
 
-#if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
-		axienet_qbv_remove(ndev);
-#endif
 	unregister_netdev(ndev);
 	axienet_clk_disable(pdev);
 
