@@ -398,6 +398,11 @@ int __maybe_unused tsn_mcdma_probe(struct platform_device *pdev, struct axienet_
 
 	np = of_parse_phandle(pdev->dev.of_node, "axistream-connected-rx",
 			      0);
+	if (!np) {
+		dev_err(&pdev->dev, "could not find DMA node\n");
+		return -EINVAL;
+	}
+
 	/* get number of associated queues */
 	ret = of_property_read_u32(np, "xlnx,num-s2mm-channels", &num);
 	if (ret < 0)
@@ -407,7 +412,11 @@ int __maybe_unused tsn_mcdma_probe(struct platform_device *pdev, struct axienet_
 	pr_info("%s: num_rx_queues: %d\n", __func__, lp->num_rx_queues);
 
 	for_each_rx_dma_queue(lp, i) {
-		q = kzalloc(sizeof(*q), GFP_KERNEL);
+		q = devm_kzalloc(&pdev->dev, sizeof(*q), GFP_KERNEL);
+		if (!q) {
+			ret = -ENOMEM;
+			goto err_put_node;
+		}
 
 		/* parent */
 		q->lp = lp;
@@ -415,33 +424,37 @@ int __maybe_unused tsn_mcdma_probe(struct platform_device *pdev, struct axienet_
 		ret = of_property_read_string_index(pdev->dev.of_node,
 						    "xlnx,channel-ids", i,
 						    &str);
+		if (ret < 0) {
+			dev_err(&pdev->dev, "Failed to read channel ID for queue %d\n", i);
+			goto err_put_node;
+		}
 		ret = kstrtou16(str, 16, &q->chan_id);
 		lp->qnum[i] = i;
 		lp->chan_num[i] = q->chan_id;
 	}
 
-	if (IS_ERR(np)) {
-		dev_err(&pdev->dev, "could not find DMA node\n");
-		return ret;
-	}
-
 	ret = of_address_to_resource(np, 0, &dmares);
 	if (ret) {
 		dev_err(&pdev->dev, "unable to get DMA resource\n");
-		return ret;
+		goto err_put_node;
 	}
 
 	lp->mcdma_regs = devm_ioremap_resource(&pdev->dev, &dmares);
 	if (IS_ERR(lp->mcdma_regs)) {
 		dev_err(&pdev->dev, "iormeap failed for the dma\n");
 		ret = PTR_ERR(lp->mcdma_regs);
-		return ret;
+		goto err_put_node;
 	}
 
 	axienet_mcdma_rx_probe_tsn(pdev, np, ndev);
 	axienet_mcdma_tx_probe_tsn(pdev, np, lp);
 
+	of_node_put(np);
 	return 0;
+
+err_put_node:
+	of_node_put(np);
+	return ret;
 }
 
 static const struct axienet_config tsn_endpoint_cfg = {
@@ -572,7 +585,6 @@ static int tsn_ep_probe(struct platform_device *pdev)
 		 * all functionality handled by temac1/eth1
 		 */
 		free_netdev(ndev);
-		of_node_put(np);
 		return 0;
 	}
 
@@ -590,14 +602,14 @@ static int tsn_ep_probe(struct platform_device *pdev)
 	ret = tsn_mcdma_probe(pdev, lp, ndev);
 	if (ret) {
 		dev_err(&pdev->dev, "Getting MCDMA resource failed\n");
-		goto free_netdev;
+		goto err_put_node;
 	}
 
 #if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
 	ret = axienet_tadma_probe(pdev, ndev);
 	if (ret) {
 		dev_err(&pdev->dev, "Getting TADMA resource failed\n");
-		goto free_netdev;
+		goto err_put_node;
 	}
 #endif
 	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-tc", &num_tc);
@@ -611,7 +623,7 @@ static int tsn_ep_probe(struct platform_device *pdev)
 	lp->regs = devm_ioremap_resource(&pdev->dev, ethres);
 	if (IS_ERR(lp->regs)) {
 		ret = PTR_ERR(lp->regs);
-		goto free_netdev;
+		goto err_put_node;
 	}
 #if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
 	lp->qbv_regs = lp->regs;
@@ -624,11 +636,13 @@ static int tsn_ep_probe(struct platform_device *pdev)
 	ret = register_netdev(lp->ndev);
 	if (ret) {
 		dev_err(lp->dev, "register_netdev() error (%i)\n", ret);
-		goto free_netdev;
+		goto err_put_node;
 	}
+	of_node_put(np);
 	return ret;
 
-free_netdev:
+err_put_node:
+	of_node_put(np);
 	free_netdev(ndev);
 
 	return ret;

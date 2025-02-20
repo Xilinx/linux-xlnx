@@ -825,7 +825,6 @@ int __maybe_unused axienet_mcdma_tx_probe_tsn(struct platform_device *pdev,
 						      "xlnx,include-mm2s-dre");
 		spin_lock_init(&q->tx_lock);
 	}
-	of_node_put(np);
 
 	return 0;
 }
