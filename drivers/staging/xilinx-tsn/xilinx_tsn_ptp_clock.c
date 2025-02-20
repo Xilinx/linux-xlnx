@@ -219,21 +219,6 @@ static irqreturn_t xlnx_ptp_timer_isr(int irq, void *priv)
 	return IRQ_HANDLED;
 }
 
-int axienet_ptp_timer_remove(void *priv)
-{
-	struct xlnx_ptp_timer *timer = (struct xlnx_ptp_timer *)priv;
-
-	free_irq(timer->irq, (void *)timer);
-
-	axienet_phc_index = -1;
-	if (timer->ptp_clock) {
-		ptp_clock_unregister(timer->ptp_clock);
-		timer->ptp_clock = NULL;
-	}
-	kfree(timer);
-	return 0;
-}
-
 int axienet_get_phc_index(void *priv)
 {
 	struct xlnx_ptp_timer *timer = (struct xlnx_ptp_timer *)priv;
@@ -244,15 +229,20 @@ int axienet_get_phc_index(void *priv)
 		return -1;
 }
 
+static void tsn_ptp_unregister(void *ptp)
+{
+	ptp_clock_unregister((struct ptp_clock *)ptp);
+}
+
 void *axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev)
 {
 	struct xlnx_ptp_timer *timer;
 	struct timespec64 ts;
 	int err = 0;
 
-	timer = kzalloc(sizeof(*timer), GFP_KERNEL);
+	timer = devm_kzalloc(&pdev->dev, sizeof(*timer), GFP_KERNEL);
 	if (!timer)
-		return NULL;
+		return ERR_PTR(-ENOMEM);
 
 	timer->baseaddr = base;
 
@@ -264,8 +254,7 @@ void *axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev)
 			pr_err("ptp timer interrupt name 'rtc_irq' is deprecated\n");
 		} else {
 			pr_err("ptp timer interrupt not found\n");
-			kfree(timer);
-			return NULL;
+			return ERR_PTR(-EINVAL);
 		}
 	}
 	spin_lock_init(&timer->reg_lock);
@@ -274,10 +263,16 @@ void *axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev)
 
 	timer->ptp_clock = ptp_clock_register(&timer->ptp_clock_info,
 					      &pdev->dev);
-
 	if (IS_ERR(timer->ptp_clock)) {
 		err = PTR_ERR(timer->ptp_clock);
 		pr_debug("Failed to register ptp clock\n");
+		goto out;
+	}
+	err = devm_add_action_or_reset(&pdev->dev,
+				       tsn_ptp_unregister,
+				       timer->ptp_clock);
+	if (err) {
+		pr_debug("Failed to add PTP clock unregister action\n");
 		goto out;
 	}
 
@@ -298,19 +293,19 @@ void *axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev)
 	writel(timer->rtc_value, (timer->baseaddr + XTIMER1588_RTC_INCREMENT));
 
 	/* Enable interrupts */
-	err = request_irq(timer->irq,
-			  xlnx_ptp_timer_isr,
-			  0,
-			  "ptp_rtc",
-			  (void *)timer);
-	if (err)
-		goto err_irq;
+	err = devm_request_irq(&pdev->dev, timer->irq,
+			       xlnx_ptp_timer_isr,
+			       0,
+			       "ptp_rtc",
+			       (void *)timer);
+	if (err) {
+		pr_err("Failed to request IRQ: %d\n", err);
+		ptp_clock_unregister(timer->ptp_clock);
+		goto out;
+	}
 
 	return timer;
-
-err_irq:
-	ptp_clock_unregister(timer->ptp_clock);
 out:
 	timer->ptp_clock = NULL;
-	return NULL;
+	return ERR_PTR(err);
 }

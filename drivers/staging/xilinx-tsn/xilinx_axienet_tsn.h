@@ -1266,7 +1266,6 @@ int tsn_data_path_close(struct net_device *ndev);
 #if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 void *axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev);
 void axienet_tx_tstamp(struct work_struct *work);
-int axienet_ptp_timer_remove(void *priv);
 #endif
 #if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
 int axienet_qbv_init(struct net_device *ndev);
