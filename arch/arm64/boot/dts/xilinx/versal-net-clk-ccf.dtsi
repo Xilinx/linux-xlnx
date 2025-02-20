@@ -55,8 +55,8 @@
 				bootph-all;
 				#clock-cells = <1>;
 				compatible = "xlnx,versal-net-clk", "xlnx,versal-clk";
-				clocks = <&ref_clk>, <&ref_clk>;
-				clock-names = "ref_clk", "pl_alt_ref_clk";
+				clocks = <&ref_clk>, <&ref_clk>, <&ref_clk>;
+				clock-names = "ref", "pl_alt_ref", "alt_ref";
 			};
 
 			versal_net_power: zynqmp-power { /* untested */
