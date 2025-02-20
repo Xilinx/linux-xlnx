@@ -414,6 +414,7 @@ irqreturn_t __maybe_unused axienet_mcdma_tx_irq(int irq, void *_ndev)
 
 	status = axienet_dma_in32(q, XMCDMA_CHAN_SR_OFFSET(q->chan_id));
 	if (status & (XMCDMA_IRQ_IOC_MASK | XMCDMA_IRQ_DELAY_MASK)) {
+		axienet_dma_out32(q, XMCDMA_CHAN_SR_OFFSET(q->chan_id), status);
 		/* Disable further TX completion interrupts and schedule
 		 * NAPI to handle the completions.
 		 */
