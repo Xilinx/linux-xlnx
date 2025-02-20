@@ -255,7 +255,7 @@ int axienet_tsn_probe(struct platform_device *pdev,
 	if (IS_ERR(lp->qbv_regs)) {
 		dev_err(&pdev->dev, "ioremap failed for the qbv\n");
 		ret = PTR_ERR(lp->qbv_regs);
-		return ret;
+		goto err_1;
 	}
 	ret = axienet_qbv_init(ndev);
 #endif
@@ -266,6 +266,7 @@ int axienet_tsn_probe(struct platform_device *pdev,
 		ep_lp->slaves[temac_no] = ndev;
 	}
 
+	of_node_put(ep_node);
 	return 0;
 err_1:
 	of_node_put(ep_node);
