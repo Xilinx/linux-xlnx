@@ -1614,13 +1614,18 @@ static int tsn_switch_fdb_init(struct platform_device *pdev)
 	ep_node = of_parse_phandle(pdev->dev.of_node, "ports", 0);
 	for (port = 1; port < num_ports; port++) {
 		np = of_parse_phandle(pdev->dev.of_node, "ports", port);
-
+		if (!np) {
+			dev_err(&pdev->dev, "Failed to parse phandle for port %d\n", port);
+			return -EINVAL;
+		}
 		ret = of_get_mac_address(np, mac_addr);
 		if (ret) {
 			dev_err(&pdev->dev, "could not find MAC address\n");
+			of_node_put(np);
 			return -EINVAL;
 		}
 		tsn_switch_set_src_mac_filter(mac_addr, port);
+		of_node_put(np);
 	}
 
 	/* rest of the mac addr for all ports would be same
@@ -1892,6 +1897,7 @@ static int tsnswitch_probe(struct platform_device *pdev)
 		}
 	}
 
+	of_node_put(ep_node);
 	return ret;
 err:
 	if (!inband_mgmt_tag)
