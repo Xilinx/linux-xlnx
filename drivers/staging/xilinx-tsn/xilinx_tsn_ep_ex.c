@@ -127,7 +127,7 @@ static int tsn_ex_ep_probe(struct platform_device *pdev)
 	ret = register_netdev(lp->ndev);
 	if (ret) {
 		dev_err(lp->dev, "register_netdev() error (%i)\n", ret);
-		goto free_netdev;
+		goto free_of_node;
 	}
 	ep_lp = netdev_priv(lp->master);
 	ep_lp->ex_ep = ndev;
@@ -136,7 +136,10 @@ static int tsn_ex_ep_probe(struct platform_device *pdev)
 		dev_warn(&pdev->dev,
 			 "packet-switch is deprecated and will be removed.Please use \"xlnx,packet-switch\"instead\n");
 	}
+	of_node_put(ep_node);
 	return ret;
+free_of_node:
+	of_node_put(ep_node);
 free_netdev:
 	free_netdev(ndev);
 
