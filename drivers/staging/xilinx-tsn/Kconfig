@@ -5,6 +5,16 @@
 
 if NET_VENDOR_XILINX
 
+config XILINX_TSN
+	tristate "Enable Xilinx's TSN IP"
+	select PHYLIB
+	help
+	  Enable Xilinx's TSN IP.
+
+	  If built as a module (m) or static (y), then all its submodules
+	  follow the same build mode.
+
+if XILINX_TSN
 config AXIENET_HAS_TADMA
 	bool "AxiEthernet is configured with TADMA"
 	depends on XILINX_TSN
@@ -14,52 +24,68 @@ config AXIENET_HAS_TADMA
 	  It is used to fetch schedule traffic.
 	  It contains one queue.
 
-config XILINX_TSN
-	bool "Enable Xilinx's TSN IP"
-	select PHYLIB
-	help
-	  Enable Xilinx's TSN IP.
+	  If XILINX_TSN is built as a module (m) or static (y), then this
+	  submodule follows the same build mode.
 
 config XILINX_TSN_PTP
 	bool "Generate hardware packet timestamps using Xilinx's TSN IP"
 	depends on XILINX_TSN && PTP_1588_CLOCK
-	default y
+	default XILINX_TSN
 	help
 	  Generate hardware packet timestamps. This is to facilitate IEEE 1588.
+
+	  If XILINX_TSN is built as a module (m) or static (y), then this
+	  submodule follows the same build mode.
 
 config XILINX_TSN_QBV
 	bool "Support Qbv protocol in TSN"
 	depends on XILINX_TSN_PTP
-	default y
+	default XILINX_TSN
 	help
 	  Enables TSN Qbv protocol.
+
+	  If XILINX_TSN is built as a module (m) or static (y), then this
+	  submodule follows the same build mode.
 
 config XILINX_TSN_SWITCH
 	bool "Support TSN switch"
 	depends on XILINX_TSN && NET_SWITCHDEV
-	default y
+	default XILINX_TSN
 	help
 	  Enable Xilinx's TSN Switch support.
+
+	  If XILINX_TSN is built as a module (m) or static (y), then this
+	  submodule follows the same build mode.
 
 config XILINX_TSN_QCI
 	bool "Support Qci protocol in TSN"
 	depends on XILINX_TSN_SWITCH
-	default y
+	default XILINX_TSN
 	help
 	  Enable TSN QCI protocol.
+
+	  If XILINX_TSN is built as a module (m) or static (y), then this
+	  submodule follows the same build mode.
 
 config XILINX_TSN_CB
 	bool "Support CB protocol in TSN"
 	depends on XILINX_TSN_SWITCH
-	default y
+	default XILINX_TSN
 	help
 	  Enable TSN CB protocol support.
+
+	  If XILINX_TSN is built as a module (m) or static (y), then this
+	  submodule follows the same build mode.
 
 config XILINX_TSN_QBR
 	bool "Support QBR protocol in TSN"
 	depends on XILINX_TSN_SWITCH
-	default y
+	default XILINX_TSN
 	help
 	  Enable TSN QBR protocol support.
 
+	  If XILINX_TSN is built as a module (m) or static (y), then this
+	  submodule follows the same build mode.
+
+endif #XILINX_TSN
 endif # NET_VENDOR_XILINX

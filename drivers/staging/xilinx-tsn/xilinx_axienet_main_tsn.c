@@ -107,7 +107,7 @@
 #define PORT_NUM_FILTER_ENABLE_MASK		0x0000FFFF /* Enable port number based filtering */
 #define VERSION_FILTER_ENABLE_MASK		0xFF000000 /* Enable PTP version based filtering */
 
-#ifdef CONFIG_XILINX_TSN_PTP
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 int axienet_phc_index = -1;
 EXPORT_SYMBOL(axienet_phc_index);
 #endif
@@ -915,7 +915,7 @@ static void axienet_poll_controller(struct net_device *ndev)
 }
 #endif
 
-#if defined(CONFIG_XILINX_TSN_PTP)
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 /**
  *  axienet_set_timestamp_mode - sets up the hardware for the requested mode
  *  @lp: Pointer to axienet local structure
@@ -928,7 +928,7 @@ static int axienet_set_timestamp_mode(struct axienet_local *lp,
 {
 	u32 regval;
 
-#ifdef CONFIG_XILINX_TSN_PTP
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 	/* reserved for future extensions */
 	if (config->flags)
 		return -EINVAL;
@@ -1100,7 +1100,7 @@ static int axienet_get_ts_config(struct axienet_local *lp, struct ifreq *ifr)
 /* Ioctl MII Interface */
 static int axienet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 {
-#if defined(CONFIG_XILINX_TSN_PTP)
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 	struct axienet_local *lp = netdev_priv(dev);
 #endif
 
@@ -1114,7 +1114,7 @@ static int axienet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 		if (!dev->phydev)
 			return -EOPNOTSUPP;
 		return phy_mii_ioctl(dev->phydev, rq, cmd);
-#if defined(CONFIG_XILINX_TSN_PTP)
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 	case SIOCSHWTSTAMP:
 		return axienet_set_ts_config(lp, rq);
 	case SIOCGHWTSTAMP:
@@ -1128,10 +1128,13 @@ static int axienet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 static int axienet_ioctl_siocdevprivate(struct net_device *dev,
 					struct ifreq *rq, void __user *data, int cmd)
 {
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBV) || \
+	IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
 	struct axienet_local *lp = netdev_priv(dev);
+#endif
 
 	switch (cmd) {
-#ifdef CONFIG_XILINX_TSN_QBV
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
 	case SIOCCHIOCTL:
 		if (lp->qbv_regs)
 			return axienet_set_schedule(dev, data);
@@ -1141,7 +1144,7 @@ static int axienet_ioctl_siocdevprivate(struct net_device *dev,
 			return axienet_get_schedule(dev, data);
 		return -EINVAL;
 #endif
-#ifdef CONFIG_AXIENET_HAS_TADMA
+#if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
 	case SIOC_TADMA_OFF:
 		if (!(lp->abl_reg & TSN_BRIDGEEP_EPONLY))
 			return -ENOENT;
@@ -1159,7 +1162,7 @@ static int axienet_ioctl_siocdevprivate(struct net_device *dev,
 			return -ENOENT;
 		return axienet_tadma_flush_stream(dev, data);
 #endif
-#ifdef CONFIG_XILINX_TSN_QBR
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBR)
 	case SIOC_PREEMPTION_CFG:
 		return axienet_preemption(dev, data);
 	case SIOC_PREEMPTION_CTRL:
@@ -1170,7 +1173,7 @@ static int axienet_ioctl_siocdevprivate(struct net_device *dev,
 		return axienet_preemption_receive(dev);
 	case SIOC_PREEMPTION_COUNTER:
 		return axienet_preemption_cnt(dev, data);
-#ifdef CONFIG_XILINX_TSN_QBV
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
 	case SIOC_QBU_USER_OVERRIDE:
 		return axienet_qbu_user_override(dev, data);
 	case SIOC_QBU_STS:
@@ -1196,12 +1199,14 @@ static const struct net_device_ops axienet_netdev_ops = {
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller = axienet_poll_controller,
 #endif
-#ifdef CONFIG_XILINX_TSN
+#if IS_ENABLED(CONFIG_XILINX_TSN)
 	.ndo_select_queue = axienet_tsn_select_queue,
-#if defined(CONFIG_XILINX_TSN_SWITCH)
+#if IS_ENABLED(CONFIG_XILINX_TSN_SWITCH)
 	.ndo_get_port_parent_id = tsn_switch_get_port_parent_id,
 #endif
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
 	.ndo_setup_tc = axienet_tsn_shaper_tc,
+#endif
 #endif
 };
 
@@ -1493,7 +1498,7 @@ int axienet_ethtools_set_coalesce(struct net_device *ndev,
 	return 0;
 }
 
-#if defined(CONFIG_XILINX_TSN_PTP)
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 /**
  * axienet_ethtools_get_ts_info - Get h/w timestamping capabilities.
  * @ndev:	Pointer to net_device structure
@@ -1516,9 +1521,7 @@ static int axienet_ethtools_get_ts_info(struct net_device *ndev,
 			   (1 << HWTSTAMP_FILTER_ALL);
 	info->phc_index = lp->phc_index;
 
-#ifdef CONFIG_XILINX_TSN_PTP
 	info->phc_index = axienet_phc_index;
-#endif
 	return 0;
 }
 #endif
@@ -1604,12 +1607,12 @@ static const struct ethtool_ops axienet_ethtool_ops = {
 	.get_sset_count	= axienet_ethtools_sset_count,
 	.get_ethtool_stats = axienet_ethtools_get_stats,
 	.get_strings = axienet_ethtools_strings,
-#if defined(CONFIG_XILINX_TSN_PTP)
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 	.get_ts_info    = axienet_ethtools_get_ts_info,
 #endif
 	.get_link_ksettings = phy_ethtool_get_link_ksettings,
 	.set_link_ksettings = phy_ethtool_set_link_ksettings,
-#if defined(CONFIG_XILINX_TSN_QBR)
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBR)
 	.get_mm		= axienet_preemption_sts_ethtool,
 	.set_mm		= axienet_preemption_ctrl_ethtool,
 	.get_mm_stats	= axienet_preemption_cnt_ethtool,
@@ -1992,10 +1995,10 @@ static void axienet_remove(struct platform_device *pdev)
 	struct net_device *ndev = platform_get_drvdata(pdev);
 	struct axienet_local *lp = netdev_priv(ndev);
 
-#ifdef CONFIG_XILINX_TSN_PTP
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 	if (lp->timer_priv)
 		axienet_ptp_timer_remove(lp->timer_priv);
-#ifdef CONFIG_XILINX_TSN_QBV
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
 		axienet_qbv_remove(ndev);
 #endif
 #endif
@@ -2028,7 +2031,7 @@ static void axienet_shutdown(struct platform_device *pdev)
 	rtnl_unlock();
 }
 
-static struct platform_driver axienet_driver_tsn = {
+struct platform_driver axienet_driver_tsn = {
 	.probe = axienet_probe,
 	.remove = axienet_remove,
 	.shutdown = axienet_shutdown,
@@ -2037,8 +2040,6 @@ static struct platform_driver axienet_driver_tsn = {
 		 .of_match_table = axienet_of_match,
 	},
 };
-
-module_platform_driver(axienet_driver_tsn);
 
 MODULE_DESCRIPTION("Xilinx Axi Ethernet driver");
 MODULE_AUTHOR("Xilinx");

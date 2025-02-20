@@ -151,7 +151,7 @@ static void tsn_ex_ep_remove(struct platform_device *pdev)
 	free_netdev(ndev);
 }
 
-static struct platform_driver tsn_ex_ep_driver = {
+struct platform_driver tsn_ex_ep_driver = {
 	.probe = tsn_ex_ep_probe,
 	.remove = tsn_ex_ep_remove,
 	.driver = {
@@ -159,8 +159,6 @@ static struct platform_driver tsn_ex_ep_driver = {
 		 .of_match_table = tsn_ex_ep_of_match,
 	},
 };
-
-module_platform_driver(tsn_ex_ep_driver);
 
 MODULE_DESCRIPTION("Xilinx Axi Ethernet driver");
 MODULE_AUTHOR("Xilinx");

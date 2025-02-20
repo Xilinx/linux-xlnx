@@ -27,11 +27,12 @@
 #include <linux/of_net.h>
 #include <linux/of_address.h>
 #include <linux/xilinx_phy.h>
+#include <linux/platform_device.h>
 
 #include "xilinx_axienet_tsn.h"
 #include "xilinx_tsn_switch.h"
 
-#ifdef CONFIG_XILINX_TSN_PTP
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 #include "xilinx_tsn_ptp.h"
 #include "xilinx_tsn_timer.h"
 #endif
@@ -72,12 +73,17 @@ static int tsn_ip_probe(struct platform_device *pdev)
 	return ret;
 }
 
+static void tsn_ip_remove(struct platform_device *pdev)
+{
+	of_platform_depopulate(&pdev->dev);
+}
+
 u16 axienet_tsn_select_queue(struct net_device *ndev, struct sk_buff *skb,
 			     struct net_device *sb_dev)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 	struct ethhdr *hdr = (struct ethhdr *)skb->data;
-#ifdef CONFIG_XILINX_TSN_PTP
 	const struct udphdr *udp;
 
 	udp = udp_hdr(skb);
@@ -112,13 +118,13 @@ int axienet_tsn_xmit(struct sk_buff *skb, struct net_device *ndev)
 	struct net_device *master = lp->master;
 	u16 map = skb_get_queue_mapping(skb);
 
-#ifdef CONFIG_XILINX_TSN_PTP
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 	/* check if skb is a PTP frame ? */
 	if (map == PTP_QUEUE_NUMBER)
 		return axienet_ptp_xmit(skb, ndev);
 #endif
 	if (lp->abl_reg & TSN_BRIDGEEP_EPONLY) {
-#ifdef CONFIG_AXIENET_HAS_TADMA
+#if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
 		if (map == ST_QUEUE_NUMBER) /* ST Traffic */
 			return axienet_tadma_xmit(skb, ndev, map);
 #endif
@@ -147,10 +153,14 @@ int axienet_tsn_probe(struct platform_device *pdev,
 		      struct net_device *ndev)
 {
 	int ret = 0;
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 	char irq_name[32];
+#endif
 	bool slave = false;
 	u8     temac_no;
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
 	u32 qbv_addr, qbv_size;
+#endif
 	struct device_node *ep_node;
 	struct axienet_local *ep_lp;
 
@@ -163,6 +173,7 @@ int axienet_tsn_probe(struct platform_device *pdev,
 		temac_no = XAE_TEMAC1;
 		lp->switch_prt = PORT_MAC1;
 	}
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 	lp->current_rx_filter = HWTSTAMP_FILTER_PTP_V2_L2_EVENT;
 	sprintf(irq_name, "interrupt_ptp_rx_%d", temac_no + 1);
 	lp->ptp_rx_irq = platform_get_irq_byname(pdev, irq_name);
@@ -171,18 +182,21 @@ int axienet_tsn_probe(struct platform_device *pdev,
 	sprintf(irq_name, "interrupt_ptp_tx_%d", temac_no + 1);
 	lp->ptp_tx_irq = platform_get_irq_byname(pdev, irq_name);
 	pr_info("ptp TX irq: %d %s\n", lp->ptp_tx_irq, irq_name);
-
+#endif
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
 	sprintf(irq_name, "tsn_switch_scheduler_irq_%d", temac_no + 1);
 	lp->qbv_irq = platform_get_irq_byname(pdev, irq_name);
 
 	/*Ignoring if the qbv_irq is not exist*/
 	if (lp->qbv_irq > 0)
 		pr_info("qbv_irq: %d %s\n", lp->qbv_irq, irq_name);
-
+#endif
 	spin_lock_init(&lp->ptp_tx_lock);
 
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 	if (temac_no == XAE_TEMAC1)
 		lp->timer_priv = axienet_ptp_timer_probe((lp->regs + XAE_RTC_OFFSET), pdev);
+#endif
 
 	/* enable VLAN */
 	lp->options |= XAE_OPTION_VLAN;
@@ -212,7 +226,7 @@ int axienet_tsn_probe(struct platform_device *pdev,
 			dev_err(&pdev->dev, "Getting MCDMA resource failed\n");
 			goto err_1;
 		}
-#ifdef CONFIG_AXIENET_HAS_TADMA
+#if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
 		ret = axienet_tadma_probe(pdev, ndev);
 		if (ret) {
 			dev_err(&pdev->dev, "Getting TADMA resource failed\n");
@@ -221,7 +235,7 @@ int axienet_tsn_probe(struct platform_device *pdev,
 #endif
 	}
 
-#ifdef CONFIG_XILINX_TSN_QBV
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
 	lp->qbv_regs = NULL;
 	if (!(lp->abl_reg & TSN_BRIDGEEP_EPONLY)) {
 		of_property_read_u32(pdev->dev.of_node, "xlnx,qbv-addr",
@@ -254,8 +268,10 @@ int axienet_tsn_probe(struct platform_device *pdev,
 
 	return 0;
 err_1:
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 	if (lp->timer_priv)
 		axienet_ptp_timer_remove(lp->timer_priv);
+#endif
 	of_node_put(ep_node);
 	return ret;
 }
@@ -326,7 +342,7 @@ static void axienet_device_reset(struct net_device *ndev)
  */
 int axienet_tsn_open(struct net_device *ndev)
 {
-	int ret;
+	int ret = 0;
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct phy_device *phydev = NULL;
 	struct net_device *emac0_ndev;
@@ -347,7 +363,7 @@ int axienet_tsn_open(struct net_device *ndev)
 		else
 			phy_start(phydev);
 	}
-
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 	INIT_WORK(&lp->tx_tstamp_work, axienet_tx_tstamp);
 	skb_queue_head_init(&lp->ptp_txq);
 
@@ -365,6 +381,7 @@ int axienet_tsn_open(struct net_device *ndev)
 			  0, "ptp_tx", ndev);
 	if (ret)
 		goto err_ptp_tx_irq;
+#endif
 
 	if (lp->abl_reg & TSN_BRIDGEEP_EPONLY)
 		tsn_data_path_open(ndev);
@@ -388,21 +405,24 @@ int axienet_tsn_open(struct net_device *ndev)
 
 	netif_tx_start_all_queues(ndev);
 
-	return 0;
+	return ret;
 
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 err_ptp_tx_irq:
 	free_irq(lp->ptp_rx_irq, ndev);
 err_ptp_rx_irq:
 	return ret;
+#endif
 }
 
 int axienet_tsn_stop(struct net_device *ndev)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
 
+#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 	free_irq(lp->ptp_tx_irq, ndev);
 	free_irq(lp->ptp_rx_irq, ndev);
-
+#endif
 	if (lp->axienet_config->mactype == XAXIENET_1G && !lp->eth_hasnobuf)
 		free_irq(lp->eth_irq, ndev);
 
@@ -417,13 +437,70 @@ int axienet_tsn_stop(struct net_device *ndev)
 
 static struct platform_driver tsn_ip_driver = {
 	.probe = tsn_ip_probe,
+	.remove = tsn_ip_remove,
 	.driver = {
 		 .name = "tsn_ip_axienet",
 		 .of_match_table = tsn_ip_of_match,
 	},
 };
 
-module_platform_driver(tsn_ip_driver);
+static int tsn_ip_init(void)
+{
+	int ret;
+
+	ret = platform_driver_register(&tsn_ip_driver);
+	if (ret)
+		return ret;
+
+	ret = platform_driver_register(&tsn_ep_driver);
+	if (ret)
+		goto err_unregister_ip;
+
+	ret = platform_driver_register(&axienet_driver_tsn);
+	if (ret)
+		goto err_unregister_ep;
+
+#if IS_ENABLED(CONFIG_XILINX_TSN_SWITCH)
+	ret = platform_driver_register(&tsnswitch_driver);
+	if (ret)
+		goto err_unregister_axienet;
+#endif
+
+	ret = platform_driver_register(&tsn_ex_ep_driver);
+	if (ret)
+		goto err_unregister_switch;
+
+	return 0;
+
+err_unregister_switch:
+#if IS_ENABLED(CONFIG_XILINX_TSN_SWITCH)
+	platform_driver_unregister(&tsnswitch_driver);
+
+err_unregister_axienet:
+#endif
+	platform_driver_unregister(&axienet_driver_tsn);
+
+err_unregister_ep:
+	platform_driver_unregister(&tsn_ep_driver);
+
+err_unregister_ip:
+	platform_driver_unregister(&tsn_ip_driver);
+	return ret;
+}
+
+static void tsn_ip_exit(void)
+{
+	platform_driver_unregister(&tsn_ex_ep_driver);
+#if IS_ENABLED(CONFIG_XILINX_TSN_SWITCH)
+	platform_driver_unregister(&tsnswitch_driver);
+#endif
+	platform_driver_unregister(&axienet_driver_tsn);
+	platform_driver_unregister(&tsn_ep_driver);
+	platform_driver_unregister(&tsn_ip_driver);
+}
+
+module_init(tsn_ip_init);
+module_exit(tsn_ip_exit);
 
 MODULE_DESCRIPTION("Xilinx Axi Ethernet driver");
 MODULE_AUTHOR("Xilinx");

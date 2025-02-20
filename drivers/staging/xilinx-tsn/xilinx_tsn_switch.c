@@ -1907,7 +1907,7 @@ static void tsnswitch_remove(struct platform_device *pdev)
 	xlnx_switchdev_remove();
 }
 
-static struct platform_driver tsnswitch_driver = {
+struct platform_driver tsnswitch_driver = {
 	.probe = tsnswitch_probe,
 	.remove = tsnswitch_remove,
 	.driver = {
@@ -1915,8 +1915,6 @@ static struct platform_driver tsnswitch_driver = {
 		 .of_match_table = tsnswitch_of_match,
 	},
 };
-
-module_platform_driver(tsnswitch_driver);
 
 MODULE_DESCRIPTION("Xilinx TSN Switch driver");
 MODULE_AUTHOR("Xilinx");

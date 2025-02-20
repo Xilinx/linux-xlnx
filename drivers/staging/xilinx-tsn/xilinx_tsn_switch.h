@@ -473,7 +473,7 @@ int tsn_switch_set_stp_state(struct port_status *port);
 int tsn_switch_vlan_add(struct port_vlan *port, int add);
 int tsn_switch_pvid_get(struct native_vlan *port);
 int tsn_switch_pvid_add(struct native_vlan *port);
-#ifdef CONFIG_XILINX_TSN_SWITCH
+#if IS_ENABLED(CONFIG_XILINX_TSN_SWITCH)
 int xlnx_switchdev_init(void);
 void xlnx_switchdev_remove(void);
 #endif
