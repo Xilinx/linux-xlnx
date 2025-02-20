@@ -331,21 +331,34 @@ int __maybe_unused axienet_tadma_probe(struct platform_device *pdev,
 
 	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-tc",
 				   &num_tc);
+	if (ret)
+		num_tc = XAE_MAX_TSN_TC;
+
+	if (num_tc == 0)
+		return -EINVAL;
+
 	np = of_parse_phandle(pdev->dev.of_node, "axistream-connected-tx",
 			      num_tc - 1);
-
-	if (np) {
-		ret = of_address_to_resource(np, 0, &tadma_res);
-		if (ret >= 0)
-			lp->tadma_regs = devm_ioremap_resource(&pdev->dev,
-							       &tadma_res);
-		else
-			return -ENODEV;
-	} else {
+	if (!np) {
+		dev_err(&pdev->dev, "could not find TA-DMA node\n");
 		return -ENODEV;
 	}
 
+	ret = of_address_to_resource(np, 0, &tadma_res);
+	if (ret)
+		goto err_put_node;
+
+	lp->tadma_regs = devm_ioremap_resource(&pdev->dev, &tadma_res);
+	if (IS_ERR(lp->tadma_regs)) {
+		ret = PTR_ERR(lp->tadma_regs);
+		goto err_put_node;
+	}
+
 	lp->tadma_irq = irq_of_parse_and_map(np, 0);
+	if (!lp->tadma_irq) {
+		ret = -EINVAL;
+		goto err_put_node;
+	}
 
 	ret = of_property_read_u32(np, "xlnx,num-buffers-per-stream",
 				   &lp->num_tadma_buffers);
@@ -371,6 +384,9 @@ int __maybe_unused axienet_tadma_probe(struct platform_device *pdev,
 	of_node_put(np);
 
 	return 0;
+err_put_node:
+	of_node_put(np);
+	return ret;
 }
 
 static int axienet_check_pm_space(int sid, int num_frag,
