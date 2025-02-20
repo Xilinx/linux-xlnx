@@ -268,10 +268,6 @@ int axienet_tsn_probe(struct platform_device *pdev,
 
 	return 0;
 err_1:
-#if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
-	if (lp->timer_priv)
-		axienet_ptp_timer_remove(lp->timer_priv);
-#endif
 	of_node_put(ep_node);
 	return ret;
 }
