@@ -244,6 +244,7 @@ irqreturn_t __maybe_unused axienet_tx_irq(int irq, void *_ndev)
 		/* Disable further TX completion interrupts and schedule
 		 * NAPI to handle the completions.
 		 */
+		axienet_dma_out32(q, XAXIDMA_TX_SR_OFFSET, status);
 		cr = q->tx_dma_cr;
 
 		cr &= ~(XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK);
