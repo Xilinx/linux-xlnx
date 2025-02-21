@@ -35,7 +35,7 @@
 #define XEOE_UDP_GRO_SR_OFFSET(chan_id)		(0x04 + ((chan_id) - 1) * 0x40)
 #define XEOE_UDP_GRO_SRC_IP_OFFSET(chan_id)	(0x08 + ((chan_id) - 1) * 0x40)
 #define XEOE_UDP_GRO_DST_IP_OFFSET(chan_id)	(0x0C + ((chan_id) - 1) * 0x40)
-#define XEOE_UDP_GRO_PORT__OFFSET(chan_id)	(0x10 + ((chan_id) - 1) * 0x40)
+#define XEOE_UDP_GRO_PORT_OFFSET(chan_id)	(0x10 + ((chan_id) - 1) * 0x40)
 #define XEOE_UDP_GRO_FRAG		0x10000000
 #define XEOE_UDP_GRO_TUPLE		BIT(3)
 #define XEOE_UDP_GRO_CHKSUM		BIT(1)
