@@ -1,12 +1,14 @@
 What:		/sys/devices/system/edac/versal_xilsem/xsem_scan_control
-Date:		Jan, 2023
+Date:		Feb, 2025
 Contact:	rama.devi.veggalam@amd.com
 Description:
 		It is a read/write file.
 		Writing to this file causes the software to initiate a
 		request to the firmware for doing requested scan operation in
-		Configuration RAM (CRAM) or NPI of Versal devices. User needs
-		to provide scan operation id (init, start, stop) details.
+		Configuration RAM (CRAM) or NPI of Versal mono/SSIT devices.
+		User needs to provide scan operation id (init, start, stop) and
+		SLR id (Versal SSIT device) details. For Versal mono devices,
+		the SLR id should be 0.
 		The scan operation id values are as given below:
 		1 - Initialize the scan
 		2 - Start CRAM scan
@@ -16,7 +18,7 @@ Description:
 		7 - Inject NPI error in first descriptor
 
 		When read, it shows the current scan status with error code.
-		The format is <0x1030 | operation Id> <error code>.
+		The format is <0x1030 | operation Id> <error code> <Slr ID>
 		The different error codes are as given below:
 		==========	=====
 		Error Code	Cause
@@ -33,17 +35,19 @@ Description:
 		==========	=====
 
 What:		/sys/devices/system/edac/versal_xilsem/xsem_cram_injecterr
-Date:		Jan, 2023
+Date:		Feb, 2025
 Contact:	rama.devi.veggalam@amd.com
 Description:
 		It is a read/write file.
 		Writing to this file causes the software to initiate a
 		request to the firmware for doing error injection in
-		Configuration RAM (CRAM) of Versal devices. User needs
-		to provide the location details of CRAM
-		(frame, qword, bit number, row number) to inject the error.
+		Configuration RAM (CRAM) of Versal mono/SSIT devices.
+		User needs to provide the location details of CRAM
+		(frame, qword, bit number, row number) and
+		SLR id (Versal SSIT device) details to inject the error.
+		For Versal mono devices, the SLR id should be 0..
 		When read, it shows the current error injection status. The
-		format is <header> <error code>.
+		format is <header> <error code> <Slr ID>
 		Example: 0x10304 0
 		The different error codes are as given below:
 		==========	=====
@@ -63,7 +67,7 @@ Description:
 		==========	=====
 
 What:		/sys/devices/system/edac/versal_xilsem/xsem_cram_framecc_read
-Date:		Jan, 2023
+Date:		Feb, 2025
 Contact:	rama.devi.veggalam@amd.com
 Description:
 		It is a read/write file.
@@ -71,13 +75,18 @@ Description:
 		request to the firmware for reading frame ECC values in
 		Configuration RAM (CRAM) of Versal devices. User needs
 		to provide the location details of CRAM
-		(frame, row number) to read the ECC values.
+		(frame, row number, SLR id in SSIT device) to read the ECC values.
+		For Versal mono devices, SLR id should be 0.
 		When read, it shows the ECC values for the requested frame.
-		The format is <status> <header> <ECC_0> <ECC_1>
-		Example: 0 0x1030A 0x363B1A 0x8A0200
+		The format is <header> <ECC_0> <ECC_1> <status>
+		Example:
+		Read Frame ECC Cmd: [0x3030a]
+		Frame ECC Word_0: [0x52f245]
+		Frame ECC Word_1: [0x7c5a6b]
+		Cmd Status: [0x0]
 
 What:		/sys/devices/system/edac/versal_xilsem/xsem_read_config
-Date:		Jan, 2023
+Date:		Feb, 2025
 Contact:	rama.devi.veggalam@amd.com
 Description:
 		It is a read/write file.
@@ -85,10 +94,13 @@ Description:
 		request to the firmware for reading Xilsem configuration.
 		When read, it shows the CRAM and NPI scan configuration.
 		The format is <status> <header> <CRAM config> <NPI config>
-		Example: 0 0x1030A 0x26 0x5016
+		Example: Read Config Cmd: [0x30309]
+		CRAM Scan Config: [0x2e]
+		NPI Scan Config: [0x5016]
+		Cmd Status: [0x0]
 
 What:		/sys/devices/system/edac/versal_xilsem/xsem_read_status
-Date:		Jan, 2023
+Date:		Feb, 2025
 Contact:	rama.devi.veggalam@amd.com
 Description:
 		It is a read/write file.
@@ -102,3 +114,87 @@ Description:
 		Example: 0x10005 0
 		For NPI: <status> <scan count> <heartbeat count>
 		Example: 0xA01 0x10 0x1
+
+What:		/sys/devices/system/edac/versal_xilsem/xsem_cram_ssit_getcrc
+Date:		Feb, 2025
+Contact:	rama.devi.veggalam@amd.com
+Description:
+		It is a read/write file.
+		Writing to this file causes the software to initiate a
+		request to read CRC of a row in CRAM. User needs to provide
+		the row number and SLR id (Versal SSIT device) for which CRC
+		to be read. For Versal mono devices, SLR id should be 0.
+		When read, it shows the CRC of the requested row.
+		The format is: <Header> <CRC Word 0 to 3> <status>
+		Example: Read CRC Cmd:[0x1030c]
+		CRC_Word 0:[0x0]
+		CRC_Word 1:[0x1f72d881]
+		CRC_Word 2:[0x0]
+		CRC_Word 3:[0x0]
+		Cmd status: [0x0]
+
+What:		/sys/devices/system/edac/versal_xilsem/xsem_read_ssit_status
+Date:		Feb, 2025
+Contact:	rama.devi.veggalam@amd.com
+Description:
+		It is a read/write file.
+		Writing to this file causes the software to initiate a
+		request to read CRAM and NPI scan status information in a given SLR.
+		User needs to provide SLR id in Versal SSIT device for which
+		XilSEM status to be read. When read, it shows
+		the XilSEM status of the requested SLR.
+		The format is: <Header> <SLR id> <NPI status info> <CRAM status info>
+		Example: Read SLR Status Cmd:[0x1030d]
+		SLR ID:[0x3]
+		NPI status:[0xa01]
+		NPI scan count:[0x413]
+		NPI Heartbeat count:[0x1150c]
+		NPI scan skip count 0 :[0x0]
+		NPI scan skip count 1 :[0x0]
+		NPI scan skip count 2 :[0x0]
+		NPI scan skip count 3 :[0x0]
+		NPI scan skip count 4 :[0x0]
+		NPI scan skip count 5 :[0x0]
+		NPI scan skip count 6 :[0x0]
+		NPI scan skip count 7 :[0x0]
+		NPI error info 0 :[0x0]
+		NPI error info 1 :[0x0]
+		CRAM status:[0x10005]
+		Error Location High 0: [0x0]
+		Error Location Low 0: [0x0]
+		Error Location High 1: [0x0]
+		Error Location Low 1: [0x0]
+		Error Location High 2: [0x0]
+		Error Location Low 2: [0x0]
+		Error Location High 3: [0x0]
+		Error Location Low 3: [0x0]
+		Error Location High 4: [0x0]
+		Error Location Low 4: [0x0]
+		Error Location High 5: [0x0]
+		Error Location Low 5: [0x0]
+		Error Location High 6: [0x0]
+		Error Location Low 6: [0x0]
+		CRAM scan CE count:[0x0]
+
+What:		/sys/devices/system/edac/versal_xilsem/xsem_total_cframes_ssit
+Date:		Feb, 2025
+Contact:	rama.devi.veggalam@amd.com
+Description:
+		It is a read/write file.
+		Writing to this file causes the software to initiate a
+		request to read total cframes in a row in CRAM.
+		User needs to provide row number and SLR id in
+		Versal SSIT device for which total frames to be read.
+		When read, it shows total number of Cframes for the requested SLR.
+		The format is: <Header> <SLR id> <row> <total frames> <Cmd status>
+		Example: Read Total Frames Cmd : [0x4030e]
+		SLR ID : [0x3]
+		Row Index: [0x0]
+		Type[0] frame count: [38752]
+		Type[1] frame count: [262144]
+		Type[2] frame count: [20480]
+		Type[3] frame count: [16]
+		Type[4] frame count: [8]
+		Type[5] frame count: [0]
+		Type[6] frame count: [83]
+		Cmd Status: [0x0]
