@@ -2741,6 +2741,31 @@ err_tx_irq:
 	return ret;
 }
 
+static void axienet_eoe_set_gro_address(struct axienet_local *lp)
+{
+	struct in_ifaddr *ifa = NULL;
+	struct in_device *in_dev;
+	struct axienet_dma_q *q;
+	int i;
+
+	in_dev = __in_dev_get_rcu(lp->ndev);
+	if (in_dev)
+		ifa = rcu_dereference((in_dev)->ifa_list);
+
+	if (!ifa) {
+		netdev_dbg(lp->ndev, "IP address not assigned\n");
+		return;
+	}
+
+	for_each_rx_dma_queue(lp, i) {
+		q = lp->dq[i];
+		if (axienet_eoe_is_channel_gro(lp, q))
+			axienet_eoe_iow(lp,
+					XEOE_UDP_GRO_DST_IP_OFFSET(q->chan_id),
+					ntohl(ifa->ifa_address));
+	}
+}
+
 /**
  * axienet_open - Driver open routine.
  * @ndev:	Pointer to net_device structure
@@ -2931,6 +2956,9 @@ static int axienet_open(struct net_device *ndev)
 		if (ret)
 			goto err_phy;
 	}
+
+	if (lp->eoe_features & RX_HW_UDP_GRO)
+		axienet_eoe_set_gro_address(lp);
 
 	netif_tx_start_all_queues(ndev);
 	return 0;
