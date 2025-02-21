@@ -361,7 +361,7 @@ int axienet_eoe_add_udp_port_register(struct net_device *ndev, struct ethtool_rx
 			| XEOE_UDP_GRO_TUPLE | XEOE_UDP_GRO_CHKSUM));
 
 	/* Configure Port Number */
-	axienet_eoe_iow(lp, XEOE_UDP_GRO_PORT__OFFSET(chan_id),
+	axienet_eoe_iow(lp, XEOE_UDP_GRO_PORT_OFFSET(chan_id),
 			((udp_port << XEOE_UDP_GRO_DSTPORT_SHIFT) & XEOE_UDP_GRO_DST_PORT_MASK));
 
 	/* Check Status whether GRO Channel is busy */
