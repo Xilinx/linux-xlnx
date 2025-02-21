@@ -62,6 +62,21 @@ struct xilinx_rsa_req_ctx {
 	enum xilinx_akcipher_op op;
 };
 
+static int xilinx_fallback_check(const struct xilinx_rsa_tfm_ctx *tfm_ctx,
+				 const struct akcipher_request *areq)
+{
+	/* Return 1 if fallback to crypto engine for performing requested operation */
+	if (tfm_ctx->n_len != XSECURE_RSA_2048_KEY_SIZE &&
+	    tfm_ctx->n_len != XSECURE_RSA_3072_KEY_SIZE &&
+	    tfm_ctx->n_len != XSECURE_RSA_4096_KEY_SIZE)
+		return 1;
+
+	if (areq->src_len > areq->dst_len)
+		return 1;
+
+	return 0;
+}
+
 static int zynqmp_rsa_xcrypt(struct akcipher_request *req)
 {
 	struct xilinx_rsa_req_ctx *rq_ctx = akcipher_request_ctx(req);
@@ -178,11 +193,23 @@ static int xilinx_rsa_decrypt(struct akcipher_request *req)
 {
 	struct xilinx_rsa_req_ctx *rctx = akcipher_request_ctx(req);
 	struct crypto_akcipher *tfm = crypto_akcipher_reqtfm(req);
+	const struct xilinx_rsa_tfm_ctx *tfm_ctx = akcipher_tfm_ctx(tfm);
 	struct akcipher_alg *alg = crypto_akcipher_alg(tfm);
 	struct xilinx_rsa_drv_ctx *drv_ctx;
+	int need_fallback;
+
+	drv_ctx = container_of(alg, struct xilinx_rsa_drv_ctx, alg.base);
+	need_fallback = xilinx_fallback_check(tfm_ctx, req);
+	if (need_fallback) {
+		akcipher_request_set_tfm(req, tfm_ctx->fbk_cipher);
+		akcipher_request_set_callback(req, req->base.flags,
+					      NULL, NULL);
+		akcipher_request_set_crypt(req, req->src, req->dst,
+					   req->src_len, req->dst_len);
+		return crypto_akcipher_decrypt(req);
+	}
 
 	rctx->op = XILINX_RSA_DECRYPT;
-	drv_ctx = container_of(alg, struct xilinx_rsa_drv_ctx, alg.base);
 
 	return crypto_transfer_akcipher_request_to_engine(drv_ctx->engine, req);
 }
@@ -191,11 +218,23 @@ static int xilinx_rsa_encrypt(struct akcipher_request *req)
 {
 	struct xilinx_rsa_req_ctx *rctx = akcipher_request_ctx(req);
 	struct crypto_akcipher *tfm = crypto_akcipher_reqtfm(req);
+	const struct xilinx_rsa_tfm_ctx *tfm_ctx = akcipher_tfm_ctx(tfm);
 	struct akcipher_alg *alg = crypto_akcipher_alg(tfm);
 	struct xilinx_rsa_drv_ctx *drv_ctx;
+	int need_fallback;
+
+	drv_ctx = container_of(alg, struct xilinx_rsa_drv_ctx, alg.base);
+	need_fallback = xilinx_fallback_check(tfm_ctx, req);
+	if (need_fallback) {
+		akcipher_request_set_tfm(req, tfm_ctx->fbk_cipher);
+		akcipher_request_set_callback(req, req->base.flags,
+					      NULL, NULL);
+		akcipher_request_set_crypt(req, req->src, req->dst,
+					   req->src_len, req->dst_len);
+		return crypto_akcipher_encrypt(req);
+	}
 
 	rctx->op = XILINX_RSA_ENCRYPT;
-	drv_ctx = container_of(alg, struct xilinx_rsa_drv_ctx, alg.base);
 
 	return crypto_transfer_akcipher_request_to_engine(drv_ctx->engine, req);
 }
@@ -325,57 +364,17 @@ static int xilinx_rsa_set_pub_key(struct crypto_akcipher *tfm, const void *key,
 	return xilinx_rsa_setkey(tfm, key, keylen, false);
 }
 
-static int xilinx_fallback_check(const struct xilinx_rsa_tfm_ctx *tfm_ctx,
-				 const struct akcipher_request *areq)
-{
-	/* Return 1 if fallback to crypto engine for performing requested operation */
-	if (tfm_ctx->n_len != XSECURE_RSA_2048_KEY_SIZE &&
-	    tfm_ctx->n_len != XSECURE_RSA_3072_KEY_SIZE &&
-	    tfm_ctx->n_len != XSECURE_RSA_4096_KEY_SIZE)
-		return 1;
-
-	if (areq->src_len > areq->dst_len)
-		return 1;
-
-	return 0;
-}
-
 static int handle_rsa_req(struct crypto_engine *engine,
 			  void *req)
 {
-	struct akcipher_request *areq = container_of(req,
-						     struct akcipher_request,
-						     base);
 	struct crypto_akcipher *akcipher = crypto_akcipher_reqtfm(req);
 	struct akcipher_alg *cipher_alg = crypto_akcipher_alg(akcipher);
-	const struct xilinx_rsa_tfm_ctx *tfm_ctx = akcipher_tfm_ctx(akcipher);
-	const struct xilinx_rsa_req_ctx *rq_ctx = akcipher_request_ctx(areq);
-	struct akcipher_request *subreq = akcipher_request_ctx(req);
 	struct xilinx_rsa_drv_ctx *drv_ctx;
-	int need_fallback, err;
+	int err;
 
 	drv_ctx = container_of(cipher_alg, struct xilinx_rsa_drv_ctx, alg.base);
-
-	need_fallback = xilinx_fallback_check(tfm_ctx, areq);
-	if (need_fallback) {
-		akcipher_request_set_tfm(subreq, tfm_ctx->fbk_cipher);
-
-		akcipher_request_set_callback(subreq, areq->base.flags,
-					      NULL, NULL);
-		akcipher_request_set_crypt(subreq, areq->src, areq->dst,
-					   areq->src_len, areq->dst_len);
-
-		if (rq_ctx->op == XILINX_RSA_ENCRYPT)
-			err = crypto_akcipher_encrypt(subreq);
-		else if (rq_ctx->op == XILINX_RSA_DECRYPT)
-			err = crypto_akcipher_decrypt(subreq);
-		else
-			err = -EOPNOTSUPP;
-	} else {
-		err = drv_ctx->xilinx_rsa_xcrypt(areq);
-	}
-
-	crypto_finalize_akcipher_request(engine, areq, err);
+	err = drv_ctx->xilinx_rsa_xcrypt(req);
+	crypto_finalize_akcipher_request(engine, req, err);
 
 	return 0;
 }
@@ -392,9 +391,7 @@ static int xilinx_rsa_init(struct crypto_akcipher *tfm)
 	tfm_ctx->d_buf = NULL;
 	tfm_ctx->e_buf = NULL;
 	tfm_ctx->n_buf = NULL;
-	tfm_ctx->fbk_cipher = crypto_alloc_akcipher(drv_ctx->alg.base.base.cra_name,
-						    0,
-						    CRYPTO_ALG_NEED_FALLBACK);
+	tfm_ctx->fbk_cipher = crypto_alloc_akcipher("rsa-generic", 0, 0);
 	if (IS_ERR(tfm_ctx->fbk_cipher)) {
 		pr_err("%s() Error: failed to allocate fallback for %s\n",
 		       __func__, drv_ctx->alg.base.base.cra_name);
