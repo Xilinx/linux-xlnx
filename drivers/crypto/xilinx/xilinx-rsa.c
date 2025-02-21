@@ -381,8 +381,7 @@ static int handle_rsa_req(struct crypto_engine *engine,
 
 static int xilinx_rsa_init(struct crypto_akcipher *tfm)
 {
-	struct xilinx_rsa_tfm_ctx *tfm_ctx =
-		(struct xilinx_rsa_tfm_ctx *)akcipher_tfm_ctx(tfm);
+	struct xilinx_rsa_tfm_ctx *tfm_ctx = akcipher_tfm_ctx(tfm);
 	struct akcipher_alg *cipher_alg = crypto_akcipher_alg(tfm);
 	struct xilinx_rsa_drv_ctx *drv_ctx;
 
@@ -407,8 +406,7 @@ static int xilinx_rsa_init(struct crypto_akcipher *tfm)
 
 static void xilinx_rsa_exit(struct crypto_akcipher *tfm)
 {
-	struct xilinx_rsa_tfm_ctx *tfm_ctx =
-			(struct xilinx_rsa_tfm_ctx *)akcipher_tfm_ctx(tfm);
+	struct xilinx_rsa_tfm_ctx *tfm_ctx = akcipher_tfm_ctx(tfm);
 
 	xilinx_rsa_free_key_bufs(tfm_ctx);
 
