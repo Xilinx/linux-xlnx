@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2022 - 2023, Advanced Micro Devices, Inc.
+ * Copyright (C) 2022 - 2025, Advanced Micro Devices, Inc.
  */
 
 #include <linux/edac.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/io.h>
+#include <linux/dma-mapping.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/sizes.h>
@@ -22,7 +24,45 @@
 #define EDAC_DEVICE	"Xilsem"
 
 /* XilSem CE Error log count */
-#define XILSEM_MAX_CE_LOG_CNT	0x07
+#define XILSEM_MAX_CE_LOG_CNT	7
+
+/** Maximum CRAM error register count */
+#define MAX_CRAMERR_REG_CNT		14
+/** Maximum NPI slave skip count */
+#define MAX_NPI_SLV_SKIP_CNT	8
+/** Maximum NPI Error info count */
+#define MAX_NPI_ERR_INFO_CNT	2
+
+/* Maximum SLR count */
+#define MAX_SLR_ID	3
+
+/** Maximum number of cframe types  */
+#define CFRAME_MAX_TYPE	7
+
+/** Mask for getting Type_0, Type_4 frames */
+#define CFRAME_TYPE_0_4_MASK	GENMASK(19, 0)
+
+/** Low mask, High mask for getting Type_1, Type_5 frames */
+#define CFRAME_TYPE_1_5_MASK_L	GENMASK(39, 20)
+#define CFRAME_TYPE_1_5_MASK_H	GENMASK(7, 0)
+
+/** Shift for getting Type_1, Type_5 frames */
+#define CFRAME_TYPE_1_5_SHIFT_R		0x20
+#define CFRAME_TYPE_1_5_SHIFT_L		0x12
+
+/** Mask for getting Type_2, Type_6 frames */
+#define CFRAME_TYPE_2_6_MASK	GENMASK(27, 8)
+
+/** Shift for getting Type_2, Type_6 frames */
+#define CFRAME_TYPE_2_6_SHIFT_R		0x8
+
+/** Low mask, high mask for getting Type_3 frames */
+#define CFRAME_TYPE_3_MASK_L		GENMASK(31, 28)
+#define CFRAME_TYPE_3_MASK_H		GENMASK(15, 0)
+
+/** Shift for getting Type_3 */
+#define CFRAME_TYPE_3_SHIFT_R	0x28
+#define CFRAME_TYPE_3_SHIFT_L	0x4
 
 /* XilSem_CRAM scan error info registers */
 #define CRAM_STS_INFO_OFFSET	0x34
@@ -93,33 +133,65 @@ struct xsem_error_status {
 };
 
 /**
+ * struct xsem_ssit_status - SSIT status information
+ * @npi_status: NPI Status
+ * @slvskpcnt: NPI Slave skip count
+ * @scancnt: NPI Scan count
+ * @hbcnt: NPI Heartbeat count
+ * @err_info: NPI Error Information
+ * @cram_status: Cram Status
+ * @err_addr: Address of corrected error location
+ * @errcnt: Corrected Error count.
+ */
+struct xsem_ssit_status {
+	u32 npi_status;
+	u32 slvskpcnt[MAX_NPI_SLV_SKIP_CNT];
+	u32 scancnt;
+	u32 hbcnt;
+	u32 err_info[MAX_NPI_ERR_INFO_CNT];
+	u32 cram_status;
+	u32 err_addr[MAX_CRAMERR_REG_CNT];
+	u32 errcnt;
+};
+
+/**
  * struct xsem_edac_priv - Xilsem private instance data
  * @baseaddr:	Base address of the XilSem PLM RTCA module
- * @scan_ctrl_status:	Buffer for scan ctrl commands
+ * @cram_get_frames_status:	Buffer for get total frames command
+ * @cram_get_crc_status:	Buffer for CRC read command
+ * @xilsem_ssit_status:	Buffer for SLR status command
  * @cram_errinj_status:	Buffer for CRAM error injection
+ * @cram_total_frames:	Buffer for total cframes data
+ * @scan_ctrl_status:	Buffer for scan ctrl commands
  * @cram_frame_ecc:	Buffer for CRAM frame ECC
  * @xilsem_status:	Buffer for CRAM & NPI status
- * @sw_event_node_id: Error event node Id
  * @xilsem_cfg:	Buffer for CRAM & NPI configuration
+ * @sw_event_node_id:	Error event node Id
  * @cram_ce_mask: Event bit mask for CRAM correctable error
  * @cram_ue_mask: Event bit mask for CRAM uncorrectable error
  * @npi_ue_mask: Event bit mask for NPI uncorrectable error
  * @ce_cnt:	Correctable Error count
  * @ue_cnt:	Uncorrectable Error count
+ * @slr_info:	Pointer to get SSIT status information
  */
 struct xsem_edac_priv {
 	void __iomem *baseaddr;
-	u32 scan_ctrl_status[2];
-	u32 cram_errinj_status[2];
+	u32 cram_get_frames_status[4];
+	u32 cram_get_crc_status[6];
+	u32 xilsem_ssit_status[4];
+	u32 cram_errinj_status[3];
+	u32 cram_total_frames[7];
+	u32 scan_ctrl_status[7];
 	u32 cram_frame_ecc[4];
 	u32 xilsem_status[4];
+	u32 xilsem_cfg[6];
 	u32 sw_event_node_id;
-	u32 xilsem_cfg[4];
 	u32 cram_ce_mask;
 	u32 cram_ue_mask;
 	u32 npi_ue_mask;
 	u32 ce_cnt;
 	u32 ue_cnt;
+	struct xsem_ssit_status *slr_info;
 };
 
 /**
@@ -135,8 +207,11 @@ static ssize_t xsem_scan_control_show(struct edac_device_ctl_info
 {
 	struct xsem_edac_priv *priv = dci->pvt_info;
 
-	return sprintf(data, "[0x%x][0x%x]\n\r",
-			priv->scan_ctrl_status[0], priv->scan_ctrl_status[1]);
+	return sprintf(data, "[0x%x][0x%x][0x%x][0x%x][0x%x][0x%x][0x%x]\n\r",
+			priv->scan_ctrl_status[0], priv->scan_ctrl_status[0],
+			priv->scan_ctrl_status[1], priv->scan_ctrl_status[2],
+			priv->scan_ctrl_status[3], priv->scan_ctrl_status[4],
+			priv->scan_ctrl_status[5]);
 }
 
 /**
@@ -148,9 +223,9 @@ static ssize_t xsem_scan_control_show(struct edac_device_ctl_info
  * User-space interface for doing Xilsem scan operations
  *
  * To control scan operations
- * echo <command> > /sys/devices/system/edac/versal_xilsem/xsem_scan_control
+ * echo <command> <Slr_id> > /sys/devices/system/edac/versal_xilsem/xsem_scan_control
  * Usage:
- * echo 1 > /sys/devices/system/edac/versal_xilsem/xsem_scan_control
+ * echo 1 0 /sys/devices/system/edac/versal_xilsem/xsem_scan_control
  *
  * Set scan control (init, start, stop) operations
  * Return: count argument if request succeeds, else error code
@@ -159,20 +234,57 @@ static ssize_t xsem_scan_control_store(struct edac_device_ctl_info *dci,
 				       const char *data, size_t count)
 {
 	struct xsem_edac_priv *priv = dci->pvt_info;
+	char *kern_buff, *inbuf, *tok;
 	u32 cmd;
+	u32 slrid;
 	int ret;
+
+	kern_buff = kzalloc(count, GFP_KERNEL);
+	if (!kern_buff)
+		return -ENOMEM;
+	strscpy(kern_buff, data, count);
+
+	inbuf = kern_buff;
 
 	if (!data)
 		return -EFAULT;
 
-	if (kstrtouint(data, 0, &cmd))
+	/* Read Scan command */
+	tok = strsep(&inbuf, " ");
+	if (!tok) {
+		ret = -EINVAL;
+		goto err;
+	}
+
+	ret = kstrtouint(tok, 0, &cmd);
+	if (ret) {
+		ret = -EINVAL;
+		goto err;
+	}
+
+	/* Read SLR number */
+	tok = strsep(&inbuf, " ");
+	if (!tok) {
+		ret = -EINVAL;
+		goto err;
+	}
+
+	ret = kstrtouint(tok, 0, &slrid);
+	if (ret) {
+		ret = -EINVAL;
+		goto err;
+	}
+
+	if (cmd < CRAM_INIT_SCAN || cmd > NPI_ERR_INJECT || cmd == CRAM_ERR_INJECT)
 		return -EINVAL;
 
-	if (cmd < CRAM_INIT_SCAN || cmd > NPI_ERR_INJECT ||
-	    cmd == CRAM_ERR_INJECT)
+	if (slrid > MAX_SLR_ID)
 		return -EINVAL;
 
-	ret = zynqmp_pm_xilsem_cntrl_ops(cmd, priv->scan_ctrl_status);
+	ret = zynqmp_pm_xilsem_cntrl_ops(cmd, slrid, priv->scan_ctrl_status);
+err:
+	kfree(kern_buff);
+
 	if (ret)
 		return ret;
 
@@ -191,8 +303,8 @@ static ssize_t xsem_cram_injecterr_show(struct edac_device_ctl_info *dci, char *
 {
 	struct xsem_edac_priv *priv = dci->pvt_info;
 
-	return sprintf(data, "[0x%x][0x%x]\n\r", priv->cram_errinj_status[0],
-				   priv->cram_errinj_status[1]);
+	return sprintf(data, "[0x%x][0x%x][0x%x]]\n\r", priv->cram_errinj_status[0],
+					priv->cram_errinj_status[1], priv->cram_errinj_status[2]);
 }
 
 /**
@@ -204,9 +316,10 @@ static ssize_t xsem_cram_injecterr_show(struct edac_device_ctl_info *dci, char *
  * User-space interface for doing CRAM error injection
  *
  * To inject error
- * echo <frame> <qword> <bit> <row> > /sys/devices/system/edac/versal_xilsem/xsem_cram_injecterr
+ * echo <frame> <qword> <bit> <row> <slr> > /sys/devices/system/edac/versal_xilsem
+ * /xsem_cram_injecterr
  * Usage:
- * echo 1 2 2 1 > /sys/devices/system/edac/versal_xilsem/xsem_cram_injecterr
+ * echo 1 2 2 1 0 > /sys/devices/system/edac/versal_xilsem/xsem_cram_injecterr
  *
  * Start error injection
  * Return: count argument if request succeeds, else error code
@@ -216,7 +329,7 @@ static ssize_t xsem_cram_injecterr_store(struct edac_device_ctl_info *dci,
 {
 	struct xsem_edac_priv *priv = dci->pvt_info;
 	char *kern_buff, *inbuf, *tok;
-	u32 row, frame, qword, bitloc;
+	u32 row, frame, qword, bitloc, slrid;
 	int ret;
 
 	kern_buff = kzalloc(count, GFP_KERNEL);
@@ -279,7 +392,23 @@ static ssize_t xsem_cram_injecterr_store(struct edac_device_ctl_info *dci,
 		goto err;
 	}
 
-	ret = zynqmp_pm_xilsem_cram_errinj(frame, qword, bitloc, row,
+	/* Read slr id */
+	tok = strsep(&inbuf, " ");
+	if (!tok) {
+		ret = -EFAULT;
+		goto err;
+	}
+
+	ret = kstrtouint(tok, 0, &slrid);
+	if (ret) {
+		ret = -EFAULT;
+		goto err;
+	}
+
+	if (slrid > MAX_SLR_ID)
+		return -EINVAL;
+
+	ret = zynqmp_pm_xilsem_cram_errinj(slrid, frame, qword, bitloc, row,
 					   priv->cram_errinj_status);
 err:
 	kfree(kern_buff);
@@ -302,10 +431,14 @@ static ssize_t xsem_cram_framecc_read_show(struct edac_device_ctl_info *dci,
 					   char *data)
 {
 	struct xsem_edac_priv *priv = dci->pvt_info;
+	int offset = 0;
 
-	return sprintf(data, "[0x%x][0x%x][0x%x][0x%x]\n\r",
-		       priv->cram_frame_ecc[0], priv->cram_frame_ecc[1],
-		       priv->cram_frame_ecc[2], priv->cram_frame_ecc[3]);
+	offset += sprintf(data + offset, "Read Frame ECC Cmd: [0x%x]\n\r", priv->cram_frame_ecc[0]);
+	offset += sprintf(data + offset, "Frame ECC Word_0: [0x%x]\n\r", priv->cram_frame_ecc[1]);
+	offset += sprintf(data + offset, "Frame ECC Word_1: [0x%x]\n\r", priv->cram_frame_ecc[2]);
+	offset += sprintf(data + offset, "Cmd Status: [0x%x]\n\r", priv->cram_frame_ecc[3]);
+
+	return offset;
 }
 
 /**
@@ -317,9 +450,9 @@ static ssize_t xsem_cram_framecc_read_show(struct edac_device_ctl_info *dci,
  * User-space interface for reading CRAM frame ECC
  *
  * To read ecc
- * echo <frame> <row> > /sys/devices/system/edac/versal_xilsem/xsem_cram_framecc_read
+ * echo <frame> <row> <slr id> > /sys/devices/system/edac/versal_xilsem/xsem_cram_framecc_read
  * Usage:
- * echo 1 2 > /sys/devices/system/edac/versal_xilsem/xsem_cram_framecc_read
+ * echo 1 2 0 > /sys/devices/system/edac/versal_xilsem/xsem_cram_framecc_read
  *
  * Read CRAM Frame ECC
  * Return: count argument if request succeeds, else error code
@@ -329,7 +462,7 @@ static ssize_t xsem_cram_framecc_read_store(struct edac_device_ctl_info *dci,
 {
 	struct xsem_edac_priv *priv = dci->pvt_info;
 	char *kern_buff, *inbuf, *tok;
-	u32 frameaddr, row;
+	u32 frameaddr, row, slrid;
 	int ret;
 
 	kern_buff = kzalloc(count, GFP_KERNEL);
@@ -366,13 +499,255 @@ static ssize_t xsem_cram_framecc_read_store(struct edac_device_ctl_info *dci,
 		goto err;
 	}
 
-	ret = zynqmp_pm_xilsem_cram_readecc(frameaddr, row, priv->cram_frame_ecc);
+	/* Read slr id */
+	tok = strsep(&inbuf, " ");
+	if (!tok) {
+		ret = -EFAULT;
+		goto err;
+	}
+
+	ret = kstrtouint(tok, 0, &slrid);
+	if (ret) {
+		ret = -EFAULT;
+		goto err;
+	}
+	if (slrid  >  MAX_SLR_ID)
+		return -EINVAL;
+
+	ret = zynqmp_pm_xilsem_cram_readecc(slrid, frameaddr, row, priv->cram_frame_ecc);
 err:
 	kfree(kern_buff);
 
 	if (ret)
 		return ret;
 
+	return count;
+}
+
+/**
+ * xsem_cram_ssit_getcrc_show - Shows CRAM Row CRC
+ * @dci:	Pointer to the edac device struct
+ * @data:	Pointer to user data
+ *
+ * Shows CRAM Row CRC value
+ * Return: Number of bytes copied.
+ */
+static ssize_t xsem_cram_ssit_getcrc_show(struct edac_device_ctl_info *dci, char *data)
+{
+	struct xsem_edac_priv *priv = dci->pvt_info;
+	int offset = 0;
+	u32 id;
+
+	offset += sprintf(data + offset, "Read CRC Cmd:[0x%x]\n\r", priv->cram_get_crc_status[0]);
+	for (id = 0; id < 4; id++)
+		offset += sprintf(data + offset, "CRC_Word %d:[0x%x]\n\r", id,
+						  priv->cram_get_crc_status[id + 1]);
+	offset += sprintf(data + offset, "Cmd status: [0x%x]\n\r", priv->cram_get_crc_status[5]);
+
+	return offset;
+}
+
+/**
+ * xsem_cram_ssit_getcrc_store - Read CRAM row CRC
+ * @dci:	Pointer to the edac device struct
+ * @data:	Pointer to user data
+ * @count:	read the size bytes from buffer
+ *
+ * User-space interface for reading CRAM frame ECC
+ *
+ * To read ecc
+ * echo <row> <slr id> > /sys/devices/system/edac/versal_xilsem/xsem_cram_ssit_getcrc
+ * Usage:
+ * echo 1 0 > /sys/devices/system/edac/versal_xilsem/xsem_cram_ssit_getcrc
+ *
+ * Read CRAM Row CRC
+ * Return: count argument if request succeeds, else error code
+ */
+static ssize_t xsem_cram_ssit_getcrc_store(struct edac_device_ctl_info *dci, const char *data,
+					   size_t count)
+{
+	struct xsem_edac_priv *priv = dci->pvt_info;
+	char *kern_buff, *inbuf, *tok;
+	u32 rowindex, slrid;
+	int ret;
+
+	kern_buff = kzalloc(count, GFP_KERNEL);
+	if (!kern_buff)
+		return -ENOMEM;
+
+	strscpy(kern_buff, data, count);
+
+	inbuf = kern_buff;
+
+	/* Read Row number */
+	tok = strsep(&inbuf, " ");
+	if (!tok) {
+		ret = -EFAULT;
+		goto err;
+	}
+
+	ret = kstrtouint(tok, 0, &rowindex);
+	if (ret) {
+		ret = -EFAULT;
+		goto err;
+	}
+
+	/* Read SLR Id */
+	tok = strsep(&inbuf, " ");
+	if (!tok) {
+		ret = -EFAULT;
+		goto err;
+	}
+
+	ret = kstrtouint(tok, 0, &slrid);
+	if (ret) {
+		ret = -EFAULT;
+		goto err;
+	}
+
+	if (slrid > MAX_SLR_ID)
+		return -EINVAL;
+
+	ret = zynqmp_pm_xilsem_cram_getcrc(slrid, rowindex, priv->cram_get_crc_status);
+err:
+	kfree(kern_buff);
+
+	if (ret)
+		return ret;
+
+	return count;
+}
+
+/**
+ * xsem_total_cframes_ssit_show - Shows total cframes
+ * @dci:	Pointer to the edac device struct
+ * @data:	Pointer to user data
+ *
+ * Shows CRAM total cframes
+ * Return: Number of bytes copied.
+ */
+static ssize_t xsem_total_cframes_ssit_show(struct edac_device_ctl_info *dci, char *data)
+{
+	struct xsem_edac_priv *priv = dci->pvt_info;
+	u32 temp_buf[CFRAME_MAX_TYPE] = {0};
+	u32 id;
+	int offset = 0;
+
+	for (id = 0; id < CFRAME_MAX_TYPE; id++)
+		temp_buf[id] = priv->cram_total_frames[id];
+
+	priv->cram_total_frames[0]  = (temp_buf[0] & CFRAME_TYPE_0_4_MASK);
+	priv->cram_total_frames[1]  = (temp_buf[0] &
+					CFRAME_TYPE_1_5_MASK_L) >> CFRAME_TYPE_1_5_SHIFT_R;
+	priv->cram_total_frames[1] |= (temp_buf[1] &
+					CFRAME_TYPE_1_5_MASK_H) << CFRAME_TYPE_1_5_SHIFT_L;
+	priv->cram_total_frames[2]  = (temp_buf[1] &
+					CFRAME_TYPE_2_6_MASK) >> CFRAME_TYPE_2_6_SHIFT_R;
+	priv->cram_total_frames[3]  = (temp_buf[1] &
+					CFRAME_TYPE_3_MASK_L) >> CFRAME_TYPE_3_SHIFT_R;
+	priv->cram_total_frames[3] |= (temp_buf[2] &
+					CFRAME_TYPE_3_MASK_H) << CFRAME_TYPE_3_SHIFT_L;
+	priv->cram_total_frames[4]  = (temp_buf[4] & CFRAME_TYPE_0_4_MASK);
+	priv->cram_total_frames[5]  = (temp_buf[4] &
+					CFRAME_TYPE_1_5_MASK_L) >> CFRAME_TYPE_1_5_SHIFT_R;
+	priv->cram_total_frames[5] |= (temp_buf[5] &
+					CFRAME_TYPE_1_5_MASK_H) << CFRAME_TYPE_1_5_SHIFT_L;
+	priv->cram_total_frames[6]  = (temp_buf[5] &
+					CFRAME_TYPE_2_6_MASK) >> CFRAME_TYPE_2_6_SHIFT_R;
+
+	offset += sprintf(data + offset, "Read Total Frames Cmd : [0x%x]\n\r",
+					  priv->cram_get_frames_status[0]);
+	offset += sprintf(data + offset, "SLR ID : [0x%x]\n\r",
+					  priv->cram_get_frames_status[1]);
+	offset += sprintf(data + offset, "Row Index: [0x%x]\n\r",
+					  priv->cram_get_frames_status[2]);
+	for (id = 0; id < CFRAME_MAX_TYPE; id++)
+		offset += sprintf(data + offset, "Type[%d] frame count: [%d]\n\r", id,
+						  priv->cram_total_frames[id]);
+
+	offset += sprintf(data + offset, "Cmd Status: [0x%x]\n\r",
+					  priv->cram_get_frames_status[3]);
+	return offset;
+}
+
+/**
+ * xsem_total_cframes_ssit_store - Read total cframes in CRAM
+ * @dci:	Pointer to the edac device struct
+ * @data:	Pointer to user data
+ * @count:	read the size bytes from buffer
+ *
+ * User-space interface for reading CRAM total frames in ssit device
+ *
+ * To read total frames
+ * echo <row> <slr id> > /sys/devices/system/edac/versal_xilsem/xsem_total_cframes_ssit
+ * Usage:
+ * echo 1 0 > /sys/devices/system/edac/versal_xilsem/xsem_total_cframes_ssit
+ *
+ * Read total cframes in CRAM
+ * Return: count argument if request succeeds, else error code
+ */
+static ssize_t xsem_total_cframes_ssit_store(struct edac_device_ctl_info *dci, const char *data,
+					     size_t count)
+{
+	struct xsem_edac_priv *priv = dci->pvt_info;
+	char *kern_buff, *inbuf, *tok, *kbuf1;
+	dma_addr_t dma_addr = 0;
+	u32 row, slrid, dma_size;
+	int ret;
+
+	kern_buff = kzalloc(count, GFP_KERNEL);
+	if (!kern_buff)
+		return -ENOMEM;
+
+	strscpy(kern_buff, data, count);
+
+	inbuf = kern_buff;
+
+	/* Read Row number */
+	tok = strsep(&inbuf, " ");
+	if (!tok) {
+		ret = -EFAULT;
+		goto err;
+	}
+
+	ret = kstrtouint(tok, 0, &row);
+	if (ret) {
+		ret = -EFAULT;
+		goto err;
+	}
+
+	/* Read slr id */
+	tok = strsep(&inbuf, " ");
+	if (!tok) {
+		ret = -EFAULT;
+		goto err;
+	}
+
+	ret = kstrtouint(tok, 0, &slrid);
+	if (ret) {
+		ret = -EFAULT;
+		goto err;
+	}
+
+	if (slrid > MAX_SLR_ID || row > 4)
+		return -EINVAL;
+
+	dma_size = sizeof(priv->cram_total_frames);
+	kbuf1 = dma_alloc_coherent(dci->dev, dma_size, &dma_addr, GFP_KERNEL);
+	if (!kbuf1)
+		return -ENOMEM;
+	ret = zynqmp_pm_xilsem_cram_ssit_totframes(slrid, row, dma_addr,
+						   priv->cram_get_frames_status);
+	if (ret) {
+		edac_printk(KERN_ERR, EDAC_DEVICE, "ERROR: XilSEM Status PM API failed\n");
+		return ret;
+	}
+
+	memcpy(priv->cram_total_frames, kbuf1, dma_size);
+	dma_free_coherent(dci->dev, dma_size, kbuf1, dma_addr);
+
+err:
+	kfree(kern_buff);
 	return count;
 }
 
@@ -438,6 +813,116 @@ static ssize_t xsem_read_status_store(struct edac_device_ctl_info *dci,
 }
 
 /**
+ * xsem_read_ssit_status_show - Shows CRAM & NPI scan for SSIT device
+ * @dci:	Pointer to the edac device struct
+ * @data:	Pointer to user data
+ *
+ * Shows CRAM & NPI scan status for given SLR
+ * Return: Number of bytes copied.
+ */
+static ssize_t xsem_read_ssit_status_show(struct edac_device_ctl_info *dci, char *data)
+{
+	struct xsem_edac_priv *priv = dci->pvt_info;
+	int offset = 0;
+	int id;
+
+	offset += sprintf(data + offset, "Read SLR Status Cmd:[0x%x]\n\r",
+			  priv->xilsem_ssit_status[0]);
+	offset += sprintf(data + offset, "SLR ID:[0x%x]\n\r", priv->xilsem_ssit_status[1]);
+	offset += sprintf(data + offset, "NPI status:[0x%x]\n\r", priv->slr_info->npi_status);
+	offset += sprintf(data + offset, "NPI scan count:[0x%x]\n\r", priv->slr_info->scancnt);
+	offset += sprintf(data + offset, "NPI Heartbeat count:[0x%x]\n\r", priv->slr_info->hbcnt);
+	for (id = 0; id < MAX_NPI_SLV_SKIP_CNT; id++)
+		offset += sprintf(data + offset, "NPI scan skip count %x :[0x%x]\n\r", id,
+				  priv->slr_info->slvskpcnt[id]);
+
+	for (id = 0; id < MAX_NPI_ERR_INFO_CNT; id++)
+		offset += sprintf(data + offset, "NPI error info %x :[0x%x]\n\r", id,
+				  priv->slr_info->slvskpcnt[id]);
+
+	offset += sprintf(data + offset, "CRAM status:[0x%x]\n\r", priv->slr_info->cram_status);
+
+	for (id = 0U; id < 7; id++) {
+		offset += sprintf(data + offset, "Error Location High %x: [0x%x]\n\r", id,
+				  priv->slr_info->err_addr[(id * 2) + 1]);
+		offset += sprintf(data + offset, "Error Location Low %x: [0x%x]\n\r", id,
+				  priv->slr_info->err_addr[id * 2]);
+	}
+	offset += sprintf(data + offset, "CRAM scan CE count:[0x%x]\n\r", priv->slr_info->errcnt);
+
+	return offset;
+}
+
+/**
+ * xsem_read_ssit_status_store - Read CRAM & NPI scan SSIT status
+ * @dci:	Pointer to the edac device struct
+ * @data:	Pointer to user data
+ * @count:	read the size bytes from buffer
+ *
+ * User-space interface for reading Xilsem status for SSIT device
+ *
+ * To read status
+ * echo <slrid> > /sys/devices/system/edac/versal_xilsem/xsem_read_ssit_status
+ * Usage:
+ * echo 1 > /sys/devices/system/edac/versal_xilsem/xsem_read_ssit_status
+ *
+ * Read CRAM & NPI scan status for given SLR
+ * Return: count argument if rea succeeds, else error code
+ */
+static ssize_t xsem_read_ssit_status_store(struct edac_device_ctl_info *dci, const char *data,
+					   size_t count)
+{
+	struct xsem_edac_priv *priv = dci->pvt_info;
+	char *kern_buff, *inbuf, *tok, *kbuf1;
+	size_t dma_size;
+	dma_addr_t dma_addr = 0;
+	u32 slrid;
+	int ret;
+
+	kern_buff = kzalloc(count, GFP_KERNEL);
+	if (!kern_buff)
+		return -ENOMEM;
+
+	strscpy(kern_buff, data, count);
+
+	inbuf = kern_buff;
+
+	/* Read SLR ID */
+	tok = strsep(&inbuf, " ");
+	if (!tok) {
+		ret = -EFAULT;
+		goto err;
+	}
+
+	ret = kstrtouint(tok, 0, &slrid);
+	if (ret) {
+		ret = -EFAULT;
+		goto err;
+	}
+
+	if (slrid > MAX_SLR_ID)
+		return -EINVAL;
+
+	dma_size  = sizeof(struct xsem_ssit_status);
+
+	kbuf1 = dma_alloc_coherent(dci->dev, dma_size, &dma_addr, GFP_KERNEL);
+	if (!kbuf1)
+		return -ENOMEM;
+	ret = zynqmp_pm_xilsem_read_ssit_status(slrid, dma_addr, priv->xilsem_ssit_status);
+	if (ret) {
+		edac_printk(KERN_ERR, EDAC_DEVICE, "ERROR: XilSEM Status PM API failed\n");
+		return ret;
+	}
+
+	memcpy(priv->slr_info, kbuf1, dma_size);
+
+	dma_free_coherent(dci->dev, dma_size, kbuf1, dma_addr);
+err:
+	kfree(kern_buff);
+	return count;
+}
+
+/**
  * xsem_read_config_show - Shows CRAM & NPI configuration
  * @dci:	Pointer to the edac device struct
  * @data:	Pointer to user data
@@ -448,10 +933,14 @@ static ssize_t xsem_read_status_store(struct edac_device_ctl_info *dci,
 static ssize_t xsem_read_config_show(struct edac_device_ctl_info *dci, char *data)
 {
 	struct xsem_edac_priv *priv = dci->pvt_info;
+	int offset = 0;
 
-	return sprintf(data, "[0x%x][0x%x][0x%x][0x%x]\n\r",
-		       priv->xilsem_cfg[0], priv->xilsem_cfg[1],
-		       priv->xilsem_cfg[2], priv->xilsem_cfg[3]);
+	offset += sprintf(data + offset, "Read Config Cmd: [0x%x]\n\r", priv->xilsem_cfg[0]);
+	offset += sprintf(data + offset, "CRAM Scan Config: [0x%x]\n\r", priv->xilsem_cfg[1]);
+	offset += sprintf(data + offset, "NPI Scan Config: [0x%x]\n\r", priv->xilsem_cfg[2]);
+	offset += sprintf(data + offset, "Cmd Status: [0x%x]\n\r", priv->xilsem_cfg[3]);
+
+	return offset;
 }
 
 /**
@@ -463,9 +952,9 @@ static ssize_t xsem_read_config_show(struct edac_device_ctl_info *dci, char *dat
  * User-space interface for reading Xilsem configuration
  *
  * To read configuration
- * echo 1 > /sys/devices/system/edac/versal_xilsem/xsem_read_config
+ * echo <slr id> > /sys/devices/system/edac/versal_xilsem/xsem_read_config
  * Usage:
- * echo 1 > /sys/devices/system/edac/versal_xilsem/xsem_read_config
+ * echo 0 > /sys/devices/system/edac/versal_xilsem/xsem_read_config
  *
  * Read CRAM & NPI configuration
  * Return: count argument if request succeeds, else error code
@@ -474,12 +963,38 @@ static ssize_t xsem_read_config_store(struct edac_device_ctl_info *dci,
 				      const char *data, size_t count)
 {
 	struct xsem_edac_priv *priv = dci->pvt_info;
+	char *kern_buff, *inbuf, *tok;
+	u32 slrid;
 	int ret;
 
-	if (!data)
-		return -EFAULT;
+	kern_buff = kzalloc(count, GFP_KERNEL);
+	if (!kern_buff)
+		return -ENOMEM;
 
-	ret = zynqmp_pm_xilsem_read_cfg(priv->xilsem_cfg);
+	strscpy(kern_buff, data, count);
+
+	inbuf = kern_buff;
+
+	/* Read SLR id */
+	tok = strsep(&inbuf, " ");
+	if (!tok) {
+		ret = -EFAULT;
+		goto err;
+	}
+
+	ret = kstrtouint(tok, 0, &slrid);
+	if (ret) {
+		ret = -EFAULT;
+		goto err;
+	}
+
+	if (slrid > MAX_SLR_ID)
+		return -EINVAL;
+
+	ret = zynqmp_pm_xilsem_read_cfg(slrid, priv->xilsem_cfg);
+
+err:
+	kfree(kern_buff);
 
 	if (ret)
 		return ret;
@@ -635,11 +1150,32 @@ static struct edac_dev_sysfs_attribute xsem_edac_sysfs_attributes[] = {
 		.store = xsem_cram_framecc_read_store},
 	{
 		.attr = {
+			.name = "xsem_cram_ssit_getcrc",
+			.mode = (0644)
+		},
+		.show = xsem_cram_ssit_getcrc_show,
+		.store = xsem_cram_ssit_getcrc_store},
+	{
+		.attr = {
 			.name = "xsem_read_status",
 			.mode = (0644)
 		},
 		.show = xsem_read_status_show,
 		.store = xsem_read_status_store},
+	{
+		.attr = {
+			.name = "xsem_read_ssit_status",
+			.mode = (0644)
+		},
+		.show = xsem_read_ssit_status_show,
+		.store = xsem_read_ssit_status_store},
+	{
+		.attr = {
+			.name = "xsem_total_cframes_ssit",
+			.mode = (0644)
+		},
+		.show = xsem_total_cframes_ssit_show,
+		.store = xsem_total_cframes_ssit_store},
 	{
 		.attr = {
 			.name = "xsem_read_config",
@@ -695,6 +1231,13 @@ static int xsem_edac_probe(struct platform_device *pdev)
 	if (rc)
 		goto free_dev_ctl;
 
+	rc = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
+	if (rc < 0) {
+		edac_printk(KERN_ERR, EDAC_DEVICE, "no usable DMA configuration\n");
+		return rc;
+	}
+
+	priv->slr_info = devm_kzalloc(&pdev->dev, sizeof(struct xsem_ssit_status), GFP_KERNEL);
 	rc = zynqmp_pm_get_family_info(&family_code, &device_sub_family_code);
 	if (rc) {
 		if (rc == -ENODEV)
