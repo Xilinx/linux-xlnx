@@ -98,6 +98,11 @@ properties:
     description: Compatible of the FPGA device.
     type: object
 
+  versal-sec-cfg:
+    $ref: /schemas/nvmem/xlnx,versal-sec-cfg.yaml#
+    description: Secure configuration driver
+    type: object
+
   zynqmp-aes:
     $ref: /schemas/crypto/xlnx,zynqmp-aes.yaml#
     description: The ZynqMP AES-GCM hardened cryptographic accelerator is
