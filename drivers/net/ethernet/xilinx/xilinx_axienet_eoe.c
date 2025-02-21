@@ -462,6 +462,8 @@ int axienet_eoe_del_flow_filter(struct net_device *ndev,
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct ethtool_rx_fs_item *item;
 	struct ethtool_rx_flow_spec *fs;
+	int chan_id;
+	u32 val;
 
 	list_for_each_entry(item, &lp->rx_fs_list.list, list) {
 		if (item->fs.location == cmd->fs.location) {
@@ -474,6 +476,14 @@ int axienet_eoe_del_flow_filter(struct net_device *ndev,
 				   fs->h_u.udp_ip4_spec.ip4dst,
 				   be16_to_cpu(fs->h_u.tcp_ip4_spec.psrc),
 				   be16_to_cpu(fs->h_u.tcp_ip4_spec.pdst));
+
+			chan_id = lp->dq[cmd->fs.location]->chan_id;
+			/* Configure Control Register to Disable GRO */
+			val = axienet_eoe_ior(lp, XEOE_UDP_GRO_CR_OFFSET(chan_id));
+			axienet_eoe_iow(lp, XEOE_UDP_GRO_CR_OFFSET(chan_id),
+					val & (~XEOE_UDP_GRO_ENABLE));
+			/* Disable Port Number */
+			axienet_eoe_iow(lp, XEOE_UDP_GRO_PORT_OFFSET(chan_id), 0);
 
 			lp->assigned_rx_port[cmd->fs.location] = 0;
 			list_del(&item->list);
