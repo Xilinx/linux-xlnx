@@ -25565,6 +25565,13 @@ F:	include/linux/firmware/xlnx-versal-error-events.h
 F:	include/linux/firmware/xlnx-versal-net-error-events.h
 F:	include/linux/firmware/xlnx-zynqmp.h
 
+XILINX XILSEM FIRMWARE DRIVER
+M:	Rama Devi Veggalam <rama.devi.veggalam@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	drivers/firmware/xilinx/zynqmp-sem.c
+F:	include/linux/firmware/xlnx-zynqmp-sem.h
+
 XILINX GAMMA DRIVER
 M:	Kunal Rane <kunal.rane@amd.com>
 L:	git@amd.com
