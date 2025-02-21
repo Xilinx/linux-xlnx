@@ -15,7 +15,8 @@
 #include <crypto/internal/rsa.h>
 #include <crypto/scatterwalk.h>
 
-#define XILINX_DMA_BIT_MASK	32U
+#define ZYNQMP_DMA_BIT_MASK	32U
+#define VERSAL_DMA_BIT_MASK	64U
 #define XILINX_RSA_MAX_KEY_SIZE	1024
 #define XILINX_RSA_BLOCKSIZE	64
 
@@ -42,6 +43,7 @@ struct xilinx_rsa_drv_ctx {
 	struct device *dev;
 	struct crypto_engine *engine;
 	int (*xilinx_rsa_xcrypt)(struct akcipher_request *req);
+	u8 dma_bit_mask;
 };
 
 struct xilinx_rsa_tfm_ctx {
@@ -445,6 +447,7 @@ static struct xilinx_rsa_drv_ctx zynqmp_rsa_drv_ctx = {
 	.alg.op = {
 		.do_one_request = handle_rsa_req,
 	},
+	.dma_bit_mask = ZYNQMP_DMA_BIT_MASK,
 };
 
 static struct xilinx_rsa_drv_ctx versal_rsa_drv_ctx = {
@@ -476,6 +479,7 @@ static struct xilinx_rsa_drv_ctx versal_rsa_drv_ctx = {
 	.alg.op = {
 		.do_one_request = handle_rsa_req,
 	},
+	.dma_bit_mask = VERSAL_DMA_BIT_MASK,
 };
 
 static struct xlnx_feature rsa_feature_map[] = {
@@ -508,7 +512,7 @@ static int xilinx_rsa_probe(struct platform_device *pdev)
 	}
 
 	ret = dma_set_mask_and_coherent(dev,
-					DMA_BIT_MASK(XILINX_DMA_BIT_MASK));
+					DMA_BIT_MASK(rsa_drv_ctx->dma_bit_mask));
 	if (ret < 0) {
 		dev_err(dev, "no usable DMA configuration");
 		return ret;
