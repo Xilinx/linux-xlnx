@@ -217,7 +217,7 @@ static inline int xilinx_copy_and_save_keypart(u8 **kpbuf, unsigned int *kplen,
 			break;
 
 	*kplen = sz - nskip;
-	*kpbuf = kmemdup(buf + nskip, *kplen, GFP_KERNEL);
+	*kpbuf = kmemdup(buf + nskip, *kplen, GFP_ATOMIC);
 	if (!*kpbuf)
 		return -ENOMEM;
 
@@ -259,6 +259,7 @@ static int xilinx_rsa_setkey(struct crypto_akcipher *tfm, const void *key,
 	if (ret)
 		return ret;
 
+	xilinx_rsa_free_key_bufs(tctx);
 	ret = xilinx_copy_and_save_keypart(&tctx->n_buf, &tctx->n_len,
 					   raw_key.n, raw_key.n_sz);
 	if (ret)
@@ -388,6 +389,9 @@ static int xilinx_rsa_init(struct crypto_akcipher *tfm)
 
 	drv_ctx = container_of(cipher_alg, struct xilinx_rsa_drv_ctx, alg.base);
 	tfm_ctx->dev = drv_ctx->dev;
+	tfm_ctx->d_buf = NULL;
+	tfm_ctx->e_buf = NULL;
+	tfm_ctx->n_buf = NULL;
 	tfm_ctx->fbk_cipher = crypto_alloc_akcipher(drv_ctx->alg.base.base.cra_name,
 						    0,
 						    CRYPTO_ALG_NEED_FALLBACK);
