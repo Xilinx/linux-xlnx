@@ -16,6 +16,7 @@ properties:
       - enum:
           - xlnx,zynqmp-dwc3
           - xlnx,versal-dwc3
+          - xlnx,versal2-mmi-dwc3
   reg:
     maxItems: 1
 
@@ -84,7 +85,6 @@ patternProperties:
 
 required:
   - compatible
-  - reg
   - "#address-cells"
   - "#size-cells"
   - ranges
@@ -93,6 +93,17 @@ required:
   - clock-names
   - resets
   - reset-names
+
+if:
+  properties:
+    compatible:
+      contains:
+        enum:
+          - xlnx,zynqmp-dwc3
+          - xlnx,versal-dwc3
+then:
+  required:
+    - reg
 
 additionalProperties: false
 
