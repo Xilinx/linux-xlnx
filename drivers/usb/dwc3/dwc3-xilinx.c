@@ -46,8 +46,13 @@ struct dwc3_xlnx {
 	struct clk_bulk_data		*clks;
 	struct device			*dev;
 	void __iomem			*regs;
-	int				(*pltfm_init)(struct dwc3_xlnx *data);
+	const struct dwc3_xlnx_config	*dwc3_config;
 	struct phy			*usb3_phy;
+};
+
+struct dwc3_xlnx_config {
+	int				(*pltfm_init)(struct dwc3_xlnx *data);
+	bool				map_resource;
 };
 
 static void dwc3_xlnx_mask_phy_rst(struct dwc3_xlnx *priv_data, bool mask)
@@ -84,6 +89,29 @@ static void dwc3_xlnx_set_coherency(struct dwc3_xlnx *priv_data, u32 coherency_o
 		reg |= XLNX_USB_TRAFFIC_ROUTE_FPD;
 		writel(reg, priv_data->regs + coherency_offset);
 	}
+}
+
+static int dwc3_xlnx_init_versal2(struct dwc3_xlnx *priv_data)
+{
+	struct device		*dev = priv_data->dev;
+	struct reset_control	*crst;
+	int			ret;
+
+	crst = devm_reset_control_get_optional_exclusive(dev, NULL);
+	if (IS_ERR(crst))
+		return dev_err_probe(dev, PTR_ERR(crst),
+				     "failed to get reset signal\n");
+
+	/* Assert and De-assert reset */
+	ret = reset_control_assert(crst);
+	if (ret < 0)
+		return dev_err_probe(dev, ret, "failed to assert Reset\n");
+
+	ret = reset_control_deassert(crst);
+	if (ret < 0)
+		return dev_err_probe(dev, ret, "failed to De-assert Reset\n");
+
+	return 0;
 }
 
 static int dwc3_xlnx_init_versal(struct dwc3_xlnx *priv_data)
@@ -244,14 +272,32 @@ err:
 	return ret;
 }
 
+static const struct dwc3_xlnx_config zynqmp_config = {
+	.pltfm_init = dwc3_xlnx_init_zynqmp,
+	.map_resource = true,
+};
+
+static const struct dwc3_xlnx_config versal_config = {
+	.pltfm_init = dwc3_xlnx_init_versal,
+	.map_resource = true,
+};
+
+static const struct dwc3_xlnx_config versal2_config = {
+	.pltfm_init = dwc3_xlnx_init_versal2,
+};
+
 static const struct of_device_id dwc3_xlnx_of_match[] = {
 	{
 		.compatible = "xlnx,zynqmp-dwc3",
-		.data = &dwc3_xlnx_init_zynqmp,
+		.data = &zynqmp_config,
 	},
 	{
 		.compatible = "xlnx,versal-dwc3",
-		.data = &dwc3_xlnx_init_versal,
+		.data = &versal_config,
+	},
+	{
+		.compatible = "xlnx,versal2-mmi-dwc3",
+		.data = &versal2_config,
 	},
 	{ /* Sentinel */ }
 };
@@ -295,14 +341,18 @@ static int dwc3_xlnx_probe(struct platform_device *pdev)
 	if (!priv_data)
 		return -ENOMEM;
 
-	regs = devm_platform_ioremap_resource(pdev, 0);
-	if (IS_ERR(regs))
-		return dev_err_probe(dev, PTR_ERR(regs), "failed to map registers\n");
-
 	match = of_match_node(dwc3_xlnx_of_match, pdev->dev.of_node);
 
-	priv_data->pltfm_init = match->data;
-	priv_data->regs = regs;
+	priv_data->dwc3_config = match->data;
+
+	if (priv_data->dwc3_config->map_resource) {
+		regs = devm_platform_ioremap_resource(pdev, 0);
+		if (IS_ERR(regs))
+			return dev_err_probe(dev, PTR_ERR(regs),
+					     "failed to map registers\n");
+		priv_data->regs = regs;
+	}
+
 	priv_data->dev = dev;
 
 	platform_set_drvdata(pdev, priv_data);
@@ -317,7 +367,7 @@ static int dwc3_xlnx_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	ret = priv_data->pltfm_init(priv_data);
+	ret = priv_data->dwc3_config->pltfm_init(priv_data);
 	if (ret)
 		goto err_clk_put;
 
