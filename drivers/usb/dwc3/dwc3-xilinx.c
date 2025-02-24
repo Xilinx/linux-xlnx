@@ -74,7 +74,7 @@ struct dwc3_xlnx {
 	struct clk_bulk_data		*clks;
 	struct device			*dev;
 	void __iomem			*regs;
-	int				(*pltfm_init)(struct dwc3_xlnx *data);
+	const struct dwc3_xlnx_config	*dwc3_config;
 	struct phy			*usb3_phy;
 	struct regulator		*dwc3_pmu;
 	struct regulator_dev		*dwc3_xlnx_reg_rdev;
@@ -85,6 +85,11 @@ struct dwc3_xlnx {
 	bool				enable_d3_suspend;
 	enum usb_dr_mode		dr_mode;
 	struct regulator_desc		dwc3_xlnx_reg_desc;
+};
+
+struct dwc3_xlnx_config {
+	int				(*pltfm_init)(struct dwc3_xlnx *data);
+	bool				map_resource;
 };
 
 static const char *const usb_dr_modes[] = {
@@ -370,6 +375,49 @@ static void dwc3_xlnx_mask_phy_rst(struct dwc3_xlnx *priv_data, bool mask)
 	writel(reg, priv_data->regs + XLNX_USB_PHY_RST_EN);
 }
 
+static int dwc3_xlnx_init_versal2(struct dwc3_xlnx *priv_data)
+{
+	struct device		*dev = priv_data->dev;
+	int			ret;
+
+	priv_data->crst = devm_reset_control_get_optional_exclusive(dev, NULL);
+	if (IS_ERR(priv_data->crst))
+		return dev_err_probe(dev, PTR_ERR(priv_data->crst),
+				     "failed to get reset signal\n");
+
+	priv_data->usb3_phy = devm_phy_optional_get(dev, "usb3-phy");
+	if (IS_ERR(priv_data->usb3_phy)) {
+		ret = PTR_ERR(priv_data->usb3_phy);
+		return dev_err_probe(dev, ret,
+				     "failed to get USB3 PHY\n");
+	}
+
+	/* Assert and De-assert reset */
+	ret = reset_control_assert(priv_data->crst);
+	if (ret < 0)
+		return dev_err_probe(dev, ret, "failed to assert Reset\n");
+
+	ret = phy_init(priv_data->usb3_phy);
+	if (ret < 0)
+		return ret;
+
+	ret = reset_control_deassert(priv_data->crst);
+	if (ret < 0) {
+		dev_err(dev, "failed to De-assert Reset\n");
+		goto err_out_phy_exit;
+	}
+
+	ret = phy_power_on(priv_data->usb3_phy);
+	if (ret < 0)
+		goto err_out_phy_exit;
+
+	return 0;
+
+err_out_phy_exit:
+	phy_exit(priv_data->usb3_phy);
+	return ret;
+}
+
 static int dwc3_xlnx_init_versal(struct dwc3_xlnx *priv_data)
 {
 	struct device		*dev = priv_data->dev;
@@ -598,14 +646,32 @@ static irqreturn_t dwc3_xlnx_resume_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+static const struct dwc3_xlnx_config zynqmp_config = {
+	.pltfm_init = dwc3_xlnx_init_zynqmp,
+	.map_resource = true,
+};
+
+static const struct dwc3_xlnx_config versal_config = {
+	.pltfm_init = dwc3_xlnx_init_versal,
+	.map_resource = true,
+};
+
+static const struct dwc3_xlnx_config versal2_config = {
+	.pltfm_init = dwc3_xlnx_init_versal2,
+};
+
 static const struct of_device_id dwc3_xlnx_of_match[] = {
 	{
 		.compatible = "xlnx,zynqmp-dwc3",
-		.data = &dwc3_xlnx_init_zynqmp,
+		.data = &zynqmp_config,
 	},
 	{
 		.compatible = "xlnx,versal-dwc3",
-		.data = &dwc3_xlnx_init_versal,
+		.data = &versal_config,
+	},
+	{
+		.compatible = "xlnx,versal2-mmi-dwc3",
+		.data = &versal2_config,
 	},
 	{ /* Sentinel */ }
 };
@@ -652,18 +718,21 @@ static int dwc3_xlnx_probe(struct platform_device *pdev)
 	if (!priv_data)
 		return -ENOMEM;
 
-	regs = devm_platform_ioremap_resource(pdev, 0);
-	if (IS_ERR(regs))
-		return dev_err_probe(dev, PTR_ERR(regs), "failed to map registers\n");
-
 	match = of_match_node(dwc3_xlnx_of_match, pdev->dev.of_node);
 
 	dwc3_child_node = of_get_next_child(pdev->dev.of_node, dwc3_child_node);
 	if (!dwc3_child_node)
 		return -ENODEV;
 
-	priv_data->pltfm_init = match->data;
-	priv_data->regs = regs;
+	priv_data->dwc3_config = match->data;
+	if (priv_data->dwc3_config->map_resource) {
+		regs = devm_platform_ioremap_resource(pdev, 0);
+		if (IS_ERR(regs))
+			return dev_err_probe(dev, PTR_ERR(regs),
+					     "failed to map registers\n");
+		priv_data->regs = regs;
+	}
+
 	priv_data->dev = dev;
 
 	/* get the dr_mode from child node */
@@ -727,7 +796,7 @@ static int dwc3_xlnx_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	ret = priv_data->pltfm_init(priv_data);
+	ret = priv_data->dwc3_config->pltfm_init(priv_data);
 	if (ret)
 		goto err_clk_put;
 
