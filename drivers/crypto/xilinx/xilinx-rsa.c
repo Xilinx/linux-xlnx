@@ -17,7 +17,6 @@
 
 #define ZYNQMP_DMA_BIT_MASK	32U
 #define VERSAL_DMA_BIT_MASK	64U
-#define XILINX_RSA_MAX_KEY_SIZE	1024
 #define XILINX_RSA_BLOCKSIZE	64
 
 /* Key size in bytes */
