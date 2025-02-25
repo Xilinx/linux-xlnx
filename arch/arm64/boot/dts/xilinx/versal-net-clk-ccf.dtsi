@@ -352,22 +352,22 @@
 };
 
 &ttc0 {
-	clocks = <&versal_net_clk TTC0>, <&versal_net_clk LPD_LSBUS>;
+	clocks = <&versal_net_clk TTC0>;
 	power-domains = <&versal_net_firmware PM_DEV_TTC_0>;
 };
 
 &ttc1 {
-	clocks = <&versal_net_clk TTC1>, <&versal_net_clk LPD_LSBUS>;
+	clocks = <&versal_net_clk TTC1>;
 	power-domains = <&versal_net_firmware PM_DEV_TTC_1>;
 };
 
 &ttc2 {
-	clocks = <&versal_net_clk TTC2>, <&versal_net_clk LPD_LSBUS>;
+	clocks = <&versal_net_clk TTC2>;
 	power-domains = <&versal_net_firmware PM_DEV_TTC_2>;
 };
 
 &ttc3 {
-	clocks = <&versal_net_clk TTC3>, <&versal_net_clk LPD_LSBUS>;
+	clocks = <&versal_net_clk TTC3>;
 	power-domains = <&versal_net_firmware PM_DEV_TTC_3>;
 };
 
