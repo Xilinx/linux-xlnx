@@ -397,7 +397,7 @@ static int xilinx_rsa_init(struct crypto_akcipher *tfm)
 	}
 
 	akcipher_set_reqsize(tfm, max(sizeof(struct xilinx_rsa_req_ctx),
-			     sizeof(struct akcipher_request) +
+				      sizeof(struct akcipher_request) +
 			     crypto_akcipher_reqsize(tfm_ctx->fbk_cipher)));
 
 	return 0;
@@ -575,7 +575,7 @@ static int __init xilinx_rsa_driver_init(void)
 		return ret;
 
 	platform_dev = platform_device_register_simple(xilinx_rsa_driver.driver.name,
-					       0, NULL, 0);
+						       0, NULL, 0);
 	if (IS_ERR(platform_dev)) {
 		ret = PTR_ERR(platform_dev);
 		platform_driver_unregister(&xilinx_rsa_driver);
