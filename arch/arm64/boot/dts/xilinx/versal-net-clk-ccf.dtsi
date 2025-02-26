@@ -137,6 +137,7 @@
 		ranges;
 
 		ipi_mailbox_pmu1: mailbox@eb3f0440 {
+			compatible = "xlnx,zynqmp-ipi-dest-mailbox";
 			reg = <0 0xeb3f0440 0 0x20>,
 			      <0 0xeb3f0460 0 0x20>,
 			      <0 0xeb3f0280 0 0x20>,
