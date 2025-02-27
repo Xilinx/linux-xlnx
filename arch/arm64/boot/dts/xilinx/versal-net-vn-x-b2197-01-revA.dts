@@ -97,6 +97,7 @@
 		#size-cells = <2>;
 		ranges;
 		ipi_mailbox_rpu0: mailbox@eb3b1000 {
+			compatible = "xlnx,versal-ipi-dest-mailbox";
 			#mbox-cells = <1>;
 			xlnx,ipi-id = <11>;
 			reg = <0 0xeb3b1000 0 0x1000>;
