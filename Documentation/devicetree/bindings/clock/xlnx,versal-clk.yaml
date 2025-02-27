@@ -20,9 +20,11 @@ properties:
       - enum:
           - xlnx,versal-clk
           - xlnx,zynqmp-clk
+          - xlnx,versal2-clk
       - items:
           - enum:
               - xlnx,versal-net-clk
+              - xlnx,versal2-clk
           - const: xlnx,versal-clk
 
   "#clock-cells":
