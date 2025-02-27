@@ -26,6 +26,9 @@ properties:
     items:
       - const: core_clk
 
+  power-domains:
+    maxItems: 1
+
   resets:
     minItems: 2
     maxItems: 2
