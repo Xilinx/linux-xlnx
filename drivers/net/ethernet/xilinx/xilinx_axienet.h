@@ -1478,8 +1478,8 @@ static inline void axienet_dma_out32(struct axienet_dma_q *q,
 static inline void axienet_dma_bdout(struct axienet_dma_q *q,
 				     off_t reg, dma_addr_t value)
 {
-#if defined(CONFIG_PHYS_ADDR_T_64BIT)
-	writeq(value, (q->dma_regs + reg));
+#if defined(CONFIG_PHYS_ADDR_T_64BIT) && defined(iowrite64)
+	iowrite64(value, (q->dma_regs + reg));
 #else
 	writel(value, (q->dma_regs + reg));
 #endif
