@@ -1825,8 +1825,7 @@ static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 							TX_TS_OP_TWOSTEP, q);
 				skb_shinfo(skb)->tx_flags |=
 						SKBTX_IN_PROGRESS;
-				cur_p->ptp_tx_skb =
-					(unsigned long)skb_get(skb);
+				cur_p->ptp_tx_skb = skb_get(skb);
 			}
 		}
 	} else if ((skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) &&
@@ -1856,7 +1855,7 @@ static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 				/* skb TS passing is required for non one step TS packets */
 				if (packet_flags == TX_TS_OP_TWOSTEP) {
 					skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
-					cur_p->ptp_tx_skb = (phys_addr_t)skb_get(skb);
+					cur_p->ptp_tx_skb = skb_get(skb);
 				}
 			} else {
 				if (axienet_create_tsheader(lp->tx_ptpheader,
@@ -1864,7 +1863,7 @@ static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 							    q))
 					return NETDEV_TX_BUSY;
 				skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
-				cur_p->ptp_tx_skb = (phys_addr_t)skb_get(skb);
+				cur_p->ptp_tx_skb = skb_get(skb);
 			}
 	} else if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
 		   lp->axienet_config->mactype == XAXIENET_MRMAC) {
@@ -1974,7 +1973,7 @@ static int axienet_queue_xmit(struct sk_buff *skb,
 #endif
 
 	if (!q->eth_hasdre &&
-	    (((phys_addr_t)skb->data & 0x3) || num_frag > 0)) {
+	    (((uintptr_t)skb->data & 0x3) || num_frag > 0)) {
 		skb_copy_and_csum_dev(skb, q->tx_buf[q->tx_bd_tail]);
 
 		phys = q->tx_bufs_dma + (q->tx_buf[q->tx_bd_tail] - q->tx_bufs);
@@ -2056,7 +2055,7 @@ out:
 	cur_p->cntrl |= XAXIDMA_BD_CTRL_TXEOF_MASK;
 	tail_p = q->tx_bd_p + sizeof(*q->tx_bd_v) * q->tx_bd_tail;
 #endif
-	cur_p->tx_skb = (phys_addr_t)skb;
+	cur_p->tx_skb = skb;
 
 	tail_p = q->tx_bd_p + sizeof(*q->tx_bd_v) * q->tx_bd_tail;
 	/* Ensure BD write before starting transfer */
@@ -2291,7 +2290,7 @@ static int axienet_recv(struct net_device *ndev, int budget,
 		}
 		cur_p->cntrl = lp->max_frm_size;
 		cur_p->status = 0;
-		cur_p->sw_id_offset = (phys_addr_t)new_skb;
+		cur_p->sw_id_offset = new_skb;
 
 		if (++q->rx_bd_ci >= lp->rx_bd_num)
 			q->rx_bd_ci = 0;

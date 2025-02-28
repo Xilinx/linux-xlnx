@@ -152,7 +152,7 @@ static int __dma_rxq_init(struct net_device *ndev,
 		 */
 		wmb();
 
-		q->rx_bd_v[i].sw_id_offset = (phys_addr_t)skb;
+		q->rx_bd_v[i].sw_id_offset = skb;
 
 		addr = dma_map_single(lp->dev, skb->data,
 				      lp->max_frm_size, DMA_FROM_DEVICE);
