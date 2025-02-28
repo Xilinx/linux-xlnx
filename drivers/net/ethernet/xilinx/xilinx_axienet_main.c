@@ -5313,21 +5313,6 @@ static int axienet_probe(struct platform_device *pdev)
 				goto cleanup_clk;
 			}
 		}
-
-		/* Set the TX coalesce count to 1. With offload enabled, there are not as
-		 * many interrupts as before and the interrupt for every 64KB segment needs
-		 * to be handled immediately to ensure better performance.
-		 */
-		if (ndev->hw_features & NETIF_F_GSO_UDP_L4)
-			lp->coalesce_count_tx = XMCDMA_DFT_TX_THRESHOLD;
-
-		/* Update the required thresholds for Rx HW UDP GRO
-		 * GRO receives 16 segmented data packets from MAC
-		 * and packet coalescing increases performance.
-		 */
-		if (lp->eoe_features & RX_HW_UDP_GRO)
-			lp->coalesce_count_rx = XMCDMA_DFT_RX_THRESHOLD;
-
 	} else {
 		struct xilinx_vdma_config cfg;
 		struct dma_chan *tx_chan;
@@ -5376,11 +5361,26 @@ static int axienet_probe(struct platform_device *pdev)
 			 ret);
 		axienet_set_mac_address(ndev, NULL);
 	}
-	lp->coalesce_count_rx = XAXIDMA_DFT_RX_THRESHOLD;
-	lp->coalesce_count_tx = XAXIDMA_DFT_TX_THRESHOLD;
-	lp->coalesce_usec_rx = XAXIDMA_DFT_RX_USEC;
-	lp->coalesce_usec_tx = XAXIDMA_DFT_TX_USEC;
+	if (!lp->use_dmaengine) {
+		lp->coalesce_count_rx = XAXIDMA_DFT_RX_THRESHOLD;
+		lp->coalesce_count_tx = XAXIDMA_DFT_TX_THRESHOLD;
+		lp->coalesce_usec_rx = XAXIDMA_DFT_RX_USEC;
+		lp->coalesce_usec_tx = XAXIDMA_DFT_TX_USEC;
 
+		/* Set the TX coalesce count to 1. With offload enabled, there are not as
+		 * many interrupts as before and the interrupt for every 64KB segment needs
+		 * to be handled immediately to ensure better performance.
+		 */
+		if (ndev->hw_features & NETIF_F_GSO_UDP_L4)
+			lp->coalesce_count_tx = XMCDMA_DFT_TX_THRESHOLD;
+
+		/* Update the required thresholds for Rx HW UDP GRO
+		 * GRO receives 16 segmented data packets from MAC
+		 * and packet coalescing increases performance.
+		 */
+		if (lp->eoe_features & RX_HW_UDP_GRO)
+			lp->coalesce_count_rx = XMCDMA_DFT_RX_THRESHOLD;
+	}
 	if (lp->axienet_config->mactype != XAXIENET_10G_25G &&
 	    lp->axienet_config->mactype != XAXIENET_1G_10G_25G &&
 	    lp->axienet_config->mactype != XAXIENET_MRMAC &&
