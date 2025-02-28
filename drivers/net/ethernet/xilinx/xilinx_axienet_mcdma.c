@@ -292,7 +292,7 @@ int __maybe_unused axienet_mcdma_rx_q_init(struct net_device *ndev,
 			 */
 			wmb();
 
-			q->rxq_bd_v[i].sw_id_offset = (phys_addr_t)skb;
+			q->rxq_bd_v[i].sw_id_offset = skb;
 			mapping = dma_map_single(ndev->dev.parent,
 						 skb->data,
 						 lp->max_frm_size,

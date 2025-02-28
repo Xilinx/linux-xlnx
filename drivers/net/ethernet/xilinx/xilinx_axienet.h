@@ -817,10 +817,10 @@ struct axidma_bd {
 	u32 app2;	/* TX csum seed */
 	u32 app3;
 	u32 app4;
-	phys_addr_t sw_id_offset; /* first unused field by h/w */
-	phys_addr_t ptp_tx_skb;
+	struct sk_buff *sw_id_offset; /* first unused field by h/w */
+	struct sk_buff *ptp_tx_skb;
 	u32 ptp_tx_ts_tag;
-	phys_addr_t tx_skb;
+	struct sk_buff *tx_skb;
 	u32 tx_desc_mapping;
 } __aligned(XAXIDMA_BD_MINIMUM_ALIGNMENT);
 /**
@@ -862,10 +862,10 @@ struct aximcdma_bd {
 	u32 app2;	/* TX csum seed */
 	u32 app3;
 	u32 app4;
-	phys_addr_t sw_id_offset; /* first unused field by h/w */
-	phys_addr_t ptp_tx_skb;
+	struct sk_buff *sw_id_offset; /* first unused field by h/w */
+	struct sk_buff *ptp_tx_skb;
 	u32 ptp_tx_ts_tag;
-	phys_addr_t tx_skb;
+	struct sk_buff *tx_skb;
 	u32 tx_desc_mapping;
 	struct page *page;
 } __aligned(XAXIDMA_BD_MINIMUM_ALIGNMENT);
