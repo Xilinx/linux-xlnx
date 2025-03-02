@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/dma/xilinx/amd,mmi-dcdma-1.0.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: AMD Multimedia Integrated Display Controller DMA Engine
+
+description:
+  The AMD Multimedia Integrated Display Controller DMA engine supports memory
+  to device transfers, providing 8 host to card DMA channels. First 6 channels
+  are dedicated to 2 independent multi-planar video streams, 7th channel
+  provides path through interface for a single audio stream, and 8th channel is
+  dedicated to hardware cursor plane.
+
+maintainers:
+  - Anatoliy Klymenko <anatoliy.klymenko@amd.com>
+
+allOf:
+  - $ref: ../dma-controller.yaml#
+
+properties:
+  compatible:
+    const: amd,mmi-dcdma-1.0
+
+  "#dma-cells":
+    const: 1
+
+  reg:
+    description: mmi dcdma ip register space
+    maxItems: 1
+
+  interrupts:
+    description: DMA engine interrupt
+    maxItems: 1
+
+  clocks:
+    description: AXI clocks
+    maxItems: 1
+
+required:
+  - "#dma-cells"
+  - reg
+  - interrupts
+  - clocks
+
+additionalProperties: false
+
+examples:
+  - |
+    dma-controller@edd10000 {
+      compatible = "amd,mmi-dcdma-1.0";
+      #dma-cells = <1>;
+      reg = <0xedd10000 0x1000>;
+      interrupts = <0 179 4>;
+      clocks = <&axi_clk>;
+    };
