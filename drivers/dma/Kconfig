@@ -85,6 +85,18 @@ config AMCC_PPC440SPE_ADMA
 	help
 	  Enable support for the AMCC PPC440SPe RAID engines.
 
+config AMD_MMI_DCDMA
+	tristate "AMD MMI DCDMA Engine"
+	depends on HAS_IOMEM && OF
+	select DMA_ENGINE
+	select DMA_VIRTUAL_CHANNELS
+	help
+	  Enable support for AMD Multimedia Integrated Display Controller DMA
+	  Engine. The driver provides 8 Host to Card (H2C) DMA channels (6 for
+	  2 planar video streams, 1 for audio, and 1 for hardware cursor).
+	  This driver is required for memory based (non-live) AMD MMI Display
+	  Controller operations.
+
 config APPLE_ADMAC
 	tristate "Apple ADMAC support"
 	depends on ARCH_APPLE || COMPILE_TEST
