@@ -2154,6 +2154,7 @@ static int axienet_recv(struct net_device *ndev, int budget,
 	dma_addr_t phys, tail_p = 0;
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct sk_buff *skb, *new_skb;
+	struct napi_struct *napi = &q->napi_rx;
 
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 	struct aximcdma_bd *cur_p;
@@ -2258,7 +2259,7 @@ static int axienet_recv(struct net_device *ndev, int budget,
 				skb->ip_summed = CHECKSUM_COMPLETE;
 			}
 
-		netif_receive_skb(skb);
+		napi_gro_receive(napi, skb);
 
 			size += length;
 			packets++;
