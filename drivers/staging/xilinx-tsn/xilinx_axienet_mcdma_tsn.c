@@ -291,7 +291,7 @@ int __maybe_unused axienet_mcdma_rx_q_init_tsn(struct net_device *ndev,
 		 */
 		wmb();
 
-		q->rxq_bd_v[i].sw_id_offset = (phys_addr_t)skb;
+		q->rxq_bd_v[i].sw_id_offset = skb;
 		mapping = dma_map_single(ndev->dev.parent,
 					 skb->data,
 					 lp->max_frm_size,
@@ -683,7 +683,7 @@ void __maybe_unused axienet_mcdma_err_handler_tsn(unsigned long data)
 					  XAXIDMA_BD_CTRL_LENGTH_MASK),
 					 DMA_TO_DEVICE);
 		if (cur_p->tx_skb)
-			dev_kfree_skb_irq((struct sk_buff *)cur_p->tx_skb);
+			dev_kfree_skb_irq(cur_p->tx_skb);
 		cur_p->phys = 0;
 		cur_p->cntrl = 0;
 		cur_p->status = 0;
