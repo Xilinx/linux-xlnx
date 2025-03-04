@@ -476,7 +476,7 @@ void axienet_start_xmit_done_tsn(struct net_device *ndev,
 					 XAXIDMA_BD_CTRL_LENGTH_MASK,
 					 DMA_TO_DEVICE);
 		if (cur_p->tx_skb)
-			dev_kfree_skb_irq((struct sk_buff *)cur_p->tx_skb);
+			dev_kfree_skb_irq(cur_p->tx_skb);
 		/*cur_p->phys = 0;*/
 		cur_p->app0 = 0;
 		cur_p->app1 = 0;
@@ -599,7 +599,7 @@ int axienet_queue_xmit_tsn(struct sk_buff *skb,
 	cur_p->cntrl = (skb_headlen(skb) | XMCDMA_BD_CTRL_TXSOF_MASK);
 
 	if (!q->eth_hasdre &&
-	    (((phys_addr_t)skb->data & 0x3) || num_frag > 0)) {
+	    (((uintptr_t)skb->data & 0x3) || num_frag > 0)) {
 		skb_copy_and_csum_dev(skb, q->tx_buf[q->tx_bd_tail]);
 
 		cur_p->phys = q->tx_bufs_dma +
@@ -638,8 +638,7 @@ int axienet_queue_xmit_tsn(struct sk_buff *skb,
 out:
 	cur_p->cntrl |= XMCDMA_BD_CTRL_TXEOF_MASK;
 	tail_p = q->tx_bd_p + sizeof(*q->txq_bd_v) * q->tx_bd_tail;
-	cur_p->tx_skb = (phys_addr_t)skb;
-	cur_p->tx_skb = (phys_addr_t)skb;
+	cur_p->tx_skb = skb;
 
 	tail_p = q->tx_bd_p + sizeof(*q->tx_bd_v) * q->tx_bd_tail;
 	/* Ensure BD write before starting transfer */
@@ -699,7 +698,7 @@ static int axienet_recv(struct net_device *ndev, int budget,
 				 lp->max_frm_size,
 				 DMA_FROM_DEVICE);
 
-		skb = (struct sk_buff *)(cur_p->sw_id_offset);
+		skb = (cur_p->sw_id_offset);
 
 		if (lp->eth_hasnobuf ||
 		    lp->axienet_config->mactype != XAXIENET_1G)
@@ -784,7 +783,7 @@ static int axienet_recv(struct net_device *ndev, int budget,
 		}
 		cur_p->cntrl = lp->max_frm_size;
 		cur_p->status = 0;
-		cur_p->sw_id_offset = (phys_addr_t)new_skb;
+		cur_p->sw_id_offset = new_skb;
 
 		if (++q->rx_bd_ci >= lp->rx_bd_num)
 			q->rx_bd_ci = 0;

@@ -133,8 +133,7 @@ static void tadma_xmit_done(struct net_device *ndev, u8 sid, u32 cnt)
 					 DMA_TO_DEVICE);
 		}
 		if (lp->tx_bd[sid][lp->tx_bd_tail[sid]].tx_skb) {
-			dev_kfree_skb_irq((struct sk_buff *)
-					  lp->tx_bd[sid][lp->tx_bd_tail[sid]].
+			dev_kfree_skb_irq(lp->tx_bd[sid][lp->tx_bd_tail[sid]].
 					  tx_skb);
 		}
 
@@ -516,7 +515,7 @@ int axienet_tadma_xmit(struct sk_buff *skb, struct net_device *ndev,
 
 	lp->tx_bd[sid][lp->tx_bd_head[sid]].num_frag = num_frag + 1;
 	if (num_frag == 0) {
-		lp->tx_bd[sid][lp->tx_bd_head[sid]].tx_skb = (phys_addr_t)skb;
+		lp->tx_bd[sid][lp->tx_bd_head[sid]].tx_skb = skb;
 		alm_fframe.cfg |= XTADMA_ALM_SOP | XTADMA_ALM_EOP;
 	} else {
 		lp->tx_bd[sid][lp->tx_bd_head[sid]].tx_skb = 0;
@@ -548,8 +547,7 @@ int axienet_tadma_xmit(struct sk_buff *skb, struct net_device *ndev,
 		lp->tx_bd[sid][lp->tx_bd_head[sid]].tx_skb = 0;
 		if (ii == (num_frag - 1)) {
 			alm.cfg |= XTADMA_ALM_EOP;
-			lp->tx_bd[sid][lp->tx_bd_head[sid]].tx_skb =
-							(phys_addr_t)skb;
+			lp->tx_bd[sid][lp->tx_bd_head[sid]].tx_skb = skb;
 		}
 		alm.cfg &= ~XTADMA_ALM_FETCH_SZ_MASK;
 		alm.cfg |= ((len << XTADMA_ALM_FETCH_SZ_SHIFT) &
