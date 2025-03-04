@@ -640,7 +640,6 @@ out:
 	tail_p = q->tx_bd_p + sizeof(*q->txq_bd_v) * q->tx_bd_tail;
 	cur_p->tx_skb = skb;
 
-	tail_p = q->tx_bd_p + sizeof(*q->tx_bd_v) * q->tx_bd_tail;
 	/* Ensure BD write before starting transfer */
 	wmb();
 

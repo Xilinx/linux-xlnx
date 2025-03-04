@@ -595,53 +595,6 @@
 #define MRMAC_GT_LANE_OFFSET		BIT(16)
 #define MRMAC_MAX_GT_LANES		4
 /**
- * struct axidma_bd - Axi Dma buffer descriptor layout
- * @next:         MM2S/S2MM Next Descriptor Pointer
- * @reserved1:    Reserved and not used for 32-bit
- * @phys:         MM2S/S2MM Buffer Address
- * @reserved2:    Reserved and not used for 32-bit
- * @reserved3:    Reserved and not used
- * @reserved4:    Reserved and not used
- * @cntrl:        MM2S/S2MM Control value
- * @status:       MM2S/S2MM Status value
- * @app0:         MM2S/S2MM User Application Field 0.
- * @app1:         MM2S/S2MM User Application Field 1.
- * @app2:         MM2S/S2MM User Application Field 2.
- * @app3:         MM2S/S2MM User Application Field 3.
- * @app4:         MM2S/S2MM User Application Field 4.
- * @sw_id_offset: MM2S/S2MM Sw ID
- * @ptp_tx_skb:   If timestamping is enabled used for timestamping skb
- *		  Otherwise reserved.
- * @ptp_tx_ts_tag: Tag value of 2 step timestamping if timestamping is enabled
- *		   Otherwise reserved.
- * @tx_skb:	  Transmit skb address
- * @tx_desc_mapping: Tx Descriptor DMA mapping type.
- */
-struct axidma_bd {
-	phys_addr_t next;	/* Physical address of next buffer descriptor */
-#ifndef CONFIG_PHYS_ADDR_T_64BIT
-	u32 reserved1;
-#endif
-	phys_addr_t phys;
-#ifndef CONFIG_PHYS_ADDR_T_64BIT
-	u32 reserved2;
-#endif
-	u32 reserved3;
-	u32 reserved4;
-	u32 cntrl;
-	u32 status;
-	u32 app0;
-	u32 app1;	/* TX start << 16 | insert */
-	u32 app2;	/* TX csum seed */
-	u32 app3;
-	u32 app4;
-	phys_addr_t sw_id_offset; /* first unused field by h/w */
-	phys_addr_t ptp_tx_skb;
-	u32 ptp_tx_ts_tag;
-	phys_addr_t tx_skb;
-	u32 tx_desc_mapping;
-} __aligned(XAXIDMA_BD_MINIMUM_ALIGNMENT);
-/**
  * struct aximcdma_bd - Axi MCDMA buffer descriptor layout
  * @next:         MM2S/S2MM Next Descriptor Pointer
  * @reserved1:    Reserved and not used for 32-bit
@@ -993,8 +946,6 @@ struct axienet_dma_q {
 	spinlock_t rx_lock;		/* rx lock */
 
 	/* Buffer descriptors */
-	struct axidma_bd *tx_bd_v;
-	struct axidma_bd *rx_bd_v;
 	dma_addr_t rx_bd_p;
 	dma_addr_t tx_bd_p;
 
