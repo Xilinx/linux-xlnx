@@ -71,6 +71,8 @@ static int zynqmp_sha_init_tfm(struct crypto_tfm *tfm)
 		return PTR_ERR(fallback_tfm);
 
 	tfm_ctx->fbk_tfm = fallback_tfm;
+	crypto_ahash_set_statesize(__crypto_ahash_cast(tfm),
+				   crypto_ahash_statesize(fallback_tfm));
 	crypto_ahash_set_reqsize(__crypto_ahash_cast(tfm),
 				 crypto_ahash_reqsize(tfm_ctx->fbk_tfm) +
 				 sizeof(struct zynqmp_sha_desc_ctx));
