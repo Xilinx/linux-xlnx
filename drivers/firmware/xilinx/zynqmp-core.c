@@ -400,7 +400,7 @@ int zynqmp_pm_is_function_supported(const u32 api_id, const u32 id)
 EXPORT_SYMBOL_GPL(zynqmp_pm_is_function_supported);
 
 /**
- * zynqmp_pm_invoke_fw_fn() - Invoke the system-level platform management layer
+ * __zynqmp_pm_fw_call_extended() - Invoke the system-level platform management layer
  *			caller function depending on the configuration
  * @pm_api_id:		Requested PM-API call
  * @ret_payload:	Returned value array
@@ -421,7 +421,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_is_function_supported);
  *
  * Return: Returns status, either success or error+reason
  */
-int zynqmp_pm_invoke_fw_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...)
+int __zynqmp_pm_fw_call_extended(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...)
 {
 	/*
 	 * Added SIP service call Function Identifier
