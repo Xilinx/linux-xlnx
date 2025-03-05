@@ -173,36 +173,74 @@ static noinline int do_fw_call_hvc(u32 *ret_payload, u32 num_args, ...)
 	return zynqmp_pm_ret_code((enum pm_ret_status)res.a0);
 }
 
-static int __do_feature_check_call(const u32 api_id, u32 *ret_payload)
+static uint64_t prep_pm_hdr_feature_check(u32 module_id)
 {
-	int ret;
-	u64 smc_arg[2];
+	/* Ignore module_id argument but it is PM_MODULE_ID=0 used here */
+	return PM_SIP_SVC | PM_FEATURE_CHECK;
+}
+
+/**
+ * do_feature_check_for_tfa_apis - Perform feature check for TF-A APIs.
+ * @api_id: API ID to be checked.
+ * @ret_payload: Pointer to store the firmware's response payload.
+ *
+ * Prepares the command header and payload for TF-A APIs and makes the FW call
+ *
+ * Return:
+ * - 0 on success
+ * - -EOPNOTSUPP if the firmware call fails.
+ */
+static int do_feature_check_for_tfa_apis(const u32 api_id, u32 *ret_payload)
+{
 	u32 module_id;
+	u64 smc_arg[2];
+	int ret;
+
+	module_id = FIELD_GET(MODULE_ID_MASK, api_id);
+
+	smc_arg[0] = prep_pm_hdr_feature_check(module_id);
+	smc_arg[1] = api_id;
+
+	ret = do_fw_call(ret_payload, 2, smc_arg[0], smc_arg[1]);
+
+	if (ret)
+		return -EOPNOTSUPP;
+
+	return ret_payload[1];
+}
+
+/**
+ * do_feature_check_basic - Perform feature check for an API ID with
+ *			    basic SMC format.
+ * @api_id: API ID to be checked.
+ * @ret_payload: Pointer to store the firmware's response payload.
+ *
+ * Determines the appropriate API (PM_FEATURE_CHECK or PM_API_FEATURES) based on
+ * the module ID in the given API ID. Frames the SMC call arguments in the basic
+ * format, executes the firmware call, and processes the result.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int do_feature_check_basic(const u32 api_id, u32 *ret_payload)
+{
+	u32 module_id;
+	u64 smc_arg[2];
 	u32 feature_check_api_id;
+	int ret;
 
 	module_id = FIELD_GET(MODULE_ID_MASK, api_id);
 
 	/*
-	 * Feature check of APIs belonging to PM, XSEM, and TF-A are handled by calling
+	 * Feature check of APIs belonging to PM, XSEM are handled by calling
 	 * PM_FEATURE_CHECK API. For other modules, call PM_API_FEATURES API.
 	 */
-	if (module_id == PM_MODULE_ID || module_id == XSEM_MODULE_ID || module_id == TF_A_MODULE_ID)
+	if (module_id == PM_MODULE_ID || module_id == XSEM_MODULE_ID)
 		feature_check_api_id = PM_FEATURE_CHECK;
 	else
 		feature_check_api_id = PM_API_FEATURES;
 
-	/*
-	 * Feature check of TF-A APIs is done in the TF-A layer and it expects for
-	 * MODULE_ID_MASK bits of SMC's arg[0] to be the same as PM_MODULE_ID.
-	 */
-	if (module_id == TF_A_MODULE_ID) {
-		module_id = PM_MODULE_ID;
-		smc_arg[1] = api_id;
-	} else {
-		smc_arg[1] = (api_id & API_ID_MASK);
-	}
-
 	smc_arg[0] = PM_SIP_SVC | FIELD_PREP(MODULE_ID_MASK, module_id) | feature_check_api_id;
+	smc_arg[1] = (api_id & API_ID_MASK);
 
 	ret = do_fw_call(ret_payload, 2, smc_arg[0], smc_arg[1]);
 	if (ret)
@@ -211,6 +249,30 @@ static int __do_feature_check_call(const u32 api_id, u32 *ret_payload)
 		ret = ret_payload[1];
 
 	return ret;
+}
+
+/**
+ * dispatch_feature_check - Dispatch feature check based on module ID.
+ * @api_id: API ID to be checked.
+ * @ret_payload: Pointer to store the firmware's response payload.
+ *
+ * Determines the appropriate feature check function to call based on the
+ * module ID extracted from the API ID. If the module ID corresponds to
+ * TF-A, it calls do_feature_check_for_tfa_apis(); otherwise, it calls
+ * do_feature_check_basic which uses basic SMCCC format
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int dispatch_feature_check(const u32 api_id, u32 *ret_payload)
+{
+	u32 module_id;
+
+	module_id = FIELD_GET(MODULE_ID_MASK, api_id);
+
+	if (module_id == TF_A_MODULE_ID)
+		return do_feature_check_for_tfa_apis(api_id, ret_payload);
+
+	return do_feature_check_basic(api_id, ret_payload);
 }
 
 static int do_feature_check_call(const u32 api_id)
@@ -232,7 +294,7 @@ static int do_feature_check_call(const u32 api_id)
 		return -ENOMEM;
 
 	feature_data->pm_api_id = api_id;
-	ret = __do_feature_check_call(api_id, ret_payload);
+	ret = dispatch_feature_check(api_id, ret_payload);
 
 	feature_data->feature_status = ret;
 	hash_add(pm_api_features_map, &feature_data->hentry, api_id);
