@@ -47,6 +47,32 @@ struct pm_api_feature_data {
 	struct hlist_node hentry;
 };
 
+struct platform_fw_data {
+	/*
+	 * Invokes the platform-specific feature check PM FW API call.
+	 * Uses either the basic or extended SMCCC frame format based on the
+	 * platform.
+	 */
+	int (*do_feature_check)(const u32 api_id, u32 *ret_payload);
+
+	/*
+	 * Invokes all other platform-specific PM FW APIs.
+	 * Uses either the basic or extended SMCCC frame format based
+	 * on the platform.
+	 */
+	int (*zynqmp_pm_fw_call)(u32 pm_api_id, u32 *ret_payload,
+				 u32 num_args, va_list *arg_list);
+
+	/*
+	 * Prepares the PLM command header for the platform.
+	 * The header will either use the PM_API_FEATURES or PM_FEATURE_CHECK,
+	 * depending on the platform.
+	 */
+	uint64_t (*prep_pm_cmd_header)(u32 module_id);
+};
+
+static struct platform_fw_data *active_platform_fw_data;
+
 /**
  * zynqmp_pm_ret_code() - Convert PMU-FW error codes to Linux error codes
  * @ret_status:		PMUFW return code
@@ -198,7 +224,7 @@ static int do_feature_check_for_tfa_apis(const u32 api_id, u32 *ret_payload)
 
 	module_id = FIELD_GET(MODULE_ID_MASK, api_id);
 
-	smc_arg[0] = prep_pm_hdr_feature_check(module_id);
+	smc_arg[0] = active_platform_fw_data->prep_pm_cmd_header(module_id);
 	smc_arg[1] = api_id;
 
 	ret = do_fw_call(ret_payload, 2, smc_arg[0], smc_arg[1]);
@@ -272,7 +298,7 @@ static int dispatch_feature_check(const u32 api_id, u32 *ret_payload)
 	if (module_id == TF_A_MODULE_ID)
 		return do_feature_check_for_tfa_apis(api_id, ret_payload);
 
-	return do_feature_check_basic(api_id, ret_payload);
+	return active_platform_fw_data->do_feature_check(api_id, ret_payload);
 }
 
 static int do_feature_check_call(const u32 api_id)
@@ -445,11 +471,14 @@ int zynqmp_pm_invoke_fw_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...)
 }
 
 /**
- * zynqmp_pm_invoke_fn() - Invoke the system-level platform management layer
- *			   caller function depending on the configuration
+ * __zynqmp_pm_fw_call_basic() - Invoke the system-level platform management layer
+ *				 supporting basic SMC format.
+ *
  * @pm_api_id:		Requested PM-API call
  * @ret_payload:	Returned value array
  * @num_args:		Number of arguments to requested PM-API call
+ * @arg_list:		va_list initialized with va_start, containing arguments passed
+ *			to the firmware.
  *
  * Invoke platform management function for SMC or HVC call, depending on
  * configuration.
@@ -466,7 +495,8 @@ int zynqmp_pm_invoke_fw_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...)
  *
  * Return: Returns status, either success or error+reason
  */
-int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...)
+static int __zynqmp_pm_fw_call_basic(u32 pm_api_id, u32 *ret_payload,
+				     u32 num_args, va_list *arg_list)
 {
 	/*
 	 * Added SIP service call Function Identifier
@@ -474,7 +504,6 @@ int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...)
 	 */
 	u64 smc_arg[8];
 	int ret, i;
-	va_list arg_list;
 	u32 args[SMC_ARG_CNT_BASIC_32] = {0};
 
 	/*
@@ -492,12 +521,8 @@ int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...)
 	if (ret < 0)
 		return ret;
 
-	va_start(arg_list, num_args);
-
 	for (i = 0; i < num_args; i++)
-		args[i] = va_arg(arg_list, u32);
-
-	va_end(arg_list);
+		args[i] = va_arg(*arg_list, u32);
 
 	smc_arg[0] = PM_SIP_SVC | pm_api_id;
 	for (i = 0; i < 7; i++)
@@ -505,6 +530,60 @@ int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...)
 
 	return do_fw_call(ret_payload, 8, smc_arg[0], smc_arg[1], smc_arg[2], smc_arg[3],
 			  smc_arg[4], smc_arg[5], smc_arg[6], smc_arg[7]);
+}
+
+/**
+ * zynqmp_pm_invoke_fn() - Invokes the platform-specific PM FW API.
+ * @pm_api_id:		Requested PM-API call
+ * @ret_payload:	Returned value array
+ * @num_args:		Number of arguments to requested PM-API call
+ *
+ * Return: Returns status, either success or error+reason
+ */
+int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...)
+{
+	va_list arg_list;
+	u32 module_id;
+	int ret;
+
+	/*
+	 * According to the SMCCC: The total number of registers available for
+	 * arguments is 16.
+	 *
+	 * In the Basic SMC format, 2 registers are used for headers, leaving
+	 * up to 14 registers for arguments.
+	 *
+	 * In the Extended SMC format, 3 registers are used for headers, leaving
+	 * up to 13 registers for arguments.
+	 *
+	 * To accommodate both formats, this comparison imposes a limit of 14
+	 * arguments. This ensures that callers do not exceed the maximum number
+	 * of registers available for arguments in either format. Each specific
+	 * handler (basic or extended) will further validate the exact number of
+	 * arguments based on its respective format requirements.
+	 */
+	if (num_args > 14)
+		return -EINVAL;
+
+	va_start(arg_list, num_args);
+
+	module_id = FIELD_GET(MODULE_ID_MASK, pm_api_id);
+
+	/*
+	 * Invoke the platform-specific PM FW API.
+	 * based on the platform type.
+	 *
+	 * The only exception is the TF-A module, which supports the basic
+	 * SMC format only
+	 */
+	if (module_id == TF_A_MODULE_ID)
+		ret = __zynqmp_pm_fw_call_basic(pm_api_id, ret_payload, num_args, &arg_list);
+	else
+		ret = active_platform_fw_data->zynqmp_pm_fw_call(pm_api_id, ret_payload,
+								 num_args, &arg_list);
+
+	va_end(arg_list);
+	return ret;
 }
 
 /**
@@ -580,6 +659,10 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
 	ret = get_set_conduit_method(dev->of_node);
 	if (ret)
 		return ret;
+
+	active_platform_fw_data = (struct platform_fw_data *)device_get_match_data(dev);
+	if (!active_platform_fw_data)
+		return -EINVAL;
 
 	/* Get SiP SVC version number */
 	ret = zynqmp_pm_get_sip_svc_version(&sip_svc_version);
@@ -688,9 +771,21 @@ static void zynqmp_firmware_remove(struct platform_device *pdev)
 	platform_device_unregister(em_dev);
 }
 
+static const struct platform_fw_data platform_fw_data_zynqmp_and_versal = {
+	.do_feature_check = do_feature_check_basic,
+	.zynqmp_pm_fw_call = __zynqmp_pm_fw_call_basic,
+	.prep_pm_cmd_header = prep_pm_hdr_feature_check,
+};
+
 static const struct of_device_id zynqmp_firmware_of_match[] = {
-	{.compatible = "xlnx,zynqmp-firmware"},
-	{.compatible = "xlnx,versal-firmware"},
+	{
+		.compatible = "xlnx,zynqmp-firmware",
+		.data = &platform_fw_data_zynqmp_and_versal,
+	},
+	{
+		.compatible = "xlnx,versal-firmware",
+		.data = &platform_fw_data_zynqmp_and_versal,
+	},
 	{},
 };
 MODULE_DEVICE_TABLE(of, zynqmp_firmware_of_match);
