@@ -410,12 +410,12 @@ int zynqmp_pm_invoke_fw_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...)
 	if (num_args > SMC_ARG_CNT_32)
 		return -EINVAL;
 
-	va_start(arg_list, num_args);
-
 	/* Check if feature is supported or not */
 	ret = zynqmp_pm_feature(pm_api_id);
 	if (ret < 0)
 		return ret;
+
+	va_start(arg_list, num_args);
 
 	for (i = 0; i < num_args; i++)
 		args[i] = va_arg(arg_list, u32);
@@ -473,12 +473,12 @@ int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...)
 	if (num_args > 14)
 		return -EINVAL;
 
-	va_start(arg_list, num_args);
-
 	/* Check if feature is supported or not */
 	ret = zynqmp_pm_feature(pm_api_id);
 	if (ret < 0)
 		return ret;
+
+	va_start(arg_list, num_args);
 
 	for (i = 0; i < num_args; i++)
 		args[i] = va_arg(arg_list, u32);
