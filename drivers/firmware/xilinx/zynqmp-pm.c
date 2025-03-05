@@ -184,9 +184,9 @@ int zynqmp_pm_query_data(struct zynqmp_pm_query_data qdata, u32 *out)
 		return ret;
 
 	if (sip_svc_version >= SIP_SVC_PASSTHROUGH_VERSION) {
-		ret = __zynqmp_pm_fw_call_extended(PM_QUERY_DATA, ret_payload, 4,
-					     qdata.qid, qdata.arg1,
-					     qdata.arg2, qdata.arg3);
+		ret = zynqmp_pm_fw_call_extended(PM_QUERY_DATA, ret_payload, 4,
+						 qdata.qid, qdata.arg1,
+						 qdata.arg2, qdata.arg3);
 		/* To support backward compatibility */
 		if (!ret && !ret_payload[0]) {
 			/*

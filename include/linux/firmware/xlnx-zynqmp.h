@@ -578,7 +578,7 @@ struct zynqmp_devinfo {
 };
 
 int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...);
-int __zynqmp_pm_fw_call_extended(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...);
+int zynqmp_pm_fw_call_extended(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...);
 int zynqmp_firmware_pm_sysfs_entry(struct platform_device *pdev);
 
 #if IS_REACHABLE(CONFIG_ZYNQMP_FIRMWARE)
