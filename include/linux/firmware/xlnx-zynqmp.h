@@ -90,6 +90,9 @@
 /* Number of 32bits arguments for SMC call */
 #define SMC_ARG_CNT_32	13U
 
+/* Number of 32bits arguments for Basic SMC call */
+#define SMC_ARG_CNT_BASIC_32	14U
+
 /* Number of arguments for a callback */
 #define CB_ARG_CNT     4
 

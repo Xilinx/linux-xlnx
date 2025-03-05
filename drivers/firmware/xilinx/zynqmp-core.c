@@ -407,6 +407,13 @@ int zynqmp_pm_invoke_fw_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...)
 	u32 args[SMC_ARG_CNT_32] = {0};
 	u32 module_id;
 
+	/*
+	 * According to the SMCCC: The total number of registers available for
+	 * arguments is 16.
+	 *
+	 * In the Extended SMC format, 3 registers are used for headers, leaving
+	 * up to 13 registers for arguments.
+	 */
 	if (num_args > SMC_ARG_CNT_32)
 		return -EINVAL;
 
@@ -468,9 +475,16 @@ int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...)
 	u64 smc_arg[8];
 	int ret, i;
 	va_list arg_list;
-	u32 args[14] = {0};
+	u32 args[SMC_ARG_CNT_BASIC_32] = {0};
 
-	if (num_args > 14)
+	/*
+	 * According to the SMCCC: The total number of registers available for
+	 * arguments is 16.
+	 *
+	 * In the Basic SMC format, 2 registers are used for headers, leaving
+	 * up to 14 registers for arguments.
+	 */
+	if (num_args > SMC_ARG_CNT_BASIC_32)
 		return -EINVAL;
 
 	/* Check if feature is supported or not */
