@@ -5,6 +5,7 @@
  * Copyright (C) 2022-2023, Advanced Micro Devices, Inc.
  */
 #include <linux/cacheflush.h>
+#include <crypto/engine.h>
 #include <crypto/hash.h>
 #include <crypto/internal/hash.h>
 #include <crypto/sha3.h>
@@ -34,7 +35,8 @@ enum zynqmp_sha_op {
 };
 
 struct xilinx_sha_drv_ctx {
-	struct ahash_alg sha3_384;
+	struct ahash_engine_alg sha3_384;
+	struct crypto_engine *engine;
 	struct device *dev;
 	u8 dma_addr_size;
 };
@@ -59,7 +61,7 @@ static int zynqmp_sha_init_tfm(struct crypto_tfm *tfm)
 	struct crypto_ahash *fallback_tfm;
 	struct xilinx_sha_drv_ctx *drv_ctx;
 
-	drv_ctx = container_of(alg, struct xilinx_sha_drv_ctx, sha3_384.halg);
+	drv_ctx = container_of(alg, struct xilinx_sha_drv_ctx, sha3_384.base.halg);
 	tfm_ctx->dev = drv_ctx->dev;
 
 	/* Allocate a fallback and abort if it failed. */
@@ -171,6 +173,17 @@ static int zynqmp_sha_export(struct ahash_request *req, void *out)
 	return crypto_ahash_export(&dctx->fallback_req, out);
 }
 
+static int sha_digest(struct ahash_request *req)
+{
+	struct crypto_tfm *tfm = crypto_ahash_tfm(crypto_ahash_reqtfm(req));
+	struct hash_alg_common *alg = crypto_hash_alg_common(__crypto_ahash_cast(tfm));
+	struct xilinx_sha_drv_ctx *drv_ctx;
+
+	drv_ctx = container_of(alg, struct xilinx_sha_drv_ctx, sha3_384.base.halg);
+
+	return crypto_transfer_hash_request_to_engine(drv_ctx->engine, req);
+}
+
 static int zynqmp_sha_digest(struct ahash_request *req)
 {
 	unsigned int processed = 0;
@@ -244,13 +257,37 @@ static int versal_sha_digest(struct ahash_request *req)
 	return 0;
 }
 
+static int handle_zynqmp_sha_engine_req(struct crypto_engine *engine, void *req)
+{
+	int err;
+
+	err = zynqmp_sha_digest(req);
+	local_bh_disable();
+	crypto_finalize_hash_request(engine, req, err);
+	local_bh_enable();
+
+	return 0;
+}
+
+static int handle_versal_sha_engine_req(struct crypto_engine *engine, void *req)
+{
+	int err;
+
+	err = versal_sha_digest(req);
+	local_bh_disable();
+	crypto_finalize_hash_request(engine, req, err);
+	local_bh_enable();
+
+	return 0;
+}
+
 static struct xilinx_sha_drv_ctx zynqmp_sha3_drv_ctx = {
-	.sha3_384 = {
+	.sha3_384.base = {
 		.init = zynqmp_sha_init,
 		.update = zynqmp_sha_update,
 		.final = zynqmp_sha_final,
 		.finup = zynqmp_sha_finup,
-		.digest = zynqmp_sha_digest,
+		.digest = sha_digest,
 		.export = zynqmp_sha_export,
 		.import = zynqmp_sha_import,
 		.halg = {
@@ -269,18 +306,21 @@ static struct xilinx_sha_drv_ctx zynqmp_sha3_drv_ctx = {
 			.base.cra_module = THIS_MODULE,
 		}
 	},
+	.sha3_384.op = {
+		.do_one_request = handle_zynqmp_sha_engine_req,
+	},
 	.dma_addr_size = ZYNQMP_DMA_BIT_MASK,
 };
 
 static struct xilinx_sha_drv_ctx versal_sha3_drv_ctx = {
-	.sha3_384 = {
+	.sha3_384.base = {
 		.init = zynqmp_sha_init,
 		.update = zynqmp_sha_update,
 		.final = zynqmp_sha_final,
 		.finup = zynqmp_sha_finup,
+		.digest = sha_digest,
 		.export = zynqmp_sha_export,
 		.import = zynqmp_sha_import,
-		.digest = versal_sha_digest,
 		.halg = {
 			.base.cra_init = zynqmp_sha_init_tfm,
 			.base.cra_exit = zynqmp_sha_exit_tfm,
@@ -296,6 +336,9 @@ static struct xilinx_sha_drv_ctx versal_sha3_drv_ctx = {
 			.statesize = sizeof(struct sha3_state),
 			.digestsize = SHA3_384_DIGEST_SIZE,
 		}
+	},
+	.sha3_384.op = {
+		.do_one_request = handle_versal_sha_engine_req,
 	},
 	.dma_addr_size = VERSAL_DMA_BIT_MASK,
 };
@@ -350,14 +393,30 @@ static int zynqmp_sha_probe(struct platform_device *pdev)
 		goto err_mem;
 	}
 
-	err = crypto_register_ahash(&sha3_drv_ctx->sha3_384);
-	if (err < 0) {
-		dev_err(dev, "Failed to register shash alg.\n");
-		goto err_mem1;
+	sha3_drv_ctx->engine = crypto_engine_alloc_init(dev, 1);
+	if (!sha3_drv_ctx->engine) {
+		dev_err(dev, "Cannot alloc Crypto engine\n");
+		err = -ENOMEM;
+		goto err_engine;
 	}
+
+	err = crypto_engine_start(sha3_drv_ctx->engine);
+	if (err) {
+		dev_err(dev, "Cannot start AES engine\n");
+		goto err_start;
+	}
+
+	err = crypto_engine_register_ahash(&sha3_drv_ctx->sha3_384);
+	if (err < 0) {
+		dev_err(dev, "Failed to register sha3 alg.\n");
+		goto err_start;
+	}
+
 	return 0;
 
-err_mem1:
+err_start:
+	crypto_engine_exit(sha3_drv_ctx->engine);
+err_engine:
 	dma_free_coherent(dev, SHA3_384_DIGEST_SIZE, fbuf, final_dma_addr);
 
 err_mem:
@@ -371,10 +430,10 @@ static void zynqmp_sha_remove(struct platform_device *pdev)
 	struct xilinx_sha_drv_ctx *sha3_drv_ctx;
 
 	sha3_drv_ctx = platform_get_drvdata(pdev);
-	crypto_unregister_ahash(&sha3_drv_ctx->sha3_384);
-	 dma_free_coherent(sha3_drv_ctx->dev, ZYNQMP_DMA_ALLOC_FIXED_SIZE, ubuf, update_dma_addr);
-	dma_free_coherent(sha3_drv_ctx->dev,
-			  SHA3_384_DIGEST_SIZE, fbuf, final_dma_addr);
+	crypto_engine_unregister_ahash(&sha3_drv_ctx->sha3_384);
+	crypto_engine_exit(sha3_drv_ctx->engine);
+	dma_free_coherent(sha3_drv_ctx->dev, ZYNQMP_DMA_ALLOC_FIXED_SIZE, ubuf, update_dma_addr);
+	dma_free_coherent(sha3_drv_ctx->dev, SHA3_384_DIGEST_SIZE, fbuf, final_dma_addr);
 }
 
 static struct platform_driver zynqmp_sha_driver = {
