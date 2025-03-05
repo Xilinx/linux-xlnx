@@ -34,154 +34,191 @@ enum zynqmp_sha_op {
 };
 
 struct xilinx_sha_drv_ctx {
-	struct shash_alg sha3_384;
+	struct ahash_alg sha3_384;
 	struct device *dev;
 	u8 dma_addr_size;
 };
 
 struct zynqmp_sha_tfm_ctx {
 	struct device *dev;
-	struct crypto_shash *fbk_tfm;
+	struct crypto_ahash *fbk_tfm;
 };
 
 struct zynqmp_sha_desc_ctx {
-	struct shash_desc fbk_req;
+	struct ahash_request fallback_req;
 };
 
 static dma_addr_t update_dma_addr, final_dma_addr;
 static char *ubuf, *fbuf;
 
-static int zynqmp_sha_init_tfm(struct crypto_shash *hash)
+static int zynqmp_sha_init_tfm(struct crypto_tfm *tfm)
 {
-	const char *fallback_driver_name = crypto_shash_alg_name(hash);
-	struct zynqmp_sha_tfm_ctx *tfm_ctx = crypto_shash_ctx(hash);
-	struct shash_alg *alg = crypto_shash_alg(hash);
-	struct crypto_shash *fallback_tfm;
+	const char *fallback_driver_name = crypto_tfm_alg_name(tfm);
+	struct zynqmp_sha_tfm_ctx *tfm_ctx = crypto_tfm_ctx(tfm);
+	struct hash_alg_common *alg = crypto_hash_alg_common(__crypto_ahash_cast(tfm));
+	struct crypto_ahash *fallback_tfm;
 	struct xilinx_sha_drv_ctx *drv_ctx;
 
-	drv_ctx = container_of(alg, struct xilinx_sha_drv_ctx, sha3_384);
+	drv_ctx = container_of(alg, struct xilinx_sha_drv_ctx, sha3_384.halg);
 	tfm_ctx->dev = drv_ctx->dev;
 
 	/* Allocate a fallback and abort if it failed. */
-	fallback_tfm = crypto_alloc_shash(fallback_driver_name, 0,
+	fallback_tfm = crypto_alloc_ahash(fallback_driver_name, CRYPTO_ALG_TYPE_SHASH,
 					  CRYPTO_ALG_NEED_FALLBACK);
 	if (IS_ERR(fallback_tfm))
 		return PTR_ERR(fallback_tfm);
 
 	tfm_ctx->fbk_tfm = fallback_tfm;
-	hash->descsize += crypto_shash_descsize(tfm_ctx->fbk_tfm);
+	crypto_ahash_set_reqsize(__crypto_ahash_cast(tfm),
+				 crypto_ahash_reqsize(tfm_ctx->fbk_tfm) +
+				 sizeof(struct zynqmp_sha_desc_ctx));
 
 	return 0;
 }
 
-static void zynqmp_sha_exit_tfm(struct crypto_shash *hash)
+static void zynqmp_sha_exit_tfm(struct crypto_tfm *tfm)
 {
-	struct zynqmp_sha_tfm_ctx *tfm_ctx = crypto_shash_ctx(hash);
+	struct zynqmp_sha_tfm_ctx *tfm_ctx = crypto_tfm_ctx(tfm);
 
 	if (tfm_ctx->fbk_tfm) {
-		crypto_free_shash(tfm_ctx->fbk_tfm);
+		crypto_free_ahash(tfm_ctx->fbk_tfm);
 		tfm_ctx->fbk_tfm = NULL;
 	}
 
 	memzero_explicit(tfm_ctx, sizeof(struct zynqmp_sha_tfm_ctx));
 }
 
-static int zynqmp_sha_init(struct shash_desc *desc)
+static int zynqmp_sha_init(struct ahash_request *req)
 {
-	struct zynqmp_sha_desc_ctx *dctx = shash_desc_ctx(desc);
-	struct zynqmp_sha_tfm_ctx *tctx = crypto_shash_ctx(desc->tfm);
+	struct zynqmp_sha_desc_ctx *dctx = ahash_request_ctx(req);
+	struct crypto_ahash *tfm = crypto_ahash_reqtfm(req);
+	struct zynqmp_sha_tfm_ctx *tctx = crypto_ahash_ctx(tfm);
 
-	dctx->fbk_req.tfm = tctx->fbk_tfm;
-	return crypto_shash_init(&dctx->fbk_req);
+	ahash_request_set_tfm(&dctx->fallback_req, tctx->fbk_tfm);
+	dctx->fallback_req.base.flags = req->base.flags &
+		CRYPTO_TFM_REQ_MAY_SLEEP;
+	return crypto_ahash_init(&dctx->fallback_req);
 }
 
-static int zynqmp_sha_update(struct shash_desc *desc, const u8 *data, unsigned int length)
+static int zynqmp_sha_update(struct ahash_request *req)
 {
-	struct zynqmp_sha_desc_ctx *dctx = shash_desc_ctx(desc);
+	struct zynqmp_sha_desc_ctx *dctx = ahash_request_ctx(req);
+	struct crypto_ahash *tfm = crypto_ahash_reqtfm(req);
+	struct zynqmp_sha_tfm_ctx *tctx = crypto_ahash_ctx(tfm);
 
-	return crypto_shash_update(&dctx->fbk_req, data, length);
+	ahash_request_set_tfm(&dctx->fallback_req, tctx->fbk_tfm);
+	dctx->fallback_req.base.flags = req->base.flags &
+		CRYPTO_TFM_REQ_MAY_SLEEP;
+	dctx->fallback_req.nbytes = req->nbytes;
+	dctx->fallback_req.src = req->src;
+	return crypto_ahash_update(&dctx->fallback_req);
 }
 
-static int zynqmp_sha_final(struct shash_desc *desc, u8 *out)
+static int zynqmp_sha_final(struct ahash_request *req)
 {
-	struct zynqmp_sha_desc_ctx *dctx = shash_desc_ctx(desc);
+	struct zynqmp_sha_desc_ctx *dctx = ahash_request_ctx(req);
+	struct crypto_ahash *tfm = crypto_ahash_reqtfm(req);
+	struct zynqmp_sha_tfm_ctx *tctx = crypto_ahash_ctx(tfm);
 
-	return crypto_shash_final(&dctx->fbk_req, out);
+	ahash_request_set_tfm(&dctx->fallback_req, tctx->fbk_tfm);
+	dctx->fallback_req.base.flags = req->base.flags &
+		CRYPTO_TFM_REQ_MAY_SLEEP;
+	dctx->fallback_req.result = req->result;
+
+	return crypto_ahash_final(&dctx->fallback_req);
 }
 
-static int zynqmp_sha_finup(struct shash_desc *desc, const u8 *data, unsigned int length, u8 *out)
+static int zynqmp_sha_finup(struct ahash_request *req)
 {
-	struct zynqmp_sha_desc_ctx *dctx = shash_desc_ctx(desc);
+	struct zynqmp_sha_desc_ctx *dctx = ahash_request_ctx(req);
+	struct crypto_ahash *tfm = crypto_ahash_reqtfm(req);
+	struct zynqmp_sha_tfm_ctx *tctx = crypto_ahash_ctx(tfm);
 
-	return crypto_shash_finup(&dctx->fbk_req, data, length, out);
+	ahash_request_set_tfm(&dctx->fallback_req, tctx->fbk_tfm);
+	dctx->fallback_req.base.flags = req->base.flags &
+		CRYPTO_TFM_REQ_MAY_SLEEP;
+
+	dctx->fallback_req.nbytes = req->nbytes;
+	dctx->fallback_req.src = req->src;
+	dctx->fallback_req.result = req->result;
+
+	return crypto_ahash_finup(&dctx->fallback_req);
 }
 
-static int zynqmp_sha_import(struct shash_desc *desc, const void *in)
+static int zynqmp_sha_import(struct ahash_request *req, const void *in)
 {
-	struct zynqmp_sha_desc_ctx *dctx = shash_desc_ctx(desc);
-	struct zynqmp_sha_tfm_ctx *tctx = crypto_shash_ctx(desc->tfm);
+	struct zynqmp_sha_desc_ctx *dctx = ahash_request_ctx(req);
+	struct crypto_ahash *tfm = crypto_ahash_reqtfm(req);
+	struct zynqmp_sha_tfm_ctx *tctx = crypto_ahash_ctx(tfm);
 
-	dctx->fbk_req.tfm = tctx->fbk_tfm;
-	return crypto_shash_import(&dctx->fbk_req, in);
+	ahash_request_set_tfm(&dctx->fallback_req, tctx->fbk_tfm);
+	dctx->fallback_req.base.flags = req->base.flags &
+		CRYPTO_TFM_REQ_MAY_SLEEP;
+
+	return crypto_ahash_import(&dctx->fallback_req, in);
 }
 
-static int zynqmp_sha_export(struct shash_desc *desc, void *out)
+static int zynqmp_sha_export(struct ahash_request *req, void *out)
 {
-	struct zynqmp_sha_desc_ctx *dctx = shash_desc_ctx(desc);
+	struct zynqmp_sha_desc_ctx *dctx = ahash_request_ctx(req);
+	struct crypto_ahash *tfm = crypto_ahash_reqtfm(req);
+	struct zynqmp_sha_tfm_ctx *tctx = crypto_ahash_ctx(tfm);
 
-	return crypto_shash_export(&dctx->fbk_req, out);
+	ahash_request_set_tfm(&dctx->fallback_req, tctx->fbk_tfm);
+	dctx->fallback_req.base.flags = req->base.flags &
+		CRYPTO_TFM_REQ_MAY_SLEEP;
+
+	return crypto_ahash_export(&dctx->fallback_req, out);
 }
 
-static int zynqmp_sha_digest(struct shash_desc *desc, const u8 *data, unsigned int len, u8 *out)
+static int zynqmp_sha_digest(struct ahash_request *req)
 {
-	unsigned int remaining_len = len;
+	unsigned int processed = 0;
+	unsigned int remaining_len;
 	int update_size;
 	int ret;
 
+	remaining_len = req->nbytes;
 	ret = zynqmp_pm_sha_hash(0, 0, ZYNQMP_SHA3_INIT);
 	if (ret)
 		return ret;
 
-	while (remaining_len != 0) {
-		if (remaining_len >= ZYNQMP_DMA_ALLOC_FIXED_SIZE) {
+	while (remaining_len) {
+		if (remaining_len >= ZYNQMP_DMA_ALLOC_FIXED_SIZE)
 			update_size = ZYNQMP_DMA_ALLOC_FIXED_SIZE;
-			remaining_len -= ZYNQMP_DMA_ALLOC_FIXED_SIZE;
-		} else {
+		else
 			update_size = remaining_len;
-			remaining_len = 0;
-		}
-		memcpy(ubuf, data, update_size);
+		sg_pcopy_to_buffer(req->src, sg_nents(req->src), ubuf, update_size, processed);
 		flush_icache_range((unsigned long)ubuf, (unsigned long)ubuf + update_size);
 		ret = zynqmp_pm_sha_hash(update_dma_addr, update_size, ZYNQMP_SHA3_UPDATE);
 		if (ret)
 			return ret;
 
-		data += update_size;
+		remaining_len -= update_size;
+		processed += update_size;
 	}
 
 	ret = zynqmp_pm_sha_hash(final_dma_addr, SHA3_384_DIGEST_SIZE, ZYNQMP_SHA3_FINAL);
-	memcpy(out, fbuf, SHA3_384_DIGEST_SIZE);
+	memcpy(req->result, fbuf, SHA3_384_DIGEST_SIZE);
 	memzero_explicit(fbuf, SHA3_384_DIGEST_SIZE);
 
 	return ret;
 }
 
-static int versal_sha_digest(struct shash_desc *desc, const u8 *data,
-			     unsigned int len, u8 *out)
+static int versal_sha_digest(struct ahash_request *req)
 {
 	int update_size, ret, flag = FIRST_PACKET;
-	unsigned int remaining_len = len;
+	unsigned int processed = 0;
+	unsigned int remaining_len;
 
-	while (remaining_len != 0) {
-		if (remaining_len >= ZYNQMP_DMA_ALLOC_FIXED_SIZE) {
+	remaining_len = req->nbytes;
+	while (remaining_len) {
+		if (remaining_len >= ZYNQMP_DMA_ALLOC_FIXED_SIZE)
 			update_size = ZYNQMP_DMA_ALLOC_FIXED_SIZE;
-			remaining_len -= ZYNQMP_DMA_ALLOC_FIXED_SIZE;
-		} else {
+		else
 			update_size = remaining_len;
-			remaining_len = 0;
-		}
 
-		memcpy(ubuf, data, update_size);
+		sg_pcopy_to_buffer(req->src, sg_nents(req->src), ubuf, update_size, processed);
 		flush_icache_range((unsigned long)ubuf,
 				   (unsigned long)ubuf + update_size);
 
@@ -191,7 +228,8 @@ static int versal_sha_digest(struct shash_desc *desc, const u8 *data,
 		if (ret)
 			return ret;
 
-		data += update_size;
+		remaining_len -= update_size;
+		processed += update_size;
 		flag = RESET;
 	}
 
@@ -200,7 +238,7 @@ static int versal_sha_digest(struct shash_desc *desc, const u8 *data,
 	if (ret)
 		return ret;
 
-	memcpy(out, fbuf, SHA3_384_DIGEST_SIZE);
+	memcpy(req->result, fbuf, SHA3_384_DIGEST_SIZE);
 	memzero_explicit(fbuf, SHA3_384_DIGEST_SIZE);
 
 	return 0;
@@ -215,21 +253,20 @@ static struct xilinx_sha_drv_ctx zynqmp_sha3_drv_ctx = {
 		.digest = zynqmp_sha_digest,
 		.export = zynqmp_sha_export,
 		.import = zynqmp_sha_import,
-		.init_tfm = zynqmp_sha_init_tfm,
-		.exit_tfm = zynqmp_sha_exit_tfm,
-		.descsize = sizeof(struct zynqmp_sha_desc_ctx),
-		.statesize = sizeof(struct sha3_state),
-		.digestsize = SHA3_384_DIGEST_SIZE,
-		.base = {
-			.cra_name = "sha3-384",
-			.cra_driver_name = "zynqmp-sha3-384",
-			.cra_priority = 300,
-			.cra_flags = CRYPTO_ALG_KERN_DRIVER_ONLY |
-				     CRYPTO_ALG_ALLOCATES_MEMORY |
-				     CRYPTO_ALG_NEED_FALLBACK,
-			.cra_blocksize = SHA3_384_BLOCK_SIZE,
-			.cra_ctxsize = sizeof(struct zynqmp_sha_tfm_ctx),
-			.cra_module = THIS_MODULE,
+		.halg = {
+			.digestsize = SHA3_384_DIGEST_SIZE,
+			.statesize = sizeof(struct sha3_state),
+			.base.cra_init = zynqmp_sha_init_tfm,
+			.base.cra_exit = zynqmp_sha_exit_tfm,
+			.base.cra_name = "sha3-384",
+			.base.cra_driver_name = "zynqmp-sha3-384",
+			.base.cra_priority = 300,
+			.base.cra_flags = CRYPTO_ALG_KERN_DRIVER_ONLY |
+				CRYPTO_ALG_ALLOCATES_MEMORY |
+				CRYPTO_ALG_NEED_FALLBACK,
+			.base.cra_blocksize = SHA3_384_BLOCK_SIZE,
+			.base.cra_ctxsize = sizeof(struct zynqmp_sha_tfm_ctx),
+			.base.cra_module = THIS_MODULE,
 		}
 	},
 	.dma_addr_size = ZYNQMP_DMA_BIT_MASK,
@@ -244,22 +281,20 @@ static struct xilinx_sha_drv_ctx versal_sha3_drv_ctx = {
 		.export = zynqmp_sha_export,
 		.import = zynqmp_sha_import,
 		.digest = versal_sha_digest,
-		.init_tfm = zynqmp_sha_init_tfm,
-		.exit_tfm = zynqmp_sha_exit_tfm,
-		.descsize = sizeof(struct zynqmp_sha_desc_ctx),
-		.statesize = sizeof(struct sha3_state),
-		.digestsize = SHA3_384_DIGEST_SIZE,
-		.base = {
-			.cra_name = "sha3-384",
-			.cra_driver_name = "versal-sha3-384",
-			.cra_priority = 300,
-			.cra_flags = CRYPTO_ALG_KERN_DRIVER_ONLY |
+		.halg = {
+			.base.cra_init = zynqmp_sha_init_tfm,
+			.base.cra_exit = zynqmp_sha_exit_tfm,
+			.base.cra_name = "sha3-384",
+			.base.cra_driver_name = "versal-sha3-384",
+			.base.cra_priority = 300,
+			.base.cra_flags = CRYPTO_ALG_KERN_DRIVER_ONLY |
 				CRYPTO_ALG_ALLOCATES_MEMORY |
 				CRYPTO_ALG_NEED_FALLBACK,
-			.cra_blocksize = SHA3_384_BLOCK_SIZE,
-			.cra_ctxsize = sizeof(struct zynqmp_sha_tfm_ctx),
-			.cra_alignmask = 3,
-			.cra_module = THIS_MODULE,
+			.base.cra_blocksize = SHA3_384_BLOCK_SIZE,
+			.base.cra_ctxsize = sizeof(struct zynqmp_sha_tfm_ctx),
+			.base.cra_module = THIS_MODULE,
+			.statesize = sizeof(struct sha3_state),
+			.digestsize = SHA3_384_DIGEST_SIZE,
 		}
 	},
 	.dma_addr_size = VERSAL_DMA_BIT_MASK,
@@ -315,7 +350,7 @@ static int zynqmp_sha_probe(struct platform_device *pdev)
 		goto err_mem;
 	}
 
-	err = crypto_register_shash(&sha3_drv_ctx->sha3_384);
+	err = crypto_register_ahash(&sha3_drv_ctx->sha3_384);
 	if (err < 0) {
 		dev_err(dev, "Failed to register shash alg.\n");
 		goto err_mem1;
@@ -336,9 +371,8 @@ static void zynqmp_sha_remove(struct platform_device *pdev)
 	struct xilinx_sha_drv_ctx *sha3_drv_ctx;
 
 	sha3_drv_ctx = platform_get_drvdata(pdev);
-	crypto_unregister_shash(&sha3_drv_ctx->sha3_384);
-	dma_free_coherent(sha3_drv_ctx->dev,
-			  ZYNQMP_DMA_ALLOC_FIXED_SIZE, ubuf, update_dma_addr);
+	crypto_unregister_ahash(&sha3_drv_ctx->sha3_384);
+	 dma_free_coherent(sha3_drv_ctx->dev, ZYNQMP_DMA_ALLOC_FIXED_SIZE, ubuf, update_dma_addr);
 	dma_free_coherent(sha3_drv_ctx->dev,
 			  SHA3_384_DIGEST_SIZE, fbuf, final_dma_addr);
 }
