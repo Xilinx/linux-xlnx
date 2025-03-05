@@ -61,9 +61,11 @@ properties:
     const: 2
 
   reg:
+    minItems: 1
     maxItems: 2
 
   reg-names:
+    minItems: 1
     maxItems: 2
 
   xlnx,ipi-id:
@@ -167,11 +169,13 @@ allOf:
     else:
       properties:
         reg:
+          minItems: 1
           items:
             - description: Host IPI agent control register region
             - description: Host IPI agent optional message buffers
 
         reg-names:
+          minItems: 1
           items:
             - const: ctrl
             - const: msg
