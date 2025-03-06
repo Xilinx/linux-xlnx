@@ -59,7 +59,7 @@
 				clock-names = "ref", "pl_alt_ref", "alt_ref";
 			};
 
-			versal_net_power: zynqmp-power { /* untested */
+			versal_net_power: power-management { /* untested */
 				compatible = "xlnx,zynqmp-power";
 				interrupt-parent = <&gic>;
 				interrupts = <0 57 4>;
