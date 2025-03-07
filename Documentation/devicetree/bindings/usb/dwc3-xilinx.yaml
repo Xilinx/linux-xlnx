@@ -50,17 +50,22 @@ properties:
     description:
       A list of phandles for resets listed in reset-names.
 
-    items:
-      - description: USB core reset
-      - description: USB hibernation reset
-      - description: USB APB reset
+    oneOf:
+      - items:
+          - description: USB controller reset
+      - items:
+          - description: USB core reset
+          - description: USB hibernation reset
+          - description: USB APB reset
 
   reset-names:
-    items:
-      - const: usb_crst
-      - const: usb_hibrst
-      - const: usb_apbrst
-
+    oneOf:
+      - items:
+          - const: usb_crst
+      - items:
+          - const: usb_crst
+          - const: usb_hibrst
+          - const: usb_apbrst
   phys:
     minItems: 1
     maxItems: 2
@@ -104,6 +109,27 @@ if:
 then:
   required:
     - reg
+
+allOf:
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - xlnx,versal-dwc3
+              - xlnx,versal2-mmi-dwc3
+    then:
+      properties:
+        resets:
+          maxItems: 1
+        reset-names:
+          maxItems: 1
+    else:
+      properties:
+        resets:
+          minItems: 3
+        reset-names:
+          minItems: 3
 
 additionalProperties: false
 
