@@ -2966,7 +2966,7 @@ static int xdprxss_probe(struct platform_device *pdev)
 	if (!xdprxss->versal_gt_present) {
 		/* acquire vphy lanes */
 		for (i = 0; i < xdprxss->max_lanecount; i++) {
-			char phy_name[16];
+			char phy_name[17];
 
 			snprintf(phy_name, sizeof(phy_name), "dp-phy%u", i);
 			xdprxss->phy[i] = devm_phy_get(xdprxss->dev, phy_name);
