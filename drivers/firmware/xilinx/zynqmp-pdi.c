@@ -92,10 +92,13 @@ int zynqmp_pm_load_pdi(const u32 src, const u64 address)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 	int ret;
+	u64 swapped_address;
+
+	swapped_address = zynqmp_pm_load_pdi_word_swap(address);
 
 	ret = zynqmp_pm_invoke_fn(PM_LOAD_PDI, ret_payload, 3, src,
-				  lower_32_bits(address),
-				  upper_32_bits(address));
+				  lower_32_bits(swapped_address),
+				  upper_32_bits(swapped_address));
 	if (ret_payload[0])
 		return ret_payload[0];
 
