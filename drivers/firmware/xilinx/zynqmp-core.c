@@ -69,6 +69,12 @@ struct platform_fw_data {
 	 * depending on the platform.
 	 */
 	uint64_t (*prep_pm_cmd_header)(u32 module_id);
+
+	/*
+	 * Indicates whether the word swap required for the memory address
+	 * while loading PDI image based on the platform
+	 */
+	bool load_pdi_word_swap;
 };
 
 static struct platform_fw_data *active_platform_fw_data;
@@ -665,6 +671,27 @@ int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...)
 }
 
 /**
+ * zynqmp_pm_load_pdi_word_swap - Perform word swapping on a memory address.
+ * @address: Memory address to be word-swapped.
+ *
+ * This function checks if the active platform's firmware data specifies that
+ * word swapping is required when loading a Programmable Device Image (PDI).
+ * If so, it performs the necessary word swapping on the provided memory
+ * address.
+ *
+ * Return: 64bit address memory address.
+ */
+u64 zynqmp_pm_load_pdi_word_swap(const u64 address)
+{
+	u64 swapped_address = address;
+
+	if (active_platform_fw_data->load_pdi_word_swap)
+		swapped_address = (address << 32) | (address >> 32);
+
+	return swapped_address;
+}
+
+/**
  * zynqmp_pm_get_sip_svc_version() - Get SiP service call version
  * @version:	Returned version value
  *
@@ -853,12 +880,16 @@ static const struct platform_fw_data platform_fw_data_versal2 = {
 	.do_feature_check = do_feature_check_extended,
 	.zynqmp_pm_fw_call = __zynqmp_pm_fw_call_extended,
 	.prep_pm_cmd_header = prep_pm_hdr_api_features,
+	/* TF-A does only transparent forwarding do word swapping here */
+	.load_pdi_word_swap = true,
 };
 
 static const struct platform_fw_data platform_fw_data_zynqmp_and_versal = {
 	.do_feature_check = do_feature_check_basic,
 	.zynqmp_pm_fw_call = __zynqmp_pm_fw_call_basic,
 	.prep_pm_cmd_header = prep_pm_hdr_feature_check,
+	/* the word swapping is done in TF-A */
+	.load_pdi_word_swap = false,
 };
 
 static const struct of_device_id zynqmp_firmware_of_match[] = {
