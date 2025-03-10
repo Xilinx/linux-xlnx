@@ -3224,7 +3224,7 @@ static void __split_huge_page(struct page *page, struct list_head *list,
 				folio_account_cleaned(tail,
 					inode_to_wb(folio->mapping->host));
 			__filemap_remove_folio(tail, NULL);
-			folio_put(tail);
+			folio_put_refs(tail, folio_nr_pages(tail));
 		} else if (!PageAnon(page)) {
 			__xa_store(&folio->mapping->i_pages, head[i].index,
 					head + i, 0);
