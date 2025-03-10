@@ -489,18 +489,29 @@ enum temac_stat {
 #define XXVS_AN_STATUS_OFFSET		0x0000458
 #define XXVS_AN_LP_STATUS_OFFSET	0x000045C
 #define XXVS_LT_STATUS_OFFSET		0x000046C
+#define XXVS_RX_STATUS_REG1		0x00000404
+#define XXVS_TC_OFFSET			0x0000000C
 
 /* Switchable 1/10/25G MAC Register Mask Definitions */
 #define XXVS_RX_SERDES_RESET		BIT(28)
 #define XXVS_AN_ENABLE_MASK		BIT(0)
+#define XXVS_AN_BYPASS			BIT(1)
 #define XXVS_AN_1G_ABILITY_MASK		BIT(0)
 #define XXVS_AN_10G_ABILITY_MASK	BIT(1)
+#define XXVS_AN_25G_ABILITY_MASK	BIT(10)
 #define XXVS_LT_ENABLE_MASK		BIT(0)
 #define XXVS_LT_TRAINED_MASK		BIT(0)
 #define XXVS_AN_COMPLETE_MASK		BIT(2)
 #define XXVS_LT_DETECT_MASK		BIT(0)
 #define XXVS_SPEED_1G			BIT(0)
 #define	XXVS_SPEED_10G			BIT(1)
+#define XXVS_SPEED_25G			~(BIT(0) | BIT(1))
+#define XXVS_RX_STATUS_MASK		BIT(0)
+#define XXVS_RX_RESET			BIT(30)
+#define XXVS_TX_RESET			BIT(31)
+#define XXVS_CTRL_CORE_SPEED_SEL_CLEAR		~(BIT(6) | BIT(7))
+#define XXVS_CTRL_CORE_SPEED_SEL_1G		BIT(6)
+#define XXVS_CTRL_CORE_SPEED_SEL_10G	BIT(7)
 
 /* XXV MAC Register Mask Definitions */
 #define XXV_GT_RESET_MASK	BIT(0)
@@ -631,6 +642,8 @@ enum temac_stat {
 #define XXVS_LT_COEF_STATE0_SHIFT	8
 #define XXVS_LT_COEF_M1			0x1
 #define XXVS_LT_COEF_M1_SHIFT		10
+/* Switching 1/10/25G MAC "xlnx,runtime-switch" DT property value */
+#define XXVS_RT_SWITCH_1G_10G_25G		"1G / 10G / 25G"
 
 /* Macros used when AXI DMA h/w is configured without DRE */
 #define XAE_MAX_PKT_LEN		8192
@@ -1003,7 +1016,6 @@ struct skbuf_dma_descriptor {
  * @gt_mode_narrow: true if GT is configured to operate in Narrow mode, false for Wide mode.
  * @mrmac_stream_dwidth: MRMAC AXI4-Stream data width (bits).
  * @switch_lock: Spinlock for switchable IP.
- * @restart_work: delayable work queue.
  * @eoe_regs: Ethernet offload IP base address.
  * @eoe_connected: Tells whether ethernet offload IP is connected to Ethernet IP.
  * @eoe_features: EOE IP supported configuration.
@@ -1123,7 +1135,6 @@ struct axienet_local {
 	bool gt_mode_narrow;
 	int mrmac_stream_dwidth;
 	spinlock_t switch_lock;	/* To protect Link training programming from multiple context */
-	struct delayed_work restart_work;
 	void __iomem *eoe_regs;
 	bool eoe_connected;
 	u32 eoe_features;
