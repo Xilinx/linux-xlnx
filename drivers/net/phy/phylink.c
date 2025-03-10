@@ -956,6 +956,7 @@ static int phylink_parse_mode(struct phylink *pl,
 		case PHY_INTERFACE_MODE_10GKR:
 		case PHY_INTERFACE_MODE_10GBASER:
 		case PHY_INTERFACE_MODE_XLGMII:
+		case PHY_INTERFACE_MODE_INTERNAL:
 			caps = ~(MAC_SYM_PAUSE | MAC_ASYM_PAUSE);
 			caps = phylink_get_capabilities(pl->link_config.interface, caps,
 							RATE_MATCH_NONE);
@@ -1165,11 +1166,14 @@ static unsigned int phylink_pcs_neg_mode(unsigned int mode,
 
 	case PHY_INTERFACE_MODE_1000BASEX:
 	case PHY_INTERFACE_MODE_2500BASEX:
+	case PHY_INTERFACE_MODE_INTERNAL:
 		/* 1000base-X is designed for use media-side for Fibre
 		 * connections, and thus the Autoneg bit needs to be
 		 * taken into account. We also do this for 2500base-X
 		 * as well, but drivers may not support this, so may
 		 * need to override this.
+		 * For Internal, neg mode to be determined based
+		 * on Autoneg bit.
 		 */
 		if (!phylink_autoneg_inband(mode))
 			neg_mode = PHYLINK_PCS_NEG_OUTBAND;
