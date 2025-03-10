@@ -759,7 +759,6 @@ static int __hw_perf_event_init(struct perf_event *event)
 		reserve_pmc_hardware();
 		refcount_set(&num_events, 1);
 	}
-	mutex_unlock(&pmc_reserve_mutex);
 	event->destroy = hw_perf_event_destroy;
 
 	/* Access per-CPU sampling information (query sampling info) */
@@ -848,6 +847,7 @@ static int __hw_perf_event_init(struct perf_event *event)
 		if (is_default_overflow_handler(event))
 			event->overflow_handler = cpumsf_output_event_pid;
 out:
+	mutex_unlock(&pmc_reserve_mutex);
 	return err;
 }
 
@@ -1780,7 +1780,9 @@ static void cpumsf_pmu_stop(struct perf_event *event, int flags)
 	event->hw.state |= PERF_HES_STOPPED;
 
 	if ((flags & PERF_EF_UPDATE) && !(event->hw.state & PERF_HES_UPTODATE)) {
-		hw_perf_event_update(event, 1);
+		/* CPU hotplug off removes SDBs. No samples to extract. */
+		if (cpuhw->flags & PMU_F_RESERVED)
+			hw_perf_event_update(event, 1);
 		event->hw.state |= PERF_HES_UPTODATE;
 	}
 	perf_pmu_enable(event->pmu);
