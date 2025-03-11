@@ -127,6 +127,7 @@
 #define XVMIX_GIE_EN_MASK		BIT(0)
 #define XVMIX_AP_EN_MASK		BIT(0)
 #define XVMIX_AP_RST_MASK		BIT(7)
+#define XVMIX_VFMT_SIZE			5
 #define XVMIX_MAX_NUM_SUB_PLANES	4
 #define XVMIX_SCALE_FACTOR_1X		0
 #define	XVMIX_SCALE_FACTOR_2X		1
@@ -2216,7 +2217,7 @@ static int xlnx_mix_parse_dt_bg_video_fmt(struct device_node *node,
 		DRM_ERROR("No xlnx,vformat value for layer 0 in dts\n");
 		return -EINVAL;
 	}
-	strscpy((char *)&layer->hw_config.vid_fmt, vformat, 4);
+	strscpy((char *)&layer->hw_config.vid_fmt, vformat, XVMIX_VFMT_SIZE);
 	layer->hw_config.is_streaming =
 		of_property_read_bool(layer_node, "xlnx,layer-streaming");
 	if (of_property_read_u32(node, "xlnx,bpc", &mixer_hw->bg_layer_bpc)) {
@@ -2498,7 +2499,7 @@ static int xlnx_mix_of_init_layer(struct device *dev, struct device_node *node,
 		return ret;
 	}
 
-	strscpy((char *)&layer->hw_config.vid_fmt, vformat, 4);
+	strscpy((char *)&layer->hw_config.vid_fmt, vformat, XVMIX_VFMT_SIZE);
 	layer->hw_config.can_scale =
 		    of_property_read_bool(layer_node, "xlnx,layer-scale");
 	if (layer->hw_config.can_scale) {
