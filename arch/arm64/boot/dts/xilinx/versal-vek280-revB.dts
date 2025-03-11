@@ -7,7 +7,6 @@
  * Michal Simek <michal.simek@amd.com>
  */
 
-#include <dt-bindings/net/ti-dp83867.h>
 #include <dt-bindings/gpio/gpio.h>
 #include "versal.dtsi"
 #include "versal-clk.dtsi"
