@@ -24,6 +24,7 @@
 #define RESET			0
 
 #define ZYNQMP_DMA_BIT_MASK		32U
+#define VERSAL_DMA_BIT_MASK		64U
 #define ZYNQMP_DMA_ALLOC_FIXED_SIZE	0x1000U
 
 enum zynqmp_sha_op {
@@ -35,6 +36,7 @@ enum zynqmp_sha_op {
 struct xilinx_sha_drv_ctx {
 	struct shash_alg sha3_384;
 	struct device *dev;
+	u8 dma_addr_size;
 };
 
 struct zynqmp_sha_tfm_ctx {
@@ -232,7 +234,8 @@ static struct xilinx_sha_drv_ctx zynqmp_sha3_drv_ctx = {
 			.cra_alignmask = 3,
 			.cra_module = THIS_MODULE,
 		}
-	}
+	},
+	.dma_addr_size = ZYNQMP_DMA_BIT_MASK,
 };
 
 static struct xilinx_sha_drv_ctx versal_sha3_drv_ctx = {
@@ -261,7 +264,8 @@ static struct xilinx_sha_drv_ctx versal_sha3_drv_ctx = {
 			.cra_alignmask = 3,
 			.cra_module = THIS_MODULE,
 		}
-	}
+	},
+	.dma_addr_size = VERSAL_DMA_BIT_MASK,
 };
 
 static struct xlnx_feature sha_feature_map[] = {
@@ -293,7 +297,7 @@ static int zynqmp_sha_probe(struct platform_device *pdev)
 		return PTR_ERR(sha3_drv_ctx);
 	}
 
-	err = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(ZYNQMP_DMA_BIT_MASK));
+	err = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(sha3_drv_ctx->dma_addr_size));
 	if (err < 0) {
 		dev_err(dev, "No usable DMA configuration\n");
 		return err;
