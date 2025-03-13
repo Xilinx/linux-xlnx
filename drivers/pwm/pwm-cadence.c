@@ -56,7 +56,6 @@
  * @base:	Base address of TTC instance
  */
 struct ttc_pwm_priv {
-	struct pwm_chip chip;
 	unsigned long rate;
 	u32 max;
 	void __iomem *base;
@@ -98,7 +97,7 @@ static inline void ttc_pwm_ch_writel(struct ttc_pwm_priv *priv,
 
 static inline struct ttc_pwm_priv *xilinx_pwm_chip_to_priv(struct pwm_chip *chip)
 {
-	return container_of(chip, struct ttc_pwm_priv, chip);
+	return pwmchip_get_drvdata(chip);
 }
 
 static void ttc_pwm_enable(struct ttc_pwm_priv *priv, struct pwm_device *pwm)
@@ -288,6 +287,7 @@ static int ttc_pwm_probe(struct platform_device *pdev)
 	struct device_node *np = dev->of_node;
 	u32 pwm_cells, timer_width;
 	struct ttc_pwm_priv *priv;
+	struct pwm_chip *chip;
 	struct clk *clk;
 	int ret;
 
@@ -303,9 +303,11 @@ static int ttc_pwm_probe(struct platform_device *pdev)
 	if (ret)
 		return dev_err_probe(dev, ret, "could not read #pwm-cells\n");
 
-	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
-	if (!priv)
-		return -ENOMEM;
+	chip = devm_pwmchip_alloc(dev, TTC_PWM_MAX_CH, sizeof(*priv));
+	if (IS_ERR(chip))
+		return PTR_ERR(chip);
+
+	priv = xilinx_pwm_chip_to_priv(chip);
 
 	priv->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(priv->base))
@@ -332,10 +334,9 @@ static int ttc_pwm_probe(struct platform_device *pdev)
 		return dev_err_probe(dev, -EINVAL,
 				     "Failed to get clock rate\n");
 
-	priv->chip.ops = &ttc_pwm_ops;
-	priv->chip.npwm = TTC_PWM_MAX_CH;
+	chip->ops = &ttc_pwm_ops;
 
-	ret = devm_pwmchip_add(dev, &priv->chip);
+	ret = devm_pwmchip_add(dev, chip);
 	if (ret)
 		return dev_err_probe(dev, ret, "Could not register PWM chip\n");
 
