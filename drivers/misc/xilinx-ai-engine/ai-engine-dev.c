@@ -780,7 +780,6 @@ struct device *aie_partition_request(struct aie_partition_req *req)
 	class_dev_iter_init(&iter, aie_class, NULL, NULL);
 	while ((dev = class_dev_iter_next(&iter))) {
 		struct aie_aperture *aperture;
-		int ret;
 
 		if (strncmp(dev_name(dev), "aieaperture",
 			    strlen("aieaperture")))
