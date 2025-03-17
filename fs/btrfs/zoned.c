@@ -2107,6 +2107,9 @@ bool btrfs_zone_activate(struct btrfs_block_group *block_group)
 		physical = map->stripes[i].physical;
 		zinfo = device->zone_info;
 
+		if (!device->bdev)
+			continue;
+
 		if (zinfo->max_active_zones == 0)
 			continue;
 
