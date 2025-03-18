@@ -622,23 +622,41 @@ struct aie_resource {
  *	      register offset from @bc_regoff.
  * @group_error: group error attribute to capture error group mask value and
  *		 register offset value from @group_regoff.
+ * @bc_block_a: broadcast block a south-set register offset.
+ * @bc_block_b: broadcast block b south-set register offset.
+ * @error_halt_event: error halt event register offset.
+ * @error_halt_event_group: default value of error halt event group.
+ * @event_group_error0_enable: group_error0 register offset.
+ * @event_group_error0_enable_default: default event0 group enabled mask.
  * @bc_regoff: base broadcast register offset.
  * @status_regoff: base status register offset.
  * @group_regoff: base group error register offset.
  * @base_error_event: event ID of first error event in a group error.
  * @num_broadcasts: total number of broadcast events.
  * @base_bc_event: broadcast 0 vent ID
+ * @base_error_group: First event ID of @base_bc_event event group.
+ * @user_event1: USER_EVENT1 event id.
+ * @uc_error_group: event ID of Uc error group.
  * @num_events: total number of events.
  */
 struct aie_event_attr {
 	struct aie_single_reg_field bc_event;
 	struct aie_single_reg_field group_error;
+	struct aie_single_reg_field bc_block_a;
+	struct aie_single_reg_field bc_block_b;
+	struct aie_single_reg_field error_halt_event;
+	u32 error_halt_event_group;
+	struct aie_single_reg_field event_group_error0_enable;
+	u32 event_group_error0_enable_default;
 	u32 bc_regoff;
 	u32 status_regoff;
 	u32 group_regoff;
 	u32 base_error_event;
 	u32 num_broadcasts;
 	u32 base_bc_event;
+	u32 base_error_group;
+	u32 user_event1;
+	u32 uc_error_group;
 	u32 num_events;
 };
 
