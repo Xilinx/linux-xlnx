@@ -826,6 +826,11 @@ static const struct aie_tile_regs aie2ps_core_regs_clr[] = {
 	},
 };
 
+static const struct aie_single_reg_field aie2ps_core_sts = {
+	.mask = GENMASK(21, 0),
+	.regoff = AIE2PS_TILE_COREMOD_CORE_STATUS_REGOFF,
+};
+
 static u32 aie2ps_get_tile_type(struct aie_device *adev, struct aie_location *loc)
 {
 	u8 num_mem_rows = adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows;
@@ -903,9 +908,20 @@ static unsigned int aie2ps_get_mem_info(struct aie_device *adev, struct aie_rang
 	return NUM_TYPES_OF_MEM;
 }
 
+static u32 aie2ps_get_core_status(struct aie_partition *apart, struct aie_location *loc)
+{
+	u32 regoff, regvalue;
+
+	regoff = aie_cal_regoff(apart->adev, *loc, aie2ps_core_sts.regoff);
+	regvalue = ioread32(apart->aperture->base + regoff);
+
+	return aie_get_reg_field(&aie2ps_core_sts, regvalue);
+}
+
 static const struct aie_tile_operations aie2ps_ops = {
 	.get_tile_type = aie2ps_get_tile_type,
 	.get_mem_info = aie2ps_get_mem_info,
+	.get_core_status = aie2ps_get_core_status,
 };
 
 /**
