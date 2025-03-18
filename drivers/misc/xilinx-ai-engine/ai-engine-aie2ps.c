@@ -1543,6 +1543,149 @@ static const struct aie_sysfs_attr aie2ps_tile_sysfs_attr = {
 	.num_bin_attrs = 0U,
 };
 
+static const struct aie_single_reg_field aie2ps_core_pc = {
+	.mask = GENMASK(19, 0),
+	.regoff = AIE2PS_TILE_COREMOD_CORE_PC_REGOFF,
+};
+
+static const struct aie_single_reg_field aie2ps_core_lr = {
+	.mask = GENMASK(19, 0),
+	.regoff = AIE2PS_TILE_COREMOD_CORE_LR_REGOFF,
+};
+
+static const struct aie_single_reg_field aie2ps_core_sp = {
+	.mask = GENMASK(19, 0),
+	.regoff = AIE2PS_TILE_COREMOD_CORE_SP_REGOFF,
+};
+
+static const struct aie_event_attr aie2ps_pl_event = {
+	.bc_event = {
+		.mask = GENMASK(6, 0),
+		.regoff = 0U,
+	},
+	.group_error = {
+		.mask = GENMASK(11, 0),
+		.regoff = 0xcU,
+	},
+	.bc_block_a = {
+		.mask = GENMASK(15, 0),
+		.regoff = AIE2PS_SHIMPL_EVENT_BC_A_BLOCK_SOUTH_SET,
+	},
+	.bc_block_b = {
+		.mask = GENMASK(15, 0),
+		.regoff = AIE2PS_SHIMPL_EVENT_BC_B_BLOCK_SOUTH_SET,
+	},
+	.event_group_error0_enable = {
+		.mask = GENMASK(9, 0),
+		.regoff = AIE2PS_SHIMPL_GROUP0_REGOFF,
+	},
+	.event_group_error0_enable_default = 0x3FFU,
+	.bc_regoff = AIE2PS_SHIMPL_EVENT_BC0_REGOFF,
+	.status_regoff = AIE2PS_SHIMPL_EVENT_STATUS0_REGOFF,
+	.group_regoff = AIE2PS_SHIMPL_GROUP0_REGOFF,
+	.base_error_event = 114U,
+	.base_error_group = 113U,
+	.num_broadcasts = 16U,
+	.base_bc_event = 166U,
+	.user_event1 = 183U,
+	.uc_error_group = 195U,
+	.num_events = 256U,
+};
+
+static const struct aie_event_attr aie2ps_memtile_event = {
+	.bc_event = {
+		.mask = GENMASK(7, 0),
+		.regoff = 0U,
+	},
+	.group_error = {
+		.mask = GENMASK(11, 0),
+		.regoff = 0x18U,
+	},
+	.bc_block_a = {
+		.mask = GENMASK(15, 0),
+		.regoff = AIE2PS_MEMORY_EVENT_BC_A_BLOCK_SOUTH_SET,
+	},
+	.bc_block_b = {
+		.mask = GENMASK(15, 0),
+		.regoff = AIE2PS_MEMORY_EVENT_BC_B_BLOCK_SOUTH_SET,
+	},
+	.event_group_error0_enable = {
+		.mask = GENMASK(11, 0),
+		.regoff = AIE2PS_MEMORY_GROUPERROR_REGOFF,
+	},
+	.event_group_error0_enable_default = 0x7FAU,
+
+	.bc_regoff = AIE2PS_MEMORY_EVENT_BC0_REGOFF,
+	.status_regoff = AIE2PS_MEMORY_EVENT_STATUS0_REGOFF,
+	.group_regoff = AIE2PS_MEMORY_GROUP0_REGOFF,
+	.base_error_event = 129U,
+	.base_error_group = 128U,
+	.num_broadcasts = 16U,
+	.base_bc_event = 142U,
+	.num_events = 192U,
+};
+
+static const struct aie_event_attr aie2ps_mem_event = {
+	.bc_event = {
+		.mask = GENMASK(6, 0),
+		.regoff = 0U,
+	},
+	.group_error = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x14U,
+	},
+	.bc_block_b = {
+		.mask = GENMASK(15, 0),
+		.regoff = AIE2PS_TILE_MEMMOD_EVENT_BC_B_BLOCK_SOUTH_SET,
+	},
+	.event_group_error0_enable = {
+		.mask = GENMASK(15, 0),
+		.regoff = AIE2PS_TILE_MEMMOD_GROUPERROR_REGOFF,
+	},
+	.event_group_error0_enable_default = 0x7FFAU,
+	.bc_regoff = AIE2PS_TILE_MEMMOD_EVENT_BC0_REGOFF,
+	.status_regoff = AIE2PS_TILE_MEMMOD_EVENT_STATUS0_REGOFF,
+	.group_regoff = AIE2PS_TILE_MEMMOD_GROUP0_REGOFF,
+	.base_error_event = 87U,
+	.base_error_group = 86U,
+	.num_broadcasts = 16U,
+	.base_bc_event = 107U,
+	.num_events = 128U,
+};
+
+static const struct aie_event_attr aie2ps_core_event = {
+	.bc_event = {
+		.mask = GENMASK(6, 0),
+		.regoff = 0U,
+	},
+	.group_error = {
+		.mask = GENMASK(24, 0),
+		.regoff = 0x10U,
+	},
+	.bc_block_a = {
+		.mask = GENMASK(15, 0),
+		.regoff = AIE2PS_TILE_COREMOD_EVENT_BC_A_BLOCK_SOUTH_SET,
+	},
+	.error_halt_event = {
+		.mask = GENMASK(6, 0),
+		.regoff = AIE2PS_TILE_COREMOD_ERROR_HALT_EVENT_REGOFF,
+	},
+	.error_halt_event_group = 46U,
+	.event_group_error0_enable = {
+		.mask = GENMASK(24, 0),
+		.regoff = AIE2PS_TILE_COREMOD_GROUPERROR_REGOFF,
+	},
+	.event_group_error0_enable_default = 0x1CF5F80U,
+	.bc_regoff = AIE2PS_TILE_COREMOD_EVENT_BC0_REGOFF,
+	.status_regoff = AIE2PS_TILE_COREMOD_EVENT_STATUS0_REGOFF,
+	.group_regoff = AIE2PS_TILE_COREMOD_GROUP0_REGOFF,
+	.base_error_event = 48U,
+	.base_error_group = 46U,
+	.num_broadcasts = 16U,
+	.base_bc_event = 107U,
+	.num_events = 128U,
+};
+
 static u32 aie2ps_get_tile_type(struct aie_device *adev, struct aie_location *loc)
 {
 	u8 num_mem_rows = adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows;
@@ -2693,9 +2836,16 @@ int aie2ps_device_init(struct aie_device *adev)
 	adev->part_sysfs_attr = &aie2ps_part_sysfs_attr;
 	adev->tile_sysfs_attr = &aie2ps_tile_sysfs_attr;
 	adev->core_status_str = aie2ps_core_status_str;
+	adev->core_pc = &aie2ps_core_pc;
+	adev->core_lr = &aie2ps_core_lr;
+	adev->core_sp = &aie2ps_core_sp;
+	adev->pl_events = &aie2ps_pl_event;
+	adev->memtile_events = &aie2ps_memtile_event;
+	adev->mem_events = &aie2ps_mem_event;
 	adev->mem_lock = &aie2ps_mem_lock;
 	adev->pl_lock = &aie2ps_pl_lock;
 	adev->memtile_lock = &aie2ps_memtile_lock;
+	adev->core_events = &aie2ps_core_event;
 	aie2ps_device_init_rscs_attr(adev);
 
 	return 0;
