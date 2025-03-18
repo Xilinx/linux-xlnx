@@ -1356,6 +1356,7 @@ int aie_part_release_tiles_from_user(struct aie_partition *apart,
 				     void __user *user_args);
 int aie_device_init(struct aie_device *adev);
 int aieml_device_init(struct aie_device *adev);
+int aie2ps_device_init(struct aie_device *adev);
 
 bool aie_part_has_mem_mmapped(struct aie_partition *apart);
 bool aie_part_has_regs_mmapped(struct aie_partition *apart);
