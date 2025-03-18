@@ -839,8 +839,73 @@ static u32 aie2ps_get_tile_type(struct aie_device *adev, struct aie_location *lo
 	return AIE_TILE_TYPE_SHIMNOC;
 }
 
+static unsigned int aie2ps_get_mem_info(struct aie_device *adev, struct aie_range *range,
+					struct aie_part_mem *pmem)
+{
+	u8 start_row, num_rows;
+	unsigned int i;
+
+	if (!pmem)
+		return NUM_TYPES_OF_MEM;
+
+	/* SHIM row only, no memories in this range */
+	if (range->start.row + range->size.row <= 1)
+		return 0;
+
+	for (i = 0; i < NUM_TYPES_OF_MEM; i++) {
+		struct aie_mem *mem = &pmem[i].mem;
+
+		memcpy(&mem->range, range, sizeof(*range));
+	}
+
+	start_row = adev->ttype_attr[AIE_TILE_TYPE_TILE].start_row;
+	num_rows = adev->ttype_attr[AIE_TILE_TYPE_TILE].num_rows;
+	/* Setup tile data memory information */
+	pmem[0].mem.offset = 0;
+	pmem[0].mem.size = KBYTES(64);
+	pmem[0].mem.range.start.row = start_row;
+	pmem[0].mem.range.size.row = num_rows;
+
+	/* Setup program memory information */
+	pmem[1].mem.offset = 0x20000;
+	pmem[1].mem.size = KBYTES(16);
+	pmem[1].mem.range.start.row = start_row;
+	pmem[1].mem.range.size.row = num_rows;
+
+	start_row = adev->ttype_attr[AIE_TILE_TYPE_MEMORY].start_row;
+	num_rows = adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows;
+	/* Setup memory tile memory information */
+	pmem[2].mem.offset = 0;
+	pmem[2].mem.size = KBYTES(512);
+	pmem[2].mem.range.start.row = start_row;
+	pmem[2].mem.range.size.row = num_rows;
+
+	start_row = adev->ttype_attr[AIE_TILE_TYPE_SHIMPL].start_row;
+	num_rows = adev->ttype_attr[AIE_TILE_TYPE_SHIMPL].num_rows;
+	/* Setup uc program memory information */
+	pmem[3].mem.offset = 0x80000;
+	pmem[3].mem.size = KBYTES(32);
+	pmem[3].mem.range.start.row = start_row;
+	pmem[3].mem.range.size.row = num_rows;
+
+	/* Setup uc private data memory information */
+	pmem[4].mem.offset = 0x88000;
+	pmem[4].mem.size = KBYTES(16);
+	pmem[4].mem.range.start.row = start_row;
+	pmem[4].mem.range.size.row = num_rows;
+
+	/* Setup uc shared data memory information */
+	pmem[5].mem.offset = 0xD0000;
+	pmem[5].mem.size = KBYTES(32);
+	pmem[5].mem.range.start.row = start_row;
+	pmem[5].mem.range.size.row = num_rows;
+
+	return NUM_TYPES_OF_MEM;
+}
+
 static const struct aie_tile_operations aie2ps_ops = {
 	.get_tile_type = aie2ps_get_tile_type,
+	.get_mem_info = aie2ps_get_mem_info,
 };
 
 /**
