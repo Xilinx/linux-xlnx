@@ -2473,6 +2473,21 @@ static int aie2ps_set_tile_isolation(struct aie_partition *apart,
 	return 0;
 }
 
+static int aie2ps_part_clear_mems(struct aie_partition *apart)
+{
+	struct aie_range *range = &apart->range;
+	u32 node_id = apart->adev->pm_node_id;
+	int ret;
+
+	ret = zynqmp_pm_aie_operation(node_id, range->start.col,
+				      range->size.col,
+				      XILINX_AIE_OPS_ZEROISATION);
+	if (ret < 0)
+		dev_err(&apart->dev, "failed to clear memory for partition\n");
+
+	return ret;
+}
+
 static const struct aie_tile_operations aie2ps_ops = {
 	.get_tile_type = aie2ps_get_tile_type,
 	.get_mem_info = aie2ps_get_mem_info,
@@ -2486,6 +2501,7 @@ static const struct aie_tile_operations aie2ps_ops = {
 	.scan_part_clocks = aie2ps_scan_part_clocks,
 	.set_part_clocks = aie2ps_set_part_clocks,
 	.set_tile_isolation = aie2ps_set_tile_isolation,
+	.mem_clear = aie2ps_part_clear_mems,
 	.get_dma_s2mm_status = aie2ps_get_dma_s2mm_status,
 	.get_dma_mm2s_status = aie2ps_get_dma_mm2s_status,
 	.get_chan_status = aie2ps_get_chan_status,
