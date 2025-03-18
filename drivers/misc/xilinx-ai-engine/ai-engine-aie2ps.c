@@ -2432,6 +2432,47 @@ static int aie2ps_scan_part_clocks(struct aie_partition *apart)
 	return 0;
 }
 
+/**
+ * aie2ps_set_tile_isolation() - Set isolation boundary of AI engile tile
+ * @apart: AI engine partition
+ * @loc: Location of tile
+ * @dir: Direction to block
+ * @return: return 0 if success negative value for failure.
+ *
+ * Possible direction values are:
+ *	- AIE_ISOLATE_EAST_MASK
+ *	- AIE_ISOLATE_NORTH_MASK
+ *	- AIE_ISOLATE_WEST_MASK
+ *	- AIE_ISOLATE_SOUTH_MASK
+ *	- AIE_ISOLATE_ALL_MASK
+ *	- or "OR" of multiple values
+ */
+static int aie2ps_set_tile_isolation(struct aie_partition *apart,
+				     struct aie_location *loc, u8 dir)
+{
+	struct aie_device *adev = apart->adev;
+	const struct aie_aperture *aperture = apart->aperture;
+	void __iomem *va;
+	u32 ttype, val;
+
+	/* For AIEML device, dir input will match register mask */
+	val = (u32)dir;
+	ttype = aie2ps_get_tile_type(adev, loc);
+	if (ttype == AIE_TILE_TYPE_TILE) {
+		va = aperture->base +
+		     aie_cal_regoff(adev, *loc,
+				    AIE2PS_TILE_COREMOD_TILECTRL_REGOFF);
+	} else if (ttype == AIE_TILE_TYPE_MEMORY) {
+		va = aperture->base +
+		     aie_cal_regoff(adev, *loc, AIE2PS_MEMORY_TILECTRL_REGOFF);
+	} else {
+		va = aperture->base +
+		     aie_cal_regoff(adev, *loc, AIE2PS_SHIMPL_TILECTRL_REGOFF);
+	}
+	iowrite32(val, va);
+	return 0;
+}
+
 static const struct aie_tile_operations aie2ps_ops = {
 	.get_tile_type = aie2ps_get_tile_type,
 	.get_mem_info = aie2ps_get_mem_info,
@@ -2444,6 +2485,7 @@ static const struct aie_tile_operations aie2ps_ops = {
 	.init_part_clk_state = aie2ps_init_part_clk_state,
 	.scan_part_clocks = aie2ps_scan_part_clocks,
 	.set_part_clocks = aie2ps_set_part_clocks,
+	.set_tile_isolation = aie2ps_set_tile_isolation,
 	.get_dma_s2mm_status = aie2ps_get_dma_s2mm_status,
 	.get_dma_mm2s_status = aie2ps_get_dma_mm2s_status,
 	.get_chan_status = aie2ps_get_chan_status,
