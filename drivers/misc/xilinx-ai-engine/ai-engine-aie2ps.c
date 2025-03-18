@@ -2932,6 +2932,9 @@ static void aie2ps_device_init_rscs_attr(struct aie_device *adev)
 
 int aie2ps_device_init(struct aie_device *adev)
 {
+	adev->array_shift = AIE2PS_ARRAY_SHIFT;
+	adev->col_shift = AIE2PS_COL_SHIFT;
+	adev->row_shift = AIE2PS_ROW_SHIFT;
 	adev->ops = &aie2ps_ops;
 	adev->num_kernel_regs = ARRAY_SIZE(aie2ps_kernel_regs);
 	adev->kernel_regs = aie2ps_kernel_regs;
