@@ -680,9 +680,9 @@ struct aie_event_attr {
  * @block_north_b_clear: switch B level 1 interrupt controller block north clear attribute.
  * @block_north_b_value: switch B level 1 interrupt controller block north value attribute.
  * @swa_status: switch A level 1 interrupt controller status attribute.
- * @swb_status: switch A level 1 interrupt controller status attribute.
+ * @swb_status: switch B level 1 interrupt controller status attribute.
  * @swa_event: switch A level 1 interrupt controller event attribute.
- * @swb_event: switch A level 1 interrupt controller event attribute.
+ * @swb_event: switch B level 1 interrupt controller event attribute.
  * @regoff: base level 1 interrupt controller register offset.
  * @event_lsb: lsb of IRQ event within IRQ event switch register.
  * @num_broadcasts: total number of broadcast signals to level 1 interrupt
