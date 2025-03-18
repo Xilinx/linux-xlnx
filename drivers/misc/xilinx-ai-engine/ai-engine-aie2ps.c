@@ -1686,6 +1686,119 @@ static const struct aie_event_attr aie2ps_core_event = {
 	.num_events = 128U,
 };
 
+static const struct aie_l1_intr_ctrl_attr aie2ps_l1_intr_ctrl = {
+	.mask_a = {
+		.mask = GENMASK(19, 0),
+		.regoff = 0,
+	},
+	.enable_a = {
+		.mask = GENMASK(19, 0),
+		.regoff = 0x4U,
+	},
+	.disable_a = {
+		.mask = GENMASK(19, 0),
+		.regoff = 0x8U,
+	},
+	.irq_no_a = {
+		.mask = GENMASK(3, 0),
+		.regoff = 0x10U,
+	},
+	.irq_event_a = {
+		.mask = GENMASK(31, 0),
+		.regoff = 0x14U,
+	},
+	.block_north_a_set = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x18U,
+	},
+	.block_north_a_clear = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x1CU,
+	},
+	.block_north_a_value = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x20U,
+	},
+
+	.mask_b = {
+		.mask = GENMASK(19, 0),
+		.regoff = 0x30U,
+	},
+	.enable_b = {
+		.mask = GENMASK(19, 0),
+		.regoff = 0x34U,
+	},
+	.disable_b = {
+		.mask = GENMASK(19, 0),
+		.regoff = 0x38U,
+	},
+	.irq_no_b = {
+		.mask = GENMASK(3, 0),
+		.regoff = 0x40U,
+	},
+	.irq_event_b = {
+		.mask = GENMASK(31, 0),
+		.regoff = 0x44U,
+	},
+	.block_north_b_set = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x48U,
+	},
+	.block_north_b_clear = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x4CU,
+	},
+	.block_north_b_value = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x50U,
+	},
+
+	.swa_status = {
+		.mask = GENMASK(19, 0),
+		.regoff = 0xcU,
+	},
+	.swb_status = {
+		.mask = GENMASK(19, 0),
+		.regoff = 0x3cU,
+	},
+	.swa_event = {
+		.mask = GENMASK(6, 0),
+		.regoff = 0x14U,
+	},
+	.swb_event = {
+		.mask = GENMASK(6, 0),
+		.regoff = 0x44U,
+	},
+	.regoff = 0x35000U,
+	.event_lsb = 8,
+	.num_broadcasts = 0x14U,
+};
+
+static const struct aie_l2_intr_ctrl_attr aie2ps_l2_intr_ctrl = {
+	.mask = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x0U,
+	},
+	.enable = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x4U,
+	},
+	.disable = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x8U,
+	},
+	.status = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0xcU,
+	},
+	.intr = {
+		.mask = GENMASK(1, 0),
+		.regoff = 0x10U,
+	},
+	.regoff = 0x1000U,
+	.num_broadcasts = 0x10U,
+};
+
 static u32 aie2ps_get_tile_type(struct aie_device *adev, struct aie_location *loc)
 {
 	u8 num_mem_rows = adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows;
@@ -2846,6 +2959,8 @@ int aie2ps_device_init(struct aie_device *adev)
 	adev->pl_lock = &aie2ps_pl_lock;
 	adev->memtile_lock = &aie2ps_memtile_lock;
 	adev->core_events = &aie2ps_core_event;
+	adev->l1_ctrl = &aie2ps_l1_intr_ctrl;
+	adev->l2_ctrl = &aie2ps_l2_intr_ctrl;
 	aie2ps_device_init_rscs_attr(adev);
 
 	return 0;
