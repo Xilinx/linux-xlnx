@@ -826,6 +826,23 @@ static const struct aie_tile_regs aie2ps_core_regs_clr[] = {
 	},
 };
 
+static u32 aie2ps_get_tile_type(struct aie_device *adev, struct aie_location *loc)
+{
+	u8 num_mem_rows = adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows;
+
+	if (loc->row > num_mem_rows)
+		return AIE_TILE_TYPE_TILE;
+
+	if (loc->row)
+		return AIE_TILE_TYPE_MEMORY;
+
+	return AIE_TILE_TYPE_SHIMNOC;
+}
+
+static const struct aie_tile_operations aie2ps_ops = {
+	.get_tile_type = aie2ps_get_tile_type,
+};
+
 /**
  * aie2ps_device_init_rscs_attr() - initialize AI engine device resources
  *				   attributes
@@ -863,6 +880,7 @@ static void aie2ps_device_init_rscs_attr(struct aie_device *adev)
 
 int aie2ps_device_init(struct aie_device *adev)
 {
+	adev->ops = &aie2ps_ops;
 	adev->num_kernel_regs = ARRAY_SIZE(aie2ps_kernel_regs);
 	adev->kernel_regs = aie2ps_kernel_regs;
 	adev->core_regs_clr = aie2ps_core_regs_clr;
