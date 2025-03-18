@@ -431,6 +431,7 @@ struct aie_bd_aieml_dim_attr {
  * @axi: buffer descriptor AXI attributes
  * @aie_dim: buffer descriptor dimension attributes for aie dma
  * @aieml_dim: buffer descriptor dimension attributes for aieml dma
+ * @aie2ps_dim: buffer descriptor dimension attributes for aie2ps dma
  * @buf_sel: buffer descriptor buffer selection field attributes
  * @curr_ptr: buffer descriptor current pointer field attributes
  * @interleave_en: buffer descriptor interleave enable field attributes
@@ -456,6 +457,7 @@ struct aie_bd_attr {
 	union {
 		struct aie_bd_aie_dim_attr aie_dim;
 		struct aie_bd_aieml_dim_attr aieml_dim;
+		struct aie_bd_aieml_dim_attr aie2ps_dim;
 	};
 	struct aie_single_reg_field buf_sel;
 	struct aie_single_reg_field curr_ptr;
