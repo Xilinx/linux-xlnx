@@ -117,7 +117,6 @@ static int aie_mem_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 			     rloc.row++) {
 				unsigned long toffset, len;
 				phys_addr_t mempa;
-				int ret;
 
 				remainder = vma->vm_end - addr;
 				if (!remainder)
