@@ -10,6 +10,7 @@ obj-$(CONFIG_XILINX_AIE)	+= xilinx-aie.o
 
 xilinx-aie-$(CONFIG_XILINX_AIE) := ai-engine-aie.o		\
 				   ai-engine-aieml.o		\
+				   ai-engine-aie2ps.o		\
 				   ai-engine-aperture.o		\
 				   ai-engine-clock.o		\
 				   ai-engine-dev.o		\
