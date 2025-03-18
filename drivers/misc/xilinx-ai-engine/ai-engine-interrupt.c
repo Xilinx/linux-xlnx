@@ -590,7 +590,7 @@ static bool aie_l1_backtrack(struct aie_partition *apart,
 	enum aie_module_type module;
 	bool ret = false;
 	u32 bc_event;
-	u32 status;
+	u32 l1_status;
 
 	mem_srow = apart->adev->ttype_attr[AIE_TILE_TYPE_MEMORY].start_row;
 	mem_erow = mem_srow +
@@ -618,10 +618,10 @@ static bool aie_l1_backtrack(struct aie_partition *apart,
 	if (l1_ctrl.col >= (apart->range.start.col + apart->range.size.col))
 		return false;
 
-	status = aie_get_l1_status(apart, &l1_ctrl, sw);
-	trace_aie_l1_status(apart, l1_ctrl.col, sw, status);
+	l1_status = aie_get_l1_status(apart, &l1_ctrl, sw);
+	trace_aie_l1_status(apart, l1_ctrl.col, sw, l1_status);
 
-	if (status & BIT(AIE_SHIM_TILE_ERROR_IRQ_ID)) {
+	if (l1_status & BIT(AIE_SHIM_TILE_ERROR_IRQ_ID)) {
 		u32 status[AIE_NUM_EVENT_STS_SHIMTILE] = {0};
 
 		aie_clear_l1_intr(apart, &l1_ctrl, sw,
@@ -631,7 +631,7 @@ static bool aie_l1_backtrack(struct aie_partition *apart,
 			ret = true;
 	}
 
-	if (!(status & BIT(AIE_ARRAY_TILE_ERROR_BC_ID)))
+	if (!(l1_status & BIT(AIE_ARRAY_TILE_ERROR_BC_ID)))
 		return ret;
 
 	aie_clear_l1_intr(apart, &l1_ctrl, sw, AIE_ARRAY_TILE_ERROR_BC_ID);
