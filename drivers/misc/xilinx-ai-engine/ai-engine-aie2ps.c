@@ -983,6 +983,11 @@ static char *aie2ps_dma_chan_status_str[] = {
 	"running",
 };
 
+static char *aie2ps_dma_qsts_str[] = {
+	"okay",
+	"overflow",
+};
+
 static u32 aie2ps_get_tile_type(struct aie_device *adev, struct aie_location *loc)
 {
 	u8 num_mem_rows = adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows;
@@ -1391,6 +1396,210 @@ static ssize_t aie2ps_get_part_sysfs_dma_status(struct aie_partition *apart,
 	return len;
 }
 
+/**
+ * aie2ps_get_queue_size() - reads the DMA queue size from DMA status value.
+ * @apart: AI engine partition.
+ * @loc: location of AI engine DMA.
+ * @status: status value of DMA.
+ * @return: 8-bit value.
+ */
+static u8 aie2ps_get_queue_size(struct aie_partition *apart,
+				struct aie_location *loc, u32 status)
+{
+	const struct aie_dma_attr *attr;
+
+	aie2ps_get_tile_dma_attr(apart, loc, &attr);
+
+	return aie_get_reg_field(&attr->qsize, status);
+}
+
+/**
+ * aie2ps_get_queue_status() - reads the DMA queue status from DMA status value.
+ * @apart: AI engine partition.
+ * @loc: location of AI engine DMA.
+ * @status: status value of DMA.
+ * @return: 8-bit status value.
+ */
+static u8 aie2ps_get_queue_status(struct aie_partition *apart,
+				  struct aie_location *loc, u32 status)
+{
+	const struct aie_dma_attr *attr;
+
+	aie2ps_get_tile_dma_attr(apart, loc, &attr);
+
+	return aie_get_reg_field(&attr->qsts, status);
+}
+
+/**
+ * aie2ps_get_current_bd() - reads the current buffer descriptor being processed
+ *			    by DMA channel from DMA status value.
+ * @apart: AI engine partition.
+ * @loc: location of AI engine DMA.
+ * @status: status value of DMA.
+ * @return: 8-bit buffer descriptor value.
+ */
+static u8 aie2ps_get_current_bd(struct aie_partition *apart,
+				struct aie_location *loc, u32 status)
+{
+	const struct aie_dma_attr *attr;
+
+	aie2ps_get_tile_dma_attr(apart, loc, &attr);
+
+	return aie_get_reg_field(&attr->curbd, status);
+}
+
+/**
+ * aie2ps_get_tile_sysfs_dma_status() - exports AI engine DMA channel status,
+ *				       queue size, queue status, and current
+ *				       buffer descriptor ID being processed by
+ *				       DMA channel to a tile level sysfs node.
+ * @apart: AI engine partition.
+ * @loc: location of AI engine DMA.
+ * @buffer: location to return DMA status string.
+ * @size: total size of buffer available.
+ * @return: length of string copied to buffer.
+ */
+static ssize_t aie2ps_get_tile_sysfs_dma_status(struct aie_partition *apart,
+						struct aie_location *loc,
+						char *buffer, ssize_t size)
+{
+	u32 i, ttype, chan, mm2s[AIE_MAX_MM2S_CH], s2mm[AIE_MAX_S2MM_CH],
+	    num_s2mm_chan, num_mm2s_chan;
+	bool is_delimit_req = false;
+	ssize_t len = 0;
+
+	if (!aie_part_check_clk_enable_loc(apart, loc)) {
+		len += scnprintf(&buffer[len], max(0L, size - len),
+				 "channel_status: mm2s: clock_gated%ss2mm: clock_gated\n",
+				 DELIMITER_LEVEL1);
+		len += scnprintf(&buffer[len], max(0L, size - len),
+				 "queue_size: mm2s: clock_gated%ss2mm: clock_gated\n",
+				 DELIMITER_LEVEL1);
+		len += scnprintf(&buffer[len], max(0L, size - len),
+				 "queue_status: mm2s: clock_gated%ss2mm: clock_gated\n",
+				 DELIMITER_LEVEL1);
+		len += scnprintf(&buffer[len], max(0L, size - len),
+				 "current_bd: mm2s: clock_gated%ss2mm: clock_gated\n",
+				 DELIMITER_LEVEL1);
+		return len;
+	}
+
+	ttype = aie2ps_get_tile_type(apart->adev, loc);
+	if (ttype == AIE_TILE_TYPE_TILE) {
+		num_mm2s_chan = aie2ps_tiledma.num_mm2s_chan;
+		num_s2mm_chan = aie2ps_tiledma.num_s2mm_chan;
+	} else if (ttype == AIE_TILE_TYPE_MEMORY) {
+		num_mm2s_chan = aie2ps_memtiledma.num_mm2s_chan;
+		num_s2mm_chan = aie2ps_memtiledma.num_s2mm_chan;
+	} else {
+		num_mm2s_chan = aie2ps_shimdma.num_mm2s_chan;
+		num_s2mm_chan = aie2ps_shimdma.num_s2mm_chan;
+	}
+
+	len += scnprintf(&buffer[len], max(0L, size - len), "channel_status: ");
+	len += aie2ps_get_part_sysfs_dma_status(apart, loc, &buffer[len],
+					       max(0L, size - len));
+
+	for (i = 0; i < num_mm2s_chan; i++)
+		mm2s[i] = aie2ps_get_dma_mm2s_status(apart, loc, i);
+
+	for (i = 0; i < num_s2mm_chan; i++)
+		s2mm[i] = aie2ps_get_dma_s2mm_status(apart, loc, i);
+
+	/* Queue size */
+	len += scnprintf(&buffer[len], max(0L, size - len),
+			 "\nqueue_size: mm2s: ");
+
+	for (chan = 0; chan < num_mm2s_chan; chan++) {
+		if (is_delimit_req)
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					DELIMITER_LEVEL0);
+
+		len += scnprintf(&buffer[len], max(0L, size - len), "%d",
+				 aie2ps_get_queue_size(apart, loc, mm2s[chan]));
+		is_delimit_req = true;
+	}
+
+	len += scnprintf(&buffer[len], max(0L, size - len), "%ss2mm: ",
+			 DELIMITER_LEVEL1);
+
+	is_delimit_req = false;
+	for (chan = 0; chan < num_s2mm_chan; chan++) {
+		if (is_delimit_req)
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					DELIMITER_LEVEL0);
+
+		len += scnprintf(&buffer[len], max(0L, size - len), "%d",
+				 aie2ps_get_queue_size(apart, loc, s2mm[chan]));
+		is_delimit_req = true;
+	}
+
+	/* Queue status */
+	len += scnprintf(&buffer[len], max(0L, size - len),
+			 "\nqueue_status: mm2s: ");
+
+	is_delimit_req = false;
+	for (chan = 0; chan < num_mm2s_chan; chan++) {
+		u32 value = aie2ps_get_queue_status(apart, loc, mm2s[chan]);
+
+		if (is_delimit_req)
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					DELIMITER_LEVEL0);
+
+		len += scnprintf(&buffer[len], max(0L, size - len),
+				 aie2ps_dma_qsts_str[value]);
+		is_delimit_req = true;
+	}
+
+	len += scnprintf(&buffer[len], max(0L, size - len), "%ss2mm: ",
+			 DELIMITER_LEVEL1);
+
+	is_delimit_req = false;
+	for (chan = 0; chan < num_s2mm_chan; chan++) {
+		u32 value = aie2ps_get_queue_status(apart, loc, s2mm[chan]);
+
+		if (is_delimit_req)
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					DELIMITER_LEVEL0);
+
+		len += scnprintf(&buffer[len], max(0L, size - len),
+				 aie2ps_dma_qsts_str[value]);
+		is_delimit_req = true;
+	}
+
+	/* Current BD */
+	len += scnprintf(&buffer[len], max(0L, size - len),
+			 "\ncurrent_bd: mm2s: ");
+
+	is_delimit_req = false;
+	for (chan = 0; chan < num_mm2s_chan; chan++) {
+		if (is_delimit_req)
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					DELIMITER_LEVEL0);
+
+		len += scnprintf(&buffer[len], max(0L, size - len), "%d",
+				 aie2ps_get_current_bd(apart, loc, mm2s[chan]));
+		is_delimit_req = true;
+	}
+
+	len += scnprintf(&buffer[len], max(0L, size - len), "%ss2mm: ",
+			 DELIMITER_LEVEL1);
+
+	is_delimit_req = false;
+	for (chan = 0; chan < num_s2mm_chan; chan++) {
+		if (is_delimit_req)
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					DELIMITER_LEVEL0);
+
+		len += scnprintf(&buffer[len], max(0L, size - len), "%d",
+				 aie2ps_get_current_bd(apart, loc, s2mm[chan]));
+		is_delimit_req = true;
+	}
+
+	len += scnprintf(&buffer[len], max(0L, size - len), "\n");
+	return len;
+}
+
 static const struct aie_tile_operations aie2ps_ops = {
 	.get_tile_type = aie2ps_get_tile_type,
 	.get_mem_info = aie2ps_get_mem_info,
@@ -1398,6 +1607,7 @@ static const struct aie_tile_operations aie2ps_ops = {
 	.get_part_sysfs_lock_status = aie2ps_get_part_sysfs_lock_status,
 	.get_tile_sysfs_lock_status = aie2ps_get_tile_sysfs_lock_status,
 	.get_part_sysfs_dma_status = aie2ps_get_part_sysfs_dma_status,
+	.get_tile_sysfs_dma_status = aie2ps_get_tile_sysfs_dma_status,
 	.get_dma_s2mm_status = aie2ps_get_dma_s2mm_status,
 	.get_dma_mm2s_status = aie2ps_get_dma_mm2s_status,
 	.get_chan_status = aie2ps_get_chan_status,
