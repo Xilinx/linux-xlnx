@@ -1448,6 +1448,17 @@ static const struct aie_bd_attr aie2ps_shimbd = {
 	.bd_idx_off = 0x20U,
 };
 
+static const struct aie_uc_corectrl_attr aie2ps_shimnoc_uc_core_ctrl = {
+	.wakeup = {
+		.mask = BIT(0),
+		.regoff = AIE2PS_SHIMNOC_UCMOD_CORE_CTRL_REGOFF,
+	},
+	.sleep = {
+		.mask = BIT(1),
+		.regoff = AIE2PS_SHIMNOC_UCMOD_CORE_CTRL_REGOFF,
+	},
+};
+
 static u32 aie2ps_get_tile_type(struct aie_device *adev, struct aie_location *loc)
 {
 	u8 num_mem_rows = adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows;
@@ -2488,6 +2499,41 @@ static int aie2ps_part_clear_mems(struct aie_partition *apart)
 	return ret;
 }
 
+/**
+ * aie2ps_wake_tile_uc_core_up() - wake uc core up
+ * @apart: AI engine partition
+ * @loc: Location of tile
+ * @return: return 0 if success negative value for failure.
+ */
+static int aie2ps_wake_tile_uc_core_up(struct aie_partition *apart,
+				       struct aie_location *loc)
+{
+	const struct aie_aperture *aperture = apart->aperture;
+	struct aie_device *adev = apart->adev;
+	void __iomem *va;
+	u32 ttype, val;
+
+	ttype = aie2ps_get_tile_type(adev, loc);
+	if (ttype != AIE_TILE_TYPE_SHIMNOC) {
+		dev_err(&apart->dev, "invalid tile type.\n");
+		return -EINVAL;
+	}
+
+	if (aie_validate_location(apart, *loc)) {
+		dev_err(&apart->dev,
+			"Invalid (%d,%d) out of part(%d,%d)\n",
+			loc->col, loc->row,
+			apart->range.size.col, apart->range.size.row);
+		return -EINVAL;
+	}
+
+	va = aperture->base +
+	     aie_cal_regoff(adev, *loc, AIE2PS_SHIMNOC_UCMOD_CORE_CTRL_REGOFF);
+	val = aie_get_field_val(&adev->shimnoc_uc_corectrl->wakeup, 0x1);
+	iowrite32(val, va);
+	return 0;
+}
+
 static const struct aie_tile_operations aie2ps_ops = {
 	.get_tile_type = aie2ps_get_tile_type,
 	.get_mem_info = aie2ps_get_mem_info,
@@ -2506,6 +2552,7 @@ static const struct aie_tile_operations aie2ps_ops = {
 	.get_dma_mm2s_status = aie2ps_get_dma_mm2s_status,
 	.get_chan_status = aie2ps_get_chan_status,
 	.get_lock_status = aie2ps_get_lock_status,
+	.wake_tile_uc_core_up = aie2ps_wake_tile_uc_core_up,
 };
 
 /**
@@ -2557,6 +2604,7 @@ int aie2ps_device_init(struct aie_device *adev)
 	adev->tile_dma = &aie2ps_tiledma;
 	adev->shim_dma = &aie2ps_shimdma;
 	adev->memtile_dma = &aie2ps_memtiledma;
+	adev->shimnoc_uc_corectrl = &aie2ps_shimnoc_uc_core_ctrl;
 	adev->mem_lock = &aie2ps_mem_lock;
 	adev->pl_lock = &aie2ps_pl_lock;
 	adev->memtile_lock = &aie2ps_memtile_lock;

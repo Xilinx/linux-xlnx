@@ -157,6 +157,7 @@ int aie_partition_read(struct device *dev, struct aie_location loc,
 		       size_t offset, size_t len, void *data);
 int aie_partition_write(struct device *dev, struct aie_location loc,
 			size_t offset, size_t len, void *data, u32 mask);
+int aie_partition_uc_wakeup(struct device *dev, struct aie_location *loc);
 /**
  * aie_get_error_category() - Get the category of an AIE error
  * @err: AI engine hardware error

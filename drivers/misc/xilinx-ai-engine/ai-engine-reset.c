@@ -8,6 +8,7 @@
 #include <linux/bitfield.h>
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/io.h>
+#include <linux/xlnx-ai-engine.h>
 
 #include "ai-engine-internal.h"
 
@@ -367,6 +368,36 @@ exit:
 
 	return ret;
 }
+
+/**
+ * aie_partition_uc_wakeup() - wakes the uc cores of the partition.
+ * @dev: AI engine partition device
+ * @loc: Location of the tile
+ * @return: return 0 if success negative value for failure.
+ */
+int aie_partition_uc_wakeup(struct device *dev, struct aie_location *loc)
+{
+	struct aie_partition *apart;
+	struct aie_device *adev;
+	int ret;
+
+	if (!dev || !loc)
+		return -EINVAL;
+
+	apart = dev_to_aiepart(dev);
+	if (!apart)
+		return -EINVAL;
+
+	adev = apart->adev;
+	if (!adev->ops->wake_tile_uc_core_up)
+		return -EINVAL;
+	ret = adev->ops->wake_tile_uc_core_up(apart, loc);
+	if (ret < 0)
+		dev_err(&apart->dev,
+			"failed to wake uc core up!\n");
+	return ret;
+}
+EXPORT_SYMBOL_GPL(aie_partition_uc_wakeup);
 
 /**
  * aie_part_post_reinit() - AI engine partition has been re-initialized

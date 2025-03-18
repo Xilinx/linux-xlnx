@@ -304,6 +304,16 @@ struct aie_dma_mem {
 };
 
 /**
+ * struct aie_uc_corectrl_attr - AI engine uc module core control attribute
+ * @wakeup: wakeup field attribute.
+ * @sleep: sleep field attribute.
+ */
+struct aie_uc_corectrl_attr {
+	struct aie_single_reg_field wakeup;
+	struct aie_single_reg_field sleep;
+};
+
+/**
  * struct aie_bd_addr_attr - AI engine buffer descriptor address attributes
  * @addr: address field attributes
  * @length: length field attributes
@@ -547,6 +557,7 @@ struct aie_aperture;
  * @get_dma_mm2s_status: get dma mm2s status
  * @get_chan_status: get dma channel status
  * @get_lock_status: get tile, shimdma and memtile lock status
+ * @wake_tile_uc_core_up: wakes shile tile uc core up
  *
  * Different AI engine device version has its own device
  * operation.
@@ -591,6 +602,8 @@ struct aie_tile_operations {
 	u32 (*get_lock_status)(struct aie_partition *apart,
 			       struct aie_location *loc,
 			       u8 lock);
+	int (*wake_tile_uc_core_up)(struct aie_partition *apart,
+				    struct aie_location *loc);
 };
 
 /**
@@ -912,6 +925,7 @@ struct aie_tile {
  * @ops: tile operations
  * @col_rst: column reset attribute
  * @col_clkbuf: column clock buffer attribute
+ * @shimnoc_uc_corectrl: UC core control attribute
  * @shim_bd: SHIM DMA buffer descriptor attribute
  * @tile_bd: tile DMA buffer descriptor attribute
  * @memtile_bd: MEM tile DMA buffer descriptor attribute
@@ -960,6 +974,7 @@ struct aie_device {
 	const struct aie_tile_operations *ops;
 	const struct aie_single_reg_field *col_rst;
 	const struct aie_single_reg_field *col_clkbuf;
+	const struct aie_uc_corectrl_attr *shimnoc_uc_corectrl;
 	const struct aie_bd_attr *shim_bd;
 	const struct aie_bd_attr *tile_bd;
 	const struct aie_bd_attr *memtile_bd;
