@@ -663,6 +663,22 @@ struct aie_event_attr {
 /**
  * struct aie_l1_intr_ctrl_attr - AI engine level 1 interrupt controller
  *				  attributes structure.
+ * @mask_a: switch A level 1 interrupt controller mask attribute.
+ * @enable_a: switch A level 1 interrupt controller enable attribute.
+ * @disable_a: switch A level 1 interrupt controller disable attribute.
+ * @irq_no_a: switch A level 1 interrupt controller irq_no attribute.
+ * @irq_event_a: switch A level 1 interrupt controller irq_event attribute.
+ * @block_north_a_set: switch A level 1 interrupt controller block_north set attribute.
+ * @block_north_a_clear: switch A level 1 interrupt controller block north clear attribute.
+ * @block_north_a_value: switch A level 1 interrupt controller block north value attribute.
+ * @mask_b: switch B level 1 interrupt controller mask attribute.
+ * @enable_b: switch B level 1 interrupt controller enable attribute.
+ * @disable_b: switch B level 1 interrupt controller disable attribute.
+ * @irq_no_b: switch B level 1 interrupt controller irq_no attribute.
+ * @irq_event_b: switch B level 1 interrupt controller irq_event attribute.
+ * @block_north_b_set: switch B level 1 interrupt controller block_north set attribute.
+ * @block_north_b_clear: switch B level 1 interrupt controller block north clear attribute.
+ * @block_north_b_value: switch B level 1 interrupt controller block north value attribute.
  * @swa_status: switch A level 1 interrupt controller status attribute.
  * @swb_status: switch A level 1 interrupt controller status attribute.
  * @swa_event: switch A level 1 interrupt controller event attribute.
@@ -673,6 +689,24 @@ struct aie_event_attr {
  *		    controller.
  */
 struct aie_l1_intr_ctrl_attr {
+	struct aie_single_reg_field mask_a;
+	struct aie_single_reg_field enable_a;
+	struct aie_single_reg_field disable_a;
+	struct aie_single_reg_field irq_no_a;
+	struct aie_single_reg_field irq_event_a;
+	struct aie_single_reg_field block_north_a_set;
+	struct aie_single_reg_field block_north_a_clear;
+	struct aie_single_reg_field block_north_a_value;
+
+	struct aie_single_reg_field mask_b;
+	struct aie_single_reg_field enable_b;
+	struct aie_single_reg_field disable_b;
+	struct aie_single_reg_field irq_no_b;
+	struct aie_single_reg_field irq_event_b;
+	struct aie_single_reg_field block_north_b_set;
+	struct aie_single_reg_field block_north_b_clear;
+	struct aie_single_reg_field block_north_b_value;
+
 	struct aie_single_reg_field swa_status;
 	struct aie_single_reg_field swb_status;
 	struct aie_single_reg_field swa_event;
@@ -689,6 +723,7 @@ struct aie_l1_intr_ctrl_attr {
  * @enable: level 2 interrupt controller enable attribute.
  * @disable: level 2 interrupt controller disable attribute.
  * @status: level 2 interrupt controller status attribute.
+ * @intr: level 2 interrupt controller interrupt.
  * @regoff: level 2 interrupt controller register offset.
  * @num_broadcasts: total number of broadcast signals to level 2 interrupt
  *		    controller.
@@ -698,6 +733,7 @@ struct aie_l2_intr_ctrl_attr {
 	struct aie_single_reg_field enable;
 	struct aie_single_reg_field disable;
 	struct aie_single_reg_field status;
+	struct aie_single_reg_field intr;
 	u32 regoff;
 	u32 num_broadcasts;
 };
