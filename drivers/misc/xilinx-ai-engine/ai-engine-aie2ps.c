@@ -831,6 +831,63 @@ static const struct aie_single_reg_field aie2ps_core_sts = {
 	.regoff = AIE2PS_TILE_COREMOD_CORE_STATUS_REGOFF,
 };
 
+static const struct aie_lock_attr aie2ps_mem_lock = {
+	.sts = {
+		.mask = GENMASK(5, 0),
+		.regoff = 0x10,
+	},
+	.sts_regoff = AIE2PS_TILE_MEMMOD_LOCK_REGOFF,
+	.num_locks = 16U,
+	.overflow = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x4,
+	},
+	.overflow_regoff = AIE2PS_TILE_MEMMOD_LOCK_OVERFLOW_REGOFF,
+	.underflow = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x4,
+	},
+	.underflow_regoff = AIE2PS_TILE_MEMMOD_LOCK_UNDERFLOW_REGOFF,
+};
+
+static const struct aie_lock_attr aie2ps_memtile_lock = {
+	.sts = {
+		.mask = GENMASK(5, 0),
+		.regoff = 0x10,
+	},
+	.sts_regoff = AIE2PS_MEMORY_LOCK_REGOFF,
+	.num_locks = 64U,
+	.overflow = {
+		.mask = GENMASK(31, 0),
+		.regoff = 0x4,
+	},
+	.overflow_regoff = AIE2PS_MEMORY_LOCK_OVERFLOW_REGOFF,
+	.underflow = {
+		.mask = GENMASK(31, 0),
+		.regoff = 0x4,
+	},
+	.underflow_regoff = AIE2PS_MEMORY_LOCK_UNDERFLOW_REGOFF,
+};
+
+static const struct aie_lock_attr aie2ps_pl_lock = {
+	.sts = {
+		.mask = GENMASK(5, 0),
+		.regoff = 0x10,
+	},
+	.sts_regoff = AIE2PS_SHIMNOC_LOCK_REGOFF,
+	.num_locks = 16U,
+	.overflow = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x4,
+	},
+	.overflow_regoff = AIE2PS_SHIMNOC_LOCK_OVERFLOW_REGOFF,
+	.underflow = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x4,
+	},
+	.underflow_regoff = AIE2PS_SHIMNOC_LOCK_UNDERFLOW_REGOFF,
+};
+
 static u32 aie2ps_get_tile_type(struct aie_device *adev, struct aie_location *loc)
 {
 	u8 num_mem_rows = adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows;
@@ -918,10 +975,180 @@ static u32 aie2ps_get_core_status(struct aie_partition *apart, struct aie_locati
 	return aie_get_reg_field(&aie2ps_core_sts, regvalue);
 }
 
+static u32 aie2ps_get_lock_status(struct aie_partition *apart,
+				  struct aie_location *loc, u8 lock)
+{
+	const struct aie_lock_attr *attr;
+	u32 ttype, stsoff, regoff, value;
+
+	ttype = aie2ps_get_tile_type(apart->adev, loc);
+	if (ttype == AIE_TILE_TYPE_TILE)
+		attr = &aie2ps_mem_lock;
+	else if (ttype == AIE_TILE_TYPE_MEMORY)
+		attr = &aie2ps_memtile_lock;
+	else
+		attr = &aie2ps_pl_lock;
+
+	stsoff = attr->sts.regoff * lock + attr->sts_regoff;
+	regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+	value = ioread32(apart->aperture->base + regoff);
+
+	return aie_get_reg_field(&attr->sts, value);
+}
+
+static ssize_t aie2ps_get_part_sysfs_lock_status(struct aie_partition *apart,
+						 struct aie_location *loc,
+						 char *buffer, ssize_t size)
+{
+	u32 i, ttype, num_locks;
+	ssize_t len = 0;
+
+	if (!aie_part_check_clk_enable_loc(apart, loc)) {
+		len += scnprintf(&buffer[len], max(0L, size - len),
+				 "clock_gated");
+		return len;
+	}
+
+	ttype = aie2ps_get_tile_type(apart->adev, loc);
+	if (ttype == AIE_TILE_TYPE_TILE)
+		num_locks = aie2ps_mem_lock.num_locks;
+	else if (ttype == AIE_TILE_TYPE_MEMORY)
+		num_locks = aie2ps_memtile_lock.num_locks;
+	else
+		num_locks = aie2ps_pl_lock.num_locks;
+
+	for (i = 0; i < num_locks; i++) {
+		len += scnprintf(&buffer[len], max(0L, size - len), "%d",
+				 aie2ps_get_lock_status(apart, loc, i));
+
+		if (i < num_locks - 1)
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					 DELIMITER_LEVEL0);
+	}
+
+	return len;
+}
+
+static u64 aie2ps_get_lock_overflow_status(struct aie_partition *apart,
+					   struct aie_location *loc)
+{
+	const struct aie_lock_attr *attr;
+	u32 ttype, stsoff, regoff;
+	u64 value = 0;
+
+	ttype = aie2ps_get_tile_type(apart->adev, loc);
+	if (ttype == AIE_TILE_TYPE_TILE)
+		attr = &aie2ps_mem_lock;
+	else if (ttype == AIE_TILE_TYPE_MEMORY)
+		attr = &aie2ps_memtile_lock;
+	else
+		attr = &aie2ps_pl_lock;
+
+	if (ttype != AIE_TILE_TYPE_MEMORY) {
+		stsoff = attr->overflow_regoff;
+		regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+		value = ioread32(apart->aperture->base + regoff);
+		value = aie_get_reg_field(&attr->overflow, value);
+	} else {
+		stsoff = attr->overflow_regoff;
+		regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+		value = ioread32(apart->aperture->base + regoff);
+
+		stsoff = attr->overflow.regoff * 1U + attr->overflow_regoff;
+		regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+		value |= ((u64)ioread32(apart->aperture->base + regoff)) << 32;
+	}
+	return value;
+}
+
+static u64 aie2ps_get_lock_underflow_status(struct aie_partition *apart,
+					    struct aie_location *loc)
+{
+	const struct aie_lock_attr *attr;
+	u32 ttype, stsoff, regoff;
+	u64 value = 0;
+
+	ttype = aie2ps_get_tile_type(apart->adev, loc);
+	if (ttype == AIE_TILE_TYPE_TILE)
+		attr = &aie2ps_mem_lock;
+	else if (ttype == AIE_TILE_TYPE_MEMORY)
+		attr = &aie2ps_memtile_lock;
+	else
+		attr = &aie2ps_pl_lock;
+
+	if (ttype != AIE_TILE_TYPE_MEMORY) {
+		stsoff = attr->underflow_regoff;
+		regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+		value = ioread32(apart->aperture->base + regoff);
+		value = aie_get_reg_field(&attr->underflow, value);
+	} else {
+		stsoff = attr->underflow_regoff;
+		regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+		value = ioread32(apart->aperture->base + regoff);
+
+		stsoff = attr->underflow.regoff * 1U + attr->underflow_regoff;
+		regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+		value |= ((u64)ioread32(apart->aperture->base + regoff)) << 32;
+	}
+	return value;
+}
+
+static ssize_t aie2ps_get_tile_sysfs_lock_status(struct aie_partition *apart,
+						 struct aie_location *loc,
+						 char *buffer, ssize_t size)
+{
+	unsigned long overflow, underflow;
+	u32 i, ttype, num_locks;
+	ssize_t len = 0;
+
+	ttype = aie2ps_get_tile_type(apart->adev, loc);
+	if (ttype == AIE_TILE_TYPE_SHIMPL)
+		return len;
+
+	if (ttype == AIE_TILE_TYPE_TILE)
+		num_locks = aie2ps_mem_lock.num_locks;
+	else if (ttype == AIE_TILE_TYPE_MEMORY)
+		num_locks = aie2ps_memtile_lock.num_locks;
+	else
+		num_locks = aie2ps_pl_lock.num_locks;
+
+	if (!aie_part_check_clk_enable_loc(apart, loc)) {
+		for (i = 0; i < num_locks; i++) {
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					 "%d: clock_gated\n", i);
+		}
+		return len;
+	}
+
+	overflow = aie2ps_get_lock_overflow_status(apart, loc);
+
+	underflow = aie2ps_get_lock_underflow_status(apart, loc);
+
+	for (i = 0; i < num_locks; i++) {
+		len += scnprintf(&buffer[len], max(0L, size - len), "%d: %d",
+				 i, aie2ps_get_lock_status(apart, loc, i));
+
+		if (test_bit(num_locks, &overflow))
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					 "|overflow");
+
+		if (test_bit(num_locks, &underflow))
+			len += scnprintf(&buffer[len], max(0L, size - len),
+					 "|underflow");
+
+		len += scnprintf(&buffer[len], max(0L, size - len), "\n");
+	}
+
+	return len;
+}
+
 static const struct aie_tile_operations aie2ps_ops = {
 	.get_tile_type = aie2ps_get_tile_type,
 	.get_mem_info = aie2ps_get_mem_info,
 	.get_core_status = aie2ps_get_core_status,
+	.get_part_sysfs_lock_status = aie2ps_get_part_sysfs_lock_status,
+	.get_tile_sysfs_lock_status = aie2ps_get_tile_sysfs_lock_status,
+	.get_lock_status = aie2ps_get_lock_status,
 };
 
 /**
@@ -970,6 +1197,9 @@ int aie2ps_device_init(struct aie_device *adev)
 	adev->mem_errors = &aie2ps_mem_error;
 	adev->memtile_errors = &aie2ps_memtile_error;
 	adev->shim_errors = &aie2ps_shim_error;
+	adev->mem_lock = &aie2ps_mem_lock;
+	adev->pl_lock = &aie2ps_pl_lock;
+	adev->memtile_lock = &aie2ps_memtile_lock;
 	aie2ps_device_init_rscs_attr(adev);
 
 	return 0;
