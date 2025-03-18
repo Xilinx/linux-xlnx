@@ -152,3 +152,88 @@
 #define AIE2PS_PART_SYSFS_ERROR_BINA_SIZE	0x4000		/* 16KB */
 #define AIE2PS_PART_SYSFS_DMA_BINA_SIZE		0xC800		/* 50KB */
 #define AIE2PS_PART_SYSFS_STATUS_BINA_SIZE	0x3c000		/* 240KB */
+
+static const struct aie_tile_regs aie2ps_kernel_regs[] = {
+	/* SHIM DMA buffer descriptor address range */
+	{.attribute = AIE_TILE_TYPE_MASK_SHIMNOC << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIE2PS_SHIMNOC_BD0_0_REGOFF,
+	 .eoff = AIE2PS_SHIMNOC_BD15_7_REGOFF,
+	},
+	/* SHIM BISR cache control */
+	{.attribute = (AIE_TILE_TYPE_MASK_SHIMPL | AIE_TILE_TYPE_MASK_SHIMNOC) <<
+		      AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIE2PS_SHIMPL_BISRCACHE_CTRL_REGOFF,
+	 .eoff = AIE2PS_SHIMPL_BISRCACHE_CTRL_REGOFF,
+	},
+	/* SHIM tile control */
+	{.attribute = (AIE_TILE_TYPE_MASK_SHIMPL | AIE_TILE_TYPE_MASK_SHIMNOC) <<
+		AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIE2PS_SHIMPL_TILECTRL_REGOFF,
+	 .eoff = AIE2PS_SHIMPL_TILECTRL_REGOFF,
+	},
+	/* SHIM 1st level interrupt controller */
+	{.attribute = (AIE_TILE_TYPE_MASK_SHIMPL | AIE_TILE_TYPE_MASK_SHIMNOC) <<
+		AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIE2PS_SHIMPL_L1INTR_MASK_A_REGOFF,
+	 .eoff = AIE2PS_SHIMPL_L1INTR_BLOCK_NORTH_B_REGOFF,
+	},
+	/* SHIM module reset control */
+	{.attribute = (AIE_TILE_TYPE_MASK_SHIMPL | AIE_TILE_TYPE_MASK_SHIMNOC) <<
+		AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIE2PS_SHIMPL_MODRESET_CTRL_0_REGOFF,
+	 .eoff = AIE2PS_SHIMPL_MODRESET_CTRL_1_REGOFF,
+	},
+	/* MEMORY tile group error enable */
+	{.attribute = AIE_TILE_TYPE_MASK_MEMORY << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIE2PS_MEMORY_GROUPERROR_REGOFF,
+	 .eoff = AIE2PS_MEMORY_GROUPERROR_REGOFF,
+	},
+	/* MEMORY mem tile control */
+	{.attribute = AIE_TILE_TYPE_MASK_MEMORY << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIE2PS_MEMORY_TILECTRL_REGOFF,
+	 .eoff = AIE2PS_MEMORY_TILECTRL_REGOFF,
+	},
+	/* MEMORY tile mem control */
+	{.attribute = AIE_TILE_TYPE_MASK_MEMORY << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIE2PS_MEMORY_MEMCTRL_REGOFF,
+	 .eoff = AIE2PS_MEMORY_MEMCTRL_REGOFF,
+	},
+	/* TILE core module group error enable */
+	{.attribute = AIE_TILE_TYPE_MASK_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIE2PS_TILE_COREMOD_GROUPERROR_REGOFF,
+	 .eoff = AIE2PS_TILE_COREMOD_GROUPERROR_REGOFF,
+	},
+	/* TILE tile control */
+	{.attribute = AIE_TILE_TYPE_MASK_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIE2PS_TILE_COREMOD_TILECTRL_REGOFF,
+	 .eoff = AIE2PS_TILE_COREMOD_TILECTRL_REGOFF,
+	},
+	/* TILE memory control */
+	{.attribute = AIE_TILE_TYPE_MASK_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIE2PS_TILE_COREMOD_MEMCTRL_REGOFF,
+	 .eoff = AIE2PS_TILE_COREMOD_MEMCTRL_REGOFF,
+	},
+	/* TILE module reset control */
+	{.attribute = AIE_TILE_TYPE_MASK_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIE2PS_TILE_COREMOD_MODRESETCTRL_REGOFF,
+	 .eoff = AIE2PS_TILE_COREMOD_MODRESETCTRL_REGOFF,
+	},
+	/* TILE memory module group error enable */
+	{.attribute = AIE_TILE_TYPE_MASK_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIE2PS_TILE_MEMMOD_GROUPERROR_REGOFF,
+	 .eoff = AIE2PS_TILE_MEMMOD_GROUPERROR_REGOFF,
+	},
+	/* TILE memory module mem control */
+	{.attribute = AIE_TILE_TYPE_MASK_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIE2PS_TILE_MEMMOD_MEMCTRL_REGOFF,
+	 .eoff = AIE2PS_TILE_MEMMOD_MEMCTRL_REGOFF,
+	},
+};
+
+int aie2ps_device_init(struct aie_device *adev)
+{
+	adev->num_kernel_regs = ARRAY_SIZE(aie2ps_kernel_regs);
+	adev->kernel_regs = aie2ps_kernel_regs;
+
+	return 0;
+}
