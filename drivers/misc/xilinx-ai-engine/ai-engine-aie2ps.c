@@ -2295,6 +2295,143 @@ static ssize_t aie2ps_get_tile_sysfs_bd_metadata(struct aie_partition *apart,
 	return len;
 }
 
+static int aie2ps_init_part_clk_state(struct aie_partition *apart)
+{
+	int ret, num_tiles;
+
+	num_tiles = apart->range.size.col * (apart->range.size.row - 1);
+
+	ret = aie_resource_initialize(&apart->cores_clk_state, num_tiles);
+	if (ret) {
+		dev_err(&apart->dev,
+			"failed to initialize tiles clock state resource.\n");
+		return ret;
+	}
+
+	ret = aie_resource_initialize(&apart->tiles_inuse, num_tiles);
+	if (ret)
+		dev_err(&apart->dev,
+			"failed to initialize tiles in use resource.\n");
+
+	return ret;
+}
+
+static int aie2ps_set_part_clocks(struct aie_partition *apart)
+{
+	struct aie_range *range = &apart->range;
+	u32 node_id = apart->adev->pm_node_id;
+	struct aie_location loc;
+	int ret;
+
+	for (loc.col = 0; loc.col < range->size.col; loc.col++) {
+		u32 startbit, col_inuse = 0;
+
+		startbit = loc.col * (range->size.row - 1);
+
+		for (loc.row = range->start.row + 1;
+		     loc.row < range->start.row + range->size.row;
+		     loc.row++) {
+			u32 nbitpos = startbit + loc.row - 1;
+
+			if (aie_resource_testbit(&apart->tiles_inuse, nbitpos)) {
+				col_inuse = 1;
+				break;
+			}
+		}
+
+		if (col_inuse) {
+			ret = zynqmp_pm_aie_operation(node_id,
+						      loc.col + range->start.col,
+						      1,
+						      XILINX_AIE_OPS_ENB_COL_CLK_BUFF);
+			if (ret < 0) {
+				dev_err(&apart->dev,
+					"failed to enable clock for column: %d\n",
+					loc.col + range->start.col);
+				return ret;
+			}
+
+			ret = aie_resource_set(&apart->tiles_inuse, startbit,
+					       apart->range.size.row - 1);
+			if (ret)
+				return ret;
+			ret = aie_resource_set(&apart->cores_clk_state, startbit,
+					       apart->range.size.row - 1);
+			if (ret)
+				return ret;
+		} else {
+			ret = zynqmp_pm_aie_operation(node_id,
+						      loc.col + range->start.col,
+						      1,
+						      XILINX_AIE_OPS_DIS_COL_CLK_BUFF);
+			if (ret < 0) {
+				dev_err(&apart->dev,
+					"failed to disable clock for column: %d\n",
+					loc.col + range->start.col);
+				return ret;
+			}
+
+			ret = aie_resource_clear(&apart->tiles_inuse, startbit,
+						 apart->range.size.row - 1);
+			if (ret)
+				return ret;
+			ret = aie_resource_clear(&apart->cores_clk_state, startbit,
+						 apart->range.size.row - 1);
+			if (ret)
+				return ret;
+		}
+	}
+
+	return 0;
+}
+
+static int aie2ps_scan_part_clocks(struct aie_partition *apart)
+{
+	struct aie_device *adev = apart->adev;
+	const struct aie_aperture *aperture = apart->aperture;
+	struct aie_range *range = &apart->range;
+	struct aie_location loc;
+
+	/* Clear the bitmap of cores and memories clock state */
+	aie_resource_put_region(&apart->cores_clk_state, 0,
+				apart->cores_clk_state.total);
+
+	/*
+	 * In aieml if clock buffer on shim tile is enabled, the clock for all
+	 * tiles in the same column is enabled.
+	 */
+
+	loc.row = 0;
+	for (loc.col = range->start.col;
+	     loc.col < range->start.col + range->size.col;
+	     loc.col++) {
+		void __iomem *va;
+		u32 val, nbitpos;
+
+		nbitpos = loc.col * (range->size.row - 1) + loc.row;
+
+		va = aperture->base +
+		     aie_cal_regoff(adev, loc,
+				    AIE2PS_SHIMPL_COLCLOCK_CTRL_REGOFF);
+		val = ioread32(va);
+
+		if (!(val & AIE2PS_SHIMPL_COLCLOCK_CTRL_MASK))
+			continue;
+
+		aie_resource_set(&apart->cores_clk_state, nbitpos,
+				 range->size.row - 1);
+	}
+	/*
+	 * Set the tiles in use bitmap.
+	 * In case of scanning, tiles which are powered on are considered as
+	 * tiles in use.
+	 */
+	bitmap_copy(apart->tiles_inuse.bitmap, apart->cores_clk_state.bitmap,
+		    apart->tiles_inuse.total);
+
+	return 0;
+}
+
 static const struct aie_tile_operations aie2ps_ops = {
 	.get_tile_type = aie2ps_get_tile_type,
 	.get_mem_info = aie2ps_get_mem_info,
@@ -2304,6 +2441,9 @@ static const struct aie_tile_operations aie2ps_ops = {
 	.get_part_sysfs_dma_status = aie2ps_get_part_sysfs_dma_status,
 	.get_tile_sysfs_dma_status = aie2ps_get_tile_sysfs_dma_status,
 	.get_tile_sysfs_bd_metadata = aie2ps_get_tile_sysfs_bd_metadata,
+	.init_part_clk_state = aie2ps_init_part_clk_state,
+	.scan_part_clocks = aie2ps_scan_part_clocks,
+	.set_part_clocks = aie2ps_set_part_clocks,
 	.get_dma_s2mm_status = aie2ps_get_dma_s2mm_status,
 	.get_dma_mm2s_status = aie2ps_get_dma_mm2s_status,
 	.get_chan_status = aie2ps_get_chan_status,
