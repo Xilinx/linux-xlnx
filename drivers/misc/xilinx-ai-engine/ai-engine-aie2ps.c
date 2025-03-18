@@ -1448,6 +1448,69 @@ static const struct aie_bd_attr aie2ps_shimbd = {
 	.bd_idx_off = 0x20U,
 };
 
+static char *aie2ps_core_status_str[] = {
+	"enable",
+	"reset",
+	"south_memory_stall",
+	"west_memory_stall",
+	"north_memory_stall",
+	"east_memory_stall",
+	"south_lock_stall",
+	"west_lock_stall",
+	"north_lock_stall",
+	"east_lock_stall",
+	"stream_stall_ss0",
+	"",
+	"stream_stall_ms0",
+	"",
+	"cascade_stall_scd",
+	"cascade_stall_mcd",
+	"debug_halt",
+	"ecc_error_stall",
+	"ecc_scrubbing_stall",
+	"error_halt",
+	"core_done",
+	"core_processor_bus_stall",
+};
+
+static const struct aie_dev_attr aie2ps_aperture_dev_attr[] = {
+	AIE_APERTURE_ATTR_RO(hardware_info),
+};
+
+static const struct aie_dev_attr aie2ps_tile_dev_attr[] = {
+	AIE_TILE_DEV_ATTR_RO(bd, AIE_TILE_TYPE_MASK_TILE |
+			     AIE_TILE_TYPE_MASK_MEMORY |
+			     AIE_TILE_TYPE_MASK_SHIMNOC),
+	AIE_TILE_DEV_ATTR_RO(core, AIE_TILE_TYPE_MASK_TILE),
+	AIE_TILE_DEV_ATTR_RO(dma, AIE_TILE_TYPE_MASK_TILE |
+			     AIE_TILE_TYPE_MASK_MEMORY |
+			     AIE_TILE_TYPE_MASK_SHIMNOC),
+	AIE_TILE_DEV_ATTR_RO(error, AIE_TILE_TYPE_MASK_TILE |
+			     AIE_TILE_TYPE_MASK_MEMORY |
+			     AIE_TILE_TYPE_MASK_SHIMNOC |
+			     AIE_TILE_TYPE_MASK_SHIMPL),
+	AIE_TILE_DEV_ATTR_RO(event, AIE_TILE_TYPE_MASK_TILE |
+			     AIE_TILE_TYPE_MASK_MEMORY |
+			     AIE_TILE_TYPE_MASK_SHIMNOC |
+			     AIE_TILE_TYPE_MASK_SHIMPL),
+	AIE_TILE_DEV_ATTR_RO(lock, AIE_TILE_TYPE_MASK_TILE |
+			     AIE_TILE_TYPE_MASK_MEMORY |
+			     AIE_TILE_TYPE_MASK_SHIMNOC),
+};
+
+static const struct aie_dev_attr aie2ps_part_dev_attr[] = {
+	AIE_PART_DEV_ATTR_RO(current_freq),
+	AIE_PART_DEV_ATTR_RO(error_stat),
+};
+
+static const struct aie_bin_attr aie2ps_part_bin_attr[] = {
+	AIE_PART_BIN_ATTR_RO(core, AIE2PS_PART_SYSFS_CORE_BINA_SIZE),
+	AIE_PART_BIN_ATTR_RO(lock, AIE2PS_PART_SYSFS_LOCK_BINA_SIZE),
+	AIE_PART_BIN_ATTR_RO(dma, AIE2PS_PART_SYSFS_DMA_BINA_SIZE),
+	AIE_PART_BIN_ATTR_RO(error, AIE2PS_PART_SYSFS_ERROR_BINA_SIZE),
+	AIE_PART_BIN_ATTR_RO(status, AIE2PS_PART_SYSFS_STATUS_BINA_SIZE),
+};
+
 static const struct aie_uc_corectrl_attr aie2ps_shimnoc_uc_core_ctrl = {
 	.wakeup = {
 		.mask = BIT(0),
@@ -1457,6 +1520,27 @@ static const struct aie_uc_corectrl_attr aie2ps_shimnoc_uc_core_ctrl = {
 		.mask = BIT(1),
 		.regoff = AIE2PS_SHIMNOC_UCMOD_CORE_CTRL_REGOFF,
 	},
+};
+
+static const struct aie_sysfs_attr aie2ps_aperture_sysfs_attr = {
+	.dev_attr = aie2ps_aperture_dev_attr,
+	.bin_attr = NULL,
+	.num_dev_attrs = ARRAY_SIZE(aie2ps_aperture_dev_attr),
+	.num_bin_attrs = 0U,
+};
+
+static const struct aie_sysfs_attr aie2ps_part_sysfs_attr = {
+	.dev_attr = aie2ps_part_dev_attr,
+	.bin_attr = aie2ps_part_bin_attr,
+	.num_dev_attrs = ARRAY_SIZE(aie2ps_part_dev_attr),
+	.num_bin_attrs = ARRAY_SIZE(aie2ps_part_bin_attr),
+};
+
+static const struct aie_sysfs_attr aie2ps_tile_sysfs_attr = {
+	.dev_attr = aie2ps_tile_dev_attr,
+	.bin_attr = NULL,
+	.num_dev_attrs = ARRAY_SIZE(aie2ps_tile_dev_attr),
+	.num_bin_attrs = 0U,
 };
 
 static u32 aie2ps_get_tile_type(struct aie_device *adev, struct aie_location *loc)
@@ -2605,6 +2689,10 @@ int aie2ps_device_init(struct aie_device *adev)
 	adev->shim_dma = &aie2ps_shimdma;
 	adev->memtile_dma = &aie2ps_memtiledma;
 	adev->shimnoc_uc_corectrl = &aie2ps_shimnoc_uc_core_ctrl;
+	adev->aperture_sysfs_attr = &aie2ps_aperture_sysfs_attr;
+	adev->part_sysfs_attr = &aie2ps_part_sysfs_attr;
+	adev->tile_sysfs_attr = &aie2ps_tile_sysfs_attr;
+	adev->core_status_str = aie2ps_core_status_str;
 	adev->mem_lock = &aie2ps_mem_lock;
 	adev->pl_lock = &aie2ps_pl_lock;
 	adev->memtile_lock = &aie2ps_memtile_lock;
