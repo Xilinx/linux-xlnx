@@ -781,6 +781,51 @@ static const struct aie_error_attr aie2ps_shim_error = {
 	.err_category = aie2ps_shim_err_category,
 };
 
+static const struct aie_tile_regs aie2ps_core_regs_clr[] = {
+	{.soff = AIE2PS_TILE_COREMOD_BMLL0_PART1_REGOFF,
+	 .eoff = AIE2PS_TILE_COREMOD_BMHH7_PART4_REGOFF,
+	 .width = 16,	/* 128 bits */
+	 .step = 16,	/* 0x10 */
+	 .attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	},
+	{.soff = AIE2PS_TILE_COREMOD_X0_PART1_REGOFF,
+	 .eoff = AIE2PS_TILE_COREMOD_X11_PART4_REGOFF,
+	 .width = 16,	/* 128 bits */
+	 .step = 16,	/* 0x10 */
+	 .attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	},
+	{.soff = AIE2PS_TILE_COREMOD_LDFIFOL0_PART1_REGOFF,
+	 .eoff = AIE2PS_TILE_COREMOD_FIFOXTRA_PART4_REGOFF,
+	 .width = 16,	/* 128 bits */
+	 .step = 16,	/* 0x10 */
+	 .attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	},
+	{.soff = AIE2PS_TILE_COREMOD_EG0_REGOFF,
+	 .eoff = AIE2PS_TILE_COREMOD_EG11_REGOFF,
+	 .width = 16,	/* 128 bits */
+	 .step = 16,	/* 0x10 */
+	 .attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	},
+	{.soff = AIE2PS_TILE_COREMOD_F0_REGOFF,
+	 .eoff = AIE2PS_TILE_COREMOD_F11_REGOFF,
+	 .width = 16,	/* 128 bits */
+	 .step = 16,	/* 0x10 */
+	 .attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	},
+	{.soff = AIE2PS_TILE_COREMOD_R0_REGOFF,
+	 .eoff = AIE2PS_TILE_COREMOD_S3_REGOFF,
+	 .width = 4,	/* 32 bits */
+	 .step = 16,	/* 0x10 */
+	 .attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	},
+	{.soff = AIE2PS_TILE_COREMOD_SP_REGOFF,
+	 .eoff = AIE2PS_TILE_COREMOD_SP_REGOFF,
+	 .width = 4,	/* 32 bits */
+	 .step = 4,
+	 .attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	},
+};
+
 /**
  * aie2ps_device_init_rscs_attr() - initialize AI engine device resources
  *				   attributes
@@ -820,6 +865,8 @@ int aie2ps_device_init(struct aie_device *adev)
 {
 	adev->num_kernel_regs = ARRAY_SIZE(aie2ps_kernel_regs);
 	adev->kernel_regs = aie2ps_kernel_regs;
+	adev->core_regs_clr = aie2ps_core_regs_clr;
+	adev->num_core_regs_clr = ARRAY_SIZE(aie2ps_core_regs_clr);
 	adev->core_errors = &aie2ps_core_error;
 	adev->mem_errors = &aie2ps_mem_error;
 	adev->memtile_errors = &aie2ps_memtile_error;
