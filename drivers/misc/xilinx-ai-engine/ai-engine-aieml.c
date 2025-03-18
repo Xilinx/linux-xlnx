@@ -1607,6 +1607,10 @@ static const struct aie_l2_intr_ctrl_attr aieml_l2_intr_ctrl = {
 		.mask = GENMASK(15, 0),
 		.regoff = 0xcU,
 	},
+	.intr = {
+		.mask = GENMASK(1, 0),
+		.regoff = 0x10U,
+	},
 	.regoff = 0x15000U,
 	.num_broadcasts = 0x10U,
 };
