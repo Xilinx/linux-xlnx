@@ -1179,7 +1179,7 @@ static int sec_cfg_probe(struct platform_device *pdev)
 	secureconfig.reg_read = sec_cfg_read;
 	secureconfig.reg_write = sec_cfg_write;
 
-	nvmem = nvmem_register(&secureconfig);
+	nvmem = devm_nvmem_register(&pdev->dev, &secureconfig);
 	if (IS_ERR(nvmem))
 		return PTR_ERR(nvmem);
 
