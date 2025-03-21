@@ -4039,7 +4039,7 @@ static int __maybe_unused axienet_mcdma_probe(struct platform_device *pdev,
 		return ret;
 	}
 
-	ret = of_property_read_u8(np, "xlnx,addrwidth", (u8 *)&lp->dma_mask);
+	ret = of_property_read_u32(np, "xlnx,addrwidth", &lp->dma_mask);
 	if (ret < 0 || lp->dma_mask < XAE_DMA_MASK_MIN ||
 	    lp->dma_mask > XAE_DMA_MASK_MAX) {
 		dev_info(&pdev->dev, "missing/invalid xlnx,addrwidth property, using default\n");
@@ -4103,14 +4103,13 @@ static int __maybe_unused axienet_dma_probe(struct platform_device *pdev,
 
 			q->eth_hasdre = of_property_read_bool(np,
 							      "xlnx,include-dre");
-			ret = of_property_read_u8(np, "xlnx,addrwidth",
-						  (u8 *)&lp->dma_mask);
+			ret = of_property_read_u32(np, "xlnx,addrwidth",
+						   &lp->dma_mask);
 			if (ret <  0 || lp->dma_mask < XAE_DMA_MASK_MIN ||
 			    lp->dma_mask > XAE_DMA_MASK_MAX) {
 				dev_info(&pdev->dev, "missing/invalid xlnx,addrwidth property, using default\n");
 				lp->dma_mask = XAE_DMA_MASK_MIN;
 			}
-
 		} else {
 			/* Check for these resources directly on the Ethernet node. */
 			q->dma_regs = devm_platform_get_and_ioremap_resource(pdev, 1, NULL);
