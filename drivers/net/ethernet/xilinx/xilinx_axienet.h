@@ -1118,7 +1118,7 @@ struct axienet_local {
 	u16 chan_id;
 	u16 weight;
 
-	u8 dma_mask;
+	u32 dma_mask;
 	u32 usxgmii_rate;
 
 	u32 max_speed;		/* Max MAC speed */
