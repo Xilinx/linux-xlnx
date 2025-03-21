@@ -60,13 +60,14 @@ int axienet_eoe_probe(struct platform_device *pdev)
 
 		case 1:
 			/* Can checksum Tx UDP over IPv4. */
-			ndev->features |= NETIF_F_IP_CSUM;
-			ndev->hw_features |= NETIF_F_IP_CSUM;
+			ndev->features |= NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM;
+			ndev->hw_features |= NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM;
 			break;
 
 		case 2:
-			ndev->features |= NETIF_F_IP_CSUM | NETIF_F_GSO_UDP_L4;
-			ndev->hw_features |= NETIF_F_IP_CSUM | NETIF_F_GSO_UDP_L4;
+			ndev->features |= NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM | NETIF_F_GSO_UDP_L4;
+			ndev->hw_features |= NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM
+					| NETIF_F_GSO_UDP_L4;
 			break;
 
 		default:

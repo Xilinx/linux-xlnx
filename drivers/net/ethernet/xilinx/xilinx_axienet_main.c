@@ -3053,6 +3053,18 @@ static int axienet_change_mtu(struct net_device *ndev, int new_mtu)
 	return 0;
 }
 
+static netdev_features_t axienet_features_check(struct sk_buff *skb,
+						struct net_device *dev,
+						netdev_features_t features)
+{
+	struct axienet_local *lp = netdev_priv(dev);
+
+	if (lp->eoe_connected && (ip_hdr(skb)->version != 4))
+		features &= ~(NETIF_F_CSUM_MASK | NETIF_F_GSO_MASK);
+
+	return features;
+}
+
 #ifdef CONFIG_NET_POLL_CONTROLLER
 /**
  * axienet_poll_controller - Axi Ethernet poll mechanism.
@@ -3313,6 +3325,7 @@ static const struct net_device_ops axienet_netdev_ops = {
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller = axienet_poll_controller,
 #endif
+	.ndo_features_check = axienet_features_check,
 };
 
 static const struct net_device_ops axienet_netdev_dmaengine_ops = {
