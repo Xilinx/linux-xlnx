@@ -73,6 +73,7 @@ config VIDEO_XILINX_HDMI21RXSS
 	depends on VIDEO_XILINX
 	select VIDEO_XILINX_HDCP1X_RX
 	select VIDEO_XILINX_HDCP2X_RX
+	select MFD_SYSCON
 	help
 	  Driver for the Xilinx HDMI 2.1 Rx subsystem to capture HDMI streams.
 	  This is a V4L2 subdev driver which used to get the stream properties
@@ -152,6 +153,7 @@ config VIDEO_XILINX_DPRXSS
 	select DRM_DISPLAY_HELPER
 	select DRM_DISPLAY_DP_HELPER
 	select PHY_XILINX_DPGTQUAD
+	select MFD_SYSCON
 	help
 	  Driver for Xilinx DisplayPort Rx Subsystem. This is a V4L sub-device
 	  based driver for the DisplayPort receiver subsystem IP. It captures
