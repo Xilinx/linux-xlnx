@@ -28,15 +28,15 @@ config PCIE_AL
 	  Annapurna Labs PCIe controller don't need to enable this.
 
 config PCIE_AMD_MDB
-	bool "AMD MDB Versal2 PCIe Host controller"
+	bool "AMD MDB Versal2 PCIe controller"
 	depends on OF || COMPILE_TEST
-	depends on PCI && PCI_MSI
+	depends on PCI_MSI
 	select PCIE_DW_HOST
 	help
 	  Say Y here if you want to enable PCIe controller support on AMD
-	  Versal2 SoCs. The AMD MDB Versal2 PCIe controller is based on DesignWare
-	  IP and therefore the driver re-uses the Designware core functions to
-	  implement the driver.
+	  Versal2 SoCs. The AMD MDB Versal2 PCIe controller is based on
+	  DesignWare IP and therefore the driver re-uses the DesignWare
+	  core functions to implement the driver.
 
 config PCI_MESON
 	tristate "Amlogic Meson PCIe controller"
