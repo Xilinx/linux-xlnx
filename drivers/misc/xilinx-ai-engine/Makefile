@@ -32,4 +32,5 @@ xilinx-aie-$(CONFIG_XILINX_AIE) := ai-engine-aie.o		\
 				   ai-engine-sysfs-info.o	\
 				   ai-engine-sysfs-lock.o	\
 				   ai-engine-sysfs-status.o	\
-				   ai-engine-status-dump.o
+				   ai-engine-status-dump.o	\
+				   ai-engine-sysfs-ucstatus.o

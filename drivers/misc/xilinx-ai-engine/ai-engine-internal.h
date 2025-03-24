@@ -605,6 +605,20 @@ struct aie_tile_operations {
 			       u8 lock);
 	int (*wake_tile_uc_core_up)(struct aie_partition *apart,
 				    struct aie_location *loc);
+	u32 (*get_uc_core_sts)(struct aie_partition *apart,
+			       struct aie_location *loc);
+	u32 (*get_uc_core_intr)(struct aie_partition *apart,
+				struct aie_location *loc);
+	u32 (*get_uc_mdm_dbg_sts)(struct aie_partition *apart,
+				  struct aie_location *loc);
+	u32 (*get_uc_dma_dm2mm_sts)(struct aie_partition *apart,
+				    struct aie_location *loc);
+	u32 (*get_uc_dma_mm2dm_sts)(struct aie_partition *apart,
+				    struct aie_location *loc);
+	u32 (*get_uc_mod_aximm)(struct aie_partition *apart,
+				struct aie_location *loc);
+	u32 (*get_uc_mod_aximm_out_trans)(struct aie_partition *apart,
+					  struct aie_location *loc);
 };
 
 /**
@@ -1496,6 +1510,27 @@ ssize_t aie_sysfs_read_handler(struct file *filp, struct kobject *kobj,
 			       struct bin_attribute *attr, char *buf,
 			       loff_t offset, size_t max_size);
 
+ssize_t aie2ps_sysfs_get_uc_core_status(struct aie_partition *apart,
+					struct aie_location *loc, char *buffer,
+					ssize_t size);
+ssize_t aie2ps_sysfs_get_uc_core_intr(struct aie_partition *apart,
+				      struct aie_location *loc, char *buffer,
+				      ssize_t size);
+ssize_t aie2ps_sysfs_get_uc_mdm_dbg_sts(struct aie_partition *apart,
+					struct aie_location *loc, char *buffer,
+					ssize_t size);
+ssize_t aie2ps_sysfs_get_uc_dma_dm2mm_sts(struct aie_partition *apart,
+					  struct aie_location *loc, char *buffer,
+					  ssize_t size);
+ssize_t aie2ps_sysfs_get_uc_dma_mm2dm_sts(struct aie_partition *apart,
+					  struct aie_location *loc, char *buffer,
+					  ssize_t size);
+ssize_t aie2ps_sysfs_get_uc_mod_aximm(struct aie_partition *apart,
+				      struct aie_location *loc, char *buffer,
+				      ssize_t size);
+ssize_t aie2ps_sysfs_get_uc_mod_aximm_out_trans(struct aie_partition *apart,
+						struct aie_location *loc, char *buffer,
+						ssize_t size);
 ssize_t aie_sysfs_get_core_status(struct aie_partition *apart,
 				  struct aie_location *loc, char *buffer,
 				  ssize_t size);
@@ -1544,6 +1579,8 @@ ssize_t aie_tile_show_event(struct device *dev, struct device_attribute *attr,
 void aie_read_event_status(struct aie_partition *apart,
 			   struct aie_location *loc,
 			   enum aie_module_type module, u32 *reg);
+ssize_t aie_part_read_cb_ucstatus(struct kobject *kobj, char *buffer,
+				  ssize_t size);
 ssize_t aie_part_read_cb_status(struct kobject *kobj, char *buffer,
 				ssize_t size);
 long aie_part_rscmgr_get_statistics(struct aie_partition *apart,
