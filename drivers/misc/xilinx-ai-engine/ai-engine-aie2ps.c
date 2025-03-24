@@ -140,11 +140,29 @@
 #define AIE2PS_TILE_MEMMOD_LOCK_UNDERFLOW_REGOFF	0x0001F128U
 #define AIE2PS_TILE_MEMMOD_DMA_S2MM_STATUS_REGOFF	0x0001DF00U
 #define AIE2PS_TILE_MEMMOD_DMA_MM2S_STATUS_REGOFF	0x0001DF10U
+#define AIE2PS_CORE_STATUS_REGOFF			0x000C0000U
+#define AIE2PS_CORE_INTR_REGOFF				0x000C0008U
+#define AIE2PS_MDM_DBG_CTRL_STATUS_REGOFF		0x000B0010U
+#define AIE2PS_DMA_DM2MM_STATUS_REGOFF			0x000C0100U
+#define AIE2PS_DMA_MM2DM_STATUS_REGOFF			0x000C0110U
+#define AIE2PS_MOD_AXIMM_REGOFF				0x000C0020U
+#define AIE2PS_MOD_AXIMM_OUTSTNDG_TRANS_REGOFF		0x000C0024U
 
 /*
  * Register masks
  */
 #define AIE2PS_SHIMPL_COLCLOCK_CTRL_MASK		GENMASK(1, 0)
+#define AIE2PS_UCCORE_STS_MASK0				0x1U
+#define AIE2PS_UCCORE_STS_MASK1				0x2U
+#define AIE2PS_MASK_RUNNING				0x00000001U
+#define AIE2PS_MASK_ERR_BD_INVLD			0x00000002U
+#define AIE2PS_MASK_ERR_LOCAL_ADDR_OUT_OF_RANGE		0x00000004U
+#define AIE2PS_MASK_AXI_MM_SLVERR			0x00000008U
+#define AIE2PS_MASK_AXI_MM_DECERR			0x00000010U
+#define AIE2PS_MASK_ERROR_ECC_DED			0x00000020U
+#define AIE2PS_MASK_TASK_QUEUE_OVERFLOW			0x00000040U
+#define AIE2PS_MASK_TASK_QUEUE_SIZE			0x00001F00U
+#define AIE2PS_MASK_RESPONSE_QUEUE_SIZE			0x001F0000U
 
 /* Macros to define size of a sysfs binary attribute */
 #define AIE2PS_PART_SYSFS_CORE_BINA_SIZE	0x4000		/* 16KB */
@@ -152,6 +170,7 @@
 #define AIE2PS_PART_SYSFS_ERROR_BINA_SIZE	0x4000		/* 16KB */
 #define AIE2PS_PART_SYSFS_DMA_BINA_SIZE		0xC800		/* 50KB */
 #define AIE2PS_PART_SYSFS_STATUS_BINA_SIZE	0x3c000		/* 240KB */
+#define AIE2PS_PART_SYSFS_UCSTATUS_BINA_SIZE	0x3c000		/* 240KB */
 
 static const struct aie_tile_regs aie2ps_kernel_regs[] = {
 	/* SHIM DMA buffer descriptor address range */
@@ -1509,6 +1528,42 @@ static const struct aie_bin_attr aie2ps_part_bin_attr[] = {
 	AIE_PART_BIN_ATTR_RO(dma, AIE2PS_PART_SYSFS_DMA_BINA_SIZE),
 	AIE_PART_BIN_ATTR_RO(error, AIE2PS_PART_SYSFS_ERROR_BINA_SIZE),
 	AIE_PART_BIN_ATTR_RO(status, AIE2PS_PART_SYSFS_STATUS_BINA_SIZE),
+	AIE_PART_BIN_ATTR_RO(ucstatus, AIE2PS_PART_SYSFS_UCSTATUS_BINA_SIZE),
+};
+
+static const struct aie_single_reg_field aie2ps_uc_core_sts = {
+	.mask = GENMASK(1, 0),
+	.regoff = AIE2PS_CORE_STATUS_REGOFF,
+};
+
+static const struct aie_single_reg_field aie2ps_uc_core_intr = {
+	.mask = GENMASK(1, 0),
+	.regoff = AIE2PS_CORE_INTR_REGOFF,
+};
+
+static const struct aie_single_reg_field aie2ps_uc_mdm_dbg_sts = {
+	.mask = GENMASK(19, 0),
+	.regoff = AIE2PS_MDM_DBG_CTRL_STATUS_REGOFF,
+};
+
+static const struct aie_single_reg_field aie2ps_uc_dma_dm2mm_sts = {
+	.mask = GENMASK(20, 0),
+	.regoff = AIE2PS_DMA_DM2MM_STATUS_REGOFF,
+};
+
+static const struct aie_single_reg_field aie2ps_uc_dma_mm2dm_sts = {
+	.mask = GENMASK(20, 0),
+	.regoff = AIE2PS_DMA_MM2DM_STATUS_REGOFF,
+};
+
+static const struct aie_single_reg_field aie2ps_uc_mod_aximm = {
+	.mask = GENMASK(31, 0),
+	.regoff = AIE2PS_MOD_AXIMM_REGOFF,
+};
+
+static const struct aie_single_reg_field aie2ps_uc_mod_aximm_out_trans = {
+	.mask = GENMASK(1, 0),
+	.regoff = AIE2PS_MOD_AXIMM_OUTSTNDG_TRANS_REGOFF,
 };
 
 static const struct aie_uc_corectrl_attr aie2ps_shimnoc_uc_core_ctrl = {
@@ -1874,6 +1929,399 @@ static unsigned int aie2ps_get_mem_info(struct aie_device *adev, struct aie_rang
 	pmem[5].mem.range.size.row = num_rows;
 
 	return NUM_TYPES_OF_MEM;
+}
+
+/**
+ * aie2ps_get_uc_core_status() - Retrieve the status of a uc core
+ * @apart: AI engine partition.
+ * @loc: Location of the AI engine uc core.
+ * @return: A 32-bit value representing the core's status.
+ */
+static u32 aie2ps_get_uc_core_status(struct aie_partition *apart,
+				     struct aie_location *loc)
+{
+	u32 regoff, regvalue;
+
+	regoff = aie_cal_regoff(apart->adev, *loc, aie2ps_uc_core_sts.regoff);
+	regvalue = ioread32(apart->aperture->base + regoff);
+
+	return aie_get_reg_field(&aie2ps_uc_core_sts, regvalue);
+}
+
+/**
+ * aie2ps_get_uc_core_intr() - Retrieve the status of a uc core interrupt
+ * @apart: AI engine partition.
+ * @loc: Location of the AI engine uc core.
+ * @return: A 32-bit value representing the core interrupt status.
+ */
+static u32 aie2ps_get_uc_core_intr(struct aie_partition *apart,
+				   struct aie_location *loc)
+{
+	u32 regoff, regvalue;
+
+	regoff = aie_cal_regoff(apart->adev, *loc, aie2ps_uc_core_intr.regoff);
+	regvalue = ioread32(apart->aperture->base + regoff);
+
+	return aie_get_reg_field(&aie2ps_uc_core_intr, regvalue);
+}
+
+/**
+ * aie2ps_get_uc_mdm_dbg_sts() - Retrieve the status of a uc core mdm debug
+ * @apart: AI engine partition.
+ * @loc: Location of the AI engine uc core.
+ * @return: A 32-bit value representing the core's mdm dbg status.
+ */
+static u32 aie2ps_get_uc_mdm_dbg_sts(struct aie_partition *apart,
+				     struct aie_location *loc)
+{
+	u32 regoff, regvalue;
+
+	regoff = aie_cal_regoff(apart->adev, *loc, aie2ps_uc_mdm_dbg_sts.regoff);
+	regvalue = ioread32(apart->aperture->base + regoff);
+
+	return aie_get_reg_field(&aie2ps_uc_mdm_dbg_sts, regvalue);
+}
+
+/**
+ * aie2ps_get_uc_dma_dm2mm_sts() - Retrieve the status of a uc core dm2mm
+ * @apart: AI engine partition.
+ * @loc: Location of the AI engine uc core.
+ * @return: A 32-bit value representing the core's dm2mm status.
+ */
+static u32 aie2ps_get_uc_dma_dm2mm_sts(struct aie_partition *apart,
+				       struct aie_location *loc)
+{
+	u32 regoff, regvalue;
+
+	regoff = aie_cal_regoff(apart->adev, *loc, aie2ps_uc_dma_dm2mm_sts.regoff);
+	regvalue = ioread32(apart->aperture->base + regoff);
+
+	return aie_get_reg_field(&aie2ps_uc_dma_dm2mm_sts, regvalue);
+}
+
+/**
+ * aie2ps_get_uc_dma_mm2dm_sts() - Retrieve the status of a uc core mm2dm
+ * @apart: AI engine partition.
+ * @loc: Location of the AI engine uc core.
+ * @return: A 32-bit value representing the core's mm2dm status.
+ */
+static u32 aie2ps_get_uc_dma_mm2dm_sts(struct aie_partition *apart,
+				       struct aie_location *loc)
+{
+	u32 regoff, regvalue;
+
+	regoff = aie_cal_regoff(apart->adev, *loc, aie2ps_uc_dma_mm2dm_sts.regoff);
+	regvalue = ioread32(apart->aperture->base + regoff);
+
+	return aie_get_reg_field(&aie2ps_uc_dma_mm2dm_sts, regvalue);
+}
+
+/**
+ * aie2ps_get_uc_mod_aximm() - Retrieve the status of a uc core aximm
+ * @apart: AI engine partition.
+ * @loc: Location of the AI engine uc core.
+ * @return: A 32-bit value representing the core's aximm status.
+ */
+static u32 aie2ps_get_uc_mod_aximm(struct aie_partition *apart,
+				   struct aie_location *loc)
+{
+	u32 regoff, regvalue;
+
+	regoff = aie_cal_regoff(apart->adev, *loc, aie2ps_uc_mod_aximm.regoff);
+	regvalue = ioread32(apart->aperture->base + regoff);
+
+	return aie_get_reg_field(&aie2ps_uc_mod_aximm, regvalue);
+}
+
+/**
+ * aie2ps_get_uc_mod_aximm_out_trans() - Retrieve the status of a uc core aximm
+ *                                       out transactions
+ * @apart: AI engine partition.
+ * @loc: Location of the AI engine uc core.
+ * @return: A 32-bit value representing the core's aximm out transactions status.
+ */
+static u32 aie2ps_get_uc_mod_aximm_out_trans(struct aie_partition *apart,
+					     struct aie_location *loc)
+{
+	u32 regoff, regvalue;
+
+	regoff = aie_cal_regoff(apart->adev, *loc, aie2ps_uc_mod_aximm_out_trans.regoff);
+	regvalue = ioread32(apart->aperture->base + regoff);
+
+	return aie_get_reg_field(&aie2ps_uc_mod_aximm_out_trans, regvalue);
+}
+
+/**
+ * aie2ps_sysfs_get_uc_core_status() - exports AI engine uc core status,
+ *                                     sleep and pending interrupt status
+ *                                     to a tile level sysfs node.
+ * @apart: AI engine partition.
+ * @loc: location of AI engine Tile.
+ * @buffer: location to return uc core  status string.
+ * @size: total size of buffer available.
+ * @return: length of string copied to buffer.
+ */
+ssize_t aie2ps_sysfs_get_uc_core_status(struct aie_partition *apart,
+					struct aie_location *loc, char *buffer,
+					ssize_t size)
+{
+	unsigned long status;
+	ssize_t len = 0;
+	bool is_delimit_req = false;
+
+	status = apart->adev->ops->get_uc_core_sts(apart, loc);
+	if (status & AIE2PS_UCCORE_STS_MASK0) {
+		len += scnprintf(&buffer[len], max(0L, size - len), "sleep");
+		is_delimit_req = true;
+	}
+
+	if (status & AIE2PS_UCCORE_STS_MASK1) {
+		if (is_delimit_req)
+			len += scnprintf(&buffer[len], max(0L, size - len), DELIMITER_LEVEL1);
+		len += scnprintf(&buffer[len], max(0L, size - len), "interrupt");
+	}
+
+	return len;
+}
+
+/**
+ * aie2ps_sysfs_get_uc_core_intr() - exports AI engine uc core interrupt status,
+ *                                   event action and go to sleep interrupt,
+ *                                   to a tile level sysfs node.
+ * @apart: AI engine partition.
+ * @loc: location of AI engine Tile.
+ * @buffer: location to return uc core  status string.
+ * @size: total size of buffer available.
+ * @return: length of string copied to buffer.
+ */
+ssize_t aie2ps_sysfs_get_uc_core_intr(struct aie_partition *apart,
+				      struct aie_location *loc, char *buffer,
+				      ssize_t size)
+{
+	unsigned long status;
+	ssize_t len = 0;
+	bool is_delimit_req = false;
+
+	status = apart->adev->ops->get_uc_core_intr(apart, loc);
+	if (status & AIE2PS_UCCORE_STS_MASK0) {
+		len += scnprintf(&buffer[len], max(0L, size - len), "go_to_sleep");
+		is_delimit_req = true;
+	}
+
+	if (status & AIE2PS_UCCORE_STS_MASK1) {
+		if (is_delimit_req)
+			len += scnprintf(&buffer[len], max(0L, size - len), DELIMITER_LEVEL1);
+		len += scnprintf(&buffer[len], max(0L, size - len), "event_action");
+	}
+
+	return len;
+}
+
+/**
+ * aie2ps_sysfs_get_uc_mdm_dbg_sts() - exports AI engine mdm debug lock status
+ *                                     to a tile level sysfs node.
+ * @apart: AI engine partition.
+ * @loc: location of AI engine Tile.
+ * @buffer: location to return uc core  status string.
+ * @size: total size of buffer available.
+ * @return: length of string copied to buffer.
+ */
+ssize_t aie2ps_sysfs_get_uc_mdm_dbg_sts(struct aie_partition *apart,
+					struct aie_location *loc, char *buffer,
+					ssize_t size)
+{
+	unsigned long status;
+	ssize_t len = 0;
+
+	status = apart->adev->ops->get_uc_mdm_dbg_sts(apart, loc);
+	if (status & AIE2PS_UCCORE_STS_MASK0)
+		len += scnprintf(&buffer[len], max(0L, size - len), "lock_acquired\n");
+
+	return len;
+}
+
+/**
+ * aie2ps_sysfs_get_uc_dma_dm2mm_sts() - exports AI engine uc DMA channel status,
+ *                                       response queue size, task queue size,
+ *                                       error ecc ded, aximm decode error,
+ *                                       aximm slave error, error on address out
+ *                                       of range, issue loading BD, channel
+ *                                       running status to a tile level sysfs node.
+ * @apart: AI engine partition.
+ * @loc: location of AI engine Tile.
+ * @buffer: location to return uc core  status string.
+ * @size: total size of buffer available.
+ * @return: length of string copied to buffer.
+ */
+ssize_t aie2ps_sysfs_get_uc_dma_dm2mm_sts(struct aie_partition *apart,
+					  struct aie_location *loc, char *buffer,
+					  ssize_t size)
+{
+	unsigned long status;
+	unsigned int running, error_bd_invalid, err_local_addr_out_of_range;
+	unsigned int aximm_slv_err, aximm_dec_err;
+	unsigned int err_ecc_ded, task_queue_overflow, task_queue_size, response_queue_size;
+	ssize_t len = 0;
+
+	status = apart->adev->ops->get_uc_dma_dm2mm_sts(apart, loc);
+
+	running = status & AIE2PS_MASK_RUNNING;
+	if (running)
+		len += scnprintf(&buffer[len], max(0L, size - len), "Running%s", DELIMITER_LEVEL1);
+	else
+		len += scnprintf(&buffer[len], max(0L, size - len), "Idle%s", DELIMITER_LEVEL1);
+
+	error_bd_invalid = (status & AIE2PS_MASK_ERR_BD_INVLD) >> 1;
+	len += scnprintf(&buffer[len], max(0L, size - len), "EBDI - %u%s",
+			 error_bd_invalid, DELIMITER_LEVEL1);
+
+	err_local_addr_out_of_range = (status & AIE2PS_MASK_ERR_LOCAL_ADDR_OUT_OF_RANGE) >> 2;
+	len += scnprintf(&buffer[len], max(0L, size - len), "ELAOR - %u%s",
+			 err_local_addr_out_of_range, DELIMITER_LEVEL1);
+
+	aximm_slv_err = (status & AIE2PS_MASK_AXI_MM_SLVERR) >> 3;
+	len += scnprintf(&buffer[len], max(0L, size - len), "AMS - %u%s",
+			 aximm_slv_err, DELIMITER_LEVEL1);
+
+	aximm_dec_err = (status & AIE2PS_MASK_AXI_MM_DECERR) >> 4;
+	len += scnprintf(&buffer[len], max(0L, size - len), "AMD - %u%s",
+			 aximm_dec_err, DELIMITER_LEVEL1);
+
+	err_ecc_ded = (status & AIE2PS_MASK_ERROR_ECC_DED) >> 5;
+	len += scnprintf(&buffer[len], max(0L, size - len), "EED - %u%s",
+			 err_ecc_ded, DELIMITER_LEVEL1);
+
+	task_queue_overflow = (status & AIE2PS_MASK_TASK_QUEUE_OVERFLOW) >> 6;
+	len += scnprintf(&buffer[len], max(0L, size - len), "TQO - %u%s",
+			 task_queue_overflow, DELIMITER_LEVEL1);
+
+	task_queue_size = (status & AIE2PS_MASK_TASK_QUEUE_SIZE) >> 8;
+	len += scnprintf(&buffer[len], max(0L, size - len), "TQS - %u%s",
+			 task_queue_size, DELIMITER_LEVEL1);
+
+	response_queue_size = (status & AIE2PS_MASK_RESPONSE_QUEUE_SIZE) >> 16;
+	len += scnprintf(&buffer[len], max(0L, size - len), "RQS - %u", response_queue_size);
+
+	return len;
+}
+
+/**
+ * aie2ps_sysfs_get_uc_dma_mm2dm_sts() - exports AI engine uc DMA channel status,
+ *                                       response queue size, task queue size,
+ *                                       error ecc ded, aximm decode error,
+ *                                       aximm slave error, error on address out
+ *                                       of range, issue loading BD, channel
+ *                                       running status to a tile level sysfs node.
+ * @apart: AI engine partition.
+ * @loc: location of AI engine Tile.
+ * @buffer: location to return uc core  status string.
+ * @size: total size of buffer available.
+ * @return: length of string copied to buffer.
+ */
+ssize_t aie2ps_sysfs_get_uc_dma_mm2dm_sts(struct aie_partition *apart,
+					  struct aie_location *loc, char *buffer,
+					  ssize_t size)
+{
+	unsigned long status;
+	unsigned int running, error_bd_invalid, err_local_addr_out_of_range;
+	unsigned int aximm_slv_err, aximm_dec_err;
+	unsigned int err_ecc_ded, task_queue_overflow, task_queue_size, response_queue_size;
+	ssize_t len = 0;
+
+	status = apart->adev->ops->get_uc_dma_mm2dm_sts(apart, loc);
+
+	running = status & AIE2PS_MASK_RUNNING;
+	if (running)
+		len += scnprintf(&buffer[len], max(0L, size - len), "Running%s", DELIMITER_LEVEL1);
+	else
+		len += scnprintf(&buffer[len], max(0L, size - len), "Idle%s", DELIMITER_LEVEL1);
+
+	error_bd_invalid = (status & AIE2PS_MASK_ERR_BD_INVLD) >> 1;
+	len += scnprintf(&buffer[len], max(0L, size - len), "EBDI - %u%s",
+			 error_bd_invalid, DELIMITER_LEVEL1);
+
+	err_local_addr_out_of_range = (status & AIE2PS_MASK_ERR_LOCAL_ADDR_OUT_OF_RANGE) >> 2;
+	len += scnprintf(&buffer[len], max(0L, size - len), "ELAOR - %u%s",
+			 err_local_addr_out_of_range, DELIMITER_LEVEL1);
+
+	aximm_slv_err = (status & AIE2PS_MASK_AXI_MM_SLVERR) >> 3;
+	len += scnprintf(&buffer[len], max(0L, size - len), "AMS - %u%s",
+			 aximm_slv_err, DELIMITER_LEVEL1);
+
+	aximm_dec_err = (status & AIE2PS_MASK_AXI_MM_DECERR) >> 4;
+	len += scnprintf(&buffer[len], max(0L, size - len), "AMD - %u%s",
+			 aximm_dec_err, DELIMITER_LEVEL1);
+
+	err_ecc_ded = (status & AIE2PS_MASK_ERROR_ECC_DED) >> 5;
+	len += scnprintf(&buffer[len], max(0L, size - len), "EED - %u%s",
+			 err_ecc_ded, DELIMITER_LEVEL1);
+
+	task_queue_overflow = (status & AIE2PS_MASK_TASK_QUEUE_OVERFLOW) >> 6;
+	len += scnprintf(&buffer[len], max(0L, size - len), "TQO - %u%s",
+			 task_queue_overflow, DELIMITER_LEVEL1);
+
+	task_queue_size = (status & AIE2PS_MASK_TASK_QUEUE_SIZE) >> 8;
+	len += scnprintf(&buffer[len], max(0L, size - len), "TQS - %u%s",
+			 task_queue_size, DELIMITER_LEVEL1);
+
+	response_queue_size = (status & AIE2PS_MASK_RESPONSE_QUEUE_SIZE) >> 16;
+	len += scnprintf(&buffer[len], max(0L, size - len), "RQS - %u", response_queue_size);
+
+	return len;
+}
+
+/**
+ * aie2ps_sysfs_get_uc_mod_aximm() - exports AI engine uc aximm offset status
+ *                                   to a tile level sysfs node.
+ * @apart: AI engine partition.
+ * @loc: location of AI engine Tile.
+ * @buffer: location to return uc core  status string.
+ * @size: total size of buffer available.
+ * @return: length of string copied to buffer.
+ */
+ssize_t aie2ps_sysfs_get_uc_mod_aximm(struct aie_partition *apart,
+				      struct aie_location *loc, char *buffer,
+				      ssize_t size)
+{
+	unsigned long status;
+	ssize_t len = 0;
+
+	status = apart->adev->ops->get_uc_mod_aximm(apart, loc);
+	len += scnprintf(&buffer[len], max(0L, size - len), "aximm_offset - 0x%X%s",
+			 status, DELIMITER_LEVEL2);
+
+	return len;
+}
+
+/**
+ * aie2ps_sysfs_get_uc_mod_aximm_out_trans() - exports AI engine uc aximm outstanding transactions
+ *                                             status of module to array and DMA
+ *                                             to NMU to a tile level sysfs node.
+ * @apart: AI engine partition.
+ * @loc: location of AI engine Tile.
+ * @buffer: location to return uc core  status string.
+ * @size: total size of buffer available.
+ * @return: length of string copied to buffer.
+ */
+ssize_t aie2ps_sysfs_get_uc_mod_aximm_out_trans(struct aie_partition *apart,
+						struct aie_location *loc, char *buffer,
+						ssize_t size)
+{
+	unsigned long status;
+	unsigned int module_to_array, dma_to_nmu;
+	ssize_t len = 0;
+
+	status = apart->adev->ops->get_uc_mod_aximm_out_trans(apart, loc);
+
+	dma_to_nmu = status & AIE2PS_UCCORE_STS_MASK0;
+	len += scnprintf(&buffer[len], max(0L, size - len), "d2n - %u%s",
+			 dma_to_nmu, DELIMITER_LEVEL1);
+
+	module_to_array = status & AIE2PS_UCCORE_STS_MASK1;
+	len += scnprintf(&buffer[len], max(0L, size - len), "m2a - %u%s\n",
+			 module_to_array, DELIMITER_LEVEL2);
+
+	return len;
 }
 
 static u32 aie2ps_get_core_status(struct aie_partition *apart, struct aie_location *loc)
@@ -2893,6 +3341,13 @@ static const struct aie_tile_operations aie2ps_ops = {
 	.get_chan_status = aie2ps_get_chan_status,
 	.get_lock_status = aie2ps_get_lock_status,
 	.wake_tile_uc_core_up = aie2ps_wake_tile_uc_core_up,
+	.get_uc_core_sts = aie2ps_get_uc_core_status,
+	.get_uc_core_intr = aie2ps_get_uc_core_intr,
+	.get_uc_mdm_dbg_sts = aie2ps_get_uc_mdm_dbg_sts,
+	.get_uc_dma_dm2mm_sts = aie2ps_get_uc_dma_dm2mm_sts,
+	.get_uc_dma_mm2dm_sts = aie2ps_get_uc_dma_mm2dm_sts,
+	.get_uc_mod_aximm = aie2ps_get_uc_mod_aximm,
+	.get_uc_mod_aximm_out_trans = aie2ps_get_uc_mod_aximm_out_trans,
 };
 
 /**
