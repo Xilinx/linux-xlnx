@@ -1629,14 +1629,14 @@ static int axienet_clk_init(struct platform_device *pdev,
 	 * the future. For proper clock usage check axiethernet binding
 	 * documentation.
 	 */
-	*axi_aclk = devm_clk_get(&pdev->dev, "ethernet_clk");
+	*axi_aclk = devm_clk_get_enabled(&pdev->dev, "ethernet_clk");
 	if (IS_ERR(*axi_aclk)) {
 		if (PTR_ERR(*axi_aclk) != -ENOENT) {
 			err = PTR_ERR(*axi_aclk);
 			return err;
 		}
 
-		*axi_aclk = devm_clk_get(&pdev->dev, "s_axi_lite_clk");
+		*axi_aclk = devm_clk_get_enabled(&pdev->dev, "s_axi_lite_clk");
 		if (IS_ERR(*axi_aclk)) {
 			if (PTR_ERR(*axi_aclk) != -ENOENT) {
 				err = PTR_ERR(*axi_aclk);
@@ -1649,7 +1649,7 @@ static int axienet_clk_init(struct platform_device *pdev,
 		dev_warn(&pdev->dev, "ethernet_clk is deprecated and will be removed sometime in the future\n");
 	}
 
-	*axis_clk = devm_clk_get(&pdev->dev, "axis_clk");
+	*axis_clk = devm_clk_get_enabled(&pdev->dev, "axis_clk");
 	if (IS_ERR(*axis_clk)) {
 		if (PTR_ERR(*axis_clk) != -ENOENT) {
 			err = PTR_ERR(*axis_clk);
@@ -1658,7 +1658,7 @@ static int axienet_clk_init(struct platform_device *pdev,
 		*axis_clk = NULL;
 	}
 
-	*ref_clk = devm_clk_get(&pdev->dev, "ref_clk");
+	*ref_clk = devm_clk_get_enabled(&pdev->dev, "ref_clk");
 	if (IS_ERR(*ref_clk)) {
 		if (PTR_ERR(*ref_clk) != -ENOENT) {
 			err = PTR_ERR(*ref_clk);
@@ -1667,46 +1667,7 @@ static int axienet_clk_init(struct platform_device *pdev,
 		*ref_clk = NULL;
 	}
 
-	err = clk_prepare_enable(*axi_aclk);
-	if (err) {
-		dev_err(&pdev->dev, "failed to enable axi_aclk/ethernet_clk (%d)\n", err);
-		return err;
-	}
-
-	err = clk_prepare_enable(*axis_clk);
-	if (err) {
-		dev_err(&pdev->dev, "failed to enable axis_clk (%d)\n", err);
-		goto err_disable_axi_aclk;
-	}
-
-	err = clk_prepare_enable(*ref_clk);
-	if (err) {
-		dev_err(&pdev->dev, "failed to enable ref_clk (%d)\n", err);
-		goto err_disable_axis_clk;
-	}
-
 	return 0;
-
-err_disable_axis_clk:
-	clk_disable_unprepare(*axis_clk);
-err_disable_axi_aclk:
-	clk_disable_unprepare(*axi_aclk);
-
-	return err;
-}
-
-static void axienet_clk_disable(struct platform_device *pdev)
-{
-	struct net_device *ndev = platform_get_drvdata(pdev);
-	struct axienet_local *lp = netdev_priv(ndev);
-
-	clk_disable_unprepare(lp->dma_sg_clk);
-	clk_disable_unprepare(lp->dma_tx_clk);
-	clk_disable_unprepare(lp->dma_rx_clk);
-	clk_disable_unprepare(lp->eth_sclk);
-	clk_disable_unprepare(lp->eth_refclk);
-	clk_disable_unprepare(lp->eth_dclk);
-	clk_disable_unprepare(lp->aclk);
 }
 
 static const struct axienet_config axienet_1g_config_tsn = {
@@ -1723,13 +1684,6 @@ static const struct of_device_id axienet_of_match[] = {
 };
 
 MODULE_DEVICE_TABLE(of, axienet_of_match);
-
-static void tsn_clk_bulk_disable_unprepare(void *data)
-{
-	struct axienet_local *lp = data;
-
-	clk_bulk_disable_unprepare(XAE_NUM_MISC_CLOCKS, lp->misc_clks);
-}
 
 /**
  * axienet_probe - Axi Ethernet probe function.
@@ -1787,58 +1741,38 @@ static int axienet_probe(struct platform_device *pdev)
 	lp->rx_bd_num = RX_BD_NUM_DEFAULT;
 	lp->tx_bd_num = TX_BD_NUM_DEFAULT;
 
-	lp->axi_clk = devm_clk_get_optional(&pdev->dev, "s_axi_lite_clk");
-	if (!lp->axi_clk) {
-		/* For backward compatibility, if named AXI clock is not present,
-		 * treat the first clock specified as the AXI clock.
-		 */
-		lp->axi_clk = devm_clk_get_optional(&pdev->dev, NULL);
-	}
+	lp->axi_clk = devm_clk_get_optional_enabled(&pdev->dev, "s_axi_lite_clk");
 	if (IS_ERR(lp->axi_clk)) {
 		ret = PTR_ERR(lp->axi_clk);
 		goto free_netdev;
 	}
-	if (lp->axi_clk) {
-		ret = clk_prepare_enable(lp->axi_clk);
-		if (ret) {
-			dev_err(&pdev->dev, "Unable to enable AXI clock: %d\n", ret);
-			goto free_netdev;
-		}
-
-		ret = devm_add_action_or_reset(&pdev->dev,
-					       (void (*)(void *))clk_disable_unprepare,
-					       lp->axi_clk);
-		if (ret) {
-			dev_err(&pdev->dev, "Failed to register clk cleanup action: %d\n", ret);
+	if (!lp->axi_clk) {
+		/* For backward compatibility, if named AXI clock is not present,
+		 * treat the first clock specified as the AXI clock.
+		 */
+		lp->axi_clk = devm_clk_get_optional_enabled(&pdev->dev, NULL);
+		if (IS_ERR(lp->axi_clk)) {
+			ret = PTR_ERR(lp->axi_clk);
 			goto free_netdev;
 		}
 	}
 
-	lp->misc_clks[0].id = "axis_clk";
-	lp->misc_clks[1].id = "ref_clk";
-	lp->misc_clks[2].id = "mgt_clk";
-
-	ret = devm_clk_bulk_get_optional(&pdev->dev, XAE_NUM_MISC_CLOCKS, lp->misc_clks);
-	if (ret) {
-		dev_err(&pdev->dev, "Failed to get misc clocks: %d\n", ret);
+	lp->misc_clks[0].clk = devm_clk_get_optional_enabled(&pdev->dev, "axis_clk");
+	if (IS_ERR(lp->misc_clks[0].clk)) {
+		ret = PTR_ERR(lp->misc_clks[0].clk);
+		goto free_netdev;
+	}
+	lp->misc_clks[1].clk = devm_clk_get_optional_enabled(&pdev->dev, "ref_clk");
+	if (IS_ERR(lp->misc_clks[1].clk)) {
+		ret = PTR_ERR(lp->misc_clks[1].clk);
+		goto free_netdev;
+	}
+	lp->misc_clks[2].clk = devm_clk_get_optional_enabled(&pdev->dev, "mgt_clk");
+	if (IS_ERR(lp->misc_clks[2].clk)) {
+		ret = PTR_ERR(lp->misc_clks[2].clk);
 		goto free_netdev;
 	}
 
-	if (lp->misc_clks[0].clk) {
-		ret = clk_bulk_prepare_enable(XAE_NUM_MISC_CLOCKS, lp->misc_clks);
-		if (ret) {
-			dev_err(&pdev->dev, "Failed to enable clocks: %d\n", ret);
-			goto free_netdev;
-		}
-
-		ret = devm_add_action_or_reset(&pdev->dev,
-					       tsn_clk_bulk_disable_unprepare,
-					       lp->misc_clks);
-		if (ret) {
-			dev_err(&pdev->dev, "Failed to register clock cleanup action: %d\n", ret);
-			goto free_netdev;
-		}
-	}
 	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-tc",
 				   &lp->num_tc);
 	if (ret || (lp->num_tc != 2 && lp->num_tc != 3))
@@ -1983,7 +1917,7 @@ static int axienet_probe(struct platform_device *pdev)
 	if (!lp->phy_node) {
 		dev_err(&pdev->dev, "Failed to get 'phy-handle' from device tree\n");
 		ret = -EINVAL;
-		goto err_disable_clk;
+		goto free_netdev;
 	}
 	ret = axienet_mdio_setup_tsn(lp);
 	if (ret) {
@@ -2012,8 +1946,6 @@ err_mdio:
 	axienet_mdio_teardown_tsn(lp);
 err_of_put:
 	of_node_put(lp->phy_node);
-err_disable_clk:
-	axienet_clk_disable(pdev);
 free_netdev:
 	free_netdev(ndev);
 
@@ -2026,7 +1958,6 @@ static void axienet_remove(struct platform_device *pdev)
 	struct axienet_local *lp = netdev_priv(ndev);
 
 	unregister_netdev(ndev);
-	axienet_clk_disable(pdev);
 
 	if (lp->mii_bus)
 		axienet_mdio_teardown_tsn(lp);
