@@ -1376,7 +1376,7 @@ static int zynqmp_r5_cluster_init(struct zynqmp_r5_cluster *cluster)
 		 * If mailbox nodes are disabled using "status" property then
 		 * setting up mailbox channels will fail.
 		 */
-		if (of_property_present(dev_node, "mboxes")) {
+		if (of_property_present(child, "mboxes")) {
 			ipi = zynqmp_r5_setup_mbox(&child_pdev->dev);
 			if (ipi) {
 				r5_cores[i]->ipi = ipi;
