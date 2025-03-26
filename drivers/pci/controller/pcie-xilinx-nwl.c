@@ -19,7 +19,6 @@
 #include <linux/of_platform.h>
 #include <linux/pci.h>
 #include <linux/pci-ecam.h>
-#include <linux/phy/phy.h>
 #include <linux/platform_device.h>
 #include <linux/irqchip/chained_irq.h>
 
@@ -158,7 +157,6 @@ struct nwl_pcie {
 	void __iomem *breg_base;
 	void __iomem *pcireg_base;
 	void __iomem *ecam_base;
-	struct phy *phy[4];
 	phys_addr_t phys_breg_base;	/* Physical Bridge Register Base */
 	phys_addr_t phys_pcie_reg_base;	/* Physical PCIe Controller Base */
 	phys_addr_t phys_ecam_base;	/* Physical Configuration Base */
@@ -516,60 +514,6 @@ static int nwl_pcie_init_msi_irq_domain(struct nwl_pcie *pcie)
 	return 0;
 }
 
-static void nwl_pcie_phy_power_off(struct nwl_pcie *pcie, int i)
-{
-	int err = phy_power_off(pcie->phy[i]);
-
-	if (err)
-		dev_err(pcie->dev, "could not power off phy %d (err=%d)\n", i,
-			err);
-}
-
-static void nwl_pcie_phy_exit(struct nwl_pcie *pcie, int i)
-{
-	int err = phy_exit(pcie->phy[i]);
-
-	if (err)
-		dev_err(pcie->dev, "could not exit phy %d (err=%d)\n", i, err);
-}
-
-static int nwl_pcie_phy_enable(struct nwl_pcie *pcie)
-{
-	int i, ret;
-
-	for (i = 0; i < ARRAY_SIZE(pcie->phy); i++) {
-		ret = phy_init(pcie->phy[i]);
-		if (ret)
-			goto err;
-
-		ret = phy_power_on(pcie->phy[i]);
-		if (ret) {
-			nwl_pcie_phy_exit(pcie, i);
-			goto err;
-		}
-	}
-
-	return 0;
-
-err:
-	while (i--) {
-		nwl_pcie_phy_power_off(pcie, i);
-		nwl_pcie_phy_exit(pcie, i);
-	}
-
-	return ret;
-}
-
-static void nwl_pcie_phy_disable(struct nwl_pcie *pcie)
-{
-	int i;
-
-	for (i = ARRAY_SIZE(pcie->phy); i--;) {
-		nwl_pcie_phy_power_off(pcie, i);
-		nwl_pcie_phy_exit(pcie, i);
-	}
-}
-
 static int nwl_pcie_init_irq_domain(struct nwl_pcie *pcie)
 {
 	struct device *dev = pcie->dev;
@@ -781,7 +725,6 @@ static int nwl_pcie_parse_dt(struct nwl_pcie *pcie,
 {
 	struct device *dev = pcie->dev;
 	struct resource *res;
-	int i;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "breg");
 	pcie->breg_base = devm_ioremap_resource(dev, res);
@@ -808,18 +751,6 @@ static int nwl_pcie_parse_dt(struct nwl_pcie *pcie,
 
 	irq_set_chained_handler_and_data(pcie->irq_intx,
 					 nwl_pcie_leg_handler, pcie);
-
-
-	for (i = 0; i < ARRAY_SIZE(pcie->phy); i++) {
-		pcie->phy[i] = devm_of_phy_get_by_index(dev, dev->of_node, i);
-		if (PTR_ERR(pcie->phy[i]) == -ENODEV) {
-			pcie->phy[i] = NULL;
-			break;
-		}
-
-		if (IS_ERR(pcie->phy[i]))
-			return PTR_ERR(pcie->phy[i]);
-	}
 
 	return 0;
 }
@@ -861,22 +792,16 @@ static int nwl_pcie_probe(struct platform_device *pdev)
 		return err;
 	}
 
-	err = nwl_pcie_phy_enable(pcie);
-	if (err) {
-		dev_err(dev, "could not enable PHYs\n");
-		goto err_clk;
-	}
-
 	err = nwl_pcie_bridge_init(pcie);
 	if (err) {
 		dev_err(dev, "HW Initialization failed\n");
-		goto err_phy;
+		goto err_clk;
 	}
 
 	err = nwl_pcie_init_irq_domain(pcie);
 	if (err) {
 		dev_err(dev, "Failed creating IRQ Domain\n");
-		goto err_phy;
+		goto err_clk;
 	}
 
 	bridge->sysdata = pcie;
@@ -886,7 +811,7 @@ static int nwl_pcie_probe(struct platform_device *pdev)
 		err = nwl_pcie_enable_msi(pcie);
 		if (err < 0) {
 			dev_err(dev, "failed to enable MSI support: %d\n", err);
-			goto err_phy;
+			goto err_clk;
 		}
 	}
 
@@ -894,8 +819,6 @@ static int nwl_pcie_probe(struct platform_device *pdev)
 	if (!err)
 		return 0;
 
-err_phy:
-	nwl_pcie_phy_disable(pcie);
 err_clk:
 	clk_disable_unprepare(pcie->clk);
 	return err;
@@ -905,7 +828,6 @@ static void nwl_pcie_remove(struct platform_device *pdev)
 {
 	struct nwl_pcie *pcie = platform_get_drvdata(pdev);
 
-	nwl_pcie_phy_disable(pcie);
 	clk_disable_unprepare(pcie->clk);
 }
 
