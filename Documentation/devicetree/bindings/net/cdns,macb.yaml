@@ -112,6 +112,8 @@ properties:
   iommus:
     maxItems: 1
 
+  dma-coherent: true
+
   power-domains:
     maxItems: 1
 
