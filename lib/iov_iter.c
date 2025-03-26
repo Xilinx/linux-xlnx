@@ -1441,6 +1441,8 @@ static ssize_t __import_iovec_ubuf(int type, const struct iovec __user *uvec,
 	struct iovec *iov = *iovp;
 	ssize_t ret;
 
+	*iovp = NULL;
+
 	if (compat)
 		ret = copy_compat_iovec_from_user(iov, uvec, 1);
 	else
@@ -1451,7 +1453,6 @@ static ssize_t __import_iovec_ubuf(int type, const struct iovec __user *uvec,
 	ret = import_ubuf(type, iov->iov_base, iov->iov_len, i);
 	if (unlikely(ret))
 		return ret;
-	*iovp = NULL;
 	return i->count;
 }
 

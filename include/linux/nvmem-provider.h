@@ -83,6 +83,8 @@ struct nvmem_cell_info {
  * @cells:	Optional array of pre-defined NVMEM cells.
  * @ncells:	Number of elements in cells.
  * @add_legacy_fixed_of_cells:	Read fixed NVMEM cells from old OF syntax.
+ * @fixup_dt_cell_info: Will be called before a cell is added. Can be
+ *		used to modify the nvmem_cell_info.
  * @keepout:	Optional array of keepout ranges (sorted ascending by start).
  * @nkeepout:	Number of elements in the keepout array.
  * @type:	Type of the nvmem storage
@@ -114,6 +116,8 @@ struct nvmem_config {
 	const struct nvmem_cell_info	*cells;
 	int			ncells;
 	bool			add_legacy_fixed_of_cells;
+	void (*fixup_dt_cell_info)(struct nvmem_device *nvmem,
+				   struct nvmem_cell_info *cell);
 	const struct nvmem_keepout *keepout;
 	unsigned int		nkeepout;
 	enum nvmem_type		type;
@@ -158,11 +162,8 @@ struct nvmem_cell_table {
  *
  * @name:		Layout name.
  * @of_match_table:	Open firmware match table.
- * @add_cells:		Will be called if a nvmem device is found which
- *			has this layout. The function will add layout
- *			specific cells with nvmem_add_one_cell().
- * @fixup_cell_info:	Will be called before a cell is added. Can be
- *			used to modify the nvmem_cell_info.
+ * @add_cells:		Called to populate the layout using
+ *			nvmem_add_one_cell().
  * @owner:		Pointer to struct module.
  * @node:		List node.
  *
@@ -174,11 +175,7 @@ struct nvmem_cell_table {
 struct nvmem_layout {
 	const char *name;
 	const struct of_device_id *of_match_table;
-	int (*add_cells)(struct device *dev, struct nvmem_device *nvmem,
-			 struct nvmem_layout *layout);
-	void (*fixup_cell_info)(struct nvmem_device *nvmem,
-				struct nvmem_layout *layout,
-				struct nvmem_cell_info *cell);
+	int (*add_cells)(struct device *dev, struct nvmem_device *nvmem);
 
 	/* private */
 	struct module *owner;

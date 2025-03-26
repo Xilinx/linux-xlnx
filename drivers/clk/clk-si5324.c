@@ -864,8 +864,8 @@ static int si5324_dt_parse(struct i2c_client *client)
 {
 	struct device_node *child, *np = client->dev.of_node;
 	struct si5324_platform_data *pdata;
-	struct property *prop;
-	const __be32 *p;
+	u32 array[4];
+	int sz, i;
 	int num = 0;
 	u32 val;
 
@@ -880,16 +880,21 @@ static int si5324_dt_parse(struct i2c_client *client)
 	 * property silabs,pll-source : <num src>, [<..>]
 	 * allow to selectively set pll source
 	 */
-	of_property_for_each_u32(np, "silabs,pll-source", prop, p, num) {
+	sz = of_property_read_variable_u32_array(np, "silabs,pll-source", array, 2, 4);
+	sz = (sz == -EINVAL) ? 0 : sz; /* Missing property is OK */
+	if (sz < 0)
+		return dev_err_probe(&client->dev, sz, "invalid pll-source\n");
+	if (sz % 2)
+		return dev_err_probe(&client->dev, -EINVAL,
+					"missing pll-source for pll %d\n", array[sz - 1]);
+
+	for (i = 0; i < sz; i += 2) {
+		num = array[i];
+		val = array[i + 1];
+
 		if (num >= 1) {
 			dev_err(&client->dev,
 				"invalid pll %d on pll-source prop\n", num);
-			return -EINVAL;
-		}
-		p = of_prop_next_u32(prop, p, &val);
-		if (!p) {
-			dev_err(&client->dev,
-				"missing pll-source for pll %d\n", num);
 			return -EINVAL;
 		}
 
