@@ -28,7 +28,7 @@
 
 #define AIE_DEVICE_GEN_AIE	1U
 #define AIE_DEVICE_GEN_AIEML	2U
-#define AIE_DEVICE_GEN_AIE2PS	3U
+#define AIE_DEVICE_GEN_AIE2PS	5U
 
 /*
  * Macros for AI engine tile type bitmasks
