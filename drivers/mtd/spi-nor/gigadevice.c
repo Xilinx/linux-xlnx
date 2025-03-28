@@ -135,6 +135,7 @@ static int gd25lx256e_post_sfdp_fixup(struct spi_nor *nor)
 	 * disable it.
 	 */
 	params->quad_enable = NULL;
+	params->n_dice = 1;
 
 	return 0;
 }
