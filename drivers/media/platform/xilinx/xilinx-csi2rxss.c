@@ -508,8 +508,6 @@ static int xcsi2rxss_start_stream(struct xcsi2rxss_state *state)
 		goto exit_start_stream;
 	}
 
-	ret = v4l2_subdev_call(state->rsubdev, video, s_stream, 1);
-
 exit_start_stream:
 	if (ret) {
 		/* disable interrupts */
@@ -526,8 +524,6 @@ exit_start_stream:
 
 static void xcsi2rxss_stop_stream(struct xcsi2rxss_state *state)
 {
-	v4l2_subdev_call(state->rsubdev, video, s_stream, 0);
-
 	/* disable interrupts */
 	xcsi2rxss_clr(state, XCSI_IER_OFFSET, XCSI_IER_INTR_MASK);
 	xcsi2rxss_clr(state, XCSI_GIER_OFFSET, XCSI_GIER_GIE);
