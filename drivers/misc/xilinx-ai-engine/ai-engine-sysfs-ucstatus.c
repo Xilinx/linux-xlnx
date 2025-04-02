@@ -44,7 +44,7 @@ ssize_t aie_part_read_cb_ucstatus(struct kobject *kobj, char *buffer,
 		struct aie_location loc = atile->loc;
 		const struct aie_tile_operations *ops = apart->adev->ops;
 		bool preamble = true;
-		u32 ttype, value;
+		u32 ttype;
 
 		ttype = ops->get_tile_type(apart->adev, &loc);
 
