@@ -3130,8 +3130,9 @@ static int aie2ps_init_part_clk_state(struct aie_partition *apart)
 static int aie2ps_set_part_clocks(struct aie_partition *apart)
 {
 	struct aie_range *range = &apart->range;
-	u32 node_id = apart->adev->pm_node_id;
 	struct aie_location loc;
+	struct aie_range prev_range = {};
+	u32 prev_ops = 0;
 	int ret;
 
 	for (loc.col = 0; loc.col < range->size.col; loc.col++) {
@@ -3151,16 +3152,10 @@ static int aie2ps_set_part_clocks(struct aie_partition *apart)
 		}
 
 		if (col_inuse) {
-			ret = zynqmp_pm_aie_operation(node_id,
-						      loc.col + range->start.col,
-						      1,
-						      XILINX_AIE_OPS_ENB_COL_CLK_BUFF);
-			if (ret < 0) {
-				dev_err(&apart->dev,
-					"failed to enable clock for column: %d\n",
-					loc.col + range->start.col);
-				return ret;
-			}
+			struct aie_range op_range = {
+				.start.col = loc.col + range->start.col,
+				.size.col = 1,
+			};
 
 			ret = aie_resource_set(&apart->tiles_inuse, startbit,
 					       apart->range.size.row - 1);
@@ -3170,17 +3165,27 @@ static int aie2ps_set_part_clocks(struct aie_partition *apart)
 					       apart->range.size.row - 1);
 			if (ret)
 				return ret;
-		} else {
-			ret = zynqmp_pm_aie_operation(node_id,
-						      loc.col + range->start.col,
-						      1,
-						      XILINX_AIE_OPS_DIS_COL_CLK_BUFF);
-			if (ret < 0) {
-				dev_err(&apart->dev,
-					"failed to disable clock for column: %d\n",
-					loc.col + range->start.col);
-				return ret;
+
+			if (!prev_ops) {
+				prev_range = op_range;
+				prev_ops = AIE_PART_INIT_OPT_ENB_COLCLK_BUFF;
+				continue;
 			}
+			if (prev_ops == AIE_PART_INIT_OPT_ENB_COLCLK_BUFF &&
+			    ((prev_range.start.col + prev_range.size.col) == op_range.start.col)) {
+				prev_range.size.col += op_range.size.col;
+				continue;
+			}
+			ret = aie_part_pm_ops(apart, NULL, prev_ops, prev_range, 0);
+			if (ret)
+				return ret;
+			prev_ops = AIE_PART_INIT_OPT_ENB_COLCLK_BUFF;
+			prev_range = op_range;
+		} else {
+			struct aie_range op_range = {
+				.start.col = loc.col + range->start.col,
+				.size.col = 1,
+			};
 
 			ret = aie_resource_clear(&apart->tiles_inuse, startbit,
 						 apart->range.size.row - 1);
@@ -3190,10 +3195,28 @@ static int aie2ps_set_part_clocks(struct aie_partition *apart)
 						 apart->range.size.row - 1);
 			if (ret)
 				return ret;
+			if (!prev_ops) {
+				prev_range = op_range;
+				prev_ops = AIE_PART_INIT_OPT_DIS_COLCLK_BUFF;
+				continue;
+			}
+			if (prev_ops == AIE_PART_INIT_OPT_DIS_COLCLK_BUFF &&
+			    ((prev_range.start.col + prev_range.size.col) == op_range.start.col)) {
+				prev_range.size.col += op_range.size.col;
+				continue;
+			}
+			ret = aie_part_pm_ops(apart, NULL, prev_ops, prev_range, 0);
+			if (ret)
+				return ret;
+			prev_ops = AIE_PART_INIT_OPT_DIS_COLCLK_BUFF;
+			prev_range = op_range;
 		}
 	}
-
-	return 0;
+	if (!prev_ops)
+		ret = aie_part_pm_ops(apart, NULL, prev_ops, prev_range, 0);
+	if (ret)
+		return ret;
+	return aie_part_pm_ops_flush(apart);
 }
 
 static int aie2ps_scan_part_clocks(struct aie_partition *apart)
