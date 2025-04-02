@@ -403,6 +403,11 @@ again:
 		op->type = XILINX_AIE_OPS_CLR_HW_ERR_STS;
 		op->len = sizeof(*op);
 		op->val = *((u16 *)data);
+		ret = aie_part_pm_ops_flush(apart);
+		if (ret)
+			return ret;
+		*((u16 *)data) = op->val;
+		goto again;
 	}
 	if (type & AIE_PART_INIT_OPT_HANDSHAKE) {
 		struct aie_op_handshake *op;
