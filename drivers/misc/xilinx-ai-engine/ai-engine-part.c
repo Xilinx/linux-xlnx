@@ -1486,3 +1486,44 @@ int aie_partition_check_uc_aximm(struct device *dev, struct aie_location *loc)
 	return regval & adev->uc_outstanding_aximm->mask;
 }
 EXPORT_SYMBOL_GPL(aie_partition_check_uc_aximm);
+
+/**
+ * aie_partition_uc_zeroize_mem() - zeroizes the uc memory depending on the
+ *				 register value passed
+ * @dev: AI engine partition device
+ * @loc: Location of tile
+ * @regval: Value to be written to the zeroization register.
+ * @return: return 0 if success negative value for failure.
+ *
+ * Possible register values are:
+ *	0x1 - zeroizes uc-PM
+ *	0x2 - zeroizes private uc-DM
+ *	0x4 - zeroizes module uc-DM
+ *	    - or "OR" of multiple values to zeroize PM/private DM/shared DM
+ *	      depending on the val passed
+ */
+int aie_partition_uc_zeroize_mem(struct device *dev, struct aie_location *loc, u32 regval)
+{
+	struct aie_range range = {
+		.size.col = 1,
+		.start.col = loc->col,
+	};
+	struct aie_partition *apart;
+	u16 data = regval;
+	int ret;
+
+	if (!dev || !loc || loc->row || (regval & ~AIE_PART_ZEROIZE_UC_MEM_ALL))
+		return -EINVAL;
+
+	apart = dev_to_aiepart(dev);
+	if (!apart ||
+	    loc->col > apart->range.size.col ||
+	    apart->adev->dev_gen == AIE_DEVICE_GEN_AIE ||
+	    apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML)
+		return -EINVAL;
+
+	ret = aie_part_pm_ops(apart, &data, AIE_PART_INIT_OPT_UC_ZEROIZATION, range, 1);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(aie_partition_uc_zeroize_mem);
