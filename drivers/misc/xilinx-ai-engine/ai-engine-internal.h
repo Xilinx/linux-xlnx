@@ -1008,6 +1008,8 @@ struct aie_tile {
  * @ops: tile operations
  * @col_rst: column reset attribute
  * @col_clkbuf: column clock buffer attribute
+ * @noc_outstanding_aximm: register for outstanding noc aximm
+ * @uc_outstanding_aximm: register for outstanding uc aximm
  * @shimnoc_uc_corectrl: UC core control attribute
  * @shim_bd: SHIM DMA buffer descriptor attribute
  * @tile_bd: tile DMA buffer descriptor attribute
@@ -1057,6 +1059,8 @@ struct aie_device {
 	const struct aie_tile_operations *ops;
 	const struct aie_single_reg_field *col_rst;
 	const struct aie_single_reg_field *col_clkbuf;
+	const struct aie_single_reg_field *noc_outstanding_aximm;
+	const struct aie_single_reg_field *uc_outstanding_aximm;
 	const struct aie_uc_corectrl_attr *shimnoc_uc_corectrl;
 	const struct aie_bd_attr *shim_bd;
 	const struct aie_bd_attr *tile_bd;
@@ -1710,6 +1714,7 @@ int aie_part_pm_ops(struct aie_partition *apart, void *data, u32 type, struct ai
 int aie_part_pm_ops_flush(struct aie_partition *apart);
 int aie_partition_initialize(struct device *dev, struct aie_partition_init_args *args);
 int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_init_args *args);
+int aie2ps_part_teardown(struct aie_partition *apart);
 int aie_partition_teardown(struct device *dev);
 int aie_part_maskpoll_register(struct aie_partition *apart, u32 offset, u32 data, u32 mask,
 			       u32 timeout);

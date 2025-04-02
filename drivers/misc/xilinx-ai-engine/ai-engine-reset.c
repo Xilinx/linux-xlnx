@@ -793,6 +793,123 @@ exit:
 	return ret;
 }
 
+static int aie_part_maskpoll_uc_outstanding_aximm_txn(struct aie_partition *apart)
+{
+	u32 end_col = apart->range.start.col + apart->range.size.col;
+	struct aie_device *adev = apart->adev;
+	struct aie_location loc = {.row = 0};
+	int ret = 0;
+	u32 regoff;
+
+	if (!adev->uc_outstanding_aximm)
+		return -EINVAL;
+	for (loc.col = apart->range.start.col; loc.col < end_col; loc.col++) {
+		regoff = aie_aperture_cal_regoff(apart->aperture, loc,
+						 adev->uc_outstanding_aximm->regoff);
+		ret = aie_part_maskpoll_register(apart, regoff, 0x0,
+						 adev->uc_outstanding_aximm->mask, 10000);
+		if (ret < 0) {
+			dev_err(&apart->dev, "failed due to outstanding UC AXIMM transactions!\n");
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+
+static int aie_part_maskpoll_noc_outstanding_aximm_txn(struct aie_partition *apart)
+{
+	u32 end_col = apart->range.start.col + apart->range.size.col;
+	struct aie_device *adev = apart->adev;
+	struct aie_location loc = {.row = 0};
+	int ret = 0;
+	u32 regoff;
+
+	if (!adev->uc_outstanding_aximm)
+		return -EINVAL;
+	for (loc.col = apart->range.start.col; loc.col < end_col; loc.col++) {
+		regoff = aie_aperture_cal_regoff(apart->aperture, loc,
+						 adev->noc_outstanding_aximm->regoff);
+		ret = aie_part_maskpoll_register(apart, regoff, 0x0,
+						 adev->noc_outstanding_aximm->mask, 10000);
+		if (ret < 0) {
+			dev_err(&apart->dev, "failed due to outstanding NoC AXIMM transactions!\n");
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+
+/**
+ * aie2ps_part_teardown() - AI engine partition teardown
+ * @apart: AI engine partition
+ * @return: 0 for success and negative value for failure
+ *
+ * This function will:
+ * - gate all columns
+ * - enable column reset
+ * - ungate all columns
+ * - disable column reset
+ * - reset shim tiles
+ * - zeroize memory
+ * - gate all columns
+ */
+int aie2ps_part_teardown(struct aie_partition *apart)
+{
+	u32 opts;
+	u16 data;
+	int ret;
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+
+	ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_ENB_NOC_DMA_PAUSE, apart->range, 0);
+	if (ret)
+		goto out;
+	ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_ENB_NOC_DMA_PAUSE, apart->range, 1);
+	if (ret)
+		goto out;
+
+	ret = aie_part_maskpoll_noc_outstanding_aximm_txn(apart);
+	if (ret)
+		goto out;
+
+	ret = aie_part_maskpoll_uc_outstanding_aximm_txn(apart);
+	if (ret)
+		goto out;
+
+	opts = AIE_PART_INIT_OPT_COLUMN_RST |
+	      AIE_PART_INIT_OPT_SHIM_RST |
+	      AIE_PART_INIT_OPT_ZEROIZEMEM;
+	ret = aie_part_pm_ops(apart, NULL, opts, apart->range, 0);
+	if (ret)
+		goto out;
+
+	data = 0x6;
+	ret = aie_part_pm_ops(apart, &data, AIE_PART_INIT_OPT_UC_ZEROIZATION, apart->range, 1);
+	if (ret)
+		goto out;
+	ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_DIS_COLCLK_BUFF, apart->range, 0);
+	if (ret)
+		goto out;
+	ret = aie_part_pm_ops_flush(apart);
+	if (ret)
+		goto out;
+
+	/* Clear resources */
+	aie_resource_clear_all(&apart->tiles_inuse);
+	aie_resource_clear_all(&apart->cores_clk_state);
+	aie_part_clear_cached_events(apart);
+	aie_part_rscmgr_reset(apart);
+
+out:
+	mutex_unlock(&apart->mlock);
+
+	return ret;
+}
+
 /**
  * aie_part_teardown() - AI engine partition teardown
  * @apart: AI engine partition
