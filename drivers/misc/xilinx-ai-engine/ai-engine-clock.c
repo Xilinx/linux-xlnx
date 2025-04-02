@@ -260,26 +260,22 @@ int aie_part_release_tiles_from_user(struct aie_partition *apart,
  *                                        from an AI engine partition from
  *                                        user
  * @apart: AI engine partition
- * @user_args: user AI engine request tiles argument
+ * @args: user AI engine request tiles argument
  * @return: 0 for success, negative value for failure.
  *
  * This function will request tiles from user request.h
  */
-int aie_part_set_column_clock_from_user(struct aie_partition *apart,
-					void __user *user_args)
+int aie_part_set_column_clock_from_user(struct aie_partition *apart, struct aie_column_args *args)
 {
 	u32 part_end_col = apart->range.start.col + apart->range.size.col - 1;
 	u32 node_id = apart->adev->pm_node_id;
-	struct aie_column_args args;
 	struct aie_location locs;
 	int ret;
 	u32 c;
 
-	if (copy_from_user(&args, user_args, sizeof(args)))
-		return -EFAULT;
-	trace_aie_part_set_column_clock_from_user(apart, &args);
+	trace_aie_part_set_column_clock_from_user(apart, args);
 
-	if ((args.start_col + args.num_cols - 1) > part_end_col) {
+	if ((args->start_col + args->num_cols - 1) > part_end_col) {
 		dev_err(&apart->dev, "invalid start column/size column\n");
 		return -EINVAL;
 	}
@@ -289,17 +285,18 @@ int aie_part_set_column_clock_from_user(struct aie_partition *apart,
 	if (ret)
 		return ret;
 
-	if (args.enable) {
-		ret = zynqmp_pm_aie_operation(node_id, args.start_col,
-					      args.num_cols,
+	if (args->enable) {
+		ret = zynqmp_pm_aie_operation(node_id, args->start_col,
+					      args->num_cols,
 					      XILINX_AIE_OPS_ENB_COL_CLK_BUFF);
 		if (ret < 0) {
 			dev_err(&apart->dev, "failed to enable clocks for partition\n");
 			goto exit;
 		}
 
-		for (c = (args.start_col + apart->range.start.col);
-				c < (args.start_col + args.num_cols); c++) {
+		for (c = (args->start_col + apart->range.start.col);
+		     c < (args->start_col + args->num_cols);
+		     c++) {
 			int bit;
 
 			locs.col = c;
@@ -313,16 +310,17 @@ int aie_part_set_column_clock_from_user(struct aie_partition *apart,
 			}
 		}
 	} else {
-		ret = zynqmp_pm_aie_operation(node_id, args.start_col,
-					      args.num_cols,
+		ret = zynqmp_pm_aie_operation(node_id, args->start_col,
+					      args->num_cols,
 					      XILINX_AIE_OPS_DIS_COL_CLK_BUFF);
 		if (ret < 0) {
 			dev_err(&apart->dev, "failed to disable clocks for partition\n");
 			goto exit;
 		}
 
-		for (c = (args.start_col + apart->range.start.col);
-				c < (args.start_col + args.num_cols); c++) {
+		for (c = (args->start_col + apart->range.start.col);
+		     c < (args->start_col + args->num_cols);
+		     c++) {
 			int bit;
 
 			locs.col = c;

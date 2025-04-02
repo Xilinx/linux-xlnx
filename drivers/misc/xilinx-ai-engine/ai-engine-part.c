@@ -986,7 +986,15 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 	case AIE_RSC_GET_STAT_IOCTL:
 		return aie_part_rscmgr_get_statistics(apart, argp);
 	case AIE_SET_COLUMN_CLOCK_IOCTL:
-		return aie_part_set_column_clock_from_user(apart, argp);
+	{
+		struct aie_column_args args;
+
+		if (copy_from_user(&args, argp, sizeof(args)))
+			return -EFAULT;
+		if (!apart->adev->ops->set_column_clock)
+			return -EINVAL;
+		return apart->adev->ops->set_column_clock(apart, &args);
+	}
 	default:
 		dev_err(&apart->dev, "Invalid/Unsupported ioctl command %u.\n",
 			cmd);
