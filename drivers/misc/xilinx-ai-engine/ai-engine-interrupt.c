@@ -908,6 +908,71 @@ backtrack_aie_tile:
 }
 
 /**
+ * aie2ps_partition_backtrack() - backtrack partition to find the source of error interrupt.
+ * @apart: pointer to the partition structure.
+ *
+ * This task will re-enable IRQ after errors in all partitions has been
+ * serviced.
+ */
+static void aie2ps_partition_backtrack(struct aie_partition *apart)
+{
+	struct aie_aperture *aperture = apart->aperture;
+	u32 *aperture_l2_mask = aperture->l2_mask.val;
+	int l2_mask_count = aperture->l2_mask.count;
+	u32 l2_mask_index = 0;
+	u32 col;
+	int ret;
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret) {
+		dev_err_ratelimited(&apart->dev,
+				    "Failed to acquire lock. Process was interrupted by fatal signals\n");
+		return;
+	}
+
+	/*
+	 * If partition isn't requested yet, then only record the
+	 * occurrence of error interrupt. Such errors can only be
+	 * backtracked when the tiles in-use are known. Based on the
+	 * error_to_report value a task is scheduled in the workqueue
+	 * to backtrack this error interrupt when partition is
+	 * requested.
+	 */
+	if (!apart->status)
+		goto out;
+
+	for (col = apart->range.start.col; col < apart->range.size.col; col++) {
+		struct aie_location loc = {.col = col, .row = 0};
+		u32 ttype, l2_mask;
+
+		aie2ps_l1_backtrack(apart, col, AIE_SHIM_SWITCH_A);
+		aie2ps_l1_backtrack(apart, col, AIE_SHIM_SWITCH_B);
+
+		ttype = apart->adev->ops->get_tile_type(apart->adev, &loc);
+		if (ttype != AIE_TILE_TYPE_SHIMNOC)
+			continue;
+		l2_mask = aperture_l2_mask[l2_mask_index];
+		if (l2_mask_index >= l2_mask_count)
+			break;
+
+		l2_mask_index++;
+		if (l2_mask)
+			aie_aperture_enable_l2_ctrl(aperture, &loc, l2_mask);
+	}
+
+	/*
+	 * If error was asserted or there are errors pending to be reported to
+	 * the application, then invoke callback.
+	 */
+	if (apart->error_cb.cb && apart->error_to_report) {
+		apart->error_to_report = 0;
+		apart->error_cb.cb(apart->error_cb.priv);
+	}
+out:
+	mutex_unlock(&apart->mlock);
+}
+
+/**
  * aie_part_backtrack() - backtrack a individual.
  * @apart: AIE partition pointer.
  */
@@ -955,6 +1020,68 @@ void aie_aperture_backtrack(struct work_struct *work)
 	}
 
 	mutex_unlock(&aperture->mlock);
+}
+
+static void aie2ps_aperture_backtrack(struct aie_aperture *aperture)
+{
+	struct aie_partition *apart;
+
+	list_for_each_entry(apart, &aperture->partitions, node) {
+		if (!apart->status)
+			continue;
+		aie2ps_partition_backtrack(apart);
+	}
+}
+
+irqreturn_t aie2ps_interrupt_fn(int irq, void *data)
+{
+	struct aie_aperture *aperture = data;
+	struct aie_device *adev = aperture->adev;
+	u32 end_col = aperture->range.start.col + aperture->range.size.col;
+	struct aie_location loc;
+	u32 *apart_l2_mask = aperture->l2_mask.val;
+	int l2_mask_count = aperture->l2_mask.count;
+	int l2_mask_index = 0;
+	irqreturn_t ret = IRQ_NONE;
+	bool backtrack = false;
+
+	mutex_lock(&aperture->mlock);
+
+	for (loc.col = aperture->range.start.col, loc.row = 0;
+	     loc.col < end_col; loc.col++) {
+		u32 ttype, l2_status, l2_mask;
+
+		ttype = adev->ops->get_tile_type(adev, &loc);
+		if (ttype != AIE_TILE_TYPE_SHIMNOC)
+			continue;
+
+		if (l2_mask_index >= l2_mask_count)
+			break;
+
+		l2_mask = aie_aperture_get_l2_mask(aperture, &loc);
+		if (l2_mask) {
+			apart_l2_mask[l2_mask_index] = l2_mask;
+			aie_aperture_disable_l2_ctrl(aperture, &loc, l2_mask);
+		}
+
+		l2_status = aie_aperture_get_l2_status(aperture, &loc);
+		if (l2_status) {
+			aie_aperture_clear_l2_intr(aperture, &loc,
+						   l2_status);
+			backtrack = true;
+		} else {
+			aie_aperture_enable_l2_ctrl(aperture, &loc, l2_mask);
+		}
+		l2_mask_index++;
+	}
+
+	if (backtrack) {
+		aie2ps_aperture_backtrack(aperture);
+		ret = IRQ_HANDLED;
+	}
+
+	mutex_unlock(&aperture->mlock);
+	return ret;
 }
 
 /**
