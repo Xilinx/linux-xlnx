@@ -893,7 +893,10 @@ int aie_partition_reset(struct device *dev)
 		return -EINVAL;
 
 	apart = dev_to_aiepart(dev);
-	return aie_part_reset(apart);
+	if (apart->adev->ops->part_reset)
+		return apart->adev->ops->part_reset(apart);
+
+	return -EINVAL;
 }
 EXPORT_SYMBOL_GPL(aie_partition_reset);
 

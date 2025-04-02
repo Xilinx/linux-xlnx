@@ -2745,6 +2745,11 @@ static const struct aie_tile_operations aieml_ops = {
 	.get_dma_mm2s_status = aieml_get_dma_mm2s_status,
 	.get_chan_status = aieml_get_chan_status,
 	.get_lock_status = aieml_get_lock_status,
+	.part_init = aie_part_initialize,
+	.part_teardown = aie_part_teardown,
+	.part_clear_context = aie_part_clear_context,
+	.part_clean = aie_part_clean,
+	.part_reset = aie_part_reset,
 };
 
 /**
