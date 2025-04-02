@@ -81,7 +81,7 @@ enum aie_tile_type {
 /* Number of event status registers */
 #define AIE_NUM_EVENT_STS_CORETILE	4U
 #define AIE_NUM_EVENT_STS_MEMTILE	6U
-#define AIE_NUM_EVENT_STS_SHIMTILE	4U
+#define AIE_NUM_EVENT_STS_SHIMTILE	8U
 
 /* Number of DMA channels */
 #define AIE_MAX_MM2S_CH		6U
