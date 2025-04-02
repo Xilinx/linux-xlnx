@@ -1255,6 +1255,7 @@ static void aie_tile_remove(struct aie_tile *atile)
  */
 void aie_part_remove(struct aie_partition *apart)
 {
+	struct aie_aperture *aperture = apart->aperture;
 	struct aie_tile *atile = apart->atiles;
 	u32 index;
 
@@ -1266,6 +1267,7 @@ void aie_part_remove(struct aie_partition *apart)
 
 	device_del(&apart->dev);
 	put_device(&apart->dev);
+	devm_kfree(&aperture->dev, apart);
 }
 
 /**
