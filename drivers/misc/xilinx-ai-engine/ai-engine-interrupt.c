@@ -785,6 +785,129 @@ static void aie_l2_backtrack(struct aie_partition *apart)
 }
 
 /**
+ * aie2ps_col1_shim_backtrack() - if error was asserted on a broadcast line in
+ *			  the given array tile,
+ *				* disable the error from the group errors
+ *				* record the error event in local bitmap
+ * @apart: AIE partition pointer.
+ * @loc: tile location.
+ * @module: module type.
+ * @sw: switch type.
+ * @bc_id: broadcast ID.
+ * @status: tile status register.
+ * @return: true if error was asserted, else return false.
+ */
+static bool aie2ps_col1_shim_backtrack(struct aie_partition *apart, struct aie_location loc,
+				       enum aie_module_type module, enum aie_shim_switch_type sw,
+				       u8 bc_id, u32 *status)
+{
+	unsigned long grenabled;
+	u8 n, grevent, eevent;
+	bool ret = false;
+
+	grevent = aie_get_broadcast_event(apart, &loc, module, bc_id);
+
+	aie_read_event_status(apart, &loc, module, status);
+
+	if (!(status[grevent / 32] & BIT(grevent % 32)))
+		return ret;
+
+	grenabled = aie_check_group_errors_enabled(apart, &loc, module);
+	for_each_set_bit(n, &grenabled, 32) {
+		eevent = aie_get_error_event(apart, &loc, module, n);
+		if (!(status[eevent / 32] & BIT(eevent % 32)))
+			continue;
+		grenabled &= ~BIT(n);
+		aie_part_set_event_bitmap(apart, loc, module, eevent);
+		ret = true;
+
+		dev_err_ratelimited(&apart->adev->dev,
+				    "Asserted tile error event %d at col %d row %d\n",
+				    eevent, loc.col, loc.row);
+	}
+	aie_set_error_event(apart, &loc, module, grenabled);
+
+	return ret;
+}
+
+static void aie2ps_l1_backtrack(struct aie_partition *apart, u32 col, enum aie_shim_switch_type sw)
+{
+	struct aie_location loc = {.col = col, .row = 0};
+	u32 mem_srow, mem_erow, aie_srow, aie_erow;
+	enum aie_module_type module;
+	u32 bc_event;
+	u32 status;
+	bool ret = false;
+
+	mem_srow = apart->adev->ttype_attr[AIE_TILE_TYPE_MEMORY].start_row;
+	mem_erow = mem_srow +
+		   apart->adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows;
+	aie_srow = apart->adev->ttype_attr[AIE_TILE_TYPE_TILE].start_row;
+	aie_erow = aie_srow +
+		   apart->adev->ttype_attr[AIE_TILE_TYPE_TILE].num_rows;
+
+	module = (sw == AIE_SHIM_SWITCH_A) ? AIE_CORE_MOD : AIE_MEM_MOD;
+
+	status = aie_get_l1_status(apart, &loc, sw);
+
+	if (col == (apart->range.start.col + 1)) {
+		u32 event_status[AIE_NUM_EVENT_STS_SHIMTILE] = {};
+
+		ret |= aie2ps_col1_shim_backtrack(apart, loc, AIE_PL_MOD, sw,
+						  AIE_ARRAY_TILE_ERROR_BC_ID, event_status);
+	}
+
+	/* Clear SHIM error */
+	if (status & BIT(AIE_SHIM_TILE_ERROR_IRQ_ID)) {
+		u32 event_status[AIE_NUM_EVENT_STS_SHIMTILE] = {};
+
+		aie_clear_l1_intr(apart, &loc, sw, AIE_SHIM_TILE_ERROR_IRQ_ID);
+		if (aie_tile_backtrack(apart, loc, AIE_PL_MOD, sw, AIE_SHIM_TILE_ERROR_IRQ_ID,
+				       event_status))
+			ret = true;
+	}
+
+	if (!(status & BIT(AIE_ARRAY_TILE_ERROR_BC_ID)) &&
+	    col != (apart->range.start.col + 1))
+		return;
+
+	if (col != (apart->range.start.col + 1))
+		aie_clear_l1_intr(apart, &loc, sw, AIE_ARRAY_TILE_ERROR_BC_ID);
+
+	if (sw != AIE_SHIM_SWITCH_A)
+		goto backtrack_aie_tile;
+
+	/* mem tiles errors */
+	bc_event = aie_get_bc_event(apart, AIE_TILE_TYPE_MEMORY, AIE_MEM_MOD,
+				    AIE_ARRAY_TILE_ERROR_BC_ID);
+	for (loc.row = mem_srow; loc.row < mem_erow; loc.row++) {
+		u32 event_status[AIE_NUM_EVENT_STS_MEMTILE] = {};
+
+		if (!aie_part_check_clk_enable_loc(apart, &loc))
+			continue;
+		ret |= aie_tile_backtrack(apart, loc, module, sw,
+					  AIE_ARRAY_TILE_ERROR_BC_ID, event_status);
+		aie_clear_event_status(apart, &loc, AIE_MEM_MOD, bc_event);
+	}
+
+backtrack_aie_tile:
+	bc_event = aie_get_bc_event(apart, AIE_TILE_TYPE_TILE, module,
+				    AIE_ARRAY_TILE_ERROR_BC_ID);
+	for (loc.row = aie_srow; loc.row < aie_erow; loc.row++) {
+		u32 event_status[AIE_NUM_EVENT_STS_CORETILE] = {};
+
+		if (!aie_part_check_clk_enable_loc(apart, &loc))
+			continue;
+		ret |= aie_tile_backtrack(apart, loc, module, sw,
+					  AIE_ARRAY_TILE_ERROR_BC_ID, event_status);
+		if (!(event_status[bc_event / 32] & BIT(bc_event % 32)))
+			break;
+		aie_clear_event_status(apart, &loc, module, bc_event);
+	}
+	apart->error_to_report |= ret;
+}
+
+/**
  * aie_part_backtrack() - backtrack a individual.
  * @apart: AIE partition pointer.
  */
