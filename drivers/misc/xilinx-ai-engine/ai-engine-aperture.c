@@ -552,24 +552,22 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 	} else {
 		ret = of_irq_get_byname(nc, "interrupt1");
 		if (ret < 0) {
-			dev_warn(&adev->dev, "no interrupt in device node.");
+			dev_warn(&adev->dev, "interrupt1 not found.");
 		} else {
-			aperture->irq = ret;
-			INIT_WORK(&aperture->backtrack, aie_aperture_backtrack);
-
-			ret = aie_aperture_create_l2_mask(aperture);
-			if (ret) {
-				dev_err(dev, "failed to initialize l2 mask resource.\n");
-				goto put_aperture_dev;
-			}
-
-			ret = devm_request_threaded_irq(dev, aperture->irq, NULL,
-							aie_interrupt, IRQF_ONESHOT,
-							dev_name(dev), aperture);
-			if (ret) {
-				dev_err(dev, "Failed to request AIE IRQ.\n");
-				goto put_aperture_dev;
-			}
+			aperture->npi_irq[0] = ret;
+		}		ret = of_irq_get_byname(nc, "interrupt2");
+		if (ret < 0) {
+			dev_warn(&adev->dev, "interrupt2 not found");
+			aperture->npi_irq[1] = 0;
+		} else {
+			aperture->npi_irq[1] = ret;
+		}
+		ret = of_irq_get_byname(nc, "interrupt3");
+		if (ret < 0) {
+			dev_warn(&adev->dev, "interrupt3 not found");
+			aperture->npi_irq[2] = 0;
+		} else {
+			aperture->npi_irq[2] = ret;
 		}
 	}
 

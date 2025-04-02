@@ -1141,7 +1141,7 @@ struct aie_l2_mask {
  *	      while columns are occupied by partitions.
  * @node_id: AI engine aperture node id which is to identify
  *	     the aperture in the system in firmware
- * @irq: Linux IRQ number
+ * @npi_irq: Linux IRQ numbers
  * @range: range of aperture
  * @backtrack: workqueue to backtrack interrupt
  * @l2_mask: level 2 interrupt controller mask bitmap
@@ -1157,7 +1157,7 @@ struct aie_aperture {
 	struct device dev;
 	struct aie_resource cols_res;
 	u32 node_id;
-	int irq;
+	int npi_irq[AIE_NPI_NUM_IRQS];
 	struct aie_range range;
 	struct work_struct backtrack;
 	struct aie_l2_mask l2_mask;
