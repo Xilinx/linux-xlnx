@@ -473,7 +473,7 @@ int aie_part_init_isolation(struct aie_partition *apart)
 /**
  * aie_part_initialize() - AI engine partition initialization
  * @apart: AI engine partition
- * @user_args: User initialization options
+ * @args: User initialization options
  * @return: 0 for success and negative value for failure
  *
  * This function will:
@@ -486,21 +486,16 @@ int aie_part_init_isolation(struct aie_partition *apart)
  * - setup partition isolation
  * - zeroize memory
  */
-int aie_part_initialize(struct aie_partition *apart, void __user *user_args)
+int aie_part_initialize(struct aie_partition *apart, struct aie_partition_init_args *args)
 {
 	u32 node_id = apart->adev->pm_node_id;
-	struct aie_partition_init_args args;
-	struct aie_location *locs = NULL;
 	int ret;
 	int i;
-
-	if (copy_from_user(&args, user_args, sizeof(args)))
-		return -EFAULT;
 
 	ret = mutex_lock_interruptible(&apart->mlock);
 	if (ret)
 		return ret;
-	trace_aie_part_initialize(apart, args.init_opts, args.num_tiles);
+	trace_aie_part_initialize(apart, args->init_opts, args->num_tiles);
 	/* Clear resources */
 	aie_part_clear_cached_events(apart);
 	aie_part_rscmgr_reset(apart);
@@ -508,7 +503,7 @@ int aie_part_initialize(struct aie_partition *apart, void __user *user_args)
 	aie_resource_clear_all(&apart->cores_clk_state);
 
 	/* This operation will do first 4 steps of sequence */
-	if (args.init_opts & AIE_PART_INIT_OPT_COLUMN_RST) {
+	if (args->init_opts & AIE_PART_INIT_OPT_COLUMN_RST) {
 		ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
 					      apart->range.size.col,
 					      XILINX_AIE_OPS_COL_RST);
@@ -517,7 +512,7 @@ int aie_part_initialize(struct aie_partition *apart, void __user *user_args)
 	}
 
 	/* Reset Shims */
-	if (args.init_opts & AIE_PART_INIT_OPT_SHIM_RST) {
+	if (args->init_opts & AIE_PART_INIT_OPT_SHIM_RST) {
 		ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
 					      apart->range.size.col,
 					      XILINX_AIE_OPS_SHIM_RST);
@@ -526,7 +521,7 @@ int aie_part_initialize(struct aie_partition *apart, void __user *user_args)
 	}
 
 	/* Setup AXIMM events */
-	if (args.init_opts & AIE_PART_INIT_OPT_BLOCK_NOCAXIMMERR) {
+	if (args->init_opts & AIE_PART_INIT_OPT_BLOCK_NOCAXIMMERR) {
 		ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
 					      apart->range.size.col,
 					      XILINX_AIE_OPS_ENB_AXI_MM_ERR_EVENT);
@@ -535,14 +530,14 @@ int aie_part_initialize(struct aie_partition *apart, void __user *user_args)
 	}
 
 	/* Setup partition isolation */
-	if (args.init_opts & AIE_PART_INIT_OPT_ISOLATE) {
+	if (args->init_opts & AIE_PART_INIT_OPT_ISOLATE) {
 		ret = aie_part_init_isolation(apart);
 		if (ret < 0)
 			goto exit;
 	}
 
 	/* Zeroize memory */
-	if (args.init_opts & AIE_PART_INIT_OPT_ZEROIZEMEM) {
+	if (args->init_opts & AIE_PART_INIT_OPT_ZEROIZEMEM) {
 		ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
 					      apart->range.size.col,
 					      XILINX_AIE_OPS_ZEROISATION);
@@ -558,26 +553,12 @@ int aie_part_initialize(struct aie_partition *apart, void __user *user_args)
 		goto exit;
 
 	/* Request tile locations */
-	if (args.num_tiles) {
-		locs = kmalloc_array(args.num_tiles, sizeof(*locs),
-				     GFP_KERNEL);
-		if (!locs) {
-			ret = -ENOMEM;
-			goto exit;
-		}
-
-		if (copy_from_user(locs, (void __user *)args.locs,
-				   args.num_tiles * sizeof(*locs))) {
-			kfree(locs);
-			ret = -EFAULT;
-			goto exit;
-		}
-		for (i = 0; i < args.num_tiles; i++)
-			trace_aie_part_initialize_tiles(apart, args.locs[i]);
+	if (args->num_tiles && trace_aie_part_initialize_tiles_enabled()) {
+		for (i = 0; i < args->num_tiles; i++)
+			trace_aie_part_initialize_tiles(apart, args->locs[i]);
 
 	}
-	ret = aie_part_request_tiles(apart, args.num_tiles, locs);
-	kfree(locs);
+	ret = aie_part_request_tiles(apart, args->num_tiles, args->locs);
 
 exit:
 	mutex_unlock(&apart->mlock);
