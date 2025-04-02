@@ -310,6 +310,16 @@ struct aie_partition_init_args {
 					 AIE_PART_INIT_OPT_ENB_UC_DMA_PAUSE	|	\
 					 AIE_PART_INIT_OPT_DIS_COLCLK_BUFF)
 
+/*
+ * AI engine partition uc zeroization options
+ */
+#define AIE_PART_ZEROIZE_UC_PM			BIT(0)
+#define AIE_PART_ZEROIZE_UC_PRIVATE_DM		BIT(1)
+#define AIE_PART_ZEROIZE_UC_SHARED_DM		BIT(2)
+#define AIE_PART_ZEROIZE_UC_MEM_ALL		(AIE_PART_ZEROIZE_UC_PM |		\
+						 AIE_PART_ZEROIZE_UC_PRIVATE_DM |	\
+						 AIE_PART_ZEROIZE_UC_SHARED_DM)		\
+
 /**
  * struct aie_dma_bd_args - AIE DMA buffer descriptor information
  * @bd: DMA buffer descriptor
@@ -773,6 +783,7 @@ int aie_partition_write_privileged_mem(struct device *dev, size_t offset, size_t
 int aie_partition_read_privileged_mem(struct device *dev, size_t offset, size_t len, void *data);
 bool aie_partition_check_noc_aximm(struct device *dev, struct aie_location *loc);
 int aie_partition_check_uc_aximm(struct device *dev, struct aie_location *loc);
+int aie_partition_uc_zeroize_mem(struct device *dev, struct aie_location *loc, u32 regval);
 
 #else /* IS_ENABLED(CONFIG_XILINX_AIE) */
 
@@ -794,6 +805,11 @@ bool aie_partition_check_noc_aximm(struct device *dev, struct aie_location *loc)
 int aie_partition_check_uc_aximm(struct device *dev, struct aie_location *loc)
 {
 	return 0;
+}
+
+int aie_partition_uc_zeroize_mem(struct device *dev, struct aie_location *loc, u32 regval)
+{
+	return -EINVAL;
 }
 
 #endif /* IS_ENABLED(CONFIG_XILINX_AIE) */
