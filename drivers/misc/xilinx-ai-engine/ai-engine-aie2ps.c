@@ -3348,6 +3348,7 @@ static const struct aie_tile_operations aie2ps_ops = {
 	.get_uc_dma_mm2dm_sts = aie2ps_get_uc_dma_mm2dm_sts,
 	.get_uc_mod_aximm = aie2ps_get_uc_mod_aximm,
 	.get_uc_mod_aximm_out_trans = aie2ps_get_uc_mod_aximm_out_trans,
+	.part_init = aie2ps_part_initialize,
 };
 
 /**

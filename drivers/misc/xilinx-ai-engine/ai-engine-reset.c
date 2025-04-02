@@ -500,6 +500,204 @@ int aie_partition_initialize(struct device *dev, struct aie_partition_init_args 
 }
 EXPORT_SYMBOL_GPL(aie_partition_initialize);
 
+static int aie2ps_part_aximm_isolation(struct aie_partition *apart)
+{
+	struct aie_range range = {};
+	int ret;
+	u16 dir;
+
+	range.start.col = apart->range.start.col;
+	range.size.col = 1;
+	dir = AIE_ISOLATE_WEST_MASK;
+	ret = aie_part_pm_ops(apart, &dir, AIE_PART_INIT_OPT_ISOLATE, range, 0);
+	if (ret)
+		return ret;
+
+	range.start.col = apart->range.size.col - 1;
+	dir = AIE_ISOLATE_EAST_MASK;
+	ret = aie_part_pm_ops(apart, &dir, AIE_PART_INIT_OPT_ISOLATE, range, 0);
+
+	return ret;
+}
+
+static int aie2ps_part_set_l2_irq(struct aie_partition *apart)
+{
+	struct aie_range range = {};
+	int ret;
+	u16 irq;
+
+	/* Partition size needs to be at least 4 for aie2ps */
+	if (apart->range.size.col < 4)
+		return -EINVAL;
+
+	range.start.col = apart->range.start.col;
+	range.size.col = 1;
+	irq = 1;
+	ret = aie_part_pm_ops(apart, &irq, AIE_PART_INIT_OPT_SET_L2_IRQ, range, 0);
+	if (ret)
+		return ret;
+
+	range.start.col = apart->range.start.col + 1;
+	range.size.col = 1;
+	irq = (apart->partition_id % AIE_USER_EVENT1_NUM_IRQ) + 2;
+	ret = aie_part_pm_ops(apart, &irq, AIE_PART_INIT_OPT_SET_L2_IRQ, range, 0);
+	if (ret)
+		return ret;
+
+	range.start.col = apart->range.start.col + 2;
+	range.size.col = apart->range.size.col - 2;
+	irq = 1;
+	ret = aie_part_pm_ops(apart, &irq, AIE_PART_INIT_OPT_SET_L2_IRQ, range, 0);
+	if (ret)
+		return ret;
+
+	return ret;
+}
+
+int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_init_args *args)
+{
+	u32 opts;
+	int ret;
+	int i;
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+	trace_aie_part_initialize(apart, args->init_opts, args->num_tiles);
+
+	/* Clear resources */
+	aie_part_clear_cached_events(apart);
+	aie_part_rscmgr_reset(apart);
+	aie_resource_clear_all(&apart->tiles_inuse);
+	aie_resource_clear_all(&apart->cores_clk_state);
+
+	/* First lets send non-data aie_op_type_len ops */
+	opts = 0;
+	/* This operation will do first 4 steps of sequence */
+	opts |= (args->init_opts & AIE_PART_INIT_OPT_COLUMN_RST);
+	opts |= (args->init_opts & AIE_PART_INIT_OPT_SHIM_RST);
+	opts |= (args->init_opts & AIE_PART_INIT_OPT_BLOCK_NOCAXIMMERR);
+	opts |= (args->init_opts & AIE_PART_INIT_OPT_ENB_COLCLK_BUFF);
+	/* push opts to pm and flush, these ops needs to complete before we perform next ones*/
+	ret = aie_part_pm_ops(apart, NULL, opts, apart->range, 1);
+	if (ret) {
+		dev_err(&apart->dev, "pm ops: 0x%x failed: %d", opts, ret);
+		goto out;
+	}
+
+	if (args->init_opts & AIE_PART_INIT_OPT_ISOLATE) {
+		opts |= AIE_PART_INIT_OPT_ISOLATE;
+		ret = aie_part_init_isolation(apart);
+		if (ret)
+			goto out;
+		ret = aie2ps_part_aximm_isolation(apart);
+		if (ret)
+			goto out;
+	}
+
+	if (args->init_opts & AIE_PART_INIT_OPT_ZEROIZEMEM) {
+		opts |= AIE_PART_INIT_OPT_ZEROIZEMEM;
+		ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_ZEROIZEMEM, apart->range, 1);
+		if (ret)
+			goto out;
+	}
+
+	if (args->init_opts & AIE_PART_INIT_OPT_UC_ZEROIZATION) {
+		u16 data = 0x6;
+
+		opts |= AIE_PART_INIT_OPT_UC_ZEROIZATION;
+		ret = aie_part_pm_ops(apart, &data, AIE_PART_INIT_OPT_UC_ZEROIZATION,
+				      apart->range, 1);
+		if (ret)
+			goto out;
+	}
+
+	if (args->init_opts & AIE_PART_INIT_OPT_SET_L2_IRQ) {
+		opts |= AIE_PART_INIT_OPT_SET_L2_IRQ;
+
+		ret = aie2ps_part_set_l2_irq(apart);
+		if (ret)
+			goto out;
+	}
+
+	if (args->init_opts & AIE_PART_INIT_OPT_NMU_CONFIG) {
+		struct aie_range range = {};
+
+		opts |= ~AIE_PART_INIT_OPT_NMU_CONFIG;
+		if (apart->range.start.col == 0) {
+			range.size.col = 1;
+			ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_NMU_CONFIG, range, 0);
+			if (ret)
+				goto out;
+		}
+	}
+
+	if (args->init_opts & AIE_PART_INIT_OPT_HW_ERR_INT) {
+		u16 data = 0;
+
+		opts |= AIE_PART_INIT_OPT_HW_ERR_INT;
+		ret = aie_part_pm_ops(apart, &data, AIE_PART_INIT_OPT_HW_ERR_INT, apart->range, 0);
+		if (ret)
+			goto out;
+	}
+
+	if (args->init_opts & AIE_PART_INIT_OPT_HW_ERR_MASK) {
+		u16 data = 0x2;
+
+		opts |= AIE_PART_INIT_OPT_HW_ERR_MASK;
+		ret = aie_part_pm_ops(apart, &data, AIE_PART_INIT_OPT_HW_ERR_MASK, apart->range, 0);
+		if (ret)
+			goto out;
+	}
+
+	if (args->init_opts & AIE_PART_INIT_OPT_SET_ECC_SCRUB_PERIOD) {
+		opts |= AIE_PART_INIT_OPT_SET_ECC_SCRUB_PERIOD;
+
+		ret = aie_part_pm_ops(apart, &args->ecc_scrub,
+				      AIE_PART_INIT_OPT_SET_ECC_SCRUB_PERIOD, apart->range, 0);
+		if (ret)
+			goto out;
+	}
+
+	if (args->init_opts & AIE_PART_INIT_OPT_UC_ENB_MEM_PRIV) {
+		opts |= AIE_PART_INIT_OPT_UC_ENB_MEM_PRIV;
+
+		ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_UC_ENB_MEM_PRIV, apart->range,
+				      0);
+		if (ret)
+			goto out;
+	}
+
+	/* Request tile locations */
+	if (args->num_tiles && trace_aie_part_initialize_tiles_enabled()) {
+		for (i = 0; i < args->num_tiles; i++)
+			trace_aie_part_initialize_tiles(apart, args->locs[i]);
+	}
+
+	ret = aie_part_request_tiles(apart, args->num_tiles, args->locs);
+	if (ret)
+		goto out;
+
+	if (args->init_opts & AIE_PART_INIT_OPT_HANDSHAKE) {
+		struct aie_op_handshake_data data = {
+			.addr = args->handshake,
+			.size = args->handshake_size
+		};
+
+		opts |= AIE_PART_INIT_OPT_HANDSHAKE;
+		ret = aie_part_pm_ops(apart, &data, AIE_PART_INIT_OPT_HANDSHAKE, apart->range, 1);
+		if (ret)
+			goto out;
+	}
+
+	if (opts)
+		dev_warn(&apart->dev, "Invalid init_opts: 0x%x", opts);
+
+out:
+	mutex_unlock(&apart->mlock);
+	return ret;
+}
+
 /**
  * aie_part_initialize() - AI engine partition initialization
  * @apart: AI engine partition
