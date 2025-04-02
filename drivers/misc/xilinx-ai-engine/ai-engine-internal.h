@@ -1612,6 +1612,7 @@ struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
 
 void aie_aperture_backtrack(struct work_struct *work);
 irqreturn_t aie_interrupt(int irq, void *data);
+irqreturn_t aie2ps_interrupt_fn(int irq, void *data);
 void aie_interrupt_callback(const u32 *payload, void *data);
 int aie_aperture_create_l2_mask(struct aie_aperture *aperture);
 bool aie_part_has_error(struct aie_partition *apart);
