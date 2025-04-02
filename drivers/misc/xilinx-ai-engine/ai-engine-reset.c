@@ -163,6 +163,53 @@ static int aie_part_clear_data_mem(struct aie_partition *apart)
 }
 
 /**
+ * aie2ps_part_clear_context() - clear AI engine partition context
+ * @apart: AI engine partition
+ * @return: 0 for success and negative value for failure
+ *
+ * This function will:
+ * - Gate all columns
+ * - Reset AI engine partition columns
+ * - Ungate all columns
+ * - Reset shim tiles
+ * - Setup axi mm to raise events
+ * - Setup partition isolation
+ * - Zeroize data memory
+ */
+int aie2ps_part_clear_context(struct aie_partition *apart)
+{
+	u32 opts;
+	u16 data;
+	int ret;
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+
+	opts = AIE_PART_INIT_OPT_COLUMN_RST |
+	       AIE_PART_INIT_OPT_SHIM_RST |
+	       AIE_PART_INIT_OPT_BLOCK_NOCAXIMMERR |
+	       AIE_PART_INIT_OPT_ZEROIZEMEM;
+	ret = aie_part_pm_ops(apart, NULL, opts, apart->range, 1);
+	if (ret)
+		goto out;
+
+	data = 0x6;
+	ret = aie_part_pm_ops(apart, &data, AIE_PART_INIT_OPT_UC_ZEROIZATION, apart->range, 1);
+	if (ret)
+		goto out;
+	ret = aie_part_pm_ops_flush(apart);
+	if (ret)
+		goto out;
+
+	aie_part_init_isolation(apart);
+out:
+	mutex_unlock(&apart->mlock);
+
+	return ret;
+}
+
+/**
  * aie_part_clear_context() - clear AI engine partition context
  * @apart: AI engine partition
  * @return: 0 for success and negative value for failure
