@@ -256,6 +256,91 @@ int aie_part_release_tiles_from_user(struct aie_partition *apart,
 }
 
 /**
+ * aie2ps_part_set_column_clock_from_user() - enable/disable column clock register
+ *                                        from an AI engine partition from
+ *                                        user
+ * @apart: AI engine partition
+ * @args: user AI engine request tiles argument
+ * @return: 0 for success, negative value for failure.
+ *
+ * This function will request tiles from user request.h
+ */
+int aie2ps_part_set_column_clock_from_user(struct aie_partition *apart,
+					   struct aie_column_args *args)
+{
+	u32 part_end_col = apart->range.start.col + apart->range.size.col - 1;
+	struct aie_location locs;
+	struct aie_range range = {};
+	int ret;
+	u32 c;
+
+	trace_aie_part_set_column_clock_from_user(apart, args);
+
+	if ((args->start_col + args->num_cols - 1) > part_end_col) {
+		dev_err(&apart->dev, "invalid start column/size column\n");
+		return -EINVAL;
+	}
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+
+	if (ret)
+		return ret;
+
+	range.start.col = args->start_col;
+	range.size.col = args->num_cols;
+
+	if (args->enable) {
+		ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_ENB_COLCLK_BUFF, range, 1);
+		if (ret < 0) {
+			dev_err(&apart->dev, "failed to enable clocks for partition\n");
+			goto exit;
+		}
+
+		for (c = (args->start_col + apart->range.start.col);
+		     c < (args->start_col + args->num_cols);
+		     c++) {
+			int bit;
+
+			locs.col = c;
+			locs.row = 1;
+			bit = aie_part_get_clk_state_bit(apart, &locs);
+			if (bit >= 0) {
+				aie_resource_set(&apart->tiles_inuse, bit,
+						 apart->range.size.row - 1);
+				aie_resource_set(&apart->cores_clk_state, bit,
+						 apart->range.size.row - 1);
+			}
+		}
+	} else {
+		ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_DIS_COLCLK_BUFF, range, 1);
+		if (ret < 0) {
+			dev_err(&apart->dev, "failed to disable clocks for partition\n");
+			goto exit;
+		}
+
+		for (c = (args->start_col + apart->range.start.col);
+		     c < (args->start_col + args->num_cols);
+		     c++) {
+			int bit;
+
+			locs.col = c;
+			locs.row = 1;
+			bit = aie_part_get_clk_state_bit(apart, &locs);
+			if (bit >= 0) {
+				aie_resource_clear(&apart->tiles_inuse, bit,
+						   apart->range.size.row - 1);
+				aie_resource_clear(&apart->cores_clk_state, bit,
+						   apart->range.size.row - 1);
+			}
+		}
+	}
+
+exit:
+	mutex_unlock(&apart->mlock);
+	return ret;
+}
+
+/**
  * aie_part_set_column_clock_from_user() - enable/disable column clock register
  *                                        from an AI engine partition from
  *                                        user

@@ -3367,6 +3367,7 @@ static const struct aie_tile_operations aie2ps_ops = {
 	.init_part_clk_state = aie2ps_init_part_clk_state,
 	.scan_part_clocks = aie2ps_scan_part_clocks,
 	.set_part_clocks = aie2ps_set_part_clocks,
+	.set_column_clock = aie2ps_part_set_column_clock_from_user,
 	.set_tile_isolation = aie2ps_set_tile_isolation,
 	.mem_clear = aie2ps_part_clear_mems,
 	.get_dma_s2mm_status = aie2ps_get_dma_s2mm_status,
