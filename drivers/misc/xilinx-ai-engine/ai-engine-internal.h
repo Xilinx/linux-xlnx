@@ -582,6 +582,13 @@ struct aie_aperture;
  * @get_chan_status: get dma channel status
  * @get_lock_status: get tile, shimdma and memtile lock status
  * @wake_tile_uc_core_up: wakes shile tile uc core up
+ * @get_uc_core_sts: Retrieve the status of a uc core
+ * @get_uc_core_intr: Retrieve the status of a uc core interrupt
+ * @get_uc_mdm_dbg_sts: Retrieve the status of a uc core mdm debug
+ * @get_uc_dma_dm2mm_sts: Retrieve the status of a uc core dm2mm
+ * @get_uc_dma_mm2dm_sts: Retrieve the status of a uc core mm2dm
+ * @get_uc_mod_aximm: Retrieve the status of a uc core aximm
+ * @get_uc_mod_aximm_out_trans: Retrieve the status of a uc core aximm out transactions
  * @map_uc_mem: Get uc offset to AI array offset map for mems
  * @part_init: partition initialize for tiles.
  * @part_teardown: partition teardown.
