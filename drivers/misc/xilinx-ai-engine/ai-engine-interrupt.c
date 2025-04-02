@@ -16,9 +16,19 @@
 #include "ai-engine-trace.h"
 
 #define AIE_ARRAY_TILE_ERROR_BC_ID		0U
-#define AIE_SHIM_TILE_ERROR_IRQ_ID		16U
+#define AIE_SHIM_UC_EVENT_BC_ID			1U
+#define AIE_SHIM_USER_EVENT1_BC_ID		2U
+
 #define AIE_SHIM_INTR_BC_MAX			5U
 #define AIE_L2_MASK_REG_BITS			32U
+
+/* BIT(16) in 1st level IRQ event A, col 0, 2, 3, 4... */
+#define AIE_SHIM_TILE_ERROR_L1_IRQ_EVENT_ID	0U
+#define AIE_SHIM_TILE_ERROR_IRQ_ID		(16 + AIE_SHIM_TILE_ERROR_L1_IRQ_EVENT_ID)
+
+/* BIT(16) in 1st level IRQ event A, only for col 1 */
+#define AIE_SHIM_USER_EVENT1_L1_IRQ_EVENT_ID	2U
+#define AIE_SHIM_USER_EVENT1_IRQ_ID		(16 + AIE_SHIM_USER_EVENT1_L1_IRQ_EVENT_ID)
 
 /**
  * aie_get_broadcast_event() - get event ID being broadcast on given
@@ -1497,3 +1507,210 @@ void aie_free_errors(struct aie_errors *aie_errs)
 	kfree(aie_errs);
 }
 EXPORT_SYMBOL_GPL(aie_free_errors);
+
+static int aie_intr_ctrl_l1_broadcast_block(struct aie_partition *apart,
+					    struct aie_location loc,
+					    enum aie_shim_switch_type sw,
+					    u32 bcast_bitmap)
+{
+	const struct aie_l1_intr_ctrl_attr *l1_ctrl;
+	u32 regoff;
+
+	l1_ctrl = apart->adev->l1_ctrl;
+
+	if (!l1_ctrl) {
+		dev_err(&apart->dev, "%s: %d: no l1 ctrl for [%d, %d]: sw: %d bcast_bitmap: 0x%x",
+			__func__, __LINE__, loc.col, loc.row, sw, bcast_bitmap);
+		return -ENODEV;
+	}
+	switch (sw) {
+	case AIE_SHIM_SWITCH_A:
+		regoff = l1_ctrl->block_north_a_set.regoff;
+		break;
+	case AIE_SHIM_SWITCH_B:
+		regoff = l1_ctrl->block_north_b_set.regoff;
+		break;
+	default:
+		dev_err(&apart->dev, "%s: %d: invalid sw: [%d, %d]: sw: %d bcast_bitmap: 0x%x",
+			__func__, __LINE__, loc.col, loc.row, sw, bcast_bitmap);
+		return -ENODEV;
+	}
+	regoff += l1_ctrl->regoff;
+	regoff = aie_aperture_cal_regoff(apart->aperture, loc, regoff);
+
+	iowrite32(bcast_bitmap, apart->aperture->base + regoff);
+	return 0;
+}
+
+static int aie_enable_l1_intr(struct aie_partition *apart,
+			      struct aie_location loc,
+			      enum aie_shim_switch_type sw,
+			      u8 irq_id)
+{
+	const struct aie_l1_intr_ctrl_attr *l1_ctrl;
+	u32 regoff;
+
+	l1_ctrl = apart->adev->l1_ctrl;
+
+	if (!l1_ctrl) {
+		dev_err(&apart->dev, "l1 ctrl enabled failed: no l1 ctrl: [%d, %d]: sw: %d irq_id: %d",
+			loc.col, loc.row, sw, irq_id);
+		return -ENODEV;
+	}
+	switch (sw) {
+	case AIE_SHIM_SWITCH_A:
+		regoff = l1_ctrl->enable_a.regoff;
+		break;
+	case AIE_SHIM_SWITCH_B:
+		regoff = l1_ctrl->enable_b.regoff;
+		break;
+	default:
+		dev_err(&apart->dev, "l1 ctrl enabled failed: invalid sw: [%d, %d]: sw: %d irq_id: %d",
+			loc.col, loc.row, sw, irq_id);
+		return -ENODEV;
+	}
+	regoff += l1_ctrl->regoff;
+	regoff = aie_aperture_cal_regoff(apart->aperture, loc, regoff);
+
+	iowrite32(BIT(irq_id), apart->aperture->base + regoff);
+	return 0;
+}
+
+static int aie_set_l1_ctrl_irq_id(struct aie_partition *apart,
+				  struct aie_location loc,
+				  enum aie_shim_switch_type sw,
+				  u8 irq_id)
+{
+	const struct aie_l1_intr_ctrl_attr *l1_ctrl;
+	u32 regoff;
+
+	l1_ctrl = apart->adev->l1_ctrl;
+
+	if (!l1_ctrl) {
+		dev_err(&apart->dev, "%s: %d: no l1 ctrl: [%d, %d]: sw: %d irq_id: %d",
+			__func__, __LINE__, loc.col, loc.row, sw, irq_id);
+		return -ENODEV;
+	}
+	switch (sw) {
+	case AIE_SHIM_SWITCH_A:
+		regoff = l1_ctrl->irq_no_a.regoff;
+		break;
+	case AIE_SHIM_SWITCH_B:
+		regoff = l1_ctrl->irq_no_b.regoff;
+		break;
+	default:
+		dev_err(&apart->dev, "%s: %d: invalid sw: [%d, %d]: sw: %d irq_id: %d",
+			__func__, __LINE__, loc.col, loc.row, sw, irq_id);
+
+		return -ENODEV;
+	}
+	regoff += l1_ctrl->regoff;
+	regoff = aie_aperture_cal_regoff(apart->aperture, loc, regoff);
+
+	iowrite32(irq_id, apart->aperture->base + regoff);
+	return 0;
+}
+
+static int aie_set_l1_ctrl_irq_event(struct aie_partition *apart, struct aie_location loc,
+				     enum aie_shim_switch_type sw, u8 irq_id, u8 event)
+{
+	const struct aie_l1_intr_ctrl_attr *intr_ctrl = apart->adev->l1_ctrl;
+	u32 regval, regoff, irq_event;
+
+	if (irq_id > sizeof(u32) / sizeof(u8))
+		return -EINVAL;
+
+	regval = event << (BITS_PER_BYTE * irq_id);
+	switch (sw) {
+	case AIE_SHIM_SWITCH_A:
+		regoff = intr_ctrl->irq_event_a.regoff;
+		break;
+	case AIE_SHIM_SWITCH_B:
+		regoff = intr_ctrl->irq_event_b.regoff;
+		break;
+	default:
+		return -EINVAL;
+	}
+	regoff += intr_ctrl->regoff;
+	regoff = aie_aperture_cal_regoff(apart->aperture, loc, regoff);
+	irq_event = ioread32(apart->aperture->base + regoff);
+	irq_event &= ~(0xFF << (BITS_PER_BYTE * irq_id));
+	regval |= irq_event;
+	iowrite32(regval, apart->aperture->base + regoff);
+
+	return 0;
+}
+
+static int aie2ps_init_l1_ctrl(struct aie_partition *apart, struct aie_location loc)
+{
+	const struct aie_event_attr *attr;
+	int ret;
+	u32 bcast_bitmap;
+
+	attr = apart->adev->pl_events;
+
+	switch (loc.col - apart->range.start.col) {
+	case 1:
+		bcast_bitmap = BIT(AIE_SHIM_UC_EVENT_BC_ID) |
+			       BIT(AIE_SHIM_USER_EVENT1_BC_ID);
+		ret = aie_intr_ctrl_l1_broadcast_block(apart, loc, AIE_SHIM_SWITCH_A,
+						       bcast_bitmap);
+		if (ret)
+			return ret;
+		ret = aie_intr_ctrl_l1_broadcast_block(apart, loc, AIE_SHIM_SWITCH_B,
+						       bcast_bitmap);
+		if (ret)
+			return ret;
+
+		ret = aie_set_l1_ctrl_irq_event(apart, loc, AIE_SHIM_SWITCH_A,
+						AIE_SHIM_USER_EVENT1_L1_IRQ_EVENT_ID,
+						attr->user_event1);
+		if (ret)
+			return ret;
+		ret = aie_enable_l1_intr(apart, loc, AIE_SHIM_SWITCH_A,
+					 AIE_SHIM_USER_EVENT1_IRQ_ID);
+		if (ret)
+			return ret;
+		ret = aie_set_l1_ctrl_irq_id(apart, loc, AIE_SHIM_SWITCH_A,
+					     AIE_SHIM_USER_EVENT1_BC_ID);
+		if (ret)
+			return ret;
+		break;
+	default:
+		bcast_bitmap = BIT(AIE_ARRAY_TILE_ERROR_BC_ID) |
+			       BIT(AIE_SHIM_UC_EVENT_BC_ID) |
+			       BIT(AIE_SHIM_USER_EVENT1_BC_ID);
+		ret = aie_intr_ctrl_l1_broadcast_block(apart, loc, AIE_SHIM_SWITCH_A,
+						       bcast_bitmap);
+		if (ret)
+			return ret;
+		ret = aie_intr_ctrl_l1_broadcast_block(apart, loc, AIE_SHIM_SWITCH_B,
+						       bcast_bitmap);
+		if (ret)
+			return ret;
+
+		ret = aie_enable_l1_intr(apart, loc, AIE_SHIM_SWITCH_A,
+					 AIE_ARRAY_TILE_ERROR_BC_ID);
+		if (ret)
+			return ret;
+		ret = aie_enable_l1_intr(apart, loc, AIE_SHIM_SWITCH_B,
+					 AIE_ARRAY_TILE_ERROR_BC_ID);
+		if (ret)
+			return ret;
+		ret = aie_set_l1_ctrl_irq_event(apart, loc, AIE_SHIM_SWITCH_A,
+						AIE_SHIM_TILE_ERROR_L1_IRQ_EVENT_ID,
+						attr->base_error_group);
+		if (ret)
+			return ret;
+		ret = aie_enable_l1_intr(apart, loc, AIE_SHIM_SWITCH_A,
+					 AIE_SHIM_TILE_ERROR_IRQ_ID);
+		if (ret)
+			return ret;
+		ret = aie_set_l1_ctrl_irq_id(apart, loc, AIE_SHIM_SWITCH_A,
+					     AIE_ARRAY_TILE_ERROR_BC_ID);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
