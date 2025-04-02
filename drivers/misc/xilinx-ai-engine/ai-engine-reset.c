@@ -281,6 +281,62 @@ exit:
 }
 
 /**
+ * aie2ps_part_clean() - reset and clear AI engine partition
+ * @apart: AI engine partition
+ * @return: 0 for success and negative value for failure
+ *
+ * This function will:
+ *  * gate all the columns
+ *  * reset AI engine partition columns
+ *  * reset AI engine shims
+ *  * clear the memories
+ *  * clear core registers
+ *  * gate all the tiles in a partition
+ *  * update clock state bitmap
+ *
+ * This function will not validate the partition, the caller will need to
+ * provide a valid AI engine partition.
+ */
+int aie2ps_part_clean(struct aie_partition *apart)
+{
+	u32 opts;
+	int ret;
+
+	if (apart->cntrflag & XAIE_PART_NOT_RST_ON_RELEASE)
+		return 0;
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+
+	ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_DIS_COLCLK_BUFF, apart->range, 1);
+	if (ret)
+		goto out;
+
+	opts = AIE_PART_INIT_OPT_COLUMN_RST | AIE_PART_INIT_OPT_SHIM_RST;
+	ret = aie_part_pm_ops(apart, NULL, opts, apart->range, 1);
+	if (ret)
+		goto out;
+
+	ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_ENB_COLCLK_BUFF, apart->range, 1);
+	if (ret)
+		goto out;
+
+	apart->adev->ops->mem_clear(apart);
+	aie_part_core_regs_clr(apart);
+
+	ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_DIS_COLCLK_BUFF, apart->range, 1);
+	if (ret)
+		goto out;
+
+	aie_resource_clear_all(&apart->cores_clk_state);
+
+out:
+	mutex_unlock(&apart->mlock);
+	return ret;
+}
+
+/**
  * aie_part_clean() - reset and clear AI engine partition
  * @apart: AI engine partition
  * @return: 0 for success and negative value for failure
