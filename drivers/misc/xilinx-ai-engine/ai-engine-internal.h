@@ -219,6 +219,9 @@ enum aie_tile_type {
 	.write_callback	= aie_tile_write_cb_##_name,		\
 }
 
+#define AIE_NPI_NUM_IRQS		3U
+#define AIE_USER_EVENT1_NUM_IRQ		(AIE_NPI_NUM_IRQS - 1)
+
 /*
  * enum aie_shim_switch_type - identifies different switches in shim tile.
  */
@@ -1706,6 +1709,7 @@ int aie_part_pm_ops(struct aie_partition *apart, void *data, u32 type, struct ai
 		    bool flush);
 int aie_part_pm_ops_flush(struct aie_partition *apart);
 int aie_partition_initialize(struct device *dev, struct aie_partition_init_args *args);
+int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_init_args *args);
 int aie_partition_teardown(struct device *dev);
 
 #endif /* AIE_INTERNAL_H */
