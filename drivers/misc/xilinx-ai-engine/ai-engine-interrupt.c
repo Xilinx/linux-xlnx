@@ -2033,3 +2033,143 @@ static int aie2ps_priv_error_handling_init(struct aie_partition *apart)
 
 	return ret;
 }
+
+static int aie_set_broadcast_event(struct aie_partition *apart,
+				   struct aie_location loc,
+				   const struct aie_event_attr *attr,
+				   u32 error_group, u8 bc_id)
+{
+	u32 regoff;
+
+	if (!error_group) {
+		dev_err(&apart->dev, "%s: %d: No error group present for [%d, %d]",
+			__func__, __LINE__, loc.col, loc.row);
+		return -ENODEV;
+	}
+	if (bc_id >= attr->num_broadcasts) {
+		dev_err(&apart->dev, "%s: %d: invalid bc_id: %d for [%d, %d]",
+			__func__, __LINE__, bc_id, loc.col, loc.row);
+		return -ENODEV;
+	}
+
+	regoff = attr->bc_regoff + attr->bc_event.regoff + bc_id * 4U;
+	regoff = aie_aperture_cal_regoff(apart->aperture, loc, regoff);
+	iowrite32(error_group, apart->aperture->base + regoff);
+	return 0;
+}
+
+static int aie_event_group_error0_enable(struct aie_partition *apart,
+					 struct aie_location loc,
+					 const struct aie_event_attr *attr)
+{
+	u32 regoff;
+	u32 val;
+
+	if (!attr) {
+		dev_err(&apart->dev, "%s: %d: attr not found for [%d, %d]",
+			__func__, __LINE__, loc.col, loc.row);
+		return -ENODEV;
+	}
+	regoff = attr->event_group_error0_enable.regoff;
+	val = attr->event_group_error0_enable_default;
+	if (!val || !regoff) {
+		dev_err(&apart->dev, "%s: %d: regoff and val for [%d, %d]",
+			__func__, __LINE__, loc.col, loc.row);
+		return -ENODEV;
+	}
+
+	regoff = aie_aperture_cal_regoff(apart->aperture, loc, regoff);
+	iowrite32(val, apart->aperture->base + regoff);
+	return 0;
+}
+
+static int aie_group_error_init_loc(struct aie_partition *apart,
+				    struct aie_location loc)
+{
+	int ret = 0;
+	u32 ttype;
+	const struct aie_event_attr *attr;
+
+	if (!aie_part_check_clk_enable_loc(apart, &loc))
+		return 0;
+	ttype = apart->adev->ops->get_tile_type(apart->adev, &loc);
+	switch (ttype) {
+	case AIE_TILE_TYPE_SHIMNOC:
+	case AIE_TILE_TYPE_SHIMPL:
+		attr = apart->adev->pl_events;
+		ret = aie_event_group_error0_enable(apart, loc, attr);
+		if (ret)
+			return ret;
+		ret = aie_set_broadcast_event(apart, loc, attr,
+					      attr->base_error_group,
+					      AIE_ARRAY_TILE_ERROR_BC_ID);
+		if (ret)
+			return ret;
+		if (loc.col != (apart->range.start.col + 1)) {
+			ret = aie_set_broadcast_event(apart, loc, attr,
+						      attr->user_event1,
+						      AIE_SHIM_USER_EVENT1_BC_ID);
+			if (ret)
+				return ret;
+		}
+
+		break;
+	case AIE_TILE_TYPE_TILE:
+		attr = apart->adev->mem_events;
+		ret = aie_event_group_error0_enable(apart, loc, attr);
+		if (ret)
+			return ret;
+		ret = aie_set_broadcast_event(apart, loc, attr,
+					      attr->base_error_group,
+					      AIE_ARRAY_TILE_ERROR_BC_ID);
+		if (ret)
+			return ret;
+
+		attr = apart->adev->core_events;
+		ret = aie_event_group_error0_enable(apart, loc, attr);
+		if (ret)
+			return ret;
+		ret = aie_set_broadcast_event(apart, loc, attr,
+					      attr->base_error_group,
+					      AIE_ARRAY_TILE_ERROR_BC_ID);
+		if (ret)
+			return ret;
+
+		break;
+	case AIE_TILE_TYPE_MEMORY:
+		attr = apart->adev->memtile_events;
+		ret = aie_event_group_error0_enable(apart, loc, attr);
+		if (ret)
+			return ret;
+		ret = aie_set_broadcast_event(apart, loc, attr,
+					      attr->base_error_group,
+					      AIE_ARRAY_TILE_ERROR_BC_ID);
+		if (ret)
+			return ret;
+		break;
+	default:
+		dev_err(&apart->dev, "Invalid tile type for [%d, %d]: %d",
+			loc.col, loc.row, ttype);
+		return -ENODEV;
+	}
+
+	return ret;
+}
+
+static int aie_group_error_init(struct aie_partition *apart)
+{
+	int ret;
+	struct aie_location loc;
+	u32 start_col = apart->range.start.col;
+	u32 end_col = start_col + apart->range.size.col;
+
+	for (loc.col = start_col; loc.col < end_col; loc.col++) {
+		for (loc.row = 0; loc.row < apart->range.size.row; loc.row++) {
+			ret = aie_group_error_init_loc(apart, loc);
+			if (ret)
+				return ret;
+		}
+	}
+
+	return 0;
+}
