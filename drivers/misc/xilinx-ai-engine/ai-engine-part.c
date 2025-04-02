@@ -847,10 +847,33 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 	trace_aie_part_ioctl(apart, _IOC_NR(cmd));
 	switch (cmd) {
 	case AIE_PARTITION_INIT_IOCTL:
+	{
+		struct aie_partition_init_args part_init_args;
+		struct aie_location *locs = NULL;
+
+		if (copy_from_user(&part_init_args, argp, sizeof(part_init_args)))
+			return -EFAULT;
+
+		if (part_init_args.num_tiles) {
+			locs = kmalloc_array(part_init_args.num_tiles, sizeof(*locs), GFP_KERNEL);
+			if (!locs)
+				return -ENOMEM;
+			if (copy_from_user(locs, (void __user *)part_init_args.locs,
+					   part_init_args.num_tiles * sizeof(*locs))) {
+				kfree(locs);
+				return -EFAULT;
+			}
+		}
+		part_init_args.locs = locs;
 		if (apart->adev->ops->part_init)
-			return apart->adev->ops->part_init(apart, argp);
+			ret = apart->adev->ops->part_init(apart, &part_init_args);
 		else
-			return -EINVAL;
+			ret = -EINVAL;
+
+		kfree(locs);
+
+		return ret;
+	}
 	case AIE_PARTITION_TEAR_IOCTL:
 		if (apart->adev->ops->part_teardown)
 			return apart->adev->ops->part_teardown(apart);
