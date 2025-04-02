@@ -604,6 +604,22 @@ int zynqmp_pm_aie_operation(u32 node, u16 start_col, u16 num_col, u32 operation)
 EXPORT_SYMBOL_GPL(zynqmp_pm_aie_operation);
 
 /**
+ * versal2_pm_aie2ps_operation - AIE2PS run time operations
+ * @node:	AI engine node id
+ * @size:	Size of the DMA addr
+ * @addr_high:	higher 32 bits of DMA addr
+ * @addr_low:	lower 32 bits of DMA addr
+ *
+ * Return: Returns status, either success or error+reason
+ */
+int versal2_pm_aie2ps_operation(u32 node, u32 size, u32 addr_high, u32 addr_low)
+{
+	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 5, node, IOCTL_AIE2PS_OPS,
+				   size, addr_high, addr_low);
+}
+EXPORT_SYMBOL_GPL(versal2_pm_aie2ps_operation);
+
+/**
  * zynqmp_pm_reset_assert - Request setting of reset (1 - assert, 0 - release)
  * @reset:		Reset to be configured
  * @assert_flag:	Flag stating should reset be asserted (1) or
