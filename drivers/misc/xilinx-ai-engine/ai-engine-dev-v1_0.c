@@ -181,9 +181,9 @@ int xilinx_ai_engine_probe_v1(struct platform_device *pdev)
 		put_device(&pdev->dev);
 		return ret;
 	}
-	aperture->irq = ret;
+	aperture->npi_irq[0] = ret;
 
-	ret = devm_request_threaded_irq(&aperture->dev, aperture->irq, NULL,
+	ret = devm_request_threaded_irq(&aperture->dev, aperture->npi_irq[0], NULL,
 					aie_interrupt, IRQF_ONESHOT,
 					dev_name(&aperture->dev), aperture);
 	if (ret) {
