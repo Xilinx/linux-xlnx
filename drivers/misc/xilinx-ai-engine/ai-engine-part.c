@@ -1239,6 +1239,13 @@ struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
 		return ERR_PTR(ret);
 	}
 
+	ret = aie_part_pm_ops_create(apart);
+	if (ret) {
+		dev_err(&apart->dev, "Failed to create pm ops pkt.");
+		put_device(dev);
+		return ERR_PTR(ret);
+	}
+
 	dev_dbg(dev, "created AIE partition device.\n");
 
 	return apart;
@@ -1277,6 +1284,7 @@ void aie_part_remove(struct aie_partition *apart)
 
 	device_del(&apart->dev);
 	put_device(&apart->dev);
+	aie_part_pm_ops_free(apart);
 	devm_kfree(&aperture->dev, apart);
 }
 
