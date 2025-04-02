@@ -181,6 +181,37 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 }
 
 /**
+ * aie_part_maskpoll_register() - Mask polls an address for a data in a partition.
+ * @apart: AI engine partition.
+ * @offset: AI engine register offset.
+ * @data: data to poll.
+ * @mask: mask, if it is non 0, it is mask write.
+ * @timeout: Timeout in microseconds.
+ * @return: zero for success, or negative value for failure.
+ */
+int aie_part_maskpoll_register(struct aie_partition *apart, u32 offset, u32 data, u32 mask,
+			       u32 timeout)
+{
+	u32 value;
+	u32 min_usleep = 10;
+	u32 max_usleep = 20;
+	u32 i;
+
+	for (i = 0; i < timeout; i += min_usleep) {
+		value = ioread32(apart->aperture->base + offset);
+		if ((value & mask) == data)
+			return 0;
+		usleep_range(min_usleep, max_usleep);
+	}
+
+	value = ioread32(apart->aperture->base + offset);
+	if ((value & mask) == data)
+		return 0;
+
+	return -EBUSY;
+}
+
+/**
  * aie_part_write_register() - AI engine partition write register
  * @apart: AI engine partition
  * @offset: AI engine register offset
