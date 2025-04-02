@@ -1304,6 +1304,8 @@ struct aie_pm_ops {
  * @status: indicate if the partition is in use
  * @cntrflag: partition control flag. e.g. whether to reset columns when
  *	      the partition is released
+ * @user_event1_complete: call back function for inference complete
+ * @user_event1_priv: priv data for user_event1_complete cb
  * @error_to_report: indicates if there are errors pending to be reported to
  *		     the application. This value is set to true if errors are
  *		     found during backtracking, and error interrupt was
@@ -1335,6 +1337,8 @@ struct aie_partition {
 	u32 partition_id;
 	u32 status;
 	u32 cntrflag;
+	void (*user_event1_complete)(__u32 partition_id, void *user_event1_priv);
+	void *user_event1_priv;
 	u8 error_to_report;
 };
 
@@ -1613,6 +1617,7 @@ struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
 void aie_aperture_backtrack(struct work_struct *work);
 irqreturn_t aie_interrupt(int irq, void *data);
 irqreturn_t aie2ps_interrupt_fn(int irq, void *data);
+irqreturn_t aie2ps_interrupt_user_event1(int irq, void *data);
 void aie_interrupt_callback(const u32 *payload, void *data);
 int aie_aperture_create_l2_mask(struct aie_aperture *aperture);
 bool aie_part_has_error(struct aie_partition *apart);

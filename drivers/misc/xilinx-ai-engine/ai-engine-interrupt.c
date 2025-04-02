@@ -907,6 +907,42 @@ backtrack_aie_tile:
 	apart->error_to_report |= ret;
 }
 
+static void _aie2ps_interrupt_user_event1(struct aie_partition *apart)
+{
+	const struct aie_event_attr *event_mod;
+	u32 status[AIE_NUM_EVENT_STS_SHIMTILE];
+	struct aie_location loc;
+	bool complete = false;
+	int end_col;
+
+	if (apart->range.size.col < 2) {
+		dev_err_ratelimited(&apart->adev->dev, "Cannot have partition with less than 2 cols.");
+		return;
+	}
+
+	loc.col = apart->range.start.col + 1;
+	loc.row = 0;
+	event_mod = apart->adev->pl_events;
+	end_col = apart->range.start.col + apart->range.size.col;
+
+	aie_clear_l1_intr(apart, &loc, AIE_SHIM_SWITCH_A, AIE_SHIM_USER_EVENT1_BC_ID);
+	aie_clear_l1_intr(apart, &loc, AIE_SHIM_SWITCH_B, AIE_SHIM_USER_EVENT1_BC_ID);
+	aie_clear_l1_intr(apart, &loc, AIE_SHIM_SWITCH_A, AIE_SHIM_USER_EVENT1_IRQ_ID);
+
+	for (loc.col = apart->range.start.col; loc.col < end_col; loc.col++) {
+		aie_read_event_status(apart, &loc, AIE_PL_MOD, status);
+		if (!(status[event_mod->user_event1 / 32] &
+		    BIT(event_mod->user_event1 % 32))) {
+			continue;
+		}
+		complete = true;
+		aie_clear_event_status(apart, &loc, AIE_PL_MOD, event_mod->user_event1);
+		dev_err(&apart->dev, "USER_EVENT1 on col: %d", loc.col);
+	}
+	if (complete && apart->user_event1_complete)
+		apart->user_event1_complete(apart->partition_id, apart->user_event1_priv);
+}
+
 /**
  * aie2ps_partition_backtrack() - backtrack partition to find the source of error interrupt.
  * @apart: pointer to the partition structure.
@@ -941,6 +977,7 @@ static void aie2ps_partition_backtrack(struct aie_partition *apart)
 	if (!apart->status)
 		goto out;
 
+	_aie2ps_interrupt_user_event1(apart);
 	for (col = apart->range.start.col; col < apart->range.size.col; col++) {
 		struct aie_location loc = {.col = col, .row = 0};
 		u32 ttype, l2_mask;
@@ -1076,6 +1113,80 @@ static void aie2ps_aperture_backtrack(struct aie_aperture *aperture)
 			continue;
 		aie2ps_partition_backtrack(apart);
 	}
+}
+
+/**
+ * aie2ps_interrupt_user_event1() - interrupt handler for AIE2PS for interence.
+ * @irq: Interrupt number.
+ * @data: AI engine partition struct.
+ * @return: IRQ_HANDLED.
+ *
+ * This thread function disables level 2 interrupt controllers and ack the l2
+ * controller. Clear the status of USER_EVENT1 event register. Call the
+ * registered call back for interence completion.
+ */
+irqreturn_t aie2ps_interrupt_user_event1(int irq, void *data)
+{
+	const struct aie_event_attr *event_mod;
+	u32 status[AIE_NUM_EVENT_STS_SHIMTILE];
+	struct aie_partition *apart = data;
+	struct aie_aperture *aperture;
+	struct aie_location loc;
+	int l2_mask, l2_status;
+	bool complete = false;
+	int end_col;
+
+	aperture = apart->aperture;
+	mutex_lock(&aperture->mlock);
+	mutex_lock(&apart->mlock);
+	if (!apart->status) {
+		dev_err_ratelimited(&apart->dev, "USER_EVENT1 ISR: apart not active");
+		goto out;
+	}
+	if (apart->range.size.col < 2) {
+		dev_err_ratelimited(&apart->adev->dev, "Cannot have partition with less than 2 cols.");
+		goto out;
+	}
+
+	loc.col = apart->range.start.col + 1;
+	loc.row = 0;
+	event_mod = apart->adev->pl_events;
+	end_col = apart->range.start.col + apart->range.size.col;
+
+	l2_mask = aie_aperture_get_l2_mask(aperture, &loc);
+	if (!l2_mask)
+		goto out;
+
+	aie_aperture_disable_l2_ctrl(aperture, &loc, l2_mask);
+	l2_status = aie_aperture_get_l2_status(aperture, &loc);
+	if (!l2_status) {
+		aie_aperture_enable_l2_ctrl(aperture, &loc, l2_mask);
+		goto out;
+	}
+	aie_aperture_clear_l2_intr(aperture, &loc, l2_status);
+
+	aie_clear_l1_intr(apart, &loc, AIE_SHIM_SWITCH_A, AIE_SHIM_USER_EVENT1_BC_ID);
+	aie_clear_l1_intr(apart, &loc, AIE_SHIM_SWITCH_B, AIE_SHIM_USER_EVENT1_BC_ID);
+	aie_clear_l1_intr(apart, &loc, AIE_SHIM_SWITCH_A, AIE_SHIM_USER_EVENT1_IRQ_ID);
+
+	for (loc.col = apart->range.start.col; loc.col < end_col; loc.col++) {
+		aie_read_event_status(apart, &loc, AIE_PL_MOD, status);
+		if (!(status[event_mod->user_event1 / 32] &
+		    BIT(event_mod->user_event1 % 32)))
+			continue;
+		complete = true;
+		aie_clear_event_status(apart, &loc, AIE_PL_MOD,
+				       event_mod->user_event1);
+	}
+	if (complete && apart->user_event1_complete)
+		apart->user_event1_complete(apart->partition_id, apart->user_event1_priv);
+	loc.col = apart->range.start.col + 1;
+	loc.row = 0;
+	aie_aperture_enable_l2_ctrl(aperture, &loc, l2_mask);
+out:
+	mutex_unlock(&apart->mlock);
+	mutex_unlock(&aperture->mlock);
+	return complete ? IRQ_HANDLED : IRQ_NONE;
 }
 
 irqreturn_t aie2ps_interrupt_fn(int irq, void *data)
