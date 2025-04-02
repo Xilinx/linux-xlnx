@@ -1705,5 +1705,7 @@ void aie_part_pm_ops_free(struct aie_partition *apart);
 int aie_part_pm_ops(struct aie_partition *apart, void *data, u32 type, struct aie_range range,
 		    bool flush);
 int aie_part_pm_ops_flush(struct aie_partition *apart);
+int aie_partition_initialize(struct device *dev, struct aie_partition_init_args *args);
+int aie_partition_teardown(struct device *dev);
 
 #endif /* AIE_INTERNAL_H */

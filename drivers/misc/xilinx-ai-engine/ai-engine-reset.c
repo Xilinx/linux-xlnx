@@ -470,6 +470,36 @@ int aie_part_init_isolation(struct aie_partition *apart)
 	return ret;
 }
 
+int aie_partition_teardown(struct device *dev)
+{
+	struct aie_partition *apart;
+
+	if (!dev)
+		return -EINVAL;
+
+	apart = dev_to_aiepart(dev);
+	if (apart->adev->ops->part_teardown)
+		return apart->adev->ops->part_teardown(apart);
+	return -EINVAL;
+}
+EXPORT_SYMBOL_GPL(aie_partition_teardown);
+
+int aie_partition_initialize(struct device *dev, struct aie_partition_init_args *args)
+{
+	struct aie_partition *apart;
+
+	if (!dev || !args)
+		return -EINVAL;
+
+	apart = dev_to_aiepart(dev);
+
+	if (apart->adev->ops->part_init)
+		return apart->adev->ops->part_init(apart, args);
+
+	return -EINVAL;
+}
+EXPORT_SYMBOL_GPL(aie_partition_initialize);
+
 /**
  * aie_part_initialize() - AI engine partition initialization
  * @apart: AI engine partition
