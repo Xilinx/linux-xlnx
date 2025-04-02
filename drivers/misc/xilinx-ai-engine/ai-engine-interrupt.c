@@ -1982,3 +1982,54 @@ static int aie_config_error_halt_event(struct aie_partition *apart)
 	}
 	return 0;
 }
+
+static int aie2ps_priv_error_handling_init(struct aie_partition *apart)
+{
+	struct aie_range range = {};
+	int ret = 0;
+	u16 data;
+
+	/*
+	 * Set NOC L2 interrupt
+	 *
+	 * For col 1, use irq 2 or 3.
+	 * For rest of the cols, use irq 1.
+	 */
+	range.start.col = apart->range.start.col;
+	range.size.col = 1;
+	data = 1;
+	ret = aie_part_pm_ops(apart, &data, AIE_PART_INIT_OPT_SET_L2_IRQ, range, 0);
+	if (ret)
+		return ret;
+
+	range.start.col = apart->range.start.col + 1;
+	range.size.col = 1;
+	data = (apart->partition_id % AIE_USER_EVENT1_NUM_IRQ) + 2;
+	ret = aie_part_pm_ops(apart, &data, AIE_PART_INIT_OPT_SET_L2_IRQ, range, 0);
+	if (ret)
+		return ret;
+
+	range.start.col = apart->range.start.col + 2;
+	range.size.col = apart->range.size.col - 2;
+	data = 1;
+	ret = aie_part_pm_ops(apart, &data, AIE_PART_INIT_OPT_SET_L2_IRQ, range, 0);
+	if (ret)
+		return ret;
+
+	/**
+	 * Set HW error NPI intr
+	 * Use npi interrupt 1 for all hw errors.
+	 */
+	data = 1;
+	ret = aie_part_pm_ops(apart, &data, AIE_PART_INIT_OPT_HW_ERR_INT, apart->range, 0);
+	if (ret)
+		return ret;
+	/*
+	 * set HW error mask
+	 * Mask Hw_Correctable_Errors - BIT(1)
+	 */
+	data = BIT(1);
+	ret = aie_part_pm_ops(apart, &data, AIE_PART_INIT_OPT_HW_ERR_MASK, apart->range, 1);
+
+	return ret;
+}
