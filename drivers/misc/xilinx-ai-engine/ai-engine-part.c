@@ -714,7 +714,8 @@ static int aie_part_release(struct inode *inode, struct file *filp)
 
 	aie_part_release_dmabufs(apart);
 	/* aie_part_clean() will do hardware reset */
-	aie_part_clean(apart);
+	if (apart->adev->ops->part_clean)
+		apart->adev->ops->part_clean(apart);
 	mutex_unlock(&apart->adev->mlock);
 
 	apart->error_cb.cb = NULL;
@@ -846,11 +847,20 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 	trace_aie_part_ioctl(apart, _IOC_NR(cmd));
 	switch (cmd) {
 	case AIE_PARTITION_INIT_IOCTL:
-		return aie_part_initialize(apart, argp);
+		if (apart->adev->ops->part_init)
+			return apart->adev->ops->part_init(apart, argp);
+		else
+			return -EINVAL;
 	case AIE_PARTITION_TEAR_IOCTL:
-		return aie_part_teardown(apart);
+		if (apart->adev->ops->part_teardown)
+			return apart->adev->ops->part_teardown(apart);
+		else
+			return -EINVAL;
 	case AIE_PARTITION_CLR_CONTEXT_IOCTL:
-		return aie_part_clear_context(apart);
+		if (apart->adev->ops->part_clear_context)
+			return apart->adev->ops->part_clear_context(apart);
+		else
+			return -EINVAL;
 	case AIE_REG_IOCTL:
 	{
 		struct aie_reg_args raccess;
