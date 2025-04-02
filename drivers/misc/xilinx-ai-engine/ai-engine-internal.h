@@ -1717,6 +1717,7 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 int aie2ps_part_teardown(struct aie_partition *apart);
 int aie2ps_part_clear_context(struct aie_partition *apart);
 int aie2ps_part_clean(struct aie_partition *apart);
+int aie2ps_part_reset(struct aie_partition *apart);
 int aie_partition_teardown(struct device *dev);
 int aie_part_maskpoll_register(struct aie_partition *apart, u32 offset, u32 data, u32 mask,
 			       u32 timeout);

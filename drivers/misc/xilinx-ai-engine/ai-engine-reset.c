@@ -394,6 +394,74 @@ int aie_part_clean(struct aie_partition *apart)
 }
 
 /**
+ * aie2ps_part_reset() - reset AI engine partition
+ * @apart: AI engine partition
+ * @return: 0 for success and negative value for failure
+ *
+ * This function will:
+ * - gate all the columns
+ * - reset AI engine partition columns
+ * - ungate all the columns
+ * - reset AI engine shims
+ * - gate all the tiles in a partition.
+ *
+ * This function will not validate the partition, the caller will need to
+ * provide a valid AI engine partition.
+ */
+int aie2ps_part_reset(struct aie_partition *apart)
+{
+	int ret;
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+
+	/*
+	 * Check if any AI engine memories or registers in the
+	 * partition have been mapped. If yes, don't reset.
+	 */
+	if (aie_part_has_mem_mmapped(apart) ||
+	    aie_part_has_regs_mmapped(apart)) {
+		dev_err(&apart->dev,
+			"failed to reset, there are mmapped memories or registers.\n");
+		mutex_unlock(&apart->mlock);
+		return -EBUSY;
+	}
+
+	/* Clear tiles in use bitmap and clock state bitmap */
+	aie_resource_clear_all(&apart->tiles_inuse);
+	aie_resource_clear_all(&apart->cores_clk_state);
+
+	ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_DIS_COLCLK_BUFF, apart->range, 1);
+	if (ret < 0)
+		goto exit;
+
+	ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_COLUMN_RST, apart->range, 1);
+	if (ret < 0)
+		goto exit;
+
+	ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_ENB_COLCLK_BUFF, apart->range, 1);
+	if (ret < 0)
+		goto exit;
+
+	ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_SHIM_RST, apart->range, 1);
+	if (ret < 0)
+		goto exit;
+
+	ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_DIS_COLCLK_BUFF, apart->range, 1);
+	if (ret < 0)
+		goto exit;
+
+	aie_part_clear_cached_events(apart);
+	aie_part_rscmgr_reset(apart);
+
+exit:
+	mutex_unlock(&apart->mlock);
+
+	return ret;
+}
+
+/**
  * aie_part_reset() - reset AI engine partition
  * @apart: AI engine partition
  * @return: 0 for success and negative value for failure
