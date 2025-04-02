@@ -771,6 +771,8 @@ struct aie_rsc_user_stat_array {
 
 int aie_partition_write_privileged_mem(struct device *dev, size_t offset, size_t len, void *data);
 int aie_partition_read_privileged_mem(struct device *dev, size_t offset, size_t len, void *data);
+bool aie_partition_check_noc_aximm(struct device *dev, struct aie_location *loc);
+int aie_partition_check_uc_aximm(struct device *dev, struct aie_location *loc);
 
 #else /* IS_ENABLED(CONFIG_XILINX_AIE) */
 
@@ -782,6 +784,16 @@ int aie_partition_write_privileged_mem(struct device *dev, size_t offset, size_t
 int aie_partition_read_privileged_mem(struct device *dev, size_t offset, size_t len, void *data)
 {
 	return -EINVAL;
+}
+
+bool aie_partition_check_noc_aximm(struct device *dev, struct aie_location *loc)
+{
+	return false;
+}
+
+int aie_partition_check_uc_aximm(struct device *dev, struct aie_location *loc)
+{
+	return 0;
 }
 
 #endif /* IS_ENABLED(CONFIG_XILINX_AIE) */
