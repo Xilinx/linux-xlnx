@@ -130,7 +130,7 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 		     pmem[i].mem.range.size.row) > aloc.row) {
 			if (pmem[i].mem.offset <= regoff &&
 			    ((pmem[i].mem.offset + pmem[i].mem.size)
-			      >= regoff)) {
+			      > regoff)) {
 				if ((pmem[i].mem.offset + pmem[i].mem.size)
 				     < regend64) {
 					dev_err(&apart->dev,
@@ -141,7 +141,7 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 			} else if (pmem[i].mem.offset > regoff &&
 				   (pmem[i].mem.offset <= regend64 &&
 				    ((pmem[i].mem.offset + pmem[i].mem.size)
-				     >= regend64))) {
+				     > regend64))) {
 				dev_err(&apart->dev,
 					"address 0x%zx, 0x%zx not accessible.\n",
 					offset, len);
