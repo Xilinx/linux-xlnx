@@ -1773,5 +1773,6 @@ int aie_partition_teardown(struct device *dev);
 int aie_part_maskpoll_register(struct aie_partition *apart, u32 offset, u32 data, u32 mask,
 			       u32 timeout);
 int aie_partition_uc_zeroize_mem(struct device *dev, struct aie_location *loc, u32 regval);
+int aie_error_handling_init(struct aie_partition *apart);
 
 #endif /* AIE_INTERNAL_H */

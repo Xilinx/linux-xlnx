@@ -2173,3 +2173,89 @@ static int aie_group_error_init(struct aie_partition *apart)
 
 	return 0;
 }
+
+static int aie2ps_error_handling_init(struct aie_partition *apart)
+{
+	int ret = 0;
+	u32 ttype;
+	struct aie_location loc;
+	u32 l2_enable;
+	u32 start_col = apart->range.start.col;
+	u32 end_col = start_col + apart->range.size.col;
+
+	for (loc.col = start_col; loc.col < end_col; loc.col++) {
+		for (loc.row = 0; loc.row < apart->range.size.row; loc.row++) {
+			if (!aie_part_check_clk_enable_loc(apart, &loc))
+				continue;
+
+			ttype = apart->adev->ops->get_tile_type(apart->adev, &loc);
+			switch (ttype) {
+			case AIE_TILE_TYPE_SHIMNOC:
+			case AIE_TILE_TYPE_SHIMPL:
+				ret = aie2ps_init_l1_ctrl(apart, loc);
+				if (ret)
+					goto out;
+				if (loc.col == (start_col + 1))
+					l2_enable = BIT(AIE_SHIM_USER_EVENT1_L1_IRQ_EVENT_ID);
+				else
+					l2_enable = BIT(AIE_ARRAY_TILE_ERROR_BC_ID);
+				aie_aperture_enable_l2_ctrl(apart->aperture, &loc, l2_enable);
+				if (loc.col == (start_col + 1)) {
+					ret = aie2ps_init_shim_tile_lead_col(apart, loc);
+					if (ret)
+						goto out;
+				} else if (loc.col == start_col) {
+					ret = aie2ps_init_shim_tile_col0(apart, loc);
+					if (ret)
+						goto out;
+				} else {
+					ret = aie2ps_init_shim_tile(apart, loc);
+					if (ret)
+						goto out;
+				}
+				break;
+			case AIE_TILE_TYPE_TILE:
+				ret = aie2ps_init_aie_tile(apart, loc);
+				if (ret)
+					goto out;
+				break;
+			case AIE_TILE_TYPE_MEMORY:
+				ret = aie2ps_init_mem_tile(apart, loc);
+				if (ret)
+					goto out;
+				break;
+			default:
+				dev_err(&apart->dev, "Invalid tile type for [%d, %d]: %d",
+					loc.col, loc.row, ttype);
+				ret = -ENODEV;
+				break;
+			}
+		}
+	}
+	ret = aie2ps_priv_error_handling_init(apart);
+
+out:
+	return ret;
+}
+
+int aie_error_handling_init(struct aie_partition *apart)
+{
+	int ret;
+
+	switch (apart->adev->dev_gen) {
+	case AIE_DEVICE_GEN_AIE2PS:
+		ret = aie2ps_error_handling_init(apart);
+		break;
+	default:
+		return 0;
+	}
+
+	if (ret)
+		return ret;
+	ret = aie_group_error_init(apart);
+	if (ret)
+		return ret;
+	ret = aie_config_error_halt_event(apart);
+
+	return ret;
+}

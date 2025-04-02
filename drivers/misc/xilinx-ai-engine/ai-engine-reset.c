@@ -861,6 +861,13 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 			goto out;
 	}
 
+	if (args->init_opts & AIE_PART_INIT_ERROR_HANDLING) {
+		opts |= AIE_PART_INIT_ERROR_HANDLING;
+		ret = aie_error_handling_init(apart);
+		if (ret)
+			goto out;
+	}
+
 	if (opts)
 		dev_warn(&apart->dev, "Invalid init_opts: 0x%x", opts);
 
