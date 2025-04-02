@@ -2614,8 +2614,8 @@ static int aieml_set_part_clocks(struct aie_partition *apart)
 {
 	struct aie_range *range = &apart->range;
 	u32 node_id = apart->adev->pm_node_id;
+	int ret, status = -EINVAL;
 	struct aie_location loc;
-	int ret, status;
 
 	for (loc.col = range->start.col;
 	     loc.col < range->start.col + range->size.col;
