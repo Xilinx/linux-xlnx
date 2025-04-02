@@ -3364,6 +3364,7 @@ static const struct aie_tile_operations aie2ps_ops = {
 	.part_teardown = aie2ps_part_teardown,
 	.part_clear_context = aie2ps_part_clear_context,
 	.part_clean = aie2ps_part_clean,
+	.part_reset = aie2ps_part_reset,
 };
 
 /**
