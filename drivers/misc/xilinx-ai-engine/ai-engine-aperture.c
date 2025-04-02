@@ -585,6 +585,29 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 		dev_err(dev, "Failed to create aperture sysfs: %d\n", ret);
 		goto put_aperture_dev;
 	}
+	INIT_WORK(&aperture->backtrack, aie_aperture_backtrack);
+	ret = aie_aperture_create_l2_mask(aperture);
+	if (ret) {
+		dev_err(dev, "failed to initialize l2 mask resource.\n");
+		goto put_aperture_dev;
+	}
+
+	switch (adev->dev_gen) {
+	case AIE_DEVICE_GEN_AIE2PS:
+		ret = devm_request_threaded_irq(dev, aperture->npi_irq[0], NULL,
+						aie2ps_interrupt_fn, IRQF_ONESHOT, dev_name(dev),
+						aperture);
+		break;
+	default:
+		ret = devm_request_threaded_irq(dev, aperture->npi_irq[0], NULL, aie_interrupt,
+						IRQF_ONESHOT, dev_name(dev), aperture);
+		break;
+	}
+
+	if (ret) {
+		dev_err(dev, "Failed to request AIE IRQ.\n");
+		goto put_aperture_dev;
+	}
 
 	dev_info(dev,
 		 "AI engine aperture %s, id 0x%x, cols(%u, %u) aie_tile_rows(%u, %u) memory_tile_rows(%u, %u) is probed successfully.\n",
