@@ -23,6 +23,11 @@
 #define NUM_MODS_MEM_TILE	1U
 #define NUM_MODS_SHIMPL_TILE	1U
 
+#define UC_PROG_MEM		3U
+#define UC_PROG_MEM_NUM		1U
+#define UC_DATA_MEM		4U
+#define UC_DATA_MEM_NUM		2U
+
 /*
  * Number of resources per module
  */
@@ -75,6 +80,11 @@
 #define AIE2PS_SHIMNOC_UCMOD_CORE_CTRL_REGOFF		0x000C0004U
 #define AIE2PS_SHIMNOC_AXI_OUTSTANDING_TX_REGOFF	0x00002120U
 #define AIE2PS_UCMOD_AXI_OUTSTANDING_TX_REGOFF		0x000C0024U
+#define AIE2PS_SHIMNOC_UCMOD_MEM_PRIV_REGOFF		0x000C0034U
+#define AIE2PS_SHIMNOC_UCMOD_MEM_DM_ECC_ERR_GEN		0x000C003CU
+#define AIE2PS_SHIMNOC_UCMOD_UCVIEW_PM_OFFSET		0x00000000U
+#define AIE2PS_SHIMNOC_UCMOD_UCVIEW_PRIV_DM_OFFSET	0x00008000U
+#define AIE2PS_SHIMNOC_UCMOD_UCVIEW_SHARED_DM_OFFSET	0x00020000U
 
 #define AIE2PS_SHIMPL_BISRCACHE_CTRL_REGOFF		0x00036000U
 #define AIE2PS_SHIMPL_COLCLOCK_CTRL_REGOFF		0x0007ff20U
@@ -3355,6 +3365,47 @@ static int aie2ps_wake_tile_uc_core_up(struct aie_partition *apart,
 	return 0;
 }
 
+/**
+ * aie2ps_map_uc_mem() - maps uc core view address to host view
+ * @apart: AI engine partition
+ * @addr: address to be mapped
+ * @pmem: partition memory
+ * @return: return 0 if success negative value for failure.
+ *
+ */
+static int aie2ps_map_uc_mem(struct aie_partition *apart, u64 addr,
+			     struct aie_part_mem *pmem)
+{
+	struct aie_part_mem *pmems = apart->pmems;
+	u32 i, mem_type;
+
+	for (i = UC_PROG_MEM; i < NUM_TYPES_OF_MEM; i++) {
+		mem_type = i % (UC_PROG_MEM_NUM + UC_DATA_MEM_NUM);
+		if (pmem)
+			pmem->mem = pmems[i].mem;
+
+		if (mem_type == AIE_UC_PROGRAM_MEM && addr >=
+		    AIE2PS_SHIMNOC_UCMOD_UCVIEW_PM_OFFSET && addr <
+		    (AIE2PS_SHIMNOC_UCMOD_UCVIEW_PM_OFFSET +
+		     pmems[i].mem.size)) {
+			return AIE_UC_PROGRAM_MEM;
+		} else if (mem_type == AIE_UC_PRIVATE_DATA_MEM && addr >=
+			   AIE2PS_SHIMNOC_UCMOD_UCVIEW_PRIV_DM_OFFSET &&
+			   addr < (AIE2PS_SHIMNOC_UCMOD_UCVIEW_PRIV_DM_OFFSET +
+			   pmems[i].mem.size)) {
+			return AIE_UC_PRIVATE_DATA_MEM;
+		} else if (mem_type == AIE_UC_SHARED_DATA_MEM && addr >=
+			   AIE2PS_SHIMNOC_UCMOD_UCVIEW_SHARED_DM_OFFSET &&
+			   addr < (AIE2PS_SHIMNOC_UCMOD_UCVIEW_SHARED_DM_OFFSET
+			   + pmems[i].mem.size)) {
+			return AIE_UC_SHARED_DATA_MEM;
+		}
+	}
+
+	pmem = NULL;
+	return AIE_UC_MEM_MAX;
+}
+
 static const struct aie_tile_operations aie2ps_ops = {
 	.get_tile_type = aie2ps_get_tile_type,
 	.get_mem_info = aie2ps_get_mem_info,
@@ -3382,6 +3433,7 @@ static const struct aie_tile_operations aie2ps_ops = {
 	.get_uc_dma_mm2dm_sts = aie2ps_get_uc_dma_mm2dm_sts,
 	.get_uc_mod_aximm = aie2ps_get_uc_mod_aximm,
 	.get_uc_mod_aximm_out_trans = aie2ps_get_uc_mod_aximm_out_trans,
+	.map_uc_mem = aie2ps_map_uc_mem,
 	.part_init = aie2ps_part_initialize,
 	.part_teardown = aie2ps_part_teardown,
 	.part_clear_context = aie2ps_part_clear_context,

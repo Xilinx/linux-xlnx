@@ -223,6 +223,16 @@ enum aie_tile_type {
 #define AIE_USER_EVENT1_NUM_IRQ		(AIE_NPI_NUM_IRQS - 1)
 
 /*
+ * enum aie_uc_mem_type - identifies the type of UC memory
+ */
+enum aie_uc_mem_type {
+	AIE_UC_PROGRAM_MEM,
+	AIE_UC_PRIVATE_DATA_MEM,
+	AIE_UC_SHARED_DATA_MEM,
+	AIE_UC_MEM_MAX
+};
+
+/*
  * enum aie_shim_switch_type - identifies different switches in shim tile.
  */
 enum aie_shim_switch_type {
@@ -630,6 +640,7 @@ struct aie_tile_operations {
 				struct aie_location *loc);
 	u32 (*get_uc_mod_aximm_out_trans)(struct aie_partition *apart,
 					  struct aie_location *loc);
+	int (*map_uc_mem)(struct aie_partition *apart, u64 addr, struct aie_part_mem *pmem);
 	int (*part_init)(struct aie_partition *apart, struct aie_partition_init_args *args);
 	int (*part_teardown)(struct aie_partition *apart);
 	int (*part_clear_context)(struct aie_partition *apart);
