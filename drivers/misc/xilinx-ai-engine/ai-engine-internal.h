@@ -559,6 +559,11 @@ struct aie_aperture;
  * @get_chan_status: get dma channel status
  * @get_lock_status: get tile, shimdma and memtile lock status
  * @wake_tile_uc_core_up: wakes shile tile uc core up
+ * @part_init: partition initialize for tiles.
+ * @part_teardown: partition teardown.
+ * @part_clear_context: partition clear context, subset of partition init.
+ * @part_clean: partition clean for tiles.
+ * @part_reset: reset partition.
  *
  * Different AI engine device version has its own device
  * operation.
@@ -619,6 +624,11 @@ struct aie_tile_operations {
 				struct aie_location *loc);
 	u32 (*get_uc_mod_aximm_out_trans)(struct aie_partition *apart,
 					  struct aie_location *loc);
+	int (*part_init)(struct aie_partition *apart, void __user *user_args);
+	int (*part_teardown)(struct aie_partition *apart);
+	int (*part_clear_context)(struct aie_partition *apart);
+	int (*part_clean)(struct aie_partition *apart);
+	int (*part_reset)(struct aie_partition *apart);
 };
 
 /**
