@@ -1010,6 +1010,16 @@ struct aie_tile {
 };
 
 /**
+ * struct aie_dma_addrlen - Stores the address and length of the transaction
+ * @dma_addr: dma address array.
+ * @len: length of the data to be transferred.
+ */
+struct aie_dma_addrlen {
+	dma_addr_t dma_addr;
+	size_t len;
+};
+
+/**
  * struct aie_device - AI engine device structure
  * @apertures: list of apertures
  * @cdev: cdev for the AI engine
