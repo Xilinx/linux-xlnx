@@ -2287,7 +2287,7 @@ ssize_t aie2ps_sysfs_get_uc_mod_aximm(struct aie_partition *apart,
 	ssize_t len = 0;
 
 	status = apart->adev->ops->get_uc_mod_aximm(apart, loc);
-	len += scnprintf(&buffer[len], max(0L, size - len), "aximm_offset - 0x%X%s",
+	len += scnprintf(&buffer[len], max(0L, size - len), "aximm_offset - 0x%lX%s",
 			 status, DELIMITER_LEVEL2);
 
 	return len;
