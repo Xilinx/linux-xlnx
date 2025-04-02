@@ -555,6 +555,7 @@ struct aie_aperture;
  *		     caller to apply partition lock before calling this
  *		     function. The caller function will need to set the bitmap
  *		     on which tiles are required to be clocked on.
+ * @set_column_clock: Enable or disable column clock.
  * @set_tile_isolation: set tile isolation boundary for input direction.
  * @mem_clear: clear data memory banks of the partition.
  * @get_dma_s2mm_status: get dma s2mm status
@@ -597,6 +598,7 @@ struct aie_tile_operations {
 	int (*init_part_clk_state)(struct aie_partition *apart);
 	int (*scan_part_clocks)(struct aie_partition *apart);
 	int (*set_part_clocks)(struct aie_partition *apart);
+	int (*set_column_clock)(struct aie_partition *apart, struct aie_column_args *args);
 	int (*set_tile_isolation)(struct aie_partition *apart,
 				  struct aie_location *loc, u8 dir);
 	int (*mem_clear)(struct aie_partition *apart);
@@ -1689,8 +1691,7 @@ ssize_t aie_part_read_cb_status(struct kobject *kobj, char *buffer,
 				ssize_t size);
 long aie_part_rscmgr_get_statistics(struct aie_partition *apart,
 				    void __user *user_args);
-int  aie_part_set_column_clock_from_user(struct aie_partition *apart,
-					 void __user *user_args);
+int aie_part_set_column_clock_from_user(struct aie_partition *apart, struct aie_column_args *args);
 
 int aie_overlay_register_notifier(void);
 void aie_overlay_unregister_notifier(void);

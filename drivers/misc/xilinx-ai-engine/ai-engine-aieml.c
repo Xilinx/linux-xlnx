@@ -2739,6 +2739,7 @@ static const struct aie_tile_operations aieml_ops = {
 	.init_part_clk_state = aieml_init_part_clk_state,
 	.scan_part_clocks = aieml_scan_part_clocks,
 	.set_part_clocks = aieml_set_part_clocks,
+	.set_column_clock = aie_part_set_column_clock_from_user,
 	.set_tile_isolation = aieml_set_tile_isolation,
 	.mem_clear = aieml_part_clear_mems,
 	.get_dma_s2mm_status = aieml_get_dma_s2mm_status,
