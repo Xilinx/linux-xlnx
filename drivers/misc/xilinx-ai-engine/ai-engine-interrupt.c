@@ -1945,3 +1945,40 @@ static int aie2ps_init_mem_tile(struct aie_partition *apart, struct aie_location
 
 	return 0;
 }
+
+static int aie_config_error_halt_event(struct aie_partition *apart)
+{
+	u32 ttype;
+	struct aie_location loc;
+	u32 start_col = apart->range.start.col;
+	u32 end_col = start_col + apart->range.size.col;
+	const struct aie_event_attr *attr;
+	u32 event_regoff;
+	u32 regoff;
+	u32 val;
+
+	attr = apart->adev->core_events;
+	event_regoff = attr->error_halt_event.regoff;
+	val = attr->error_halt_event_group;
+	if (!val || !event_regoff) {
+		dev_err(&apart->dev, "%s: %d: No error halt event present",
+			__func__, __LINE__);
+		return -ENODEV;
+	}
+
+	for (loc.col = start_col; loc.col < end_col; loc.col++) {
+		for (loc.row = 0; loc.row < apart->range.size.row; loc.row++) {
+			if (!aie_part_check_clk_enable_loc(apart, &loc))
+				continue;
+
+			ttype = apart->adev->ops->get_tile_type(apart->adev,
+								&loc);
+			if (ttype != AIE_TILE_TYPE_TILE)
+				continue;
+			regoff = aie_aperture_cal_regoff(apart->aperture, loc,
+							 event_regoff);
+			iowrite32(val, apart->aperture->base + regoff);
+		}
+	}
+	return 0;
+}
