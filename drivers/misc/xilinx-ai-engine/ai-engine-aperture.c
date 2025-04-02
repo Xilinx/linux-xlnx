@@ -278,6 +278,7 @@ static void aie_aperture_release_device(struct device *dev)
 {
 	struct aie_aperture *aperture = dev_get_drvdata(dev);
 
+	flush_work(&aperture->backtrack);
 	aie_resource_uninitialize(&aperture->cols_res);
 	kfree(aperture->l2_mask.val);
 	zynqmp_pm_release_node(aperture->node_id);
