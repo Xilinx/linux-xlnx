@@ -1433,3 +1433,56 @@ int aie_partition_read_privileged_mem(struct device *dev, size_t offset,
 	return aie_part_read_register(apart, offset, len, data);
 }
 EXPORT_SYMBOL_GPL(aie_partition_read_privileged_mem);
+
+/*
+ * aie_partition_check_noc_aximm() - Checks for outstanding AXI transactions
+ *				     from NoC module to the NMU.
+ * @dev: AI engine partition device
+ * @loc: AI engine tile location to check
+ * @return: true if there is outstanding transaction, false if not
+ */
+bool aie_partition_check_noc_aximm(struct device *dev, struct aie_location *loc)
+{
+	struct aie_partition *apart = dev_to_aiepart(dev);
+	struct aie_device *adev = apart->adev;
+	u32 regoff, regval;
+
+	if (!adev->noc_outstanding_aximm)
+		return false;
+
+	regoff = aie_aperture_cal_regoff(apart->aperture, *loc,
+					 adev->noc_outstanding_aximm->regoff);
+	regval = ioread32(apart->aperture->base + regoff);
+
+	if (regval & adev->noc_outstanding_aximm->mask)
+		return true;
+	return false;
+}
+EXPORT_SYMBOL_GPL(aie_partition_check_noc_aximm);
+
+/*
+ * aie_partition_check_uc_aximm() - Checks for outstanding AXI transactions
+ *				    from uC module to the NMU.
+ * @dev: AI engine partition device
+ * @loc: AI engine tile location to check
+ * @return: 0 for no outstanding transaction or OR of the
+ *	    following:
+ *	    BIT(1) - Outstanding transaction from uC to AIE array
+ *	    BIT(0) - Outstanding transaction from uC DMA to NMU
+ */
+int aie_partition_check_uc_aximm(struct device *dev, struct aie_location *loc)
+{
+	struct aie_partition *apart = dev_to_aiepart(dev);
+	struct aie_device *adev = apart->adev;
+	u32 regoff, regval;
+
+	if (!adev->uc_outstanding_aximm)
+		return 0;
+
+	regoff = aie_aperture_cal_regoff(apart->aperture, *loc,
+					 adev->uc_outstanding_aximm->regoff);
+	regval = ioread32(apart->aperture->base + regoff);
+
+	return regval & adev->uc_outstanding_aximm->mask;
+}
+EXPORT_SYMBOL_GPL(aie_partition_check_uc_aximm);
