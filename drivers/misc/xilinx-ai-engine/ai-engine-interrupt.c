@@ -1770,3 +1770,178 @@ static int aie_event_bc_block(struct aie_partition *apart, struct aie_location l
 
 	return 0;
 }
+
+static int aie2ps_init_shim_tile_lead_col(struct aie_partition *apart, struct aie_location loc)
+{
+	u32 bcast_mask;
+	u32 dir;
+	int ret;
+
+	bcast_mask = BIT(AIE_ARRAY_TILE_ERROR_BC_ID) |
+		     BIT(AIE_SHIM_UC_EVENT_BC_ID);
+	dir = AIE_EVENT_BROADCAST_NORTH |
+	      AIE_EVENT_BROADCAST_EAST |
+	      AIE_EVENT_BROADCAST_SOUTH;
+
+	ret = aie_event_bc_block(apart, loc, AIE_SHIM_SWITCH_A, bcast_mask, dir);
+	if (ret)
+		return ret;
+
+	ret = aie_event_bc_block(apart, loc, AIE_SHIM_SWITCH_B, bcast_mask, dir);
+	if (ret)
+		return ret;
+
+	bcast_mask = BIT(AIE_SHIM_USER_EVENT1_BC_ID);
+	dir = AIE_EVENT_BROADCAST_NORTH |
+	      AIE_EVENT_BROADCAST_WEST |
+	      AIE_EVENT_BROADCAST_SOUTH;
+	ret = aie_event_bc_block(apart, loc, AIE_SHIM_SWITCH_A, bcast_mask, dir);
+	if (ret)
+		return ret;
+
+	bcast_mask = BIT(AIE_SHIM_USER_EVENT1_BC_ID);
+	dir = AIE_EVENT_BROADCAST_ALL;
+	ret = aie_event_bc_block(apart, loc, AIE_SHIM_SWITCH_B, bcast_mask, dir);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
+static int aie2ps_init_shim_tile(struct aie_partition *apart, struct aie_location loc)
+{
+	u32 bcast_mask;
+	u32 dir;
+	int ret;
+
+	bcast_mask = BIT(AIE_ARRAY_TILE_ERROR_BC_ID) |
+		     BIT(AIE_SHIM_UC_EVENT_BC_ID);
+	dir = AIE_EVENT_BROADCAST_NORTH |
+	      AIE_EVENT_BROADCAST_WEST |
+	      AIE_EVENT_BROADCAST_SOUTH;
+
+	ret = aie_event_bc_block(apart, loc, AIE_SHIM_SWITCH_A, bcast_mask, dir);
+	if (ret)
+		return ret;
+
+	dir = AIE_EVENT_BROADCAST_ALL;
+	ret = aie_event_bc_block(apart, loc, AIE_SHIM_SWITCH_B, bcast_mask, dir);
+	if (ret)
+		return ret;
+
+	bcast_mask = BIT(AIE_SHIM_USER_EVENT1_BC_ID);
+	dir = AIE_EVENT_BROADCAST_NORTH |
+	      AIE_EVENT_BROADCAST_EAST |
+	      AIE_EVENT_BROADCAST_SOUTH;
+	ret = aie_event_bc_block(apart, loc, AIE_SHIM_SWITCH_A, bcast_mask, dir);
+	if (ret)
+		return ret;
+
+	ret = aie_event_bc_block(apart, loc, AIE_SHIM_SWITCH_B, bcast_mask, dir);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
+static int aie2ps_init_shim_tile_col0(struct aie_partition *apart, struct aie_location loc)
+{
+	u32 bcast_mask;
+	u32 dir;
+	int ret;
+
+	bcast_mask = BIT(AIE_SHIM_USER_EVENT1_BC_ID);
+	dir = AIE_EVENT_BROADCAST_NORTH |
+	      AIE_EVENT_BROADCAST_WEST |
+	      AIE_EVENT_BROADCAST_SOUTH;
+
+	ret = aie_event_bc_block(apart, loc, AIE_SHIM_SWITCH_A, bcast_mask, dir);
+	if (ret)
+		return ret;
+
+	ret = aie_event_bc_block(apart, loc, AIE_SHIM_SWITCH_B, bcast_mask, dir);
+	if (ret)
+		return ret;
+
+	bcast_mask = BIT(AIE_ARRAY_TILE_ERROR_BC_ID) |
+		     BIT(AIE_SHIM_UC_EVENT_BC_ID);
+	dir = AIE_EVENT_BROADCAST_NORTH |
+	      AIE_EVENT_BROADCAST_WEST |
+	      AIE_EVENT_BROADCAST_SOUTH;
+	ret = aie_event_bc_block(apart, loc, AIE_SHIM_SWITCH_A, bcast_mask, dir);
+	if (ret)
+		return ret;
+
+	dir = AIE_EVENT_BROADCAST_ALL;
+	ret = aie_event_bc_block(apart, loc, AIE_SHIM_SWITCH_B, bcast_mask, dir);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
+static int aie2ps_init_aie_tile(struct aie_partition *apart, struct aie_location loc)
+{
+	u32 bcast_mask;
+	u32 dir;
+	int ret;
+
+	bcast_mask = BIT(AIE_ARRAY_TILE_ERROR_BC_ID);
+	dir = AIE_EVENT_BROADCAST_NORTH |
+	      AIE_EVENT_BROADCAST_EAST |
+	      AIE_EVENT_BROADCAST_WEST;
+
+	ret = aie_event_bc_block(apart, loc, AIE_SHIM_SWITCH_A, bcast_mask, dir);
+	if (ret)
+		return ret;
+
+	ret = aie_event_bc_block(apart, loc, AIE_SHIM_SWITCH_B, bcast_mask, dir);
+	if (ret)
+		return ret;
+
+	bcast_mask = BIT(AIE_SHIM_UC_EVENT_BC_ID) |
+		     BIT(AIE_SHIM_USER_EVENT1_BC_ID);
+	dir = AIE_EVENT_BROADCAST_ALL;
+	ret = aie_event_bc_block(apart, loc, AIE_SHIM_SWITCH_A, bcast_mask, dir);
+	if (ret)
+		return ret;
+
+	ret = aie_event_bc_block(apart, loc, AIE_SHIM_SWITCH_B, bcast_mask, dir);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
+static int aie2ps_init_mem_tile(struct aie_partition *apart, struct aie_location loc)
+{
+	u32 bcast_mask;
+	u32 dir;
+	int ret;
+
+	bcast_mask = BIT(AIE_ARRAY_TILE_ERROR_BC_ID);
+	dir = AIE_EVENT_BROADCAST_NORTH |
+	      AIE_EVENT_BROADCAST_EAST |
+	      AIE_EVENT_BROADCAST_WEST;
+
+	ret = aie_event_bc_block(apart, loc, AIE_SHIM_SWITCH_A, bcast_mask, dir);
+	if (ret)
+		return ret;
+
+	ret = aie_event_bc_block(apart, loc, AIE_SHIM_SWITCH_B, bcast_mask, dir);
+	if (ret)
+		return ret;
+
+	bcast_mask = BIT(AIE_SHIM_UC_EVENT_BC_ID) |
+		     BIT(AIE_SHIM_USER_EVENT1_BC_ID);
+	dir = AIE_EVENT_BROADCAST_ALL;
+	ret = aie_event_bc_block(apart, loc, AIE_SHIM_SWITCH_A, bcast_mask, dir);
+	if (ret)
+		return ret;
+
+	ret = aie_event_bc_block(apart, loc, AIE_SHIM_SWITCH_B, bcast_mask, dir);
+	if (ret)
+		return ret;
+
+	return 0;
+}
