@@ -509,7 +509,8 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 	res[0].end = res[i - 1].end;
 	aperture->res = res[0];
 	aperture->base = devm_ioremap_resource(dev, &aperture->res);
-	if (!aperture->base) {
+	if (IS_ERR(aperture->base)) {
+		dev_err(&adev->dev, "Error memory mapping base address\n");
 		ret = -ENOMEM;
 		goto put_aperture_dev;
 	}
