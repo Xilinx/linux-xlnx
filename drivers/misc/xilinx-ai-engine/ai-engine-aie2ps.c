@@ -73,6 +73,8 @@
 #define AIE2PS_SHIMNOC_DMA_S2MM_STATUS_REGOFF		0x00009320U
 #define AIE2PS_SHIMNOC_DMA_MM2S_STATUS_REGOFF		0x00009328U
 #define AIE2PS_SHIMNOC_UCMOD_CORE_CTRL_REGOFF		0x000C0004U
+#define AIE2PS_SHIMNOC_AXI_OUTSTANDING_TX_REGOFF	0x00002120U
+#define AIE2PS_UCMOD_AXI_OUTSTANDING_TX_REGOFF		0x000C0024U
 
 #define AIE2PS_SHIMPL_BISRCACHE_CTRL_REGOFF		0x00036000U
 #define AIE2PS_SHIMPL_COLCLOCK_CTRL_REGOFF		0x0007ff20U
@@ -1611,6 +1613,16 @@ static const struct aie_single_reg_field aie2ps_core_lr = {
 static const struct aie_single_reg_field aie2ps_core_sp = {
 	.mask = GENMASK(19, 0),
 	.regoff = AIE2PS_TILE_COREMOD_CORE_SP_REGOFF,
+};
+
+static const struct aie_single_reg_field aie2ps_noc_outstanding_aximm = {
+	.mask = BIT(0),
+	.regoff = AIE2PS_SHIMNOC_AXI_OUTSTANDING_TX_REGOFF,
+};
+
+static const struct aie_single_reg_field aie2ps_uc_outstanding_aximm = {
+	.mask = GENMASK(1, 0),
+	.regoff = AIE2PS_UCMOD_AXI_OUTSTANDING_TX_REGOFF,
 };
 
 static const struct aie_event_attr aie2ps_pl_event = {
@@ -3349,6 +3361,7 @@ static const struct aie_tile_operations aie2ps_ops = {
 	.get_uc_mod_aximm = aie2ps_get_uc_mod_aximm,
 	.get_uc_mod_aximm_out_trans = aie2ps_get_uc_mod_aximm_out_trans,
 	.part_init = aie2ps_part_initialize,
+	.part_teardown = aie2ps_part_teardown,
 };
 
 /**
@@ -3399,6 +3412,8 @@ int aie2ps_device_init(struct aie_device *adev)
 	adev->core_errors = &aie2ps_core_error;
 	adev->mem_errors = &aie2ps_mem_error;
 	adev->memtile_errors = &aie2ps_memtile_error;
+	adev->noc_outstanding_aximm = &aie2ps_noc_outstanding_aximm;
+	adev->uc_outstanding_aximm = &aie2ps_uc_outstanding_aximm;
 	adev->shim_errors = &aie2ps_shim_error;
 	adev->tile_dma = &aie2ps_tiledma;
 	adev->shim_dma = &aie2ps_shimdma;
