@@ -1208,6 +1208,7 @@ static int aie_create_tiles(struct aie_partition *apart)
 struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
 					   u32 partition_id)
 {
+	int npi_irq = (partition_id % AIE_USER_EVENT1_NUM_IRQ) + 1;
 	struct aie_partition *apart;
 	struct device *dev;
 	int ret;
@@ -1308,6 +1309,16 @@ struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
 		put_device(dev);
 		return ERR_PTR(ret);
 	}
+	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIE2PS) {
+		ret = devm_request_threaded_irq(&apart->dev, aperture->npi_irq[npi_irq], NULL,
+						aie2ps_interrupt_user_event1,
+						IRQF_SHARED | IRQF_ONESHOT, dev_name(dev), apart);
+		if (ret) {
+			dev_err(dev, "Failed to register user event1 interrupt: %d", ret);
+			put_device(dev);
+			return ERR_PTR(ret);
+		}
+	}
 
 	dev_dbg(dev, "created AIE partition device.\n");
 
@@ -1337,7 +1348,11 @@ void aie_part_remove(struct aie_partition *apart)
 {
 	struct aie_aperture *aperture = apart->aperture;
 	struct aie_tile *atile = apart->atiles;
+	int npi_irq;
 	u32 index;
+
+	npi_irq = (apart->partition_id % AIE_USER_EVENT1_NUM_IRQ) + 1;
+	devm_free_irq(&apart->dev, aperture->npi_irq[npi_irq], apart);
 
 	for (index = 0; index < apart->range.size.col * apart->range.size.row;
 	     index++, atile++)

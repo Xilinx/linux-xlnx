@@ -240,12 +240,16 @@ struct aie_partition_query {
  * @flag: used for application to indicate particular driver requirements
  *	  application wants to have for the partition. e.g. do not clean
  *	  resource when closing the partition.
+ * @user_event1_complete: inference complete call back function.
+ * @user_event1_priv: user_event1_complete's priv data.
  */
 struct aie_partition_req {
 	__u32 partition_id;
 	__u32 uid;
 	__u64 meta_data;
 	__u32 flag;
+	void (*user_event1_complete)(__u32 partition_id, void *user_event1_prov);
+	void *user_event1_priv;
 };
 
 /**
