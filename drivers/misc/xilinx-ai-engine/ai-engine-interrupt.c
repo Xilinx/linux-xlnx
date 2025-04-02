@@ -1714,3 +1714,59 @@ static int aie2ps_init_l1_ctrl(struct aie_partition *apart, struct aie_location 
 
 	return 0;
 }
+
+static int aie_event_bc_block(struct aie_partition *apart, struct aie_location loc,
+			      enum aie_shim_switch_type sw, u32 bcast_mask, u8 dir)
+{
+	struct aie_event_bc_block *block;
+	u32 ttype;
+	u64 regoff;
+
+	ttype = apart->adev->ops->get_tile_type(apart->adev, &loc);
+	switch (ttype) {
+	case AIE_TILE_TYPE_SHIMNOC:
+	case AIE_TILE_TYPE_SHIMPL:
+		regoff = sw == AIE_SHIM_SWITCH_A ? apart->adev->pl_events->bc_block_a.regoff :
+						  apart->adev->pl_events->bc_block_b.regoff;
+		break;
+	case AIE_TILE_TYPE_TILE:
+		regoff = sw == AIE_SHIM_SWITCH_A ? apart->adev->core_events->bc_block_a.regoff :
+						  apart->adev->mem_events->bc_block_b.regoff;
+
+		break;
+	case AIE_TILE_TYPE_MEMORY:
+		regoff = sw == AIE_SHIM_SWITCH_A ? apart->adev->memtile_events->bc_block_a.regoff :
+						  apart->adev->memtile_events->bc_block_b.regoff;
+
+		break;
+	default:
+		dev_err(&apart->dev, "%s: %d: Unknown tile type for [%d, %d]: %d",
+			__func__, __LINE__, loc.col, loc.row, ttype);
+		return -ENODEV;
+	}
+
+	block = (struct aie_event_bc_block *)regoff;
+
+	if (dir & AIE_EVENT_BROADCAST_SOUTH) {
+		regoff = (u64)&block->south_set;
+		regoff = aie_aperture_cal_regoff(apart->aperture, loc, regoff);
+		iowrite32(bcast_mask, apart->aperture->base + regoff);
+	}
+	if (dir & AIE_EVENT_BROADCAST_WEST) {
+		regoff = (u64)&block->west_set;
+		regoff = aie_aperture_cal_regoff(apart->aperture, loc, regoff);
+		iowrite32(bcast_mask, apart->aperture->base + regoff);
+	}
+	if (dir & AIE_EVENT_BROADCAST_NORTH) {
+		regoff = (u64)&block->north_set;
+		regoff = aie_aperture_cal_regoff(apart->aperture, loc, regoff);
+		iowrite32(bcast_mask, apart->aperture->base + regoff);
+	}
+	if (dir & AIE_EVENT_BROADCAST_EAST) {
+		regoff = (u64)&block->east_set;
+		regoff = aie_aperture_cal_regoff(apart->aperture, loc, regoff);
+		iowrite32(bcast_mask, apart->aperture->base + regoff);
+	}
+
+	return 0;
+}

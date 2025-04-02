@@ -240,6 +240,15 @@ enum aie_shim_switch_type {
 	AIE_SHIM_SWITCH_B
 };
 
+#define AIE_EVENT_BROADCAST_SOUTH	BIT(0)
+#define AIE_EVENT_BROADCAST_WEST	BIT(1)
+#define AIE_EVENT_BROADCAST_NORTH	BIT(2)
+#define AIE_EVENT_BROADCAST_EAST	BIT(3)
+#define AIE_EVENT_BROADCAST_ALL		(AIE_EVENT_BROADCAST_SOUTH	| \
+					 AIE_EVENT_BROADCAST_WEST	| \
+					 AIE_EVENT_BROADCAST_NORTH	| \
+					 AIE_EVENT_BROADCAST_EAST)
+
 /*
  * enum for SSIT devices
  */
@@ -656,6 +665,24 @@ struct aie_tile_operations {
 struct aie_resource {
 	unsigned long *bitmap;
 	u32 total;
+};
+
+struct aie_event_bc_block {
+	u32 south_set;
+	u32 south_clr;
+	u32 south_value;
+	u32 reserved0;
+	u32 west_set;
+	u32 west_clr;
+	u32 west_value;
+	u32 reserved1;
+	u32 north_set;
+	u32 north_clr;
+	u32 north_value;
+	u32 reserved2;
+	u32 east_set;
+	u32 east_clr;
+	u32 east_value;
 };
 
 /**
