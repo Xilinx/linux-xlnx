@@ -475,6 +475,7 @@ void of_xilinx_ai_engine_aperture_probe(struct aie_device *adev)
 				"Failed to probe AI engine aperture for %pOF\n",
 				nc);
 			of_node_put(nc);
+			mutex_unlock(&adev->mlock);
 			/* try to probe the next node */
 			continue;
 		}
