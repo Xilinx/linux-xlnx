@@ -253,11 +253,17 @@ struct aie_partition_req {
  * @locs: Allocated array of tile locations that will be used
  * @num_tiles: Number of tiles to use
  * @init_opts: Partition initialization options
+ * @ecc_scrub: ecc_scrub period.
+ * @handshake: HSA handshake data.
+ * @handshake_size: handshake data size.
  */
 struct aie_partition_init_args {
 	struct aie_location *locs;
 	__u32 num_tiles;
 	__u32 init_opts;
+	__u32 ecc_scrub;
+	__u32 *handshake;
+	__u32 handshake_size;
 };
 
 /*
@@ -291,7 +297,11 @@ struct aie_partition_init_args {
 					 AIE_PART_INIT_OPT_BLOCK_NOCAXIMMERR	|	\
 					 AIE_PART_INIT_OPT_ISOLATE		|	\
 					 AIE_PART_INIT_ERROR_HANDLING		|	\
-					 AIE_PART_INIT_OPT_UC_ENB_MEM_PRIV)
+					 AIE_PART_INIT_OPT_UC_ENB_MEM_PRIV	|	\
+					 AIE_PART_INIT_OPT_SET_L2_IRQ		|	\
+					 AIE_PART_INIT_OPT_HW_ERR_INT		|	\
+					 AIE_PART_INIT_OPT_HW_ERR_MASK		|	\
+					 AIE_PART_INIT_OPT_NMU_CONFIG)
 
 #define AIE_PART_TEARDOWN_OPT_DEFAULT	(AIE_PART_INIT_OPT_COLUMN_RST		|	\
 					 AIE_PART_INIT_OPT_SHIM_RST		|	\
