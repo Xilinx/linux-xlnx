@@ -3309,14 +3309,12 @@ static int aie2ps_set_tile_isolation(struct aie_partition *apart,
 
 static int aie2ps_part_clear_mems(struct aie_partition *apart)
 {
-	struct aie_range *range = &apart->range;
-	u32 node_id = apart->adev->pm_node_id;
+	u32 opts = AIE_PART_INIT_OPT_ZEROIZEMEM | AIE_PART_INIT_OPT_UC_ZEROIZATION;
+	u16 data = 0x6;
 	int ret;
 
-	ret = zynqmp_pm_aie_operation(node_id, range->start.col,
-				      range->size.col,
-				      XILINX_AIE_OPS_ZEROISATION);
-	if (ret < 0)
+	ret = aie_part_pm_ops(apart, &data, opts, apart->range, 1);
+	if (ret)
 		dev_err(&apart->dev, "failed to clear memory for partition\n");
 
 	return ret;
