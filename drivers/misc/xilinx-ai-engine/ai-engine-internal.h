@@ -1134,6 +1134,20 @@ struct aie_aperture {
 };
 
 /**
+ * struct aie_pm_ops - AI engine plm calls struct.
+ * @pkt_va: pm ops data virtual address.
+ * @pkt_dma: pm ops data dma address.
+ * @size: size of pkt_va.
+ * @offset: offset within pkt_va;
+ */
+struct aie_pm_ops {
+	void *pkt_va;
+	dma_addr_t pkt_dma;
+	size_t size;
+	size_t offset;
+};
+
+/**
  * struct aie_partition - AI engine partition structure
  * @node: list node
  * @dbufs: dmabufs list
@@ -1156,6 +1170,7 @@ struct aie_aperture {
  * @mem_event_status: memory module event bitmap
  * @pl_event_status: pl module event bitmap
  * @attr_grp: attribute group
+ * @pm_ops: pm ops pkt and metadata for zynq plm calls
  * @partition_id: partition id. Partition ID is the identifier
  *		  of the AI engine partition in the system.
  * @status: indicate if the partition is in use
@@ -1188,6 +1203,7 @@ struct aie_partition {
 	struct aie_resource mem_event_status;
 	struct aie_resource pl_event_status;
 	struct attribute_group *attr_grp;
+	struct aie_pm_ops pm_ops;
 	u32 partition_id;
 	u32 status;
 	u32 cntrflag;
@@ -1612,5 +1628,7 @@ int aie_dma_begin_cpu_access(struct dma_buf *dmabuf,
 			     enum dma_data_direction direction);
 int aie_dma_end_cpu_access(struct dma_buf *dmabuf,
 			   enum dma_data_direction direction);
+int aie_part_pm_ops_create(struct aie_partition *apart);
+void aie_part_pm_ops_free(struct aie_partition *apart);
 
 #endif /* AIE_INTERNAL_H */
