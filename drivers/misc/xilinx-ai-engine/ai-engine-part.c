@@ -1388,3 +1388,48 @@ int aie_part_get_tile_rows(struct aie_partition *apart,
 	else
 		return (apart->range.size.row - tattr->start_row);
 }
+
+/**
+ * aie_partition_write_privileged_mem() - Writes in tiles.
+ * @dev: AI engine partition device.
+ * @offset: Register Offset.
+ * @len: Length of the data to be written.
+ * @data: Data to written.
+ * @return: 0 on success, negative value otherwise.
+ */
+int aie_partition_write_privileged_mem(struct device *dev, size_t offset, size_t len, void *data)
+{
+	struct aie_partition *apart;
+
+	if (!dev || !data || !len)
+		return -EINVAL;
+
+	apart = dev_to_aiepart(dev);
+	if (!apart)
+		return -EINVAL;
+	return aie_part_write_register(apart, offset, len, data, 0);
+}
+EXPORT_SYMBOL_GPL(aie_partition_write_privileged_mem);
+
+/**
+ * aie_partition_read_privileged_mem() - Writes privileged memory in shim tiles.
+ * @dev: AI engine partition device.
+ * @offset: Register Offset.
+ * @len: Length of the data to be written.
+ * @data: Pointer to the memory to store the read data.
+ * @return: 0 on success, negative value otherwise.
+ */
+int aie_partition_read_privileged_mem(struct device *dev, size_t offset,
+				      size_t len, void *data)
+{
+	struct aie_partition *apart;
+
+	if (!dev || !data || !len)
+		return -EINVAL;
+
+	apart = dev_to_aiepart(dev);
+	if (!apart)
+		return -EINVAL;
+	return aie_part_read_register(apart, offset, len, data);
+}
+EXPORT_SYMBOL_GPL(aie_partition_read_privileged_mem);
