@@ -828,6 +828,8 @@ struct device *aie_partition_request(struct aie_partition_req *req)
 		aie_part_remove(apart);
 		mutex_unlock(&apart->aperture->mlock);
 	}
+	apart->user_event1_complete = req->user_event1_complete;
+	apart->user_event1_priv = req->user_event1_priv;
 
 	return &apart->dev;
 }
