@@ -1133,18 +1133,88 @@ struct aie_aperture {
 	struct attribute_group *attr_grp;
 };
 
+struct aie_op_start_num_col {
+	u16 type;         /* Operation Type */
+	u16 len;          /* Operation struct length */
+	u16 start_col;    /* Start Column */
+	u16 num_col;      /* Number of Columns */
+} __aligned(4);
+
+/**
+ * struct aie_op_l2_ctrl_irq - L2 Control IRQ ops
+ * @type: operation type.
+ * @len: length of the op
+ * @irq: irq value to be written to L2start_col: start column
+ */
+struct  aie_op_l2_ctrl_irq {
+	u16 type;         /* Operation Type */
+	u16 len;          /* Operation struct length */
+	u16 irq;          /* Value to be written to the L2 interrupt controller register. */
+} __aligned(4);
+
+struct aie_op_type_len {
+	u16 type;        /* Operation Type */
+	u16 len;         /* Operation struct length */
+} __aligned(4);
+
+struct aie_op_hw_err {
+	u16 type;         /* Operation Type */
+	u16 len;          /* Operation struct length */
+	u16 val;          /* Depends on the operation. Refer the table below for more information.*/
+} __aligned(4);
+
+struct aie_op_uc_zeroisation {
+	u16 type;         /* Operation Type */
+	u16 len;          /* Operation struct length*/
+	u16 flag;         /* Value to be written to the uc zeroization register */
+} __aligned(4);
+
+struct aie_op_handshake_data {
+	void *addr;
+	size_t size;
+};
+
+struct aie_op_handshake {
+	u16 type;         /* Operation Type */
+	u16 len;          /* Operation struct length*/
+	u32 high_addr; /* physical address of the buffer that has handshake data */
+	u32 low_addr;
+} __aligned(4);
+
+struct aie_op_nmu_switch {
+	u16 type;      /* Operation Type */
+	u16 len;       /* Operation struct length */
+	u16 c0_route;  /* Value to be written to column 0 nmu switch register */
+	u16 c1_route;  /* Value to be written to column 1 nmu switch register */
+} __aligned(4);
+
+struct aie_op_aximm_isolation {
+	u16 type;      /* Operation Type */
+	u16 len;       /* Operation struct length */
+	u16 traffic;   /* Value to be written to the aximm isolation register */
+} __aligned(4);
+
+struct aie_op_ecc_scrub_period {
+	u16 type; /* Operation Type */
+	u16 len; /* Operation struct length */
+	u16 scrub_period; /* Value to be written to the ecc scrub period register */
+} __aligned(4);
+
 /**
  * struct aie_pm_ops - AI engine plm calls struct.
  * @pkt_va: pm ops data virtual address.
  * @pkt_dma: pm ops data dma address.
  * @size: size of pkt_va.
  * @offset: offset within pkt_va;
+ * @op_range: pointer to pkt_va for latest range. All op headers added at offset will be for this
+ *	      range.
  */
 struct aie_pm_ops {
 	void *pkt_va;
 	dma_addr_t pkt_dma;
 	size_t size;
 	size_t offset;
+	struct aie_op_start_num_col *op_range;
 };
 
 /**
@@ -1630,5 +1700,9 @@ int aie_dma_end_cpu_access(struct dma_buf *dmabuf,
 			   enum dma_data_direction direction);
 int aie_part_pm_ops_create(struct aie_partition *apart);
 void aie_part_pm_ops_free(struct aie_partition *apart);
+
+int aie_part_pm_ops(struct aie_partition *apart, void *data, u32 type, struct aie_range range,
+		    bool flush);
+int aie_part_pm_ops_flush(struct aie_partition *apart);
 
 #endif /* AIE_INTERNAL_H */
