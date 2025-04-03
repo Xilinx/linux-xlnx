@@ -748,6 +748,7 @@ struct axienet_tsn_txq {
  * @tx_bd_head: transmit BD head indices
  * @tx_bd_tail: transmit BD tail indices
  * @tx_bd_rd: TADMA read pointer offset
+ * @sid_txq_idx: Maps TADMA sid to TX subqueue index
  * @tadma_tx_lock: TADMA tx lock
  * @ptp_tx_lock: PTP tx lock
  * @dma_err_tasklet: Tasklet structure to process Axi DMA errors
@@ -863,6 +864,7 @@ struct axienet_local {
 	u32 tx_bd_head[TADMA_MAX_NO_STREAM];
 	u32 tx_bd_tail[TADMA_MAX_NO_STREAM];
 	u32 tx_bd_rd[TADMA_MAX_NO_STREAM];
+	u8 sid_txq_idx[TADMA_MAX_NO_STREAM];
 	spinlock_t tadma_tx_lock;               /* TSN TADMA tx lock*/
 #endif
 	spinlock_t ptp_tx_lock;		/* PTP tx lock*/
@@ -942,6 +944,7 @@ struct axienet_local {
  * @tx_bufs_dma: Physical address of the Tx buffer address used by the driver
  *		 when DMA h/w is configured without DRE.
  * @eth_hasdre: Tells whether DMA h/w is configured with dre or not.
+ * @txq_idx:	TX subqueue index of this MCDMA queue.
  * @tx_bd_ci:	Stores the index of the Tx buffer descriptor in the ring being
  *		accessed currently. Used while alloc. BDs before a TX starts
  * @tx_bd_tail:	Stores the index of the Tx buffer descriptor in the ring being
@@ -977,6 +980,7 @@ struct axienet_dma_q {
 	unsigned char *tx_bufs;
 	dma_addr_t tx_bufs_dma;
 	bool eth_hasdre;
+	u8 txq_idx;
 
 	u32 tx_bd_ci;
 	u32 rx_bd_ci;

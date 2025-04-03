@@ -65,6 +65,20 @@ static inline bool tadma_queue_enabled(struct axienet_local *lp, enum qtype qt)
 	return lp->tadma_queues & BIT(qt);
 }
 
+static inline int tadma_qt_to_txq_idx(struct axienet_local *lp, enum qtype qt)
+{
+	int qno;
+
+	for (qno = 0; qno < lp->num_tc; qno++) {
+		if (lp->txqs[qno].is_tadma &&
+		    lp->txqs[qno].dmaq_idx == qt) {
+			return qno;
+		}
+	}
+
+	return -EINVAL;
+}
+
 static inline u32 tadma_macvlan_hash(struct axienet_local *lp,
 				     const unsigned char *addr)
 {
@@ -185,11 +199,16 @@ static irqreturn_t tadma_irq(int irq, void *_ndev)
 				cnt++;
 			}
 			spin_unlock(&lp->tadma_tx_lock);
-			if (cnt)
+			if (cnt) {
 				tadma_xmit_done(_ndev, sid, cnt);
+				if (__netif_subqueue_stopped(_ndev,
+							     lp->sid_txq_idx[sid])) {
+					netif_wake_subqueue(_ndev,
+							    lp->sid_txq_idx[sid]);
+				}
+			}
 		}
 	}
-	netif_tx_wake_all_queues(_ndev);
 
 	return IRQ_HANDLED;
 }
@@ -220,15 +239,25 @@ static int tadma_sfm_hash_init(struct net_device *ndev)
 	return 0;
 }
 
-static void tadma_sfm_program(struct net_device *ndev, int sid,
-			      enum qtype qtype, u32 tticks, u32 count)
+static int tadma_sfm_program(struct net_device *ndev, int sid,
+			     enum qtype qtype, u32 tticks, u32 count)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct sfm_entry sfm = {0, };
+	int txq_idx;
 	u32 offset;
 
 	pr_debug("%s sid: %d, qtype %d, count: %d\n", __func__, sid, qtype,
 		 count);
+	txq_idx = tadma_qt_to_txq_idx(lp, qtype);
+	if (txq_idx < 0) {
+		dev_err(&ndev->dev, "Failed to get txq for TADMA qtype %d\n",
+			qtype);
+		return -EINVAL;
+	}
+
+	lp->sid_txq_idx[sid] = txq_idx;
+
 	offset = sfm_entry_offset(lp, sid);
 
 	/* each tick is 8ns */
@@ -253,12 +282,13 @@ static void tadma_sfm_program(struct net_device *ndev, int sid,
 	pr_debug("sfm cfg: %x\n", sfm.cfg);
 	tadma_iow(lp, offset, sfm.tticks);
 	tadma_iow(lp, offset + 4, sfm.cfg);
+	return 0;
 }
 
 static int tadma_set_contiguous_mode(struct net_device *ndev, enum qtype qtype)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
-	int sid;
+	int sid, ret;
 
 	if (lp->get_sid >= lp->num_streams - 1) {
 		dev_info(&ndev->dev, "Can't support more than %d streams\n",
@@ -274,7 +304,10 @@ static int tadma_set_contiguous_mode(struct net_device *ndev, enum qtype qtype)
 
 	sid = lp->get_sid++;
 	lp->get_sfm++;
-	tadma_sfm_program(ndev, sid, qtype, NSEC_PER_MSEC, 0);
+	ret = tadma_sfm_program(ndev, sid, qtype, NSEC_PER_MSEC, 0);
+	if (ret)
+		return ret;
+
 	return sid;
 }
 
@@ -533,13 +566,14 @@ int axienet_tadma_xmit(struct sk_buff *skb, struct net_device *ndev,
 			       write_p);
 			chk_ptr = 1;
 		}
+
+		netif_stop_subqueue(ndev, queue_type);
 		spin_unlock_irqrestore(&lp->tadma_tx_lock, flags);
 		return NETDEV_TX_BUSY;
 	}
 	if (((lp->tx_bd_head[sid] + (num_frag + 1)) % lp->num_tadma_buffers) ==
 	    lp->tx_bd_tail[sid]) {
-		if (!__netif_subqueue_stopped(ndev, queue_type))
-			netif_stop_subqueue(ndev, queue_type);
+		netif_stop_subqueue(ndev, queue_type);
 		spin_unlock_irqrestore(&lp->tadma_tx_lock, flags);
 		return NETDEV_TX_BUSY;
 	}
@@ -656,10 +690,15 @@ int axienet_tadma_program(struct net_device *ndev, void __user *useraddr)
 	u32 cr, hash = 0;
 
 	for (hash = 0; hash < lp->num_entries; hash++) {
+		int ret;
+
 		bucket = &cb->stream_hash[hash];
 		hlist_for_each_entry_safe(entry, tmp, bucket, hash_link) {
-			tadma_sfm_program(ndev, entry->sid, entry->qtype,
-					  entry->tticks, entry->count);
+			ret = tadma_sfm_program(ndev, entry->sid, entry->qtype,
+						entry->tticks, entry->count);
+			if (ret)
+				return ret;
+
 			if (entry->qtype == qt_st) {
 				lp->default_st_sid = -1;
 				st_enabled = true;
