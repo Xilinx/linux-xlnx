@@ -276,13 +276,13 @@ int axienet_tadma_stop(struct net_device *ndev)
 int axienet_tadma_open(struct net_device *ndev)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
-	u32 cr;
+	static char irq_name[32];
 	u8 i = 0;
 	int ret;
-	static char irq_name[24];
+	u32 cr;
 
 	if (lp->tadma_irq) {
-		sprintf(irq_name, "%s_tadma_tx", ndev->name);
+		snprintf(irq_name, sizeof(irq_name), "%s_tadma_tx", ndev->name);
 		ret = request_irq(lp->tadma_irq, tadma_irq, IRQF_SHARED,
 				  irq_name, ndev);
 		if (ret)
