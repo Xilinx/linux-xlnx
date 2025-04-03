@@ -27,6 +27,7 @@
 
 #include "xilinx_axienet_tsn.h"
 #include "xilinx_tsn_switch.h"
+#include "xilinx_tsn_timer.h"
 
 #define TX_BD_NUM_DEFAULT	64
 #define RX_BD_NUM_DEFAULT	1024
@@ -40,8 +41,6 @@ static u8 res_pcp[8] = {2, 3};
 static uint res_count = 2;
 module_param_array(res_pcp, byte, &res_count, 0644);
 MODULE_PARM_DESC(res_pcp, "Array of pcp values mapped to RES class at the compile time");
-
-extern int axienet_phc_index;
 
 int tsn_data_path_open(struct net_device *ndev)
 {
