@@ -156,13 +156,14 @@ static void set_mac2_mngmntq(u32 config)
 	axienet_iow(&lp, XAS_MNG_Q_CTRL_OFFSET, config);
 }
 
-static int set_pmap_config(struct pmap_data pri_info)
+static int set_pmap_config(u8 *pcpmap)
 {
-	u32 pmap = 0;
-	u8 pmap_priority_shift = 0;
-	u8 i = 0;
 	u32 reg, err;
-	u16 num_q = lp.num_tc;
+	u32 pmap = 0;
+	u8 i = 0;
+
+	if (!pcpmap)
+		return -EINVAL;
 
 	/* wait for switch init done */
 	err = readl_poll_timeout(lp.regs + XAS_STATUS_OFFSET, reg,
@@ -173,31 +174,9 @@ static int set_pmap_config(struct pmap_data pri_info)
 		return -ETIMEDOUT;
 	}
 
-	if (num_q == 3) {
-		/* map pcp's to queues in accordance with device tree */
-		i = 0;
-		while (i < 8) {
-			if (pri_info.st_pcp_reg & (1 << i)) {
-				pmap_priority_shift = 4 * i;
-				pmap = pmap |
-				PMAP_EGRESS_QUEUE2_SELECT << pmap_priority_shift;
-			} else if (pri_info.res_pcp_reg & (1 << i)) {
-				pmap_priority_shift = 4 * i;
-				pmap = pmap |
-				PMAP_EGRESS_QUEUE1_SELECT << pmap_priority_shift;
-			}
-			i = i + 1;
-		}
-	} else {
-		i = 0;
-		while (i < 8) {
-			if (pri_info.st_pcp_reg & (1 << i)) {
-				pmap_priority_shift = 4 * i;
-				pmap = pmap |
-				PMAP_EGRESS_QUEUE1_SELECT << pmap_priority_shift;
-			}
-			i = i + 1;
-		}
+	for (i = 0; i < XAE_MAX_TSN_TC; i++) {
+		pmap = pmap | ((pcpmap[i] & PMAP_EGRESS_QUEUE_MASK) <<
+			       (4 * i));
 	}
 
 	axienet_iow(&lp, XAS_PMAP_OFFSET, pmap);
@@ -237,31 +216,31 @@ static void set_switch_regs(struct switch_data *data)
 
 	/* Threshold */
 	tmp = (data->thld_ep_mac[0].t1 << 16) | data->thld_ep_mac[0].t2;
-	axienet_iow(&lp, XAS_EP2MAC_ST_FIFOT_OFFSET, tmp);
+	axienet_iow(&lp, XAS_EP2MAC_PRI7_FIFOT_OFFSET, tmp);
 
 	tmp = (data->thld_ep_mac[1].t1 << 16) | data->thld_ep_mac[1].t2;
-	axienet_iow(&lp, XAS_EP2MAC_RE_FIFOT_OFFSET, tmp);
+	axienet_iow(&lp, XAS_EP2MAC_PRI6_FIFOT_OFFSET, tmp);
 
 	tmp = (data->thld_ep_mac[2].t1 << 16) | data->thld_ep_mac[2].t2;
-	axienet_iow(&lp, XAS_EP2MAC_BE_FIFOT_OFFSET, tmp);
+	axienet_iow(&lp, XAS_EP2MAC_PRI5_FIFOT_OFFSET, tmp);
 
 	tmp = (data->thld_mac_mac[0].t1 << 16) | data->thld_mac_mac[0].t2;
-	axienet_iow(&lp, XAS_MAC2MAC_ST_FIFOT_OFFSET, tmp);
+	axienet_iow(&lp, XAS_MAC2MAC_PRI7_FIFOT_OFFSET, tmp);
 
 	tmp = (data->thld_mac_mac[1].t1 << 16) | data->thld_mac_mac[1].t2;
-	axienet_iow(&lp, XAS_MAC2MAC_RE_FIFOT_OFFSET, tmp);
+	axienet_iow(&lp, XAS_MAC2MAC_PRI6_FIFOT_OFFSET, tmp);
 
 	tmp = (data->thld_mac_mac[2].t1 << 16) | data->thld_mac_mac[2].t2;
-	axienet_iow(&lp, XAS_MAC2MAC_BE_FIFOT_OFFSET, tmp);
+	axienet_iow(&lp, XAS_MAC2MAC_PRI5_FIFOT_OFFSET, tmp);
 
 	/* Port VLAN ID */
 	axienet_iow(&lp, XAS_EP_PORT_VLAN_OFFSET, data->ep_vlan);
 	axienet_iow(&lp, XAS_MAC_PORT_VLAN_OFFSET, data->mac_vlan);
 
 	/* max frame size */
-	axienet_iow(&lp, XAS_ST_MAX_FRAME_SIZE_OFFSET, data->max_frame_sc_que);
-	axienet_iow(&lp, XAS_RE_MAX_FRAME_SIZE_OFFSET, data->max_frame_res_que);
-	axienet_iow(&lp, XAS_BE_MAX_FRAME_SIZE_OFFSET, data->max_frame_be_que);
+	axienet_iow(&lp, XAS_PRI7_MAX_FRAME_SIZE_OFFSET, data->max_frame_sc_que);
+	axienet_iow(&lp, XAS_PRI6_MAX_FRAME_SIZE_OFFSET, data->max_frame_res_que);
+	axienet_iow(&lp, XAS_PRI5_MAX_FRAME_SIZE_OFFSET, data->max_frame_be_que);
 }
 
 /**
@@ -285,27 +264,27 @@ static void get_switch_regs(struct switch_data *data)
 	data->sw_mac_addr[5] = (tmp & 0xFF);
 
 	/* Threshold */
-	tmp = axienet_ior(&lp, XAS_EP2MAC_ST_FIFOT_OFFSET);
+	tmp = axienet_ior(&lp, XAS_EP2MAC_PRI7_FIFOT_OFFSET);
 	data->thld_ep_mac[0].t1 = ((tmp >> 16) & 0xFFFF);
 	data->thld_ep_mac[0].t2 = tmp & (0xFFFF);
 
-	tmp = axienet_ior(&lp, XAS_EP2MAC_RE_FIFOT_OFFSET);
+	tmp = axienet_ior(&lp, XAS_EP2MAC_PRI6_FIFOT_OFFSET);
 	data->thld_ep_mac[1].t1 = ((tmp >> 16) & 0xFFFF);
 	data->thld_ep_mac[1].t2 = tmp & (0xFFFF);
 
-	tmp = axienet_ior(&lp, XAS_EP2MAC_BE_FIFOT_OFFSET);
+	tmp = axienet_ior(&lp, XAS_EP2MAC_PRI5_FIFOT_OFFSET);
 	data->thld_ep_mac[2].t1 = ((tmp >> 16) & 0xFFFF);
 	data->thld_ep_mac[2].t2 = tmp & (0xFFFF);
 
-	tmp = axienet_ior(&lp, XAS_MAC2MAC_ST_FIFOT_OFFSET);
+	tmp = axienet_ior(&lp, XAS_MAC2MAC_PRI7_FIFOT_OFFSET);
 	data->thld_mac_mac[0].t1 = ((tmp >> 16) & 0xFFFF);
 	data->thld_mac_mac[0].t2 = tmp & (0xFFFF);
 
-	tmp = axienet_ior(&lp, XAS_MAC2MAC_RE_FIFOT_OFFSET);
+	tmp = axienet_ior(&lp, XAS_MAC2MAC_PRI6_FIFOT_OFFSET);
 	data->thld_mac_mac[1].t1 = ((tmp >> 16) & 0xFFFF);
 	data->thld_mac_mac[1].t2 = tmp & (0xFFFF);
 
-	tmp = axienet_ior(&lp, XAS_MAC2MAC_BE_FIFOT_OFFSET);
+	tmp = axienet_ior(&lp, XAS_MAC2MAC_PRI5_FIFOT_OFFSET);
 	data->thld_mac_mac[2].t1 = ((tmp >> 16) & 0xFFFF);
 	data->thld_mac_mac[2].t2 = tmp & (0xFFFF);
 
@@ -315,11 +294,11 @@ static void get_switch_regs(struct switch_data *data)
 
 	/* max frame size */
 	data->max_frame_sc_que = (axienet_ior(&lp,
-				XAS_ST_MAX_FRAME_SIZE_OFFSET) & 0xFFFF);
+				XAS_PRI7_MAX_FRAME_SIZE_OFFSET) & 0xFFFF);
 	data->max_frame_res_que = (axienet_ior(&lp,
-				XAS_RE_MAX_FRAME_SIZE_OFFSET) & 0xFFFF);
+				XAS_PRI6_MAX_FRAME_SIZE_OFFSET) & 0xFFFF);
 	data->max_frame_be_que = (axienet_ior(&lp,
-				XAS_BE_MAX_FRAME_SIZE_OFFSET) & 0xFFFF);
+				XAS_PRI5_MAX_FRAME_SIZE_OFFSET) & 0xFFFF);
 
 	/* frame filter type options*/
 	tmp = axienet_ior(&lp, XAS_FRM_FLTR_TYPE_FIELD_OPT_OFFSET);
@@ -1364,7 +1343,13 @@ static long switch_ioctl(struct file *file, unsigned int cmd,
 			retval = -EINVAL;
 			goto end;
 		}
-		retval = set_pmap_config(pri_info);
+
+		if (lp.num_tc <= XAE_MAX_LEGACY_TSN_TC) {
+			axienet_set_pcpmap(ep_lp);
+			retval = set_pmap_config(ep_lp->pcpmap);
+		} else {
+			retval = -EOPNOTSUPP;
+		}
 		break;
 
 	case SET_FRAME_TYPE_FIELD:
@@ -1750,14 +1735,12 @@ static int tsn_switch_fdb_init(struct platform_device *pdev)
 
 static int tsnswitch_probe(struct platform_device *pdev)
 {
-	struct resource *swt;
-	int ret;
-	u16 num_tc;
-	int data;
 	struct net_device *ndev;
-	int value;
+	struct resource *swt;
 	u8 inband_mgmt_tag;
-	struct pmap_data pri_info;
+	int value;
+	u32 data;
+	int ret;
 
 	pr_info("TSN Switch probe\n");
 	/* Map device registers */
@@ -1767,12 +1750,12 @@ static int tsnswitch_probe(struct platform_device *pdev)
 		return PTR_ERR(lp.regs);
 
 	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-tc",
-				   &num_tc);
-	if (ret || (num_tc != 2 && num_tc != 3))
-		num_tc = XAE_MAX_TSN_TC;
-	lp.num_tc = num_tc;
-
-	axienet_get_pcp_mask(&lp, num_tc);
+				   &lp.num_tc);
+	if (ret || !axienet_tsn_num_tc_valid(lp.num_tc)) {
+		dev_err(&pdev->dev,
+			"xlnx,num-tc parameter not defined or valid\n");
+		return -EINVAL;
+	}
 
 	en_hw_addr_learning = of_property_read_bool(pdev->dev.of_node,
 						    "xlnx,has-hwaddr-learning");
@@ -1784,11 +1767,7 @@ static int tsnswitch_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 	pr_info("TSN CAM Initializing ....\n");
-	pri_info.st_pcp_reg = lp.st_pcp;
-	pri_info.res_pcp_reg = lp.res_pcp;
-	ret = set_pmap_config(pri_info);
-	if (ret)
-		return ret;
+
 	inband_mgmt_tag = of_property_read_bool(pdev->dev.of_node,
 						"xlnx,has-inband-mgmt-tag");
 	/* only support switchdev in sideband management */
@@ -1859,6 +1838,12 @@ static int tsnswitch_probe(struct platform_device *pdev)
 	 */
 	data = axienet_ior(&lp, XAE_EP_EXT_CTRL_OFFSET);
 	pr_info("Data in Endpoint Extension Control Register is %x\n", data);
+	if (lp.num_tc > XAE_MAX_LEGACY_TSN_TC) {
+		u32 ctrl1_data = axienet_ior(&lp, XAE_EP_EXT_CTRL1_OFFSET);
+
+		pr_info("Data in EP_EXT Control 1 Register %x\n", ctrl1_data);
+	}
+
 	ndev = of_find_net_device_by_node(ep_node);
 	if (!ndev) {
 		dev_err(&pdev->dev, "Defer Switch probe as EP is not probed\n");
@@ -1866,13 +1851,18 @@ static int tsnswitch_probe(struct platform_device *pdev)
 		goto err;
 	}
 	ep_lp = netdev_priv(ndev);
+
+	ret = set_pmap_config(ep_lp->pcpmap);
+	if (ret)
+		goto err;
+
 	if (ep_lp->ex_ep) {
-		if (num_tc == 3) {
+		if (lp.num_tc == XAE_MAX_LEGACY_TSN_TC) {
 			data = (data & XAE_EX_EP_EXT_CTRL_MASK) |
 					XAE_EX_EP_EXT_CTRL_DATA_TC_3;
 			axienet_iow(&lp, XAE_EP_EXT_CTRL_OFFSET, data);
 		}
-		if (num_tc == 2) {
+		if (lp.num_tc == XAE_MIN_LEGACY_TSN_TC) {
 			data = (data & XAE_EX_EP_EXT_CTRL_MASK) |
 					XAE_EX_EP_EXT_CTRL_DATA_TC_2;
 			axienet_iow(&lp, XAE_EP_EXT_CTRL_OFFSET, data);
@@ -1885,12 +1875,12 @@ static int tsnswitch_probe(struct platform_device *pdev)
 		value |= XAE_EX_EP_MULTICAST_PKT_SWITCH;
 		axienet_iow(&lp, XAE_MGMT_QUEUING_OPTIONS_OFFSET, value);
 	} else {
-		if (num_tc == 3) {
+		if (lp.num_tc == XAE_MAX_LEGACY_TSN_TC) {
 			data = (data & XAE_EP_EXT_CTRL_MASK) |
 					XAE_EP_EXT_CTRL_DATA_TC_3;
 			axienet_iow(&lp, XAE_EP_EXT_CTRL_OFFSET, data);
 		}
-		if (num_tc == 2) {
+		if (lp.num_tc == XAE_MIN_LEGACY_TSN_TC) {
 			data = (data & XAE_EP_EXT_CTRL_MASK) |
 					XAE_EP_EXT_CTRL_DATA_TC_2;
 			axienet_iow(&lp, XAE_EP_EXT_CTRL_OFFSET, data);

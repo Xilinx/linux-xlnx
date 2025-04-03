@@ -29,12 +29,8 @@
 #define XAE_MAX_VLAN_FRAME_SIZE  (XAE_MTU + VLAN_ETH_HLEN + XAE_TRL_SIZE)
 #define XAE_MAX_JUMBO_FRAME_SIZE (XAE_JUMBO_MTU + XAE_HDR_SIZE + XAE_TRL_SIZE)
 
-/* Queue Numbers of BE, RES, ST and PTP */
-
+/* Queue 0 is the lowest priority queue */
 #define BE_QUEUE_NUMBER  0
-#define RES_QUEUE_NUMBER 1
-#define ST_QUEUE_NUMBER  2
-#define PTP_QUEUE_NUMBER 3
 
 /* DMA address width min and max range */
 #define XAE_DMA_MASK_MIN	32
@@ -494,6 +490,7 @@
 #define XMCDMA_BD_CTRL_ALL_MASK		0xC0000000 /* All control bits */
 #define XMCDMA_BD_STS_ALL_MASK		0xF0000000 /* All status bits */
 #define XMCDMA_BD_SD_STS_ALL_MASK	0x00000030 /* TUSER input port bits */
+#define XMCDMA_BD_SD_MGMT_VALID_MASK	BIT(0) /* Management frame */
 
 #define XMCDMA_BD_SD_STS_TUSER_EP	0x00000000
 #define XMCDMA_BD_SD_STS_TUSER_MAC_1	0x00000010
@@ -647,12 +644,17 @@ struct aximcdma_bd {
 #define DESC_DMA_MAP_SINGLE 0
 #define DESC_DMA_MAP_PAGE 1
 
-#define XAE_MAX_QUEUES		7
-
-/* TSN queues range is 2 to 5. For eg: for num_tc = 2 minimum queues = 2;
+/* In Legacy design: TSN queues range is 2 to 5.
+ * For eg: for num_tc = 2 minimum queues = 2;
  * for num_tc = 3 with sideband signalling maximum queues = 5
+ *
+ * In eight queue design: 8 queues are for EP and 8 queues for EX_EP
  */
-#define XAE_MAX_TSN_TC		3
+#define XAE_MAX_QUEUES		16
+
+#define XAE_MAX_TSN_TC		8
+#define XAE_MIN_LEGACY_TSN_TC	2
+#define XAE_MAX_LEGACY_TSN_TC	3
 #define XAE_TSN_MIN_QUEUES	4
 
 #define TSN_BRIDGEEP_EPONLY	BIT(29)
@@ -685,6 +687,16 @@ enum axienet_tsn_ioctl {
 };
 
 /**
+ * struct axienet_tsn_txq - TX queues to DMA channel mapping
+ * @is_tadma: True if the queue is connected via TADMA channel
+ * @dmaq_idx: DMA queue data index for MCDMA and queue type for TADMA
+ */
+struct axienet_tsn_txq {
+	bool is_tadma;
+	u8 dmaq_idx;
+};
+
+/**
  * struct axienet_local - axienet private per device data
  * @ndev:	Pointer for net_device to which it will be attached.
  * @dev:	Pointer to device structure
@@ -703,8 +715,6 @@ enum axienet_tsn_ioctl {
  * @phy_mode:	Phy type to identify between MII/GMII/RGMII/SGMII/1000 Base-X
  * @num_tc:	Total number of TSN Traffic classes
  * @abl_reg:	TSN abilities register
- * @st_pcp:     pcp values mapped to scheduled traffic.
- * @res_pcp:    pcp values mapped to reserved traffic.
  * @master:	Master endpoint
  * @slaves:	Front panel ports
  * @ex_ep:	extended end point
@@ -724,12 +734,15 @@ enum axienet_tsn_ioctl {
  * @tadma_regs: pointer to tadma registers base address
  * @tadma_irq: TADMA IRQ number
  * @t_cb: pointer to tadma_cb
+ * @tadma_queues: Bitmask of the TADMA queues connected in design
  * @active_sfm: current active stream fetch memory
  * @num_tadma_buffers: number of TADMA buffers per stream
  * @num_streams: maximum number of streams TADMA can fetch
  * @num_entries: maximum number of entries in TADMA streams config
  * @get_sid: Number of TADMA streams currently active
  * @get_sfm: Number of SFM entries currently in use
+ * @default_res_sid: RES queue stream id in TADMA continuous mode
+ * @default_st_sid: ST queue stream id in TADMA continuous mode
  * @tadma_hash_bits: Number of bits required to represent TADMA streams
  * @tx_bd: tadma transmit buffer descriptor
  * @tx_bd_head: transmit BD head indices
@@ -782,6 +795,8 @@ enum axienet_tsn_ioctl {
  * @gt_lane: MRMAC GT lane index used.
  * @ptp_os_cf: CF TS of PTP PDelay req for one step usage.
  * @xxv_ip_version: XXV IP version
+ * @txqs: TX queues to MCDMA & TADMA channel mapping
+ * @pcpmap: PCP to queues mapping information
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -810,8 +825,6 @@ struct axienet_local {
 
 	u16   num_tc;
 	u32   abl_reg;
-	u8    st_pcp;
-	u8    res_pcp;
 	struct net_device *master; /* master endpoint */
 	struct net_device *slaves[2]; /* two front panel ports */
 	struct net_device *ex_ep; /* extended endpoint*/
@@ -836,12 +849,15 @@ struct axienet_local {
 	void __iomem *tadma_regs;
 	int tadma_irq;
 	void *t_cb;
+	u8 tadma_queues;
 	int active_sfm;
 	int num_tadma_buffers;
 	int num_streams;
 	int num_entries;
 	u32 get_sid;
 	u32 get_sfm;
+	int default_res_sid;
+	int default_st_sid;
 	u8 tadma_hash_bits;
 	struct axitadma_bd **tx_bd;
 	u32 tx_bd_head[TADMA_MAX_NO_STREAM];
@@ -904,6 +920,8 @@ struct axienet_local {
 	u32 gt_lane;		/* MRMAC GT lane index used */
 	u64 ptp_os_cf;		/* CF TS of PTP PDelay req for one step usage */
 	u32 xxv_ip_version;
+	struct axienet_tsn_txq txqs[XAE_MAX_TSN_TC];
+	u8 pcpmap[XAE_MAX_TSN_TC];
 };
 
 /**
@@ -1200,6 +1218,11 @@ static inline void axienet_qbv_iow(struct axienet_local *lp, off_t offset,
 }
 #endif
 
+static inline bool axienet_tsn_num_tc_valid(int num_tc)
+{
+	return (num_tc >= XAE_MIN_LEGACY_TSN_TC && num_tc <= XAE_MAX_TSN_TC);
+}
+
 /* Function prototypes visible in xilinx_axienet_mdio.c for other files */
 int axienet_mdio_enable_tsn(struct axienet_local *lp);
 void axienet_mdio_disable_tsn(struct axienet_local *lp);
@@ -1217,7 +1240,8 @@ int axienet_tsn_xmit(struct sk_buff *skb, struct net_device *ndev);
 u16 axienet_tsn_select_queue(struct net_device *ndev, struct sk_buff *skb,
 			     struct net_device *sb_dev);
 u16 axienet_tsn_pcp_to_queue(struct net_device *ndev, struct sk_buff *skb);
-int axienet_get_pcp_mask(struct axienet_local *lp, u16 num_tc);
+void axienet_set_pcpmap(struct axienet_local *lp);
+int axienet_init_tsn_txqs(struct axienet_local *lp, u16 num_tc);
 int tsn_data_path_open(struct net_device *ndev);
 int tsn_data_path_close(struct net_device *ndev);
 #if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
