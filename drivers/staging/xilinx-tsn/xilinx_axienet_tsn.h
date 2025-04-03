@@ -453,6 +453,7 @@
 #define XMCDMA_CHAN_CURDESC_OFFSET(chan_id)	(0x48 + ((chan_id) - 1) * 0x40)
 #define XMCDMA_CHAN_TAILDESC_OFFSET(chan_id)	(0x50 + ((chan_id) - 1) * 0x40)
 #define XMCDMA_CHAN_PKTDROP_OFFSET(chan_id)	(0x58 + ((chan_id) - 1) * 0x40)
+#define XMCDMA_CHAN_SR_IDLE_MASK		BIT(0)
 
 #define XMCDMA_RX_OFFSET	0x500
 
@@ -690,10 +691,13 @@ enum axienet_tsn_ioctl {
  * struct axienet_tsn_txq - TX queues to DMA channel mapping
  * @is_tadma: True if the queue is connected via TADMA channel
  * @dmaq_idx: DMA queue data index for MCDMA and queue type for TADMA
+ * @disable_cnt: Counter which indicates the number of times the queue is
+ *		 disabled.
  */
 struct axienet_tsn_txq {
 	bool is_tadma;
 	u8 dmaq_idx;
+	u8 disable_cnt;
 };
 
 /**
@@ -798,6 +802,7 @@ struct axienet_tsn_txq {
  * @xxv_ip_version: XXV IP version
  * @txqs: TX queues to MCDMA & TADMA channel mapping
  * @pcpmap: PCP to queues mapping information
+ * @qbv_enabled: Bitmask of the QBV enabled queues
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -924,6 +929,7 @@ struct axienet_local {
 	u32 xxv_ip_version;
 	struct axienet_tsn_txq txqs[XAE_MAX_TSN_TC];
 	u8 pcpmap[XAE_MAX_TSN_TC];
+	u32 qbv_enabled;
 };
 
 /**
@@ -1329,6 +1335,9 @@ int __maybe_unused axienet_mcdma_tx_probe_tsn(struct platform_device *pdev,
 int __maybe_unused axienet_mcdma_rx_probe_tsn(struct platform_device *pdev,
 					      struct device_node *np,
 					      struct net_device *ndev);
+int axienet_mcdma_disable_tx_q(struct net_device *ndev, u8 map);
+void axienet_mcdma_enable_tx_q(struct net_device *ndev, u8 map);
+
 int axienet_ethtools_get_coalesce(struct net_device *ndev,
 				  struct ethtool_coalesce *ecoalesce,
 				  struct kernel_ethtool_coalesce *kernel_coal,
