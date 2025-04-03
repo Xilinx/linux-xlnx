@@ -45,7 +45,6 @@ struct tadma_stream_entry {
 	u32 tticks;
 	struct hlist_node hash_link;
 	int sid;
-	int sfm;
 	int count;
 };
 
@@ -602,7 +601,7 @@ int axienet_tadma_program(struct net_device *ndev, void __user *useraddr)
 	for (hash = 0; hash < lp->num_entries; hash++) {
 		bucket = &cb->stream_hash[hash];
 		hlist_for_each_entry_safe(entry, tmp, bucket, hash_link) {
-			tadma_sfm_program(ndev, entry->sfm,
+			tadma_sfm_program(ndev, entry->sid,
 					  entry->tticks, entry->count);
 		}
 	}
@@ -631,6 +630,7 @@ int axienet_tadma_off(struct net_device *ndev, void __user *useraddr)
 	tadma_sfm_program(ndev, STRID_BE, NSEC_PER_MSEC, 0);
 	tadma_iow(lp, XTADMA_CR_OFFSET, XTADMA_CFG_DONE);
 	lp->get_sid = 0;
+	lp->get_sfm = 0;
 	return 0;
 }
 
@@ -644,6 +644,8 @@ int axienet_tadma_flush_stream(struct net_device *ndev, void __user *useraddr)
 	u32 offset;
 	int hash;
 
+	lp->get_sid = 0;
+	lp->get_sfm = 0;
 	/* set CFG_DONE to 0 */
 	tadma_iow(lp, XTADMA_CR_OFFSET, 0);
 
@@ -679,11 +681,6 @@ int axienet_tadma_add_stream(struct net_device *ndev, void __user *useraddr)
 	if (stream.count > MAX_TRIG_COUNT)
 		return -EINVAL;
 
-	if (stream.start) {
-		lp->get_sid = 0;
-		lp->get_sfm = 0;
-	}
-
 	memcpy(mac_vlan, stream.dmac, 6);
 
 	for (st_pcp_val = 0; st_pcp_val < 8; st_pcp_val++) {
@@ -718,6 +715,7 @@ int axienet_tadma_add_stream(struct net_device *ndev, void __user *useraddr)
 		return -EINVAL;
 	}
 
+	lp->get_sfm++;
 	entry = kzalloc(sizeof(*entry), GFP_KERNEL);
 	if (!entry)
 		return -ENOMEM;
@@ -726,7 +724,6 @@ int axienet_tadma_add_stream(struct net_device *ndev, void __user *useraddr)
 	entry->count = stream.count;
 	entry->sid = sid;
 	memcpy(entry->macvlan, mac_vlan, 8);
-	entry->sfm = lp->get_sfm++;
 
 	pr_debug("%s sid: %d\n", __func__, sid);
 	hlist_add_head(&entry->hash_link, &cb->stream_hash[idx]);
