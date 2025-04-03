@@ -226,12 +226,16 @@ static uint64_t prep_pm_hdr_api_features(u32 module_id)
  * Return:
  * - 0 on success
  * - -EOPNOTSUPP if the firmware call fails.
+ * - -ENODEV if the active_platform_fw_data is NULL.
  */
 static int do_feature_check_for_tfa_apis(const u32 api_id, u32 *ret_payload)
 {
 	u32 module_id;
 	u64 smc_arg[2];
 	int ret;
+
+	if (!active_platform_fw_data)
+		return -ENODEV;
 
 	module_id = FIELD_GET(MODULE_ID_MASK, api_id);
 
@@ -357,7 +361,10 @@ static int dispatch_feature_check(const u32 api_id, u32 *ret_payload)
 	if (module_id == TF_A_MODULE_ID)
 		return do_feature_check_for_tfa_apis(api_id, ret_payload);
 
-	return active_platform_fw_data->do_feature_check(api_id, ret_payload);
+	if (active_platform_fw_data)
+		return active_platform_fw_data->do_feature_check(api_id, ret_payload);
+
+	return -ENODEV;
 }
 
 static int do_feature_check_call(const u32 api_id)
@@ -628,7 +635,7 @@ int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...)
 {
 	va_list arg_list;
 	u32 module_id;
-	int ret;
+	int ret = -ENODEV;
 
 	/*
 	 * According to the SMCCC: The total number of registers available for
@@ -663,8 +670,9 @@ int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...)
 	if (module_id == TF_A_MODULE_ID)
 		ret = __zynqmp_pm_fw_call_basic(pm_api_id, ret_payload, num_args, &arg_list);
 	else
-		ret = active_platform_fw_data->zynqmp_pm_fw_call(pm_api_id, ret_payload,
-								 num_args, &arg_list);
+		if (active_platform_fw_data)
+			ret = active_platform_fw_data->zynqmp_pm_fw_call(pm_api_id, ret_payload,
+									 num_args, &arg_list);
 
 	va_end(arg_list);
 	return ret;
@@ -673,22 +681,28 @@ int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...)
 /**
  * zynqmp_pm_load_pdi_word_swap - Perform word swapping on a memory address.
  * @address: Memory address to be word-swapped.
+ * @swapped_address: Pointer to store the resulting swapped address.
  *
  * This function checks if the active platform's firmware data specifies that
  * word swapping is required when loading a Programmable Device Image (PDI).
  * If so, it performs the necessary word swapping on the provided memory
- * address.
+ * address. The swapped address is stored in the provided pointer.
  *
- * Return: 64bit address memory address.
+ * Return:
+ * - 0 on success.
+ * - -ENODEV if the active_platform_fw_data is NULL.
  */
-u64 zynqmp_pm_load_pdi_word_swap(const u64 address)
+int zynqmp_pm_load_pdi_word_swap(const u64 address, u64 *swapped_address)
 {
-	u64 swapped_address = address;
+	if (!active_platform_fw_data)
+		return -ENODEV;
 
 	if (active_platform_fw_data->load_pdi_word_swap)
-		swapped_address = (address << 32) | (address >> 32);
+		*swapped_address = (address << 32) | (address >> 32);
+	else
+		*swapped_address = address;
 
-	return swapped_address;
+	return 0;
 }
 
 /**
