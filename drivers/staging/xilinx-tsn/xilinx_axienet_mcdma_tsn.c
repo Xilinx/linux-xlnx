@@ -306,17 +306,17 @@ int __maybe_unused axienet_mcdma_rx_q_init_tsn(struct net_device *ndev,
 	}
 
 	/* check if this is a mgmt channel */
-	if (lp->num_rx_queues == TSN_MAX_RX_Q_EX_EPSWITCH &&
+	if (lp->num_tc == XAE_MAX_LEGACY_TSN_TC &&
+	    lp->num_rx_queues == TSN_MAX_RX_Q_EX_EPSWITCH &&
 	    (q->chan_id == TSN_MAX_EX_EP_BE_CHAN ||
 	     q->chan_id == TSN_MAX_EX_EP_ST_CHAN ||
 	     q->chan_id == TSN_MAX_EX_EP_RES_CHAN)) {
 		q->flags = MCDMA_EP_EX_CHAN;
-	} else if ((lp->num_rx_queues == TSN_MIN_RX_Q_EX_EPSWITCH) &&
+	} else if ((lp->num_tc == XAE_MIN_LEGACY_TSN_TC) &&
+		   (lp->num_rx_queues == TSN_MIN_RX_Q_EX_EPSWITCH) &&
 		   ((q->chan_id == TSN_MIN_EX_EP_BE_CHAN) ||
 		    (q->chan_id == TSN_MIN_EX_EP_ST_CHAN))) {
 		q->flags = MCDMA_EP_EX_CHAN;
-	} else if (!(lp->abl_reg & TSN_BRIDGEEP_EPONLY) && q->chan_id == TSN_MGMT_CHAN) {
-		q->flags = MCDMA_MGMT_CHAN;
 	}
 
 	/* Start updating the Rx channel control register */

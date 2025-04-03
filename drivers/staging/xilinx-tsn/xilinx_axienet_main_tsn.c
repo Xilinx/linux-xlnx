@@ -542,19 +542,18 @@ static inline int axienet_check_tx_bd_space(struct axienet_dma_q *q,
 int axienet_queue_xmit_tsn(struct sk_buff *skb,
 			   struct net_device *ndev, u16 map)
 {
-	u32 ii;
-	u32 num_frag;
-	u32 csum_start_off;
-	u32 csum_index_off;
-	dma_addr_t tail_p;
+	u32 csum_start_off, csum_index_off, num_frag, ii;
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct aximcdma_bd *cur_p;
-	unsigned long flags;
 	struct axienet_dma_q *q;
+	unsigned long flags;
+	dma_addr_t tail_p;
+	u8 dmaq_idx;
 
 	num_frag = skb_shinfo(skb)->nr_frags;
 
-	q = lp->dq[map];
+	dmaq_idx = lp->txqs[map].dmaq_idx;
+	q = lp->dq[dmaq_idx];
 
 	cur_p = &q->txq_bd_v[q->tx_bd_tail];
 	spin_lock_irqsave(&q->tx_lock, flags);
@@ -727,7 +726,7 @@ static int axienet_recv(struct net_device *ndev, int budget,
 			skb->csum = be32_to_cpu(cur_p->app3 & 0xFFFF);
 			skb->ip_summed = CHECKSUM_COMPLETE;
 		}
-		if (unlikely(q->flags & MCDMA_MGMT_CHAN)) {
+		if (unlikely(sband_status & XMCDMA_BD_SD_MGMT_VALID_MASK)) {
 			/* received packet on mgmt channel */
 			if ((sband_status & XMCDMA_BD_SD_STS_ALL_MASK)
 			    == XMCDMA_BD_SD_STS_TUSER_MAC_1) {
@@ -827,6 +826,7 @@ int xaxienet_rx_poll_tsn(struct napi_struct *napi, int quota)
 
 	struct axienet_dma_q *q = lp->dq[map];
 
+	pr_debug("index %d, chan_id %d\n", map, q->chan_id);
 	spin_lock(&q->rx_lock);
 	status = axienet_dma_in32(q, XMCDMA_CHAN_SR_OFFSET(q->chan_id) +
 				  q->rx_offset);
@@ -1775,8 +1775,10 @@ static int axienet_probe(struct platform_device *pdev)
 
 	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-tc",
 				   &lp->num_tc);
-	if (ret || (lp->num_tc != 2 && lp->num_tc != 3))
-		lp->num_tc = XAE_MAX_TSN_TC;
+	if (ret || !axienet_tsn_num_tc_valid(lp->num_tc)) {
+		dev_err(&pdev->dev, "xlnx,num-tc parameter not defined\n");
+		goto free_netdev;
+	}
 
 	/* Map device registers */
 	lp->regs = devm_platform_get_and_ioremap_resource(pdev, 0, &ethres);

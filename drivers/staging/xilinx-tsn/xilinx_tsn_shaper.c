@@ -33,14 +33,14 @@ static inline int axienet_map_gs_to_hw(struct axienet_local *lp, u32 gs)
 	u8 st_queue = 2;
 	unsigned int acl_bit_map = 0;
 
-	if (lp->num_tc == 2)
+	if (lp->num_tc == XAE_MIN_LEGACY_TSN_TC)
 		st_queue = 1;
 
 	if (gs & GS_BE_OPEN)
 		acl_bit_map |= (1 << be_queue);
 	if (gs & GS_ST_OPEN)
 		acl_bit_map |= (1 << st_queue);
-	if (lp->num_tc == 3 && (gs & GS_RE_OPEN))
+	if (lp->num_tc == XAE_MAX_LEGACY_TSN_TC && (gs & GS_RE_OPEN))
 		acl_bit_map |= (1 << re_queue);
 
 	return acl_bit_map;
@@ -156,8 +156,12 @@ static int xlnx_taprio_replace(struct net_device *ndev,
 static void xlnx_taprio_destroy(struct net_device *ndev)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
+	u32 u_config_change = 0;
 
-	axienet_qbv_iow(lp, CONFIG_CHANGE, ~(u32)CC_ADMIN_GATE_ENABLE_BIT);
+	u_config_change &= ~CC_ADMIN_GATE_ENABLE_BIT;
+	/* open all the gates */
+	u_config_change |= CC_ADMIN_GATE_STATE_MASK;
+	axienet_qbv_iow(lp, CONFIG_CHANGE, u_config_change);
 }
 
 static int tsn_setup_shaper_tc_taprio(struct net_device *ndev, void *type_data)
@@ -200,7 +204,7 @@ static int __axienet_set_schedule(struct net_device *ndev, struct qbv_info *qbv)
 		/* clear the gate enable bit */
 		u_config_change &= ~CC_ADMIN_GATE_ENABLE_BIT;
 		/* open all the gates */
-		u_config_change |= CC_ADMIN_GATE_STATE_SHIFT;
+		u_config_change |= CC_ADMIN_GATE_STATE_MASK;
 
 		axienet_qbv_iow(lp, CONFIG_CHANGE, u_config_change);
 

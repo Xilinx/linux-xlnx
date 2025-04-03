@@ -90,7 +90,13 @@ u16 axienet_tsn_select_queue(struct net_device *ndev, struct sk_buff *skb,
 	if (hdr->h_proto == htons(ETH_P_1588) ||
 	    (lp->current_rx_filter == HWTSTAMP_FILTER_PTP_V2_L4_EVENT &&
 	     hdr->h_proto == htons(ETH_P_IP) && udp->dest == htons(0x013f))) {
-		return PTP_QUEUE_NUMBER;
+		/* It is not possible to use a static queue number for PTP
+		 * across various designs with multiple queues support as the
+		 * hardcoded queue number may conflict with actual TX queue.
+		 * Using num_tc is safe in all designs since the TX queues will
+		 * be in the range [0, num_tc-1]
+		 */
+		return lp->num_tc;
 	}
 #endif
 	if (lp->abl_reg & TSN_BRIDGEEP_EPONLY)
@@ -117,17 +123,18 @@ int axienet_tsn_xmit(struct sk_buff *skb, struct net_device *ndev)
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct net_device *master = lp->master;
 	u16 map = skb_get_queue_mapping(skb);
+	struct axienet_tsn_txq *txq = NULL;
 
 #if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 	/* check if skb is a PTP frame ? */
-	if (map == PTP_QUEUE_NUMBER)
+	if (map == lp->num_tc)
 		return axienet_ptp_xmit(skb, ndev);
 #endif
+	txq = &lp->txqs[map];
 	if (lp->abl_reg & TSN_BRIDGEEP_EPONLY) {
-#if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
-		if (map == ST_QUEUE_NUMBER) /* ST Traffic */
+		if (txq->is_tadma) /* ST Traffic */
 			return axienet_tadma_xmit(skb, ndev, map);
-#endif
+
 		return axienet_queue_xmit_tsn(skb, ndev, map);
 	}
 	/* use EP to xmit non-PTP frames */
@@ -208,7 +215,8 @@ int axienet_tsn_probe(struct platform_device *pdev,
 	lp->abl_reg = axienet_ior(lp, XAE_TSN_ABL_OFFSET);
 
 	/* in switch-mode, get the endpoint network device. in ep-only mode,
-		the endpoint driver frees itself */
+	 * the endpoint driver frees itself
+	 */
 	if (!(lp->abl_reg & TSN_BRIDGEEP_EPONLY) && ep_node) {
 		lp->master = of_find_net_device_by_node(ep_node);
 		if (!lp->master) {
@@ -220,7 +228,7 @@ int axienet_tsn_probe(struct platform_device *pdev,
 
 	/* in ep only case tie the data path to eth1 */
 	if (lp->abl_reg & TSN_BRIDGEEP_EPONLY && temac_no == XAE_TEMAC1) {
-		axienet_get_pcp_mask(lp, lp->num_tc);
+		axienet_set_pcpmap(lp);
 		ret = tsn_mcdma_probe(pdev, lp, ndev);
 		if (ret) {
 			dev_err(&pdev->dev, "Getting MCDMA resource failed\n");
@@ -233,6 +241,11 @@ int axienet_tsn_probe(struct platform_device *pdev,
 			goto err_1;
 		}
 #endif
+		axienet_init_tsn_txqs(lp, lp->num_tc);
+		if (ret) {
+			dev_err(&pdev->dev, "Failed to initialize TX queues\n");
+			goto err_1;
+		}
 	}
 
 #if IS_ENABLED(CONFIG_XILINX_TSN_QBV)

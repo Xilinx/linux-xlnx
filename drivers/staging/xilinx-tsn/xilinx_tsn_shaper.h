@@ -53,7 +53,7 @@
  */
 #define ADMIN_CTRL_LIST(n)		(CTRL_LIST_BASE + ((n) * 8))
 #define ACL_GATE_STATE_SHIFT		8
-#define ACL_GATE_STATE_MASK		0x7
+#define ACL_GATE_STATE_MASK		GENMASK(7, 0)
 #define ADMIN_CTRL_LIST_TIME(n)		(ADMIN_CTRL_LIST(n) + 4)
 
 #define OPER_CTRL_LIST(n)		(CTRL_LIST_BASE + 0x800 + ((n) * 8))
@@ -61,8 +61,7 @@
 #define CTRL_LIST_TIME_INTERVAL_MASK	0xFFFFF
 
 #define CONFIG_CHANGE			0x0
-#define CC_ADMIN_GATE_STATE_SHIFT	0x7
-#define CC_ADMIN_GATE_STATE_MASK	(7)
+#define CC_ADMIN_GATE_STATE_MASK	GENMASK(7, 0)
 #define CC_ADMIN_CTRL_LIST_LENGTH_SHIFT	(8)
 #define CC_ADMIN_CTRL_LIST_LENGTH_MASK	(0x1FF)
 /* This request bit is set when all the related Admin* filelds are populated.
