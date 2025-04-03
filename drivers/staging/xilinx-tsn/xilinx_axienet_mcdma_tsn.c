@@ -110,6 +110,123 @@ static struct axienet_stat axienet_get_rx_strings_stats[] = {
 };
 
 /**
+ * axienet_mcdma_disable_tx_q - Disable MCDMA queue corresponding to the Tx
+ * queue map
+ * @ndev:	Pointer to the net_device structure
+ * @map:	Tx queue map identifier
+ *
+ * This function disables the MCDMA channel completion interrupt, disables
+ * the channel and frees any pending skb buffers.
+ */
+int axienet_mcdma_disable_tx_q(struct net_device *ndev, u8 map)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	struct aximcdma_bd *cur_p;
+	struct axienet_dma_q *q;
+	unsigned long flags;
+	u32 reg, cr;
+	u8 dmaq_idx;
+	int err;
+
+	dmaq_idx = lp->txqs[map].dmaq_idx;
+	q = lp->dq[dmaq_idx];
+
+	cr = axienet_dma_in32(q, XMCDMA_CHAN_CR_OFFSET(q->chan_id));
+	axienet_dma_out32(q, XMCDMA_CHAN_CR_OFFSET(q->chan_id),
+			  cr & ~XMCDMA_IRQ_IOC_MASK);
+
+	netif_stop_subqueue(ndev, q->txq_idx);
+
+	err = readl_poll_timeout(q->dma_regs +
+				 XMCDMA_CHAN_SR_OFFSET(q->chan_id),
+				 reg,
+				 (reg & XMCDMA_CHAN_SR_IDLE_MASK), 10,
+				 (5 * DELAY_OF_ONE_MILLISEC));
+	if (err) {
+		dev_err(&ndev->dev, "Failed to disable MCDMA ch%d of Q%d\n",
+			q->chan_id, q->txq_idx);
+		return err;
+	}
+
+	cr = axienet_dma_in32(q, XMCDMA_CHAN_CR_OFFSET(q->chan_id));
+	axienet_dma_out32(q, XMCDMA_CHAN_CR_OFFSET(q->chan_id),
+			  cr & ~XMCDMA_CR_RUNSTOP_MASK);
+
+	spin_lock_irqsave(&q->tx_lock, flags);
+	cur_p = &q->txq_bd_v[q->tx_bd_ci];
+	while (q->tx_bd_ci != q->tx_bd_tail) {
+		if (cur_p->tx_desc_mapping == DESC_DMA_MAP_PAGE)
+			dma_unmap_page(ndev->dev.parent, cur_p->phys,
+				       cur_p->cntrl &
+				       XAXIDMA_BD_CTRL_LENGTH_MASK,
+				       DMA_TO_DEVICE);
+		else
+			dma_unmap_single(ndev->dev.parent, cur_p->phys,
+					 cur_p->cntrl &
+					 XAXIDMA_BD_CTRL_LENGTH_MASK,
+					 DMA_TO_DEVICE);
+		if (cur_p->tx_skb)
+			dev_kfree_skb_irq((struct sk_buff *)cur_p->tx_skb);
+
+		cur_p->app0 = 0;
+		cur_p->app1 = 0;
+		cur_p->app2 = 0;
+		cur_p->app4 = 0;
+		cur_p->status = 0;
+		cur_p->tx_skb = NULL;
+		cur_p->sband_stats = 0;
+
+		if (++q->tx_bd_ci >= lp->tx_bd_num)
+			q->tx_bd_ci = 0;
+
+		cur_p = &q->txq_bd_v[q->tx_bd_ci];
+	}
+	spin_unlock_irqrestore(&q->tx_lock, flags);
+
+	dev_dbg(&ndev->dev, "MCDMA ch%d of Q%d disabled\n", q->chan_id,
+		q->txq_idx);
+	return 0;
+}
+
+/**
+ * axienet_mcdma_enable_tx_q - Enable MCDMA queue corresponding to the Tx
+ * queue map
+ * @ndev:	Pointer to the net_device structure
+ * @map:	Tx queue map identifier
+ *
+ * This function enables the MCDMA channel completion interrupt, initializes the
+ * channel's current and tail descriptors and enables the channel.
+ */
+void axienet_mcdma_enable_tx_q(struct net_device *ndev, u8 map)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	struct axienet_dma_q *q;
+	u8 dmaq_idx;
+	u32 cr;
+
+	dmaq_idx = lp->txqs[map].dmaq_idx;
+	q = lp->dq[dmaq_idx];
+
+	cr = axienet_dma_in32(q, XMCDMA_CHAN_CR_OFFSET(q->chan_id));
+	axienet_dma_out32(q, XMCDMA_CHAN_CR_OFFSET(q->chan_id),
+			  cr | XMCDMA_IRQ_IOC_MASK);
+
+	axienet_dma_bdout(q, XMCDMA_CHAN_CURDESC_OFFSET(q->chan_id),
+			  q->tx_bd_p);
+	axienet_dma_bdout(q, XMCDMA_CHAN_TAILDESC_OFFSET(q->chan_id), 0);
+	q->tx_bd_ci = 0;
+	q->tx_bd_tail = 0;
+
+	cr = axienet_dma_in32(q, XMCDMA_CHAN_CR_OFFSET(q->chan_id));
+	axienet_dma_out32(q, XMCDMA_CHAN_CR_OFFSET(q->chan_id),
+			  cr | XMCDMA_CR_RUNSTOP_MASK);
+	netif_wake_subqueue(ndev, q->txq_idx);
+
+	dev_dbg(&ndev->dev, "MCDMA ch%d of Q%d enabled\n", q->chan_id,
+		q->txq_idx);
+}
+
+/**
  * axienet_mcdma_tx_bd_free_tsn - Release MCDMA Tx buffer descriptor rings
  * @ndev:	Pointer to the net_device structure
  * @q:		Pointer to DMA queue structure
