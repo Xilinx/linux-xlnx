@@ -728,6 +728,9 @@ enum axienet_tsn_ioctl {
  * @num_tadma_buffers: number of TADMA buffers per stream
  * @num_streams: maximum number of streams TADMA can fetch
  * @num_entries: maximum number of entries in TADMA streams config
+ * @get_sid: Number of TADMA streams currently active
+ * @get_sfm: Number of SFM entries currently in use
+ * @tadma_hash_bits: Number of bits required to represent TADMA streams
  * @tx_bd: tadma transmit buffer descriptor
  * @tx_bd_head: transmit BD head indices
  * @tx_bd_tail: transmit BD tail indices
@@ -837,6 +840,9 @@ struct axienet_local {
 	int num_tadma_buffers;
 	int num_streams;
 	int num_entries;
+	u32 get_sid;
+	u32 get_sfm;
+	u8 tadma_hash_bits;
 	struct axitadma_bd **tx_bd;
 	u32 tx_bd_head[TADMA_MAX_NO_STREAM];
 	u32 tx_bd_tail[TADMA_MAX_NO_STREAM];

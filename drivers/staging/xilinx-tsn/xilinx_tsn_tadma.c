@@ -40,7 +40,6 @@ struct tadma_stream {
 	u8 start;
 };
 
-static u8  tadma_hash_bits;
 struct tadma_stream_entry {
 	u8 macvlan[8];
 	u32 tticks;
@@ -50,8 +49,6 @@ struct tadma_stream_entry {
 	int count;
 };
 
-static u32 get_sid;
-static u32 get_sfm;
 #define sfm_entry_offset(lp, sid) \
 	((lp->active_sfm == SFM_UPPER) ? \
 	(XTADMA_USFM_OFFSET) +  ((sid) * sizeof(struct sfm_entry)) : \
@@ -59,11 +56,12 @@ static u32 get_sfm;
 
 #define STRID_BE 0
 
-static inline u32 tadma_macvlan_hash(const unsigned char *addr)
+static inline u32 tadma_macvlan_hash(struct axienet_local *lp,
+				     const unsigned char *addr)
 {
 	u64 value = get_unaligned((u64 *)addr);
 
-	return hash_64(value, tadma_hash_bits);
+	return hash_64(value, lp->tadma_hash_bits);
 }
 
 static inline bool mac_vlan_equal(const u8 addr1[8],
@@ -375,9 +373,11 @@ int __maybe_unused axienet_tadma_probe(struct platform_device *pdev,
 	while (!((lp->num_streams >> count) & 1))
 		count++;
 
-	tadma_hash_bits = count;
+	lp->get_sid = 0;
+	lp->get_sfm = 0;
+	lp->tadma_hash_bits = count;
 	pr_debug("%s num_stream: %d hash_bits: %d\n", __func__, lp->num_streams,
-		 tadma_hash_bits);
+		 lp->tadma_hash_bits);
 	pr_info("TADMA probe done\n");
 	spin_lock_init(&lp->tadma_tx_lock);
 	of_node_put(np);
@@ -413,7 +413,7 @@ static int tadma_get_strid(struct sk_buff *skb,
 	u16 vlan_tci;
 	u8 mac_vlan[8];
 
-	if (!get_sid)
+	if (!lp->get_sid)
 		return 0;
 
 	memcpy(mac_vlan, vhdr->h_dest, 6);
@@ -423,7 +423,7 @@ static int tadma_get_strid(struct sk_buff *skb,
 	mac_vlan[6] = (vlan_tci >> 8) & 0x0f;
 	mac_vlan[7] = (vlan_tci & 0xff);
 
-	idx = tadma_macvlan_hash(mac_vlan);
+	idx = tadma_macvlan_hash(lp, mac_vlan);
 	entry = tadma_hash_lookup_stream(&cb->stream_hash[idx],
 					 mac_vlan);
 	if (entry)
@@ -630,7 +630,7 @@ int axienet_tadma_off(struct net_device *ndev, void __user *useraddr)
 		  XTADMA_IE_INT_EN);
 	tadma_sfm_program(ndev, STRID_BE, NSEC_PER_MSEC, 0);
 	tadma_iow(lp, XTADMA_CR_OFFSET, XTADMA_CFG_DONE);
-	get_sid = 0;
+	lp->get_sid = 0;
 	return 0;
 }
 
@@ -680,8 +680,8 @@ int axienet_tadma_add_stream(struct net_device *ndev, void __user *useraddr)
 		return -EINVAL;
 
 	if (stream.start) {
-		get_sid = 0;
-		get_sfm = 0;
+		lp->get_sid = 0;
+		lp->get_sfm = 0;
 	}
 
 	memcpy(mac_vlan, stream.dmac, 6);
@@ -695,7 +695,7 @@ int axienet_tadma_add_stream(struct net_device *ndev, void __user *useraddr)
 	mac_vlan[6] = (vlan_tci >> 8) & 0x0f;
 	mac_vlan[7] = (vlan_tci & 0xff);
 
-	idx = tadma_macvlan_hash(mac_vlan);
+	idx = tadma_macvlan_hash(lp, mac_vlan);
 
 	entry = tadma_hash_lookup_stream(&cb->stream_hash[idx], mac_vlan);
 	if (entry && entry->count == stream.count &&
@@ -706,14 +706,15 @@ int axienet_tadma_add_stream(struct net_device *ndev, void __user *useraddr)
 	if (entry)
 		sid = entry->sid;	/*same sid diff entry*/
 	else
-		sid = get_sid++;
+		sid = lp->get_sid++;
 
 	if (sid >= lp->num_streams) {
 		pr_err("More no. of streams %d\n", sid);
 		return -EINVAL;
 	}
-	if (get_sfm >= lp->num_entries) {
-		pr_err("\nMore no. of entries %d\n", get_sfm + 1);
+
+	if (lp->get_sfm >= lp->num_entries) {
+		pr_err("\nMore no. of entries %d\n", lp->get_sfm + 1);
 		return -EINVAL;
 	}
 
@@ -725,7 +726,7 @@ int axienet_tadma_add_stream(struct net_device *ndev, void __user *useraddr)
 	entry->count = stream.count;
 	entry->sid = sid;
 	memcpy(entry->macvlan, mac_vlan, 8);
-	entry->sfm = get_sfm++;
+	entry->sfm = lp->get_sfm++;
 
 	pr_debug("%s sid: %d\n", __func__, sid);
 	hlist_add_head(&entry->hash_link, &cb->stream_hash[idx]);
