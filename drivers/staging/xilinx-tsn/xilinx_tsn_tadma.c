@@ -598,7 +598,6 @@ int axienet_tadma_program(struct net_device *ndev, void __user *useraddr)
 	struct hlist_head *bucket;
 	struct hlist_node *tmp;
 	u32 cr, hash = 0;
-	int ret = 0;
 
 	for (hash = 0; hash < lp->num_entries; hash++) {
 		bucket = &cb->stream_hash[hash];
@@ -620,7 +619,7 @@ int axienet_tadma_program(struct net_device *ndev, void __user *useraddr)
 	cr = XTADMA_CFG_DONE | XTADMA_SCHED_ENABLE;
 	tadma_iow(lp, XTADMA_CR_OFFSET, cr);
 
-	return ret;
+	return 0;
 }
 
 int axienet_tadma_off(struct net_device *ndev, void __user *useraddr)
