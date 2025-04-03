@@ -607,7 +607,7 @@ int zynqmp_pm_get_chipid(u32 *idcode, u32 *version);
 int zynqmp_pm_get_family_info(u32 *family, u32 *subfamily);
 int zynqmp_pm_get_trustzone_version(u32 *version);
 int zynqmp_pm_get_sip_svc_version(u32 *version);
-u64 zynqmp_pm_load_pdi_word_swap(const u64 address);
+int zynqmp_pm_load_pdi_word_swap(const u64 address, u64 *swapped_address);
 int zynqmp_pm_query_data(struct zynqmp_pm_query_data qdata, u32 *out);
 int zynqmp_pm_clock_enable(u32 clock_id);
 int zynqmp_pm_clock_disable(u32 clock_id);
