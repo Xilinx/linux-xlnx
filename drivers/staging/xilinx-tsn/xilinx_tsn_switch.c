@@ -24,6 +24,11 @@
 #include <linux/platform_device.h>
 #include "xilinx_tsn_switch.h"
 
+static u8 fp_map[XAE_MAX_TSN_TC];
+static uint fp_map_count = XAE_MAX_TSN_TC;
+module_param_array(fp_map, byte, &fp_map_count, 0644);
+MODULE_PARM_DESC(fp_map, "Array of queues mapped to EMAC/PMAC");
+
 static struct miscdevice switch_dev;
 static struct device_node *ep_node;
 struct axienet_local lp;
@@ -121,6 +126,23 @@ static const struct of_device_id tsnswitch_of_match[] = {
 };
 
 MODULE_DEVICE_TABLE(of, tsnswitch_of_match);
+
+static void tsn_switch_set_fp_map(struct platform_device *pdev, u16 num_tc)
+{
+	u32 fp_value = 0;
+	int i;
+
+	if (num_tc <= XAE_MAX_LEGACY_TSN_TC)
+		return;
+
+	for (i = 0; i < fp_map_count; i++) {
+		if (fp_map[i])
+			fp_value |= BIT(i);
+	}
+
+	axienet_iow(&lp, XAS_PREEMPTION_QUEUE_MAP_OFFSET, fp_value);
+	dev_info(&pdev->dev, "Preemption queue map 0x%x\n", fp_value);
+}
 
 static int switch_open(struct inode *inode, struct file *file)
 {
@@ -1757,6 +1779,7 @@ static int tsnswitch_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
+	tsn_switch_set_fp_map(pdev, lp.num_tc);
 	en_hw_addr_learning = of_property_read_bool(pdev->dev.of_node,
 						    "xlnx,has-hwaddr-learning");
 
