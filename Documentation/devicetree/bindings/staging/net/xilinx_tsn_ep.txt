@@ -8,11 +8,13 @@ Required properties:
 - interrupts		: Property with a value describing the interrupt
 - interrupts-names	: Property denotes the interrupt names.
 - interrupt-parent	: Must be core interrupt controller.
+- xlnx,tsn-tx-config	: Multiple TX Queue parameters. Phandle to a node that
+			  implements the 'tx-queues-config'.
+- xlnx,num-tc		: Number of traffic class supported in current design,
+			  range is [2, 8]. It denotes the traffic classes based
+			  on VLAN-PCP value.
 
 Optional properties:
-- xlnx,num-tc		: Number of traffic class supported in current design,
-			  range is 2,3 and default value is 3. It denotes
-			  the traffic classes based on VLAN-PCP value.
 - xlnx,channel-ids 	: Queue Identifier associated with the MCDMA Channel, range
 			  is Tx: "1 to 2" and Rx: "2 to 5", default value is "1 to 5".
 - xlnx,eth-hasnobuf	: Used when 1G MAC is configured in non processor mode.
@@ -21,6 +23,14 @@ Optional properties:
 				  this device. The MCDMA related resources
 				  (registers and interrupts) will be used from
 				  this node.
+
+Required TX Queues config properties:
+- xlnx,num-tx-queues	: Number of TX queues to be used and it should match with
+			  the number of traffic classes supported.
+- xlnx,dma-channel-num	: DMA channel id connected to the TX queue.
+
+Optional TX Queues config properties:
+- xlnx,is-tadma		: Defined when the TX queue is connected with TADMA channel.
 
 Optional TADMA properties:
 - xlnx,num-buffers-per-stream	: Number of TADMA buffers per stream in design. Default is 64.
@@ -51,4 +61,35 @@ Example:
 		local-mac-address = [00 0A 35 00 01 10];
 		xlnx,channel-ids = "1","2","3","4","5";
 		xlnx,eth-hasnobuf ;
+		xlnx,tsn-tx-config = <&tsn_tx_config>;
+	};
+
+	tsn_tx_config: tx-queues-config {
+		xlnx,num-tx-queues = <0x8>;
+		queue0 {
+			xlnx,dma-channel-num = <0x6>;
+		};
+		queue1 {
+			xlnx,dma-channel-num = <0x5>;
+		};
+		queue2 {
+			xlnx,dma-channel-num = <0x4>;
+		};
+		queue3 {
+			xlnx,dma-channel-num = <0x3>;
+		};
+		queue4 {
+			xlnx,dma-channel-num = <0x2>;
+		};
+		queue5 {
+			xlnx,dma-channel-num = <0x1>;
+		};
+		queue6 {
+			xlnx,is-tadma;
+			xlnx,dma-channel-num = <0x1>;
+		};
+		queue7 {
+			xlnx,is-tadma;
+			xlnx,dma-channel-num = <0x0>;
+		};
 	};
