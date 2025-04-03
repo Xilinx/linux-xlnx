@@ -450,7 +450,7 @@ void axienet_adjust_link_tsn(struct net_device *ndev)
  * This function is invoked from the Axi DMA Tx isr to notify the completion
  * of transmit operation. It clears fields in the corresponding Tx BDs and
  * unmaps the corresponding buffer so that CPU can regain ownership of the
- * buffer. It finally invokes "netif_wake_queue" to restart transmission if
+ * buffer. It finally invokes "netif_wake_subqueue" to restart transmission if
  * required.
  */
 void axienet_start_xmit_done_tsn(struct net_device *ndev,
@@ -503,12 +503,8 @@ void axienet_start_xmit_done_tsn(struct net_device *ndev,
 	/* Matches barrier in axienet_start_xmit */
 	smp_mb();
 
-	/* Fixme: With the existing multiqueue implementation
-	 * in the driver it is difficult to get the exact queue info.
-	 * We should wake only the particular queue
-	 * instead of waking all ndev queues.
-	 */
-	netif_tx_wake_all_queues(ndev);
+	if (__netif_subqueue_stopped(ndev, q->txq_idx) && packets)
+		netif_wake_subqueue(ndev, q->txq_idx);
 }
 
 /**
@@ -558,12 +554,12 @@ int axienet_queue_xmit_tsn(struct sk_buff *skb,
 	cur_p = &q->txq_bd_v[q->tx_bd_tail];
 	spin_lock_irqsave(&q->tx_lock, flags);
 	if (axienet_check_tx_bd_space(q, num_frag)) {
-		if (netif_queue_stopped(ndev)) {
+		if (__netif_subqueue_stopped(ndev, q->txq_idx)) {
 			spin_unlock_irqrestore(&q->tx_lock, flags);
 			return NETDEV_TX_BUSY;
 		}
 
-		netif_stop_queue(ndev);
+		netif_stop_subqueue(ndev, q->txq_idx);
 
 		/* Matches barrier in axienet_start_xmit_done_tsn */
 		smp_mb();
@@ -574,7 +570,7 @@ int axienet_queue_xmit_tsn(struct sk_buff *skb,
 			return NETDEV_TX_BUSY;
 		}
 
-		netif_wake_queue(ndev);
+		netif_wake_subqueue(ndev, q->txq_idx);
 	}
 
 	if (skb->ip_summed == CHECKSUM_PARTIAL && !lp->eth_hasnobuf &&

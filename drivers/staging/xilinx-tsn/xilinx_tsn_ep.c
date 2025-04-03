@@ -43,6 +43,20 @@ static uint res_count = 2;
 module_param_array(res_pcp, byte, &res_count, 0644);
 MODULE_PARM_DESC(res_pcp, "Array of pcp values mapped to RES class at the compile time");
 
+static inline int mcdma_qidx_to_txq_idx(struct axienet_local *lp, int qidx)
+{
+	int qno;
+
+	for (qno = 0; qno < lp->num_tc; qno++) {
+		if (!lp->txqs[qno].is_tadma &&
+		    lp->txqs[qno].dmaq_idx == qidx) {
+			return qno;
+		}
+	}
+
+	return -EINVAL;
+}
+
 int tsn_data_path_open(struct net_device *ndev)
 {
 	/* The highest possible count of IRQs is twice the maximum number of
@@ -61,6 +75,14 @@ int tsn_data_path_open(struct net_device *ndev)
 		q = lp->dq[i];
 		/*MCDMA TX RESET*/
 		__axienet_device_reset_tsn(q);
+		ret = mcdma_qidx_to_txq_idx(lp, i);
+		if (ret < 0) {
+			dev_err(&ndev->dev, "Failed to get txq for MCMDA Q%d\n",
+				i);
+			return -EINVAL;
+		}
+
+		q->txq_idx = ret;
 	}
 
 	for_each_rx_dma_queue(lp, i) {
@@ -166,7 +188,7 @@ int tsn_data_path_close(struct net_device *ndev)
 		axienet_dma_out32(q, XAXIDMA_TX_CR_OFFSET,
 				  cr & (~XAXIDMA_CR_RUNSTOP_MASK));
 		if (netif_running(ndev))
-			netif_stop_queue(ndev);
+			netif_stop_subqueue(ndev, q->txq_idx);
 		free_irq(q->tx_irq, ndev);
 	}
 	for_each_rx_dma_queue(lp, i) {
@@ -174,8 +196,6 @@ int tsn_data_path_close(struct net_device *ndev)
 		cr = axienet_dma_in32(q, XAXIDMA_RX_CR_OFFSET);
 		axienet_dma_out32(q, XAXIDMA_RX_CR_OFFSET,
 				  cr & (~XAXIDMA_CR_RUNSTOP_MASK));
-		if (netif_running(ndev))
-			netif_stop_queue(ndev);
 		napi_disable(&lp->napi[i]);
 		tasklet_kill(&lp->dma_err_tasklet[i]);
 
