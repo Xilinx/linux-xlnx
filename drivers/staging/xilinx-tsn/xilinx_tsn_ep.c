@@ -27,6 +27,7 @@
 
 #include "xilinx_axienet_tsn.h"
 #include "xilinx_tsn_switch.h"
+#include "xilinx_tsn_tadma.h"
 #include "xilinx_tsn_timer.h"
 
 #define TX_BD_NUM_DEFAULT	64
@@ -44,7 +45,10 @@ MODULE_PARM_DESC(res_pcp, "Array of pcp values mapped to RES class at the compil
 
 int tsn_data_path_open(struct net_device *ndev)
 {
-	static char irq_name[XAE_MAX_QUEUES + XAE_TSN_MIN_QUEUES][32];
+	/* The highest possible count of IRQs is twice the maximum number of
+	 * queues, considering both the Tx and Rx channels
+	 */
+	static char irq_name[XAE_MAX_QUEUES * 2][32];
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct net_device *emac0_ndev;
 	struct net_device *emac1_ndev;
@@ -242,7 +246,6 @@ u16 axienet_tsn_pcp_to_queue(struct net_device *ndev, struct sk_buff *skb)
 	u16 ether_type = ntohs(hdr->h_proto);
 	u16 vlan_tci;
 	u8 pcp = 0;
-	int i;
 
 	if (unlikely(ether_type == ETH_P_8021Q)) {
 		struct vlan_ethhdr *vhdr = (struct vlan_ethhdr *)skb->data;
@@ -252,19 +255,9 @@ u16 axienet_tsn_pcp_to_queue(struct net_device *ndev, struct sk_buff *skb)
 		vlan_tci = ntohs(vhdr->h_vlan_TCI);
 
 		pcp = (vlan_tci & VLAN_PRIO_MASK) >> VLAN_PRIO_SHIFT;
-#if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
-		for (i = 0; i < st_count; i++) {
-			if (st_pcp[i] == pcp)
-				return ST_QUEUE_NUMBER;
-		}
-#endif
-		if (lp->num_tc == 3 && lp->num_tx_queues > 1) {
-			for (i = 0; i < res_count; i++) {
-				if (res_pcp[i] == pcp)
-					return RES_QUEUE_NUMBER;
-			}
-		}
+		return lp->pcpmap[pcp];
 	}
+
 	return BE_QUEUE_NUMBER;
 }
 
@@ -286,12 +279,17 @@ static u16 axienet_tsn_ep_select_queue(struct net_device *ndev, struct sk_buff *
  */
 static int tsn_ep_xmit(struct sk_buff *skb, struct net_device *ndev)
 {
-	u16 map = skb_get_queue_mapping(skb);
+	struct axienet_tsn_txq *txq;
+	struct axienet_local *lp;
+	u16 map;
 
-#if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
-	if (map == ST_QUEUE_NUMBER) /* ST Traffic */
+	map = skb_get_queue_mapping(skb);
+	lp = netdev_priv(ndev);
+	txq = &lp->txqs[map];
+	pr_debug("map %d, is_tadma %d\n", map, txq->is_tadma);
+
+	if (txq->is_tadma) /* ST Traffic */
 		return axienet_tadma_xmit(skb, ndev, map);
-#endif
 
 	return axienet_queue_xmit_tsn(skb, ndev, map);
 }
@@ -463,56 +461,195 @@ static const struct axienet_config tsn_endpoint_cfg = {
 	.tx_ptplen = XAE_TX_PTP_LEN,
 };
 
-/**
- *axienet_get_pcp_mask - gets the compile time pcp values that
- *are mapped to ST and RES traffic from uEnv.txt and assigns them
- *to st_pcp and res_pcp fields of axienet_local structure
- *@lp:		axienet local structure
- *@num_tc:	number of traffic classes
- *
- * Return: Always returns 0
- */
-int axienet_get_pcp_mask(struct axienet_local *lp, u16 num_tc)
+static void set_pcpmap_legacy(struct axienet_local *lp)
 {
-	u8 i;
-	u8 invalid_pcp = 0;
+	int i;
 
-	lp->st_pcp = 0;
-	lp->res_pcp = 0;
-	if (st_count == 0 || st_count > 8) {
-		lp->st_pcp = 1 << 4;
-	} else {
-		for (i = 0; i < st_count; i++) {
-			if (st_pcp[i] >= 8) {
-				invalid_pcp = 1;
-				break;
-			}
-			lp->st_pcp = lp->st_pcp | 1 << st_pcp[i];
+	/* First map all PCP values to lowest priority queue */
+	for (i = 0; i < XAE_MAX_TSN_TC; i++)
+		lp->pcpmap[i] = 0;
+
+	/* Map ST PCP values to Highest priority queue */
+#if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
+	for (i = 0; i < st_count; i++) {
+		if (st_pcp[i] >= XAE_MAX_TSN_TC) {
+			pr_warn("invalid st pcp value %d ignored\n",
+				st_pcp[i]);
+			continue;
 		}
-		if (invalid_pcp) {
-			pr_warn("pcp value cannot be greater than or equal to 8\n");
-			lp->st_pcp = 1 << 4;
-			invalid_pcp = 0;
-		}
+
+		lp->pcpmap[st_pcp[i]] = lp->num_tc - 1;
 	}
-	if (num_tc == 3) {
-		if (res_count == 0 || res_count > 8) {
-			lp->res_pcp = 1 << 2 | 1 << 3;
-		} else {
-			for (i = 0; i < res_count; i++) {
-				if (res_pcp[i] >= 8) {
-					invalid_pcp = 1;
-					break;
-				}
-				lp->res_pcp = lp->res_pcp | 1 << res_pcp[i];
-			}
-			if (invalid_pcp) {
-				pr_warn("pcp value cannot be greater than or equal to 8\n");
-				lp->res_pcp = 1 << 2 | 1 << 3;
-			}
-		}
+#endif
+
+	/* Map RES PCP values to Second Highest priority queue */
+	for (i = 0; i < res_count && lp->num_tc == XAE_MAX_LEGACY_TSN_TC; i++) {
+		if (res_pcp[i] >= XAE_MAX_TSN_TC)
+			pr_warn("invalid st pcp value %d ignored\n",
+				res_pcp[i]);
+		else if (lp->pcpmap[res_pcp[i]] == (lp->num_tc - 1))
+			pr_warn("pcp value %d already mapped to ST\n",
+				res_pcp[i]);
+		else
+			lp->pcpmap[res_pcp[i]] = lp->num_tc - 2;
 	}
+}
+
+static void set_pcpmap_new(struct axienet_local *lp)
+{
+	int i;
+
+	for (i = 0; i < lp->num_tc; i++)
+		lp->pcpmap[i] = i;
+}
+
+/**
+ * axienet_set_pcpmap - Gets the compile time pcp values that
+ * are mapped to ST and RES traffic from st_pcp and res_pcp
+ * fields and sets the pcpmap field for legacy design.
+ * For eight queue design, pcpmap field is one to one mapping from
+ * PCP to the queue.
+ *
+ * @lp:	netdev private data
+ */
+void axienet_set_pcpmap(struct axienet_local *lp)
+{
+	if (lp->num_tc <= XAE_MAX_LEGACY_TSN_TC)
+		set_pcpmap_legacy(lp);
+	else
+		set_pcpmap_new(lp);
+}
+
+static int init_tsn_txqs_legacy(struct axienet_local *lp, u16 num_tc)
+{
+	struct axienet_tsn_txq *txq;
+	int i;
+
+	for (i = 0; i < lp->num_tx_queues; i++) {
+		txq = &lp->txqs[i];
+		txq->is_tadma = false;
+		txq->dmaq_idx = i;
+	}
+
+#if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
+	txq = &lp->txqs[num_tc - 1];
+	txq->is_tadma = true;
+	txq->dmaq_idx = qt_st;
+	lp->tadma_queues |= BIT(qt_st);
+#endif
 	return 0;
+}
+
+static int tsn_mcdma_chan_to_qidx(struct axienet_local *lp, u32 chan_id)
+{
+	int i;
+
+	for_each_tx_dma_queue(lp, i) {
+		if (lp->dq[i]->chan_id == chan_id)
+			return i;
+	}
+
+	return -EINVAL;
+}
+
+static int init_tsn_txqs_new(struct axienet_local *lp, u16 num_tc)
+{
+	u32 total_tx_queues, queue = 0;
+	struct device_node *queue_node;
+	struct platform_device *pdev;
+	struct axienet_tsn_txq *txq;
+	struct device_node *tx_node;
+	int ret = 0;
+
+	pdev = to_platform_device(lp->dev);
+	tx_node = of_parse_phandle(pdev->dev.of_node, "xlnx,tsn-tx-config", 0);
+	if (!tx_node) {
+		dev_err(lp->dev, "xlnx,tsn-tx-config property not defined\n");
+		return -EINVAL;
+	}
+
+	ret = of_property_read_u32(tx_node, "xlnx,num-tx-queues",
+				   &total_tx_queues);
+	if (ret) {
+		dev_err(lp->dev, "xlnx,num-tx-queues property not defined\n");
+		goto exit;
+	}
+
+	if (total_tx_queues != num_tc) {
+		dev_err(lp->dev,
+			"total_tx_queues %d not equals to num_tc %d\n",
+			total_tx_queues, num_tc);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	for_each_child_of_node(tx_node, queue_node) {
+		u32 dma_chan;
+
+		txq = &lp->txqs[queue];
+		ret = of_property_read_u32(queue_node, "xlnx,dma-channel-num",
+					   &dma_chan);
+		if (ret) {
+			dev_err(lp->dev,
+				"Q%d xlnx,dma-channel-num not defined\n",
+				queue);
+			of_node_put(queue_node);
+			goto exit;
+		}
+
+		if (of_property_read_bool(queue_node, "xlnx,is-tadma")) {
+#if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
+			if (dma_chan != qt_st && dma_chan != qt_res) {
+				dev_err(lp->dev, "Invalid TADMA stream %d\n",
+					dma_chan);
+				ret = -EINVAL;
+				of_node_put(queue_node);
+				goto exit;
+			}
+
+			lp->tadma_queues |= BIT(dma_chan);
+			txq->is_tadma = true;
+			txq->dmaq_idx = dma_chan;
+			queue++;
+#endif
+		} else {
+			int dmaq_idx = tsn_mcdma_chan_to_qidx(lp, dma_chan);
+
+			if (dmaq_idx < 0) {
+				dev_err(lp->dev,
+					"DMA chan %d not connected to TSN IP\n",
+					dma_chan);
+				ret = -EINVAL;
+				of_node_put(queue_node);
+				goto exit;
+			}
+
+			txq->is_tadma = false;
+			txq->dmaq_idx = dmaq_idx;
+			queue++;
+		}
+	}
+
+	if (queue != total_tx_queues) {
+		dev_err(lp->dev,
+			"No queues %d in DT not equal to total_tx_queues %d\n",
+			queue, total_tx_queues);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	ret = 0;
+exit:
+	of_node_put(tx_node);
+	return ret;
+}
+
+int axienet_init_tsn_txqs(struct axienet_local *lp, u16 num_tc)
+{
+	if (num_tc <= XAE_MAX_LEGACY_TSN_TC)
+		return init_tsn_txqs_legacy(lp, num_tc);
+	else
+		return init_tsn_txqs_new(lp, num_tc);
 }
 
 /**
@@ -531,7 +668,6 @@ static int tsn_ep_probe(struct platform_device *pdev)
 	struct net_device *ndev;
 	struct resource *ethres;
 	u16 num_queues = XAE_MAX_QUEUES;
-	u16 num_tc = 0;
 	struct device_node *np;
 	u8 mac_addr[ETH_ALEN];
 #if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
@@ -612,12 +748,21 @@ static int tsn_ep_probe(struct platform_device *pdev)
 		goto err_put_node;
 	}
 #endif
-	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-tc", &num_tc);
-	if (ret || (num_tc != 2 && num_tc != 3))
-		lp->num_tc = XAE_MAX_TSN_TC;
-	else
-		lp->num_tc = num_tc;
-	axienet_get_pcp_mask(lp, lp->num_tc);
+	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-tc",
+				   &lp->num_tc);
+	if (ret || !axienet_tsn_num_tc_valid(lp->num_tc)) {
+		dev_err(&pdev->dev,
+			"xlnx,num-tc parameter not defined or valid\n");
+		goto err_put_node;
+	}
+
+	axienet_set_pcpmap(lp);
+	ret = axienet_init_tsn_txqs(lp, lp->num_tc);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to initialize TX queues\n");
+		goto err_put_node;
+	}
+
 	/* Map device registers */
 	ethres = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	lp->regs = devm_ioremap_resource(&pdev->dev, ethres);
