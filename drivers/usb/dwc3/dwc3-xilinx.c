@@ -847,13 +847,13 @@ static void dwc3_xlnx_remove(struct platform_device *pdev)
 
 	of_platform_depopulate(dev);
 
-	/* disable PME wakeup interrupt */
-	writel(XLNX_PME_DISABLE_SIG_GEN,
-	       priv_data->regs + XLNX_VERSAL_USB_PME_ENABLE);
+	if (priv_data->wakeup_irq > 0)
+		/* disable PME wakeup interrupt */
+		writel(XLNX_PME_DISABLE_SIG_GEN,
+		       priv_data->regs + XLNX_VERSAL_USB_PME_ENABLE);
 
 	/* Unregister the dwc3-xilinx wakeup function from dwc3 host */
 	dwc3_host_wakeup_register(NULL);
-	devm_free_irq(dev, priv_data->wakeup_irq, priv_data);
 	clk_bulk_disable_unprepare(priv_data->num_clocks, priv_data->clks);
 	priv_data->num_clocks = 0;
 
