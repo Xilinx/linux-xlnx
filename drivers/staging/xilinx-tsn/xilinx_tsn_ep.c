@@ -44,15 +44,14 @@ MODULE_PARM_DESC(res_pcp, "Array of pcp values mapped to RES class at the compil
 
 int tsn_data_path_open(struct net_device *ndev)
 {
-	int ret, i = 0;
+	static char irq_name[XAE_MAX_QUEUES + XAE_TSN_MIN_QUEUES][32];
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct net_device *emac0_ndev;
 	struct net_device *emac1_ndev;
 	u8 hw_addr_mask[ETH_ALEN];
 	struct axienet_dma_q *q;
-
-	static char irq_name[XAE_MAX_QUEUES + XAE_TSN_MIN_QUEUES][24];
 	u8 irq_cnt = 0;
+	int ret, i = 0;
 
 	for_each_tx_dma_queue(lp, i) {
 		q = lp->dq[i];
@@ -66,7 +65,8 @@ int tsn_data_path_open(struct net_device *ndev)
 		ret = axienet_mcdma_rx_q_init_tsn(ndev, q);
 		/* Enable interrupts for Axi MCDMA Rx
 		 */
-		sprintf(irq_name[irq_cnt], "%s_mcdma_rx_%d", ndev->name, i + 1);
+		snprintf(irq_name[irq_cnt], sizeof(irq_name[irq_cnt]),
+			 "%s_mcdma_rx_%d", ndev->name, i + 1);
 		ret = request_irq(q->rx_irq, axienet_mcdma_rx_irq_tsn,
 				  IRQF_SHARED, irq_name[irq_cnt], ndev);
 		if (ret)
@@ -84,7 +84,8 @@ int tsn_data_path_open(struct net_device *ndev)
 
 		ret = axienet_mcdma_tx_q_init_tsn(ndev, q);
 		/* Enable interrupts for Axi MCDMA Tx */
-		sprintf(irq_name[irq_cnt], "%s_mcdma_tx_%d", ndev->name, i + 1);
+		snprintf(irq_name[irq_cnt], sizeof(irq_name[irq_cnt]),
+			 "%s_mcdma_tx_%d", ndev->name, i + 1);
 		ret = request_irq(q->tx_irq, axienet_mcdma_tx_irq_tsn,
 				  IRQF_SHARED, irq_name[irq_cnt], ndev);
 		if (ret)
