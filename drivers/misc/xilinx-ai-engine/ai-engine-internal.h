@@ -1105,6 +1105,7 @@ struct aie_dma_addrlen {
  * @core_pc: program counter attribute
  * @core_lr: link register attribute
  * @core_sp: stack pointer attribute
+ * @hw_err_status: hw error status register attribute
  */
 struct aie_device {
 	struct list_head apertures;
@@ -1156,6 +1157,7 @@ struct aie_device {
 	const struct aie_single_reg_field *core_pc;
 	const struct aie_single_reg_field *core_lr;
 	const struct aie_single_reg_field *core_sp;
+	const struct aie_single_reg_field *hw_err_status;
 };
 
 struct aie_l2_mask {

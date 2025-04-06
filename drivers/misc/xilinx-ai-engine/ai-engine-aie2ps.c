@@ -98,6 +98,7 @@
 #define AIE2PS_SHIMPL_TILECTRL_REGOFF			0x0007ff40U
 #define AIE2PS_SHIMPL_MODRESET_CTRL_0_REGOFF		0x0007ff10U
 #define AIE2PS_SHIMPL_MODRESET_CTRL_1_REGOFF		0x0007ff14U
+#define AIE2PS_SHIMPL_HW_ERROR_STATUS_REGOFF		0x0007ff54U
 
 #define AIE2PS_MEMORY_BD0_0_REGOFF			0x000A0000U
 #define AIE2PS_MEMORY_GROUP0_REGOFF			0x00094500U
@@ -1633,6 +1634,11 @@ static const struct aie_single_reg_field aie2ps_noc_outstanding_aximm = {
 static const struct aie_single_reg_field aie2ps_uc_outstanding_aximm = {
 	.mask = GENMASK(1, 0),
 	.regoff = AIE2PS_UCMOD_AXI_OUTSTANDING_TX_REGOFF,
+};
+
+static const struct aie_single_reg_field aie2ps_hw_err_status = {
+	.mask = GENMASK(2, 0),
+	.regoff = AIE2PS_SHIMPL_HW_ERROR_STATUS_REGOFF,
 };
 
 static const struct aie_event_attr aie2ps_pl_event = {
@@ -3512,6 +3518,7 @@ int aie2ps_device_init(struct aie_device *adev)
 	adev->core_events = &aie2ps_core_event;
 	adev->l1_ctrl = &aie2ps_l1_intr_ctrl;
 	adev->l2_ctrl = &aie2ps_l2_intr_ctrl;
+	adev->hw_err_status = &aie2ps_hw_err_status;
 	aie2ps_device_init_rscs_attr(adev);
 
 	return 0;
