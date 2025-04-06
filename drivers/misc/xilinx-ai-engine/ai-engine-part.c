@@ -1348,11 +1348,7 @@ void aie_part_remove(struct aie_partition *apart)
 {
 	struct aie_aperture *aperture = apart->aperture;
 	struct aie_tile *atile = apart->atiles;
-	int npi_irq;
 	u32 index;
-
-	npi_irq = (apart->partition_id % AIE_USER_EVENT1_NUM_IRQ) + 1;
-	devm_free_irq(&apart->dev, aperture->npi_irq[npi_irq], apart);
 
 	for (index = 0; index < apart->range.size.col * apart->range.size.row;
 	     index++, atile++)
