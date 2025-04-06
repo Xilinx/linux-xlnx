@@ -1479,6 +1479,12 @@ xv_vscaler_setup_video_fmt(struct xilinx_scaler *scaler, u32 code_in)
 	xilinx_scaler_write(scaler->base, V_VSCALER_OFF +
 			    XV_VSCALER_CTRL_ADDR_HWREG_COLORMODE_DATA,
 			    video_in);
+	/*
+	 * Vscaler will upscale to YUV 422 before
+	 * Hscaler starts operation
+	 */
+	if (video_in == XVIDC_CSF_YCRCB_420)
+		return XVIDC_CSF_YCRCB_422;
 	return video_in;
 }
 
