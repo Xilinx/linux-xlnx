@@ -305,10 +305,6 @@ int aie2ps_part_clean(struct aie_partition *apart)
 	if (apart->cntrflag & XAIE_PART_NOT_RST_ON_RELEASE)
 		return 0;
 
-	ret = mutex_lock_interruptible(&apart->mlock);
-	if (ret)
-		return ret;
-
 	ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_DIS_COLCLK_BUFF, apart->range, 1);
 	if (ret)
 		goto out;
@@ -332,7 +328,6 @@ int aie2ps_part_clean(struct aie_partition *apart)
 	aie_resource_clear_all(&apart->cores_clk_state);
 
 out:
-	mutex_unlock(&apart->mlock);
 	return ret;
 }
 
