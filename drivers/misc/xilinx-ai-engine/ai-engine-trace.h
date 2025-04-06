@@ -510,6 +510,29 @@ TRACE_EVENT(aie_tile_status,
 				__get_dynamic_array_len(status) / sizeof(u32), sizeof(u32)))
 );
 
+TRACE_EVENT(aie_pm_ops,
+	TP_PROTO(u32 node_id, void *pkt_va, size_t size, dma_addr_t pkt_dma),
+	TP_ARGS(node_id, pkt_va, size, pkt_dma),
+	TP_STRUCT__entry(
+		__field(__u32, node_id)
+		__field(void *, pkt_va)
+		__field(size_t, size)
+		__field(dma_addr_t, pkt_dma)
+		__dynamic_array(u8, pkt, size)
+	),
+	TP_fast_assign(
+		__entry->node_id = node_id;
+		__entry->pkt_va = pkt_va;
+		__entry->size = size;
+		__entry->pkt_dma = pkt_dma;
+		memcpy(__get_dynamic_array(pkt), pkt_va, size);
+	),
+	TP_printk("node_id: 0x%x pkt_va: %pK pkt_dma: 0x%llx pkt: %s",
+		  __entry->node_id, __entry->pkt_va, __entry->pkt_dma,
+		  __print_array(__get_dynamic_array(pkt), __get_dynamic_array_len(pkt),
+				sizeof(u8)))
+);
+
 TRACE_EVENT(aie_tile_grenabled,
 	TP_PROTO(struct aie_partition *apart, struct aie_location *loc, enum aie_module_type mod,
 		 u32 grenabled),
