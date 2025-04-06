@@ -32,14 +32,6 @@ int aie_part_pm_ops_create(struct aie_partition *apart)
 	return 0;
 }
 
-void aie_part_pm_ops_free(struct aie_partition *apart)
-{
-	if (!apart->pm_ops.pkt_va)
-		return;
-	dmam_free_coherent(&apart->dev, apart->pm_ops.size, apart->pm_ops.pkt_va,
-			   apart->pm_ops.pkt_dma);
-}
-
 int aie_part_pm_ops_flush(struct aie_partition *apart)
 {
 	struct aie_pm_ops *pm_ops = &apart->pm_ops;
