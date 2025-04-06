@@ -45,8 +45,8 @@ int aie_part_pm_ops_flush(struct aie_partition *apart)
 		pm_ops->offset -= sizeof(*pm_ops->op_range);
 
 	ret = versal2_pm_aie2ps_operation(apart->adev->pm_node_id, pm_ops->offset,
-					  pm_ops->pkt_dma & 0xFFFFFFFFULL,
-					  pm_ops->pkt_dma >> 32);
+					  upper_32_bits(pm_ops->pkt_dma),
+					  lower_32_bits(pm_ops->pkt_dma));
 
 	pm_ops->offset = 0;
 	pm_ops->op_range = NULL;
