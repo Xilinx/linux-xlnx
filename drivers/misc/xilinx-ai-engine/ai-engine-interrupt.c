@@ -805,18 +805,22 @@ static bool aie2ps_col1_shim_backtrack(struct aie_partition *apart, struct aie_l
 	u8 n, grevent, eevent;
 	bool ret = false;
 
+	trace_aie_tile_backtrack(apart, loc, module, sw, bc_id);
 	grevent = aie_get_broadcast_event(apart, &loc, module, bc_id);
 
 	aie_read_event_status(apart, &loc, module, status);
+	trace_aie_tile_status(apart, &loc, module, status);
 
 	if (!(status[grevent / 32] & BIT(grevent % 32)))
 		return ret;
 
 	grenabled = aie_check_group_errors_enabled(apart, &loc, module);
+	trace_aie_tile_grenabled(apart, &loc, module, grenabled);
 	for_each_set_bit(n, &grenabled, 32) {
 		eevent = aie_get_error_event(apart, &loc, module, n);
 		if (!(status[eevent / 32] & BIT(eevent % 32)))
 			continue;
+		trace_aie_tile_eevent(apart, &loc, module, eevent);
 		grenabled &= ~BIT(n);
 		aie_part_set_event_bitmap(apart, loc, module, eevent);
 		ret = true;
@@ -848,7 +852,9 @@ static void aie2ps_l1_backtrack(struct aie_partition *apart, u32 col, enum aie_s
 
 	module = (sw == AIE_SHIM_SWITCH_A) ? AIE_CORE_MOD : AIE_MEM_MOD;
 
+	trace_aie_l1_backtrack(apart, loc.col, module);
 	status = aie_get_l1_status(apart, &loc, sw);
+	trace_aie_l1_status(apart, loc.col, sw, status);
 
 	if (col == (apart->range.start.col + 1)) {
 		u32 event_status[AIE_NUM_EVENT_STS_SHIMTILE] = {};
@@ -959,6 +965,7 @@ static void aie2ps_partition_backtrack(struct aie_partition *apart)
 	u32 col;
 	int ret;
 
+	trace_aie_l2_backtrack(apart);
 	ret = mutex_lock_interruptible(&apart->mlock);
 	if (ret) {
 		dev_err_ratelimited(&apart->dev,
@@ -1147,6 +1154,7 @@ static void aie2ps_aperture_backtrack(struct aie_aperture *aperture)
 {
 	struct aie_partition *apart;
 
+	trace_aie_aperture_backtrack(aperture->adev);
 	list_for_each_entry(apart, &aperture->partitions, node) {
 		if (!apart->status)
 			continue;
@@ -1240,6 +1248,7 @@ irqreturn_t aie2ps_interrupt_fn(int irq, void *data)
 	irqreturn_t ret = IRQ_NONE;
 	bool backtrack = false;
 
+	trace_aie_interrupt(adev);
 	mutex_lock(&aperture->mlock);
 
 	ret = aie2ps_hw_err(aperture);
@@ -1255,12 +1264,14 @@ irqreturn_t aie2ps_interrupt_fn(int irq, void *data)
 			break;
 
 		l2_mask = aie_aperture_get_l2_mask(aperture, &loc);
+		trace_aie_l2_mask(adev, loc.col, l2_mask);
 		if (l2_mask) {
 			apart_l2_mask[l2_mask_index] = l2_mask;
 			aie_aperture_disable_l2_ctrl(aperture, &loc, l2_mask);
 		}
 
 		l2_status = aie_aperture_get_l2_status(aperture, &loc);
+		trace_aie_l2_status(adev, loc.col, l2_status);
 		if (l2_status) {
 			aie_aperture_clear_l2_intr(aperture, &loc,
 						   l2_status);
