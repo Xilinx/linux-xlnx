@@ -6,6 +6,7 @@
  */
 
 #include "ai-engine-internal.h"
+#include "ai-engine-trace.h"
 
 #include <linux/dma-mapping.h>
 #include <linux/firmware/xlnx-zynqmp.h>
@@ -44,6 +45,7 @@ int aie_part_pm_ops_flush(struct aie_partition *apart)
 	if ((pm_ops->pkt_va + pm_ops->offset) == (pm_ops->op_range + sizeof(*pm_ops->op_range)))
 		pm_ops->offset -= sizeof(*pm_ops->op_range);
 
+	trace_aie_pm_ops(apart->adev->pm_node_id, pm_ops->pkt_va, pm_ops->offset, pm_ops->pkt_dma);
 	ret = versal2_pm_aie2ps_operation(apart->adev->pm_node_id, pm_ops->offset,
 					  upper_32_bits(pm_ops->pkt_dma),
 					  lower_32_bits(pm_ops->pkt_dma));
