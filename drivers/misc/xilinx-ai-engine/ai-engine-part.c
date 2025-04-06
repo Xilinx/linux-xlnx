@@ -1358,7 +1358,6 @@ void aie_part_remove(struct aie_partition *apart)
 
 	device_del(&apart->dev);
 	put_device(&apart->dev);
-	aie_part_pm_ops_free(apart);
 	devm_kfree(&aperture->dev, apart);
 }
 

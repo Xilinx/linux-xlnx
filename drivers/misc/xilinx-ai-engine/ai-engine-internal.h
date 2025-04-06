@@ -1772,7 +1772,6 @@ int aie_dma_begin_cpu_access(struct dma_buf *dmabuf,
 int aie_dma_end_cpu_access(struct dma_buf *dmabuf,
 			   enum dma_data_direction direction);
 int aie_part_pm_ops_create(struct aie_partition *apart);
-void aie_part_pm_ops_free(struct aie_partition *apart);
 
 int aie_part_pm_ops(struct aie_partition *apart, void *data, u32 type, struct aie_range range,
 		    bool flush);
