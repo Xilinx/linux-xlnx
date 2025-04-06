@@ -1059,46 +1059,84 @@ void aie_aperture_backtrack(struct work_struct *work)
 	mutex_unlock(&aperture->mlock);
 }
 
-static bool aie2ps_part_hw_err(struct aie_partition *apart)
+static int aie_aperture_clr_hw_err(struct aie_aperture *aperture, struct aie_location *loc,
+				   u16 status)
 {
-	u32 end_col = apart->range.start.col + apart->range.size.col;
-	struct aie_location loc = {.row = 0};
-	u32 start_col = apart->range.start.col;
-	bool handled = false;
+	struct aie_op_start_num_col *op_range;
+	struct aie_op_hw_err *hw_err;
+	dma_addr_t pkt_dma;
+	void *pkt_va;
+	size_t size;
 	int ret;
 
-	for (loc.col = start_col; loc.col < end_col; loc.col++) {
-		struct aie_range range;
-		u16 status = 0;
+	size = sizeof(*op_range) + sizeof(*hw_err);
+	pkt_va = dmam_alloc_coherent(&aperture->dev, size, &pkt_dma, GFP_KERNEL);
+	if (!pkt_va)
+		return -ENOMEM;
 
-		range.start.col = loc.col;
-		range.size.col = 1;
-		ret = aie_part_pm_ops(apart, &status, AIE_PART_INIT_OPT_HW_ERR_STS, range, 1);
-		if (ret)
-			dev_err(&apart->dev, "Failed to get hw status for col: %d", loc.col);
-		if (status) {
-			dev_err(&apart->dev, "Received Hw err: 0x%x on col: %d", status, loc.col);
-			handled = true;
-			ret = aie_part_pm_ops(apart, &status, AIE_PART_INIT_OPT_HW_ERR_STS,
-					      range, 1);
-			if (ret)
-				dev_err(&apart->dev, "Failed to ack hw err on col %d", loc.col);
-		}
-	}
-	return handled;
+	op_range = pkt_va;
+	op_range->type = XILINX_AIE_OPS_START_NUM_COL;
+	op_range->len = sizeof(*op_range);
+	op_range->start_col = loc->col;
+	op_range->num_col = 1;
+
+	hw_err = pkt_va + sizeof(*op_range);
+	hw_err->type = XILINX_AIE_OPS_CLR_HW_ERR_STS;
+	hw_err->len = sizeof(*hw_err);
+	hw_err->val = status;
+
+	ret = versal2_pm_aie2ps_operation(aperture->adev->pm_node_id, size,
+					  upper_32_bits(pkt_dma),
+					  lower_32_bits(pkt_dma));
+
+	dmam_free_coherent(&aperture->dev, size, pkt_va, pkt_dma);
+
+	return ret;
+}
+
+/**
+ * aie_aperture_get_hw_err_status() - get hw error status value.
+ * @aperture: AIE aperture pointer.
+ * @loc: pointer to tile location.
+ * @return: status value.
+ */
+static u32 aie_aperture_get_hw_err_status(struct aie_aperture *aperture,
+					  struct aie_location *loc)
+{
+	u32 hw_err_status_off;
+	u32 regoff;
+
+	if (!aperture->adev->hw_err_status)
+		return 0;
+
+	hw_err_status_off = aperture->adev->hw_err_status->regoff;
+	regoff = aie_aperture_cal_regoff(aperture, *loc, hw_err_status_off);
+
+	return ioread32(aperture->base + regoff);
 }
 
 static irqreturn_t aie2ps_hw_err(struct aie_aperture *aperture)
 {
+	const u32 end_col = aperture->range.start.col + aperture->range.size.col;
+	const u32 start_col = aperture->range.start.col;
 	irqreturn_t handled = IRQ_NONE;
-	struct aie_partition *apart;
-	int __maybe_unused ret;
+	struct aie_location loc;
+	u32 status;
+	int ret;
 
-	list_for_each_entry(apart, &aperture->partitions, node) {
-		if (!apart->status)
-			continue;
-		if (aie2ps_part_hw_err(apart))
+	loc.row = 0;
+	for (loc.col = start_col; loc.col < end_col; loc.col++) {
+		status = aie_aperture_get_hw_err_status(aperture, &loc);
+		if (status) {
 			handled = IRQ_HANDLED;
+			dev_err(&aperture->dev, "Received Hw err: 0x%x on col: %d",
+				status, loc.col);
+			ret = aie_aperture_clr_hw_err(aperture, &loc, (u16)status);
+			if (ret) {
+				dev_err(&aperture->dev, "Failed to clear hw error: 0x%x on col: %d, err: %d",
+					status, loc.col, ret);
+			}
+		}
 	}
 
 	return handled;
