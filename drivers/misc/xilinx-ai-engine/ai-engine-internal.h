@@ -3,6 +3,7 @@
  * Xilinx AI Engine driver internal header
  *
  * Copyright (C) 2020 - 2021 Xilinx, Inc.
+ * Copyright (C) 2024 - 2025 Advanced Micro Devices, Inc.
  */
 
 #ifndef AIE_INTERNAL_H
@@ -1776,13 +1777,11 @@ void aie_part_pm_ops_free(struct aie_partition *apart);
 int aie_part_pm_ops(struct aie_partition *apart, void *data, u32 type, struct aie_range range,
 		    bool flush);
 int aie_part_pm_ops_flush(struct aie_partition *apart);
-int aie_partition_initialize(struct device *dev, struct aie_partition_init_args *args);
 int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_init_args *args);
 int aie2ps_part_teardown(struct aie_partition *apart);
 int aie2ps_part_clear_context(struct aie_partition *apart);
 int aie2ps_part_clean(struct aie_partition *apart);
 int aie2ps_part_reset(struct aie_partition *apart);
-int aie_partition_teardown(struct device *dev);
 int aie_part_maskpoll_register(struct aie_partition *apart, u32 offset, u32 data, u32 mask,
 			       u32 timeout);
 int aie_partition_uc_zeroize_mem(struct device *dev, struct aie_location *loc, u32 regval);
