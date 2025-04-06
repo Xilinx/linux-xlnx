@@ -1041,7 +1041,7 @@ int aie2ps_part_teardown(struct aie_partition *apart)
 	ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_ENB_NOC_DMA_PAUSE, apart->range, 0);
 	if (ret)
 		goto out;
-	ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_ENB_NOC_DMA_PAUSE, apart->range, 1);
+	ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_ENB_UC_DMA_PAUSE, apart->range, 1);
 	if (ret)
 		goto out;
 
@@ -1060,6 +1060,7 @@ int aie2ps_part_teardown(struct aie_partition *apart)
 	if (ret)
 		goto out;
 
+	/* Zeroizes the uc-DM and uc shared DM */
 	data = 0x6;
 	ret = aie_part_pm_ops(apart, &data, AIE_PART_INIT_OPT_UC_ZEROIZATION, apart->range, 1);
 	if (ret)
