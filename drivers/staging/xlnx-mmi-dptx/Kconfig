@@ -1,0 +1,12 @@
+config DRM_AMD_MMI_DPTX
+	tristate "AMD Multimedia Integrated DisplayPort Tx driver"
+	depends on DRM && OF
+	select DRM_DISPLAY_DP_HELPER
+	select DRM_DISPLAY_HELPER
+	select DRM_KMS_HELPER
+	help
+	  Enable driver support for AMD Multimedia Integrated DisplayPort Tx.
+	  It is implemented as a bridge driver to be connected to AMD
+	  Multimedia Integrated Display Controller CRTC driver.
+	  Use this option if you plan to use the built in DisplayPort
+	  in Versal Gen 2 devices.
