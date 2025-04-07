@@ -1,0 +1,331 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/display/xlnx/amd,mmi-dc.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: AMD Multimedia Integrated Display Controller.
+
+description:
+  The AMD Multimedia Integrated Display Controller IP block implements the
+  AV pipelines in the Versal Gen 2 family of devices.
+
+  The Display Controller works in 2 modes Functional and Bypass.
+
+  In Bypass mode, up to 4 video streams (including audio and SDP data) from the PL
+  can be passed on directly to the UDH Display Port Tx IP. Max resolution supported
+  in this case is 8kp30 (quad pixel per clock).
+
+  In functional mode, 2 video streams are blended and passed on to the UDH DP Tx
+  and to the PL out / feedback path. Here there can be only one of the video streams
+  can have an audio stream. The video streams can come from non live / memory path
+  or from the PL fabric input. There are 3 modes here namely -
+  1. Non-live - Both video streams, one audio stream and one cursor / SDP stream
+  are from memory. The pixel clock comes from internal clock.
+  2. Live mode - Both video streams, audio stream originate from PL
+  3. Mixed mode - One video stream is from memory and another is from PL.
+  The video clock in this case comes from the PL fabric video.
+  Max resolution supported is 4kp60.
+
+maintainers:
+  - Vishal Sagar <vishal.sagar@amd.com>
+
+properties:
+  compatible:
+    const: amd,mmi-dc-1.0
+
+  reg:
+    items:
+      - description: dp registers
+      - description: blending registers
+      - description: audio video buff mgr registers
+      - description: misc registers
+      - description: interrupt registers
+
+  reg-names:
+    items:
+      - const: dp
+      - const: blend
+      - const: avbuf
+      - const: misc
+      - const: irq
+
+  interrupts:
+    items:
+      - description: DC Misc event
+
+  dmas:
+    items:
+      - description: Video 0, plane 0
+      - description: Video 0, plane 1
+      - description: Video 0, plane 2
+      - description: Video 1, plane 0
+      - description: Video 1, plane 1
+      - description: Video 1, plane 2
+      - description: Audio
+      - description: Cursor
+
+  dma-names:
+    items:
+      - const: vid.0.0
+      - const: vid.0.1
+      - const: vid.0.2
+      - const: vid.1.0
+      - const: vid.1.1
+      - const: vid.1.2
+      - const: aud
+      - const: cur
+
+  power-domains:
+    maxItems: 1
+
+  resets:
+    maxItems: 1
+
+  clocks:
+    items:
+      - description: APB Clock
+      - description: PS Pixel clock from mmi_aux0_ref_clk or ps_mmi_dc_t10mode_clk
+      - description: PS Audio clock from mmi_aux1_ref_clk or ps_mmi_dc_t10mode_i2s_clk
+      - description: PL Pixel clock from pl_mmi_dc_2x_clk for DMA mode
+      - description: PL Pixel clock from pl_mmi_dc_1x_clk for Bypass mode
+      - description: PL Audio clock from pl_mmi_i2s_s0_clk
+      - description: 27 MHz clock for System Timestamp Counter
+
+  clock-names:
+    items:
+      - const: apb_clk
+      - const: ps_vid_clk
+      - const: ps_aud_clk
+      - const: pl_vid_func_clk
+      - const: pl_vid_bypass_clk
+      - const: pl_aud_clk
+      - const: stc_ref_clk
+
+  xlnx,dc-operating-mode:
+    description: Blending of 2 streams happens in functional mode.
+    enum: [DC_Functional, DC_Bypass]
+
+  xlnx,dc-presentation-mode:
+    description:
+      Non Live mode video streams come from memory.
+      Live mode video stream comes from fabric.
+      Mixed mode when 1 stream comes from fabric and other from memory.
+    enum: [Non_Live, Live, Mixed]
+
+  xlnx,dc-live-video-select:
+    description:
+      Live video input from either the first port (V01) or second port (V02)
+      or both is / are selected.
+    enum: [Both, V01, V02]
+
+  xlnx,dc-live-video01-mode:
+    description:
+      Whether V01 stream contains video only or audio and video.
+    enum: [Audio_&_Video, Video_only]
+
+  xlnx,dc-live-video02-mode:
+    description: V02 stream will always be video only
+    const: Video_only
+
+  xlnx,dc-live-video-alpha-en:
+    type: boolean
+    description: boolean present when alpha is present in video 01
+
+  xlnx,dc-live-video-sdp-en:
+    type: boolean
+    description: boolean present when SDP packets are to be sent with video 01
+
+  xlnx,dc-streams:
+    description: number of input streams to DC
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [1, 2, 4]
+
+  xlnx,dc-stream0-mode:
+    description:
+      In Bypass mode whether stream 0 from fabric contains
+      video only or audio and video.
+    enum: [Audio_&_Video, Video_only]
+
+  xlnx,dc-stream0-pixel-mode:
+    description: pixels per clock of Stream 0
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [1, 2, 4]
+
+  xlnx,dc-stream0-sdp-en:
+    type: boolean
+    description: boolean present when SDP interface is needed for stream 0.
+
+  xlnx,dc-stream1-mode:
+    description:
+      In Bypass mode whether stream 1 from fabric contains
+      video only or audio and video.
+    enum: [Audio_&_Video, Video_only]
+
+  xlnx,dc-stream1-pixel-mode:
+    description: pixels per clock of Stream 1
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [1, 2]
+
+  xlnx,dc-stream1-sdp-en:
+    type: boolean
+    description: boolean present when SDP interface is needed for stream 1.
+
+  xlnx,dc-stream2-mode:
+    description:
+      In Bypass mode whether stream 2 from fabric contains
+      video only or audio and video.
+    enum: [Audio_&_Video, Video_only]
+
+  xlnx,dc-stream2-pixel-mode:
+    description: pixels per clock of Stream 2
+    $ref: /schemas/types.yaml#/definitions/uint32
+    const: 1
+
+  xlnx,dc-stream2-sdp-en:
+    type: boolean
+    description: boolean present when SDP interface is needed for stream 2.
+
+  xlnx,dc-stream3-mode:
+    description:
+      In Bypass mode whether stream 3 from fabric contains
+      video only or audio and video.
+    enum: [Audio_&_Video, Video_only]
+
+  xlnx,dc-stream3-pixel-mode:
+    description: pixels per clock of Stream 3
+    $ref: /schemas/types.yaml#/definitions/uint32
+    const: 1
+
+  xlnx,dc-stream3-sdp-en:
+    type: boolean
+    description: boolean present when SDP interface is needed for stream 3.
+
+  ports:
+    type: object
+    description:
+      Connections to the programmable logic and the DisplayPort. Each port
+      shall have a single endpoint. Initial 12 are input ports.
+      Next 4 are output ports connected to DP Tx. Last 3 are output ports
+      to the PL / Feedback path for video, audio and SDP in case of functional mode.
+
+    properties:
+      "#address-cells":
+        const: 1
+
+      "#size-cells":
+        const: 0
+
+    patternProperties:
+      "^port@([0-9a-f]|1[0-2])$":
+        type: object
+        description:
+          port 0x0-0x3 represent live Video 0-3 inputs.
+          Live 0/1 are inputs in functional mode only.
+          port 0x4-0x7 represent the corresponding Audio stream inputs for live video inputs.
+          port 0x8-0xB represent the corresponding SDP stream inputs for live video inputs.
+          port 0xC-0xF represent the outputs connected to DisplayPort Tx input ports.
+          port 0xC carries the blended video output to DisplayPort Tx
+          port 0xD-0xf are connected in bypass / MST mode only.
+          port 0x10-0x12 is blended video/audio/SDP 0 output to PL feedback path
+
+        properties:
+          reg:
+            items:
+              minimum: 0
+              maximum: 18
+
+          endpoint:
+            type: object
+
+            properties:
+              remote-endpoint: true
+
+            required:
+              - remote-endpoint
+
+            additionalProperties: false
+
+        required:
+          - reg
+          - endpoint
+
+        additionalProperties: false
+
+    required:
+      - "#address-cells"
+      - "#size-cells"
+      - port@c
+
+    additionalProperties: false
+
+required:
+  - compatible
+  - reg
+  - reg-names
+  - interrupts
+  - ports
+
+additionalProperties: false
+
+examples:
+  - |
+    axi {
+        #address-cells = <2>;
+        #size-cells = <2>;
+
+        mmi_dc@edd00000 {
+            compatible = "amd,mmi-dc-1.0";
+            reg = <0x0 0xedd00000 0x0 0x1000>, <0x0 0xedd0a000 0x0 0x1000>, <0x0 0xedd0b000 0x0 0x1000>,
+                  <0x0 0xedd0c000 0x0 0x1000>, <0x0 0xedd0d000 0x0 0x1000>;
+            reg-names = "dp", "blend", "avbuf", "misc", "irq";
+            interrupts = <0 179 4>;
+            clocks = <&mmi_dc_apb_clk>, <&mmi_aux0_ref_clk>, <&mmi_aux1_ref_clk>, <&pl_mmi_dc_2x_clk>,
+                     <&pl_mmi_dc_1x_clk>, <&pl_mmi_i2s_s0_clk>, <&stc_clk>;
+            clock-names = "apb_clk", "ps_vid_clk", "ps_aud_clk", "pl_vid_func_clk",
+                          "pl_vid_bypass_clk", "pl_aud_clk", "stc_ref_clk";
+            dma-names = "vid.0.0", "vid.0.1", "vid.0.2", "vid.1.0", "vid.1.1", "vid.1.2", "aud", "cur";
+            dmas = <&mmi_dcdma 0>, <&mmi_dcdma 1>, <&mmi_dcdma 2>, <&mmi_dcdma 3>, <&mmi_dcdma 4>,
+                   <&mmi_dcdma 5>, <&mmi_dcdma 6>, <&mmi_dcdma 7>;
+
+            xlnx,dc-operating-mode = "DC_Functional";
+            xlnx,dc-presentation-mode = "Non_Live";
+
+            ports {
+                #address-cells = <1>;
+                #size-cells = <0>;
+
+                port@c {
+                    reg = <12>;
+                    dc_out_0: endpoint {
+                        remote-endpoint = <&dptx_in_0>;
+                    };
+                };
+                port@d {
+                    reg = <13>;
+                    dc_out_1: endpoint {
+                        remote-endpoint = <&dptx_in_1>;
+                    };
+                };
+                port@e {
+                    reg = <14>;
+                    dc_out_2: endpoint {
+                        remote-endpoint = <&dptx_in_2>;
+                    };
+                };
+                port@f {
+                    reg = <15>;
+                    dc_out_3: endpoint {
+                        remote-endpoint = <&dptx_in_3>;
+                    };
+                };
+                port@10 {
+                    reg = <16>;
+                    dc_fb_vid_out: endpoint {
+                        remote-endpoint = <&pl_fb_rd>;
+                    };
+                };
+            };
+        };
+    };
+...
