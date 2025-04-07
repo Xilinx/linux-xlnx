@@ -2613,7 +2613,7 @@ static int aieml_scan_part_clocks(struct aie_partition *apart)
 static int aieml_set_part_clocks(struct aie_partition *apart)
 {
 	struct aie_range *range = &apart->range;
-	u32 node_id = apart->adev->pm_node_id;
+	u32 node_id = apart->aperture->node_id;
 	int ret, status = -EINVAL;
 	struct aie_location loc;
 
@@ -2674,7 +2674,7 @@ static int aieml_set_part_clocks(struct aie_partition *apart)
 static int aieml_part_clear_mems(struct aie_partition *apart)
 {
 	struct aie_range *range = &apart->range;
-	u32 node_id = apart->adev->pm_node_id;
+	u32 node_id = apart->aperture->node_id;
 	int ret;
 
 	ret = zynqmp_pm_aie_operation(node_id, range->start.col,
