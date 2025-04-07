@@ -226,7 +226,7 @@ out:
  */
 int aie_part_clear_context(struct aie_partition *apart)
 {
-	u32 node_id = apart->adev->pm_node_id;
+	u32 node_id = apart->aperture->node_id;
 	int ret;
 
 	ret = mutex_lock_interruptible(&apart->mlock);
@@ -350,7 +350,7 @@ out:
  */
 int aie_part_clean(struct aie_partition *apart)
 {
-	u32 node_id = apart->adev->pm_node_id;
+	u32 node_id = apart->aperture->node_id;
 	int ret;
 
 	if (apart->cntrflag & XAIE_PART_NOT_RST_ON_RELEASE)
@@ -473,7 +473,7 @@ exit:
  */
 int aie_part_reset(struct aie_partition *apart)
 {
-	u32 node_id = apart->adev->pm_node_id;
+	u32 node_id = apart->aperture->node_id;
 	int ret;
 
 	ret = mutex_lock_interruptible(&apart->mlock);
@@ -889,7 +889,7 @@ out:
  */
 int aie_part_initialize(struct aie_partition *apart, struct aie_partition_init_args *args)
 {
-	u32 node_id = apart->adev->pm_node_id;
+	u32 node_id = apart->aperture->node_id;
 	int ret;
 	int i;
 
@@ -1100,7 +1100,7 @@ out:
  */
 int aie_part_teardown(struct aie_partition *apart)
 {
-	u32 node_id = apart->adev->pm_node_id;
+	u32 node_id = apart->aperture->node_id;
 	int ret;
 
 	ret = mutex_lock_interruptible(&apart->mlock);

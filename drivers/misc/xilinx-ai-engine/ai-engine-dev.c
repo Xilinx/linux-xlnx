@@ -544,7 +544,6 @@ int xilinx_ai_engine_add_dev(struct aie_device *adev,
 static int xilinx_ai_engine_probe(struct platform_device *pdev)
 {
 	struct aie_device *adev;
-	u32 pm_reg[2];
 	int ret;
 	u8 regs_u8[2];
 	u8 aie_gen;
@@ -620,19 +619,6 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed to initialize device instance.\n");
 		return ret;
 	}
-
-	/*
-	 * AI Engine platform management node ID is required for requesting
-	 * services from firmware driver.
-	 */
-	ret = of_property_read_u32_array(pdev->dev.of_node, "power-domains",
-					 pm_reg, ARRAY_SIZE(pm_reg));
-	if (ret < 0) {
-		dev_err(&pdev->dev,
-			"Failed to read power manangement information\n");
-		return ret;
-	}
-	adev->pm_node_id = pm_reg[1];
 
 	adev->clk = devm_clk_get(&pdev->dev, "aclk0");
 	if (IS_ERR(adev->clk)) {

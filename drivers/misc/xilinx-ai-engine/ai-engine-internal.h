@@ -1094,7 +1094,6 @@ struct aie_dma_addrlen {
  * @dev_gen: aie hardware device generation
  * @num_kernel_regs: number of kernel only registers range
  * @num_core_regs_clr: number of core registers to clear
- * @pm_node_id: AI Engine platform management node ID
  * @clock_id: AI Engine clock ID
  * @device_name: identify ssit device id
  * @ttype_attr: tile type attributes
@@ -1146,7 +1145,6 @@ struct aie_device {
 	u32 dev_gen;
 	u32 num_kernel_regs;
 	u32 num_core_regs_clr;
-	u32 pm_node_id;
 	u32 clock_id;
 	u32 device_name;
 	struct aie_tile_attr ttype_attr[AIE_TILE_TYPE_MAX];
