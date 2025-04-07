@@ -1099,6 +1099,13 @@ F:	drivers/gpu/drm/amd/include/vi_structs.h
 F:	include/uapi/linux/kfd_ioctl.h
 F:	include/uapi/linux/kfd_sysfs.h
 
+AMD MMI DC DRIVER
+M:	Vishal Sagar <vishal.sagar@amd.com>
+L:	dri-devel@lists.freedesktop.org
+S:	Supported
+F:	Documentation/devicetree/bindings/display/xlnx/amd,mmi-dc.yaml
+F:	drivers/gpu/drm/xlnx/mmi_dc*
+
 AMD MMI DCDMA DRIVER
 M:	Anatoliy Klymenko <anatoliy.klymenko@amd.com>
 L:	dmaengine@vger.kernel.org
