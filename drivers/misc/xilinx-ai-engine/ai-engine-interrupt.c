@@ -1092,8 +1092,8 @@ static int aie_aperture_clr_hw_err(struct aie_aperture *aperture, struct aie_loc
 	hw_err->len = sizeof(*hw_err);
 	hw_err->val = status;
 
-	trace_aie_pm_ops(aperture->adev->pm_node_id, pkt_va, size, pkt_dma);
-	ret = versal2_pm_aie2ps_operation(aperture->adev->pm_node_id, size,
+	trace_aie_pm_ops(aperture->node_id, pkt_va, size, pkt_dma);
+	ret = versal2_pm_aie2ps_operation(aperture->node_id, size,
 					  upper_32_bits(pkt_dma),
 					  lower_32_bits(pkt_dma));
 

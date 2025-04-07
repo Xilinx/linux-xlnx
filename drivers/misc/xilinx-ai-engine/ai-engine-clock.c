@@ -353,7 +353,7 @@ exit:
 int aie_part_set_column_clock_from_user(struct aie_partition *apart, struct aie_column_args *args)
 {
 	u32 part_end_col = apart->range.start.col + apart->range.size.col - 1;
-	u32 node_id = apart->adev->pm_node_id;
+	u32 node_id = apart->aperture->node_id;
 	struct aie_location locs;
 	int ret;
 	u32 c;
