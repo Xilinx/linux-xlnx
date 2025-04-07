@@ -18,6 +18,7 @@
 #include <linux/resource.h>
 #include <linux/types.h>
 
+#include "../../pci.h"
 #include "pcie-designware.h"
 
 #define AMD_MDB_TLP_IR_STATUS_MISC		0x4C0
@@ -408,6 +409,7 @@ static int amd_mdb_add_pcie_port(struct amd_mdb_pcie *pcie,
 	struct dw_pcie *pci = &pcie->pci;
 	struct dw_pcie_rp *pp = &pci->pp;
 	struct device *dev = &pdev->dev;
+	struct gpio_desc *reset_gpio;
 	int err;
 
 	pcie->slcr = devm_platform_ioremap_resource_byname(pdev, "slcr");
@@ -425,6 +427,25 @@ static int amd_mdb_add_pcie_port(struct amd_mdb_pcie *pcie,
 	}
 
 	pp->ops = &amd_mdb_pcie_host_ops;
+
+	/* Request the GPIO for PCIe reset signal and assert */
+	reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_HIGH);
+	if (IS_ERR(reset_gpio))
+		return dev_err_probe(dev, PTR_ERR(reset_gpio),
+				     "Failed to request reset GPIO\n");
+
+	if (reset_gpio) {
+		/*
+		 * "PERST# active time", as per Table 2-10: Power Sequencing
+		 * and Reset Signal Timings of the PCIe Electromechanical
+		 * Specification, Revision 6.0, symbol "T_PERST".
+		 */
+		udelay(100);
+
+		/* Deassert the reset signal */
+		gpiod_set_value_cansleep(reset_gpio, 0);
+		mdelay(PCIE_T_RRS_READY_MS);
+	}
 
 	err = dw_pcie_host_init(pp);
 	if (err) {
