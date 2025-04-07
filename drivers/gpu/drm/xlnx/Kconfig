@@ -1,3 +1,19 @@
+config DRM_AMD_MMI_DC
+	tristate "Multimedia Integrated Display Controller Driver"
+	depends on DRM && OF
+	depends on DMADEVICES
+	select AMD_MMI_DCDMA
+	select DRM_DISPLAY_DP_HELPER
+	select DRM_DISPLAY_HELPER
+	select DRM_BRIDGE_CONNECTOR
+	select DRM_GEM_DMA_HELPER
+	select DRM_KMS_HELPER
+	help
+	  This is the DRM/KMS CRTC driver for AMD Versal Gen2 Multimedia
+	  Integrated Display Controller. Choose this option if you have
+	  the AMD Versal Gen 2 SoC with DisplayPort subsystem and planning to
+	  use DisplayPort output.
+
 config DRM_ZYNQMP_DPSUB
 	tristate "ZynqMP DisplayPort Controller Driver"
 	depends on ARCH_ZYNQMP || COMPILE_TEST
