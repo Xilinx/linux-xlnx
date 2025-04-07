@@ -1113,6 +1113,12 @@ S:	Supported
 F:	Documentation/devicetree/bindings/dma/xilinx/amd,mmi-dcdma-1.0.yaml
 F:	drivers/dma/xilinx/mmi_dcdma.c
 
+AMD MMI DISPLAYPORT TX DRIVER
+M:	Vishal Sagar <vishal.sagar@amd.com>
+S:	Supported
+F:	Documentation/devicetree/bindings/staging/display/amd,mmi-dptx.yaml
+F:	drivers/staging/xlnx-mmi-dptx/
+
 AMD MP2 I2C DRIVER
 M:	Elie Morisse <syniurge@gmail.com>
 M:	Shyam Sundar S K <shyam-sundar.s-k@amd.com>

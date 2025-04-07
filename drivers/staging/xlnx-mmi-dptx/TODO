@@ -1,0 +1,12 @@
+TODO list
+* Use drm helper APIs to read and parse Rx Capabilities.
+* Use drm helper APIs to handle the link training.
+* Add support for power domain and suspend/resume.
+* Add reset functionality.
+* Add clock support.
+* Add support for audio.
+* Add support for MST mode.
+* Add support for change color format.
+* Add support for eDP.
+* Add support for HDCP.
+* Compliance test support.
