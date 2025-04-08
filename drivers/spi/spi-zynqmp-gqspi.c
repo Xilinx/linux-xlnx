@@ -1253,6 +1253,14 @@ static int zynqmp_qspi_exec_op(struct spi_mem *mem,
 			xqspi->rxbuf = NULL;
 			xqspi->bytes_to_transfer = op->data.nbytes;
 			xqspi->bytes_to_receive = 0;
+			if ((genfifoentry & GQSPI_GENFIFO_STRIPE) &&
+			    (xqspi->bytes_to_transfer % 2)) {
+				u32 data_len = xqspi->bytes_to_transfer;
+
+				xqspi->bytes_to_transfer = roundup(xqspi->bytes_to_transfer, 4);
+				for (; data_len < xqspi->bytes_to_transfer; data_len++)
+					*(((u8 *)xqspi->txbuf) + data_len) = 0xFF;
+			}
 			zynqmp_qspi_write_op(xqspi, op->data.buswidth,
 					     genfifoentry);
 			zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST,
