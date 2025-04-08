@@ -37,8 +37,9 @@ properties:
       A list of phandle and clock-specifier pairs for the clocks
       listed in clock-names.
     items:
-      - description: Master/Core clock, has to be >= 125 MHz
-          for SS operation and >= 60MHz for HS operation.
+      - description: Master/Core clock, has to be >= 156.25MHz in SSP
+          mode, >= 125 MHz for SS operation and >= 60MHz for HS
+          operation.
       - description: Clock source to core during PHY power down.
 
   clock-names:
