@@ -9,9 +9,6 @@ title: CPM Host Controller device tree for Xilinx Versal SoCs
 maintainers:
   - Bharat Kumar Gogada <bharat.kumar.gogada@amd.com>
 
-allOf:
-  - $ref: /schemas/pci/pci-host-bridge.yaml#
-
 properties:
   compatible:
     enum:
@@ -21,18 +18,12 @@ properties:
       - xlnx,versal-cpm5nc-host
 
   reg:
-    items:
-      - description: CPM system level control and status registers.
-      - description: Configuration space region and bridge registers.
-      - description: CPM5 control and status registers.
     minItems: 2
+    maxItems: 4
 
   reg-names:
-    items:
-      - const: cpm_slcr
-      - const: cfg
-      - const: cpm_csr
     minItems: 2
+    maxItems: 4
 
   interrupts:
     maxItems: 1
@@ -72,10 +63,57 @@ required:
   - msi-map
   - interrupt-controller
 
+allOf:
+  - $ref: /schemas/pci/pci-host-bridge.yaml#
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - xlnx,versal-cpm-host-1.00
+    then:
+      properties:
+        reg:
+          items:
+            - description: CPM system level control and status registers.
+            - description: Configuration space region and bridge registers.
+            - description: CPM clock and reset control registers.
+          minItems: 2
+        reg-names:
+          items:
+            - const: cpm_slcr
+            - const: cfg
+            - const: cpm_crx
+          minItems: 2
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - xlnx,versal-cpm5-host
+              - xlnx,versal-cpm5-host1
+    then:
+      properties:
+        reg:
+          items:
+            - description: CPM system level control and status registers.
+            - description: Configuration space region and bridge registers.
+            - description: CPM5 control and status registers.
+            - description: CPM clock and reset control registers.
+          minItems: 3
+        reg-names:
+          items:
+            - const: cpm_slcr
+            - const: cfg
+            - const: cpm_csr
+            - const: cpm_crx
+          minItems: 3
+
 unevaluatedProperties: false
 
 examples:
   - |
+    #include <dt-bindings/gpio/gpio.h>
 
     versal {
                #address-cells = <2>;
@@ -98,8 +136,10 @@ examples:
                                 <0x43000000 0x80 0x00000000 0x80 0x00000000 0x0 0x80000000>;
                        msi-map = <0x0 &its_gic 0x0 0x10000>;
                        reg = <0x0 0xfca10000 0x0 0x1000>,
-                             <0x6 0x00000000 0x0 0x10000000>;
-                       reg-names = "cpm_slcr", "cfg";
+                             <0x6 0x00000000 0x0 0x10000000>,
+                             <0x0 0xfca00000 0x0 10000>;
+                       reg-names = "cpm_slcr", "cfg", "cpm_crx";
+                       reset-gpios = <&gpio1 38 GPIO_ACTIVE_LOW>;
                        pcie_intc_0: interrupt-controller {
                                #address-cells = <0>;
                                #interrupt-cells = <1>;
@@ -126,8 +166,10 @@ examples:
                        msi-map = <0x0 &its_gic 0x0 0x10000>;
                        reg = <0x00 0xfcdd0000 0x00 0x1000>,
                              <0x06 0x00000000 0x00 0x1000000>,
-                             <0x00 0xfce20000 0x00 0x1000000>;
-                       reg-names = "cpm_slcr", "cfg", "cpm_csr";
+                             <0x00 0xfce20000 0x00 0x10000>,
+                             <0x00 0xfcdc0000 0x00 0x10000>;
+                       reg-names = "cpm_slcr", "cfg", "cpm_csr", "cpm_crx";
+                       reset-gpios = <&gpio1 38 GPIO_ACTIVE_LOW>;
 
                        pcie_intc_1: interrupt-controller {
                                #address-cells = <0>;
