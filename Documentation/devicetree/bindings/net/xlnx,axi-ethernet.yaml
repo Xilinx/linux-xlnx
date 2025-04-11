@@ -234,6 +234,11 @@ properties:
       ethernet IP. Can be either "1G / 10G", which is the default switching
       capability if this property is not present or "1G / 10G / 25G".
 
+  xlnx,has-auto-neg:
+    type: boolean
+    description: Indicates whether IP supports Auto Negotiation
+      and Link Training.
+
   max-speed: true
 
   gt_ctrl-gpios:
