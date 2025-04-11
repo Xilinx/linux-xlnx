@@ -38,6 +38,7 @@ static struct pm_api_info pm_api_list[] = {
 	PM_API(PM_RELEASE_NODE),
 	PM_API(PM_SET_REQUIREMENT),
 	PM_API(PM_GET_API_VERSION),
+	PM_API(PM_GET_NODE_STATUS),
 	PM_API(PM_REGISTER_NOTIFIER),
 	PM_API(PM_RESET_ASSERT),
 	PM_API(PM_RESET_GET_STATUS),
@@ -166,6 +167,17 @@ static int process_api_request(u32 pm_id, u64 *pm_api_arg, u32 *pm_api_ret)
 						pm_api_arg[2] : 0,
 						pm_api_arg[3] ? pm_api_arg[3] :
 						ZYNQMP_PM_REQUEST_ACK_BLOCKING);
+		break;
+	case PM_GET_NODE_STATUS:
+		ret = zynqmp_pm_get_node_status(pm_api_arg[0],
+						&pm_api_ret[0],
+						&pm_api_ret[1],
+						&pm_api_ret[2]);
+		if (!ret)
+			sprintf(debugfs_buf,
+				"GET_NODE_STATUS:\n\tNodeId: %llu\n\tStatus: %u\n\tRequirements: %u\n\tUsage: %u\n",
+				pm_api_arg[0], pm_api_ret[0],
+				pm_api_ret[1], pm_api_ret[2]);
 		break;
 	case PM_REGISTER_NOTIFIER:
 		ret = zynqmp_pm_register_notifier(pm_api_arg[0],
