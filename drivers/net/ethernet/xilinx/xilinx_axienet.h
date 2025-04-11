@@ -1016,6 +1016,7 @@ struct skbuf_dma_descriptor {
  * @gt_mode_narrow: true if GT is configured to operate in Narrow mode, false for Wide mode.
  * @mrmac_stream_dwidth: MRMAC AXI4-Stream data width (bits).
  * @switch_lock: Spinlock for switchable IP.
+ * @auto_neg: true if auto neg property is enabled in the IP.
  * @eoe_regs: Ethernet offload IP base address.
  * @eoe_connected: Tells whether ethernet offload IP is connected to Ethernet IP.
  * @eoe_features: EOE IP supported configuration.
@@ -1135,6 +1136,7 @@ struct axienet_local {
 	bool gt_mode_narrow;
 	int mrmac_stream_dwidth;
 	spinlock_t switch_lock;	/* To protect Link training programming from multiple context */
+	bool auto_neg;
 	void __iomem *eoe_regs;
 	bool eoe_connected;
 	u32 eoe_features;
