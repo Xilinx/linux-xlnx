@@ -1038,8 +1038,13 @@ static void mmi_dp_bridge_atomic_enable(struct drm_bridge *bridge,
 
 	/* Configure the video */
 	retval = mmi_dp_configure_video(dptx, adjusted_mode);
-	if (retval < 0)
+	if (retval < 0) {
 		dptx_err(dptx, "Failed to configure video mode\n");
+		return;
+	}
+	mmi_dp_intr_en(dptx, DPTX_IEN_VIDEO_FIFO_UNDERFLOW |
+		       DPTX_IEN_VIDEO_FIFO_OVERFLOW |
+		       DPTX_IEN_AUDIO_FIFO_OVERFLOW);
 }
 
 static void mmi_dp_bridge_atomic_disable(struct drm_bridge *bridge,
@@ -1047,6 +1052,9 @@ static void mmi_dp_bridge_atomic_disable(struct drm_bridge *bridge,
 {
 	struct dptx *dptx = container_of(bridge, struct dptx, bridge);
 
+	mmi_dp_intr_dis(dptx, DPTX_IEN_VIDEO_FIFO_UNDERFLOW |
+			DPTX_IEN_VIDEO_FIFO_OVERFLOW |
+			DPTX_IEN_AUDIO_FIFO_OVERFLOW);
 	mmi_dp_write_mask(dptx, DPTX_VSAMPLE_CTRL_N(0), VIDEO_STREAM_ENABLE_MASK, 0);
 }
 
