@@ -21,9 +21,11 @@
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/dmaengine.h>
+#include <linux/dma-mapping.h>
 #include <linux/dma/xilinx_frmbuf.h>
 #include <linux/of.h>
 #include <linux/of_dma.h>
+#include <linux/of_reserved_mem.h>
 #include <linux/platform_device.h>
 #include <video/videomode.h>
 #include "xlnx_bridge.h"
@@ -631,6 +633,16 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 		dev_info(dev, "vtc bridge property not present\n");
 	}
 
+	ret = of_reserved_mem_device_init(&pdev->dev);
+	if (ret)
+		dev_dbg(&pdev->dev, "of_reserved_mem_device_init: %d\n", ret);
+
+	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
+	if (ret) {
+		dev_err(&pdev->dev, "dma_set_mask_and_coherent: %d\n", ret);
+		goto err_dma;
+	}
+
 	xlnx_pl_disp->dev = dev;
 	platform_set_drvdata(pdev, xlnx_pl_disp);
 
@@ -652,6 +664,7 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 err_component:
 	component_del(dev, &xlnx_pl_disp_component_ops);
 err_dma:
+	of_reserved_mem_device_release(&pdev->dev);
 	dma_release_channel(xlnx_pl_disp->chan->dma_chan);
 
 	return ret;
@@ -670,6 +683,7 @@ static void xlnx_pl_disp_remove(struct platform_device *pdev)
 	/* Make sure the channel is terminated before release */
 	dmaengine_terminate_sync(xlnx_dma_chan->dma_chan);
 	dma_release_channel(xlnx_dma_chan->dma_chan);
+	of_reserved_mem_device_release(&pdev->dev);
 }
 
 static const struct of_device_id xlnx_pl_disp_of_match[] = {
