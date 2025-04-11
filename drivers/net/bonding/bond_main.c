@@ -497,9 +497,9 @@ static int bond_ipsec_add_sa(struct xfrm_state *xs,
 		goto out;
 	}
 
-	xs->xso.real_dev = real_dev;
 	err = real_dev->xfrmdev_ops->xdo_dev_state_add(xs, extack);
 	if (!err) {
+		xs->xso.real_dev = real_dev;
 		ipsec->xs = xs;
 		INIT_LIST_HEAD(&ipsec->list);
 		mutex_lock(&bond->ipsec_lock);
@@ -541,11 +541,11 @@ static void bond_ipsec_add_sa_all(struct bonding *bond)
 		if (ipsec->xs->xso.real_dev == real_dev)
 			continue;
 
-		ipsec->xs->xso.real_dev = real_dev;
 		if (real_dev->xfrmdev_ops->xdo_dev_state_add(ipsec->xs, NULL)) {
 			slave_warn(bond_dev, real_dev, "%s: failed to add SA\n", __func__);
-			ipsec->xs->xso.real_dev = NULL;
+			continue;
 		}
+		ipsec->xs->xso.real_dev = real_dev;
 	}
 out:
 	mutex_unlock(&bond->ipsec_lock);
@@ -627,6 +627,7 @@ static void bond_ipsec_del_sa_all(struct bonding *bond)
 				   "%s: no slave xdo_dev_state_delete\n",
 				   __func__);
 		} else {
+			ipsec->xs->xso.real_dev = NULL;
 			real_dev->xfrmdev_ops->xdo_dev_state_delete(ipsec->xs);
 			if (real_dev->xfrmdev_ops->xdo_dev_state_free)
 				real_dev->xfrmdev_ops->xdo_dev_state_free(ipsec->xs);
@@ -661,6 +662,7 @@ static void bond_ipsec_free_sa(struct xfrm_state *xs)
 
 	WARN_ON(xs->xso.real_dev != real_dev);
 
+	xs->xso.real_dev = NULL;
 	if (real_dev && real_dev->xfrmdev_ops &&
 	    real_dev->xfrmdev_ops->xdo_dev_state_free)
 		real_dev->xfrmdev_ops->xdo_dev_state_free(xs);
