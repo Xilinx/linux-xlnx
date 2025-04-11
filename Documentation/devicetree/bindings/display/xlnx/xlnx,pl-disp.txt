@@ -13,6 +13,9 @@ Required properties:
 - compatible: Must be "xlnx,pl-disp"
 - dmas: dma attach to pipeline
 - dma-names: names for dma
+- memory-region: phandle to /reserved-memory node.
+  If memory is reserved for special use by PL display then this node
+  can be used to refer and use from this reserved memory region.
 - xlnx,vformat: video format for layer
 - port: Logical block can be used / connected independently with
   external device. In the display controller port nodes, topology
@@ -39,3 +42,45 @@ Example:
 			};
 		};
 	};
+Example using reserved memory:
+Reserving from 32bit Shared CMA pool of 512MiB using System RAM:
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+/ {
+	reserved-memory {
+		#address-cells = <0x2>;
+		#size-cells = <0x2>;
+		ranges;
+		psmem_multimedia: multimedia_cma_mem_region {
+			compatible = "shared-dma-pool";
+			reg = <0x00 0x40000000 0x00 0x20000000>;
+			reusable;
+		};
+	};
+};
+...
+	drm-pl-disp-drv {
+		/* ... */
+		memory-region = <&psmem_multimedia>;
+	};
+
+Reserving from 64bit Shared DMA pool of 1792 MiB using external PL based
+DDR memory:
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+/ {
+	reserved-memory {
+		#address-cells = <0x2>;
+		#size-cells = <0x2>;
+		ranges;
+		plmem_multimedia: multimedia_dma_mem_region {
+			compatible = "shared-dma-pool";
+			no-map;
+			reg = <0x500 0x00 0x00 0x70000000>;
+		};
+	};
+
+};
+...
+	drm-pl-disp-drv {
+		/* ... */
+		memory-region = <&plmem_multimedia>;
+	}
