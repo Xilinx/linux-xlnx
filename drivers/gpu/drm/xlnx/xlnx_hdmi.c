@@ -329,6 +329,8 @@
 #define TIMEOUT_200MS		200
 #define TIMEOUT_250MS		250
 #define TIMEOUT_10US		10
+/* TODO: Fix this delay in the future */
+#define HDMI_TX_LNK_VID_RDY_DELAY	10000
 
 #define HDMI_TX_MAX_FRL_RATE	6
 #define HDMI_TX_SCDC_MASK	0xFF
@@ -3314,7 +3316,7 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 
 	hdmi->wait_for_streamup = 0;
 	wait_event_timeout(hdmi->wait_event, hdmi->wait_for_streamup,
-			   msecs_to_jiffies(1000));
+			   msecs_to_jiffies(HDMI_TX_LNK_VID_RDY_DELAY));
 	if (!hdmi->wait_for_streamup)
 		dev_err(hdmi->dev, "wait_for_streamup timeout\n");
 
