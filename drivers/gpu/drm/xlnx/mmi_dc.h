@@ -106,6 +106,7 @@ struct mmi_dc_plane;
  * @misc: misc control register space
  * @irq: interrupt control register space
  * @rst: external reset
+ * @pixel_clk: pixel clock
  * @irq_num: interrupt lane number
  */
 struct mmi_dc {
@@ -121,6 +122,7 @@ struct mmi_dc {
 	void __iomem		*misc;
 	void __iomem		*irq;
 	struct reset_control	*rst;
+	struct clk		*pixel_clk;
 	int			irq_num;
 };
 
