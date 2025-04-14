@@ -1848,6 +1848,10 @@ static void xlnx_hdmi_streamup_callback(struct xlnx_hdmi *hdmi)
 			xlnx_pioout_bridge_pixel_clr(hdmi);
 		}
 	}
+
+	hdmi->wait_for_streamup =
+		xlnx_hdmi_is_lnk_vid_rdy(hdmi) ? 1 : 0;
+	wake_up(&hdmi->wait_event);
 }
 
 /**
@@ -2486,7 +2490,9 @@ static int xlnx_hdmi_exec_frl_state_ltsp(struct xlnx_hdmi *hdmi)
 			if (!status) {
 				hdmi->stream.frl_config.frl_train_states =
 					HDMI_TX_FRLSTATE_LTS_P_FRL_RDY;
-				hdmi->wait_for_streamup = 1;
+				hdmi->wait_for_streamup =
+					xlnx_hdmi_is_lnk_vid_rdy(hdmi) ? 1 : 0;
+				wake_up(&hdmi->wait_event);
 			}
 		}
 	}
@@ -2673,7 +2679,6 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 				}
 			} else {
 				xlnx_hdmi_streamup_callback(hdmi);
-				hdmi->wait_for_streamup = 1;
 			}
 			xlnx_hdmi_aux_enable(hdmi);
 			xlnx_hdmi_auxintr_enable(hdmi);
