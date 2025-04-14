@@ -264,6 +264,7 @@ required:
   - reg
   - reg-names
   - interrupts
+  - resets
   - ports
 
 additionalProperties: false
@@ -280,6 +281,7 @@ examples:
                   <0x0 0xedd0c000 0x0 0x1000>, <0x0 0xedd0d000 0x0 0x1000>;
             reg-names = "dp", "blend", "avbuf", "misc", "irq";
             interrupts = <0 179 4>;
+            resets = <&versal2_reset 0xc104119>;
             clocks = <&mmi_dc_apb_clk>, <&mmi_aux0_ref_clk>, <&mmi_aux1_ref_clk>, <&pl_mmi_dc_2x_clk>,
                      <&pl_mmi_dc_1x_clk>, <&pl_mmi_i2s_s0_clk>, <&stc_clk>;
             clock-names = "apb_clk", "ps_vid_clk", "ps_aud_clk", "pl_vid_func_clk",
