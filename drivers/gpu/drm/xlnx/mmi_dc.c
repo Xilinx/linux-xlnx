@@ -381,8 +381,10 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
 		return dc->irq_num;
 
 	ret = mmi_dc_create_planes(dc, drm);
-	if (ret < 0)
+	if (ret < 0) {
+		mmi_dc_destroy_planes(dc);
 		return ret;
+	}
 
 	mmi_dc_set_dma_align(dc);
 
