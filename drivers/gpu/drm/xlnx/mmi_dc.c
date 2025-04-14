@@ -380,17 +380,6 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
 	if (dc->irq_num < 0)
 		return dc->irq_num;
 
-	disable_irq(dc->irq_num);
-
-	ret = devm_request_threaded_irq(dc->dev, dc->irq_num, NULL,
-					mmi_dc_irq_handler,
-					IRQF_ONESHOT | IRQF_SHARED,
-					dev_name(dc->dev), dc);
-	if (ret < 0) {
-		dev_err(dc->dev, "failed to setup irq handler: %d\n", ret);
-		return ret;
-	}
-
 	ret = mmi_dc_create_planes(dc, drm);
 	if (ret < 0)
 		return ret;
@@ -415,7 +404,14 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
 	mmi_dc_blend_set_bg_color(dc, MMI_BG_CLR_MIN, MMI_BG_CLR_MIN,
 				  MMI_BG_CLR_MAX);
 
-	enable_irq(dc->irq_num);
+	ret = devm_request_threaded_irq(dc->dev, dc->irq_num, NULL,
+					mmi_dc_irq_handler,
+					IRQF_ONESHOT | IRQF_SHARED,
+					dev_name(dc->dev), dc);
+	if (ret < 0) {
+		dev_err(dc->dev, "failed to setup irq handler: %d\n", ret);
+		return ret;
+	}
 
 	return 0;
 }
@@ -426,7 +422,6 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
  */
 void mmi_dc_fini(struct mmi_dc *dc)
 {
-	disable_irq(dc->irq_num);
 	mmi_dc_destroy_planes(dc);
 	mmi_dc_reset(dc, true);
 	dc_write_misc(dc, MMI_DC_MISC_WPROTS, 1);
