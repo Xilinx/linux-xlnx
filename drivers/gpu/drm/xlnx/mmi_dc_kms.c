@@ -5,6 +5,7 @@
  * Copyright (C) 2025, Advanced Micro Devices, Inc. All rights reserved.
  */
 
+#include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
@@ -120,18 +121,33 @@ static void mmi_dc_crtc_atomic_enable(struct drm_crtc *crtc,
 {
 	struct mmi_dc *dc = crtc_to_dc(crtc);
 	struct drm_display_mode *adjusted_mode = &crtc->state->adjusted_mode;
-	int vrefresh;
+	int vrefresh, ret;
+	unsigned long rate;
+	unsigned long mode_clock = adjusted_mode->clock * 1000;
 
 	pm_runtime_get_sync(dc->dev);
 
-	/* TODO: setup DC clock */
+	ret = clk_set_rate(dc->pixel_clk, mode_clock);
+	if (ret) {
+		dev_err(dc->dev, "failed to set pixel clock ret:%d\n", ret);
+		return;
+	}
+
+	ret = clk_prepare_enable(dc->pixel_clk);
+	if (ret) {
+		dev_err(dc->dev, "failed to enable the pixel clock ret:%d\n", ret);
+		return;
+	}
+
+	rate = clk_get_rate(dc->pixel_clk);
+	dev_dbg(dc->dev, "requested pixel rate: %lu actual rate: %lu diff: %lu\n",
+		mode_clock, rate, abs(rate - mode_clock));
 
 	mmi_dc_enable(dc, adjusted_mode);
 
 	/* TODO: Do we need this? */
 	/* Delay of 3 vblank intervals for timing gen to be stable */
-	vrefresh = (adjusted_mode->clock * 1000) /
-		   (adjusted_mode->vtotal * adjusted_mode->htotal);
+	vrefresh = mode_clock / (adjusted_mode->vtotal * adjusted_mode->htotal);
 	msleep(MMI_DC_VBLANKS * 1000 / vrefresh);
 }
 
@@ -151,7 +167,7 @@ static void mmi_dc_crtc_atomic_disable(struct drm_crtc *crtc,
 	}
 	spin_unlock_irq(&crtc->dev->event_lock);
 
-	/* TODO: disable video clock */
+	clk_disable_unprepare(dc->pixel_clk);
 	pm_runtime_put_sync(dc->dev);
 }
 
@@ -506,6 +522,11 @@ static int mmi_dc_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, dc);
 	dc->dev = &pdev->dev;
+
+	dc->pixel_clk = devm_clk_get(dc->dev, "ps_vid_clk");
+	if (IS_ERR(dc->pixel_clk))
+		return dev_err_probe(dc->dev, PTR_ERR(dc->pixel_clk),
+				     "failed to get ps_vid_clk\n");
 
 	ret = mmi_dc_drm_init(dc);
 	if (ret < 0)
