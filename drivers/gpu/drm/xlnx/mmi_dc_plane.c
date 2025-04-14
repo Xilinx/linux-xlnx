@@ -692,6 +692,7 @@ int mmi_dc_create_planes(struct mmi_dc *dc, struct drm_device *drm)
 			return ret;
 		}
 
+		dc->planes[i] = plane;
 		plane->id = i;
 		plane->dc = dc;
 		plane->info = info;
@@ -709,8 +710,6 @@ int mmi_dc_create_planes(struct mmi_dc *dc, struct drm_device *drm)
 		plane->xt->dir = DMA_MEM_TO_DEV;
 		plane->xt->src_sgl = true;
 		plane->xt->frame_size = 1;
-
-		dc->planes[i] = plane;
 	}
 
 	/* Reset video / audio select */
@@ -727,6 +726,8 @@ void mmi_dc_destroy_planes(struct mmi_dc *dc)
 {
 	unsigned int i;
 
-	for (i = 0; i < ARRAY_SIZE(dc->planes); ++i)
-		mmi_dc_plane_release_dma(dc->planes[i]);
+	for (i = 0; i < ARRAY_SIZE(dc->planes); i++) {
+		if (dc->planes[i])
+			mmi_dc_plane_release_dma(dc->planes[i]);
+	}
 }
