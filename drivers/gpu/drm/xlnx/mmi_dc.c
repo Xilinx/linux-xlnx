@@ -273,7 +273,6 @@ static void mmi_dc_avbuf_disable(struct mmi_dc *dc)
  */
 void mmi_dc_enable(struct mmi_dc *dc, struct drm_display_mode *mode)
 {
-	/* TODO: enable and set rate on pixel clock */
 	mmi_dc_blend_enable(dc);
 	mmi_dc_avbuf_enable(dc);
 	mmi_dc_set_stream(dc, mode);
