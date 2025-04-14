@@ -31,9 +31,13 @@
 
 #include "mmi_dc.h"
 
-/* Enable/Disable Writeback through PL feedback path */
+/**
+ * DOC: wb(bool)
+ * Enable/disable writeback through PL Feedback path.
+ */
 static bool wb;
 module_param(wb, bool, 0600);
+MODULE_PARM_DESC(wb, "Enable writeback through PL feedback path");
 
 /**
  * struct mmi_dc_drm - MMI DC DRM pipeline
