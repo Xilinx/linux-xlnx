@@ -83,23 +83,25 @@ properties:
     maxItems: 1
 
   clocks:
+    minItems: 1
     items:
-      - description: APB Clock
       - description: PS Pixel clock from mmi_aux0_ref_clk or ps_mmi_dc_t10mode_clk
       - description: PS Audio clock from mmi_aux1_ref_clk or ps_mmi_dc_t10mode_i2s_clk
       - description: PL Pixel clock from pl_mmi_dc_2x_clk for DMA mode
       - description: PL Pixel clock from pl_mmi_dc_1x_clk for Bypass mode
       - description: PL Audio clock from pl_mmi_i2s_s0_clk
+      - description: APB Clock
       - description: 27 MHz clock for System Timestamp Counter
 
   clock-names:
+    minItems: 1
     items:
-      - const: apb_clk
       - const: ps_vid_clk
       - const: ps_aud_clk
       - const: pl_vid_func_clk
       - const: pl_vid_bypass_clk
       - const: pl_aud_clk
+      - const: apb_clk
       - const: stc_ref_clk
 
   xlnx,dc-operating-mode:
@@ -265,6 +267,8 @@ required:
   - reg-names
   - interrupts
   - resets
+  - clocks
+  - clock-names
   - ports
 
 additionalProperties: false
@@ -282,10 +286,10 @@ examples:
             reg-names = "dp", "blend", "avbuf", "misc", "irq";
             interrupts = <0 179 4>;
             resets = <&versal2_reset 0xc104119>;
-            clocks = <&mmi_dc_apb_clk>, <&mmi_aux0_ref_clk>, <&mmi_aux1_ref_clk>, <&pl_mmi_dc_2x_clk>,
-                     <&pl_mmi_dc_1x_clk>, <&pl_mmi_i2s_s0_clk>, <&stc_clk>;
-            clock-names = "apb_clk", "ps_vid_clk", "ps_aud_clk", "pl_vid_func_clk",
-                          "pl_vid_bypass_clk", "pl_aud_clk", "stc_ref_clk";
+            clocks = <&mmi_aux0_ref_clk>, <&mmi_aux1_ref_clk>, <&pl_mmi_dc_2x_clk>,
+                     <&pl_mmi_dc_1x_clk>, <&pl_mmi_i2s_s0_clk>, <&mmi_dc_apb_clk>, <&stc_clk>;
+            clock-names = "ps_vid_clk", "ps_aud_clk", "pl_vid_func_clk",
+                          "pl_vid_bypass_clk", "pl_aud_clk", "apb_clk", "stc_ref_clk";
             dma-names = "vid.0.0", "vid.0.1", "vid.0.2", "vid.1.0", "vid.1.1", "vid.1.2", "aud", "cur";
             dmas = <&mmi_dcdma 0>, <&mmi_dcdma 1>, <&mmi_dcdma 2>, <&mmi_dcdma 3>, <&mmi_dcdma 4>,
                    <&mmi_dcdma 5>, <&mmi_dcdma 6>, <&mmi_dcdma 7>;
