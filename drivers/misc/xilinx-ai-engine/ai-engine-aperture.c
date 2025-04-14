@@ -535,12 +535,6 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 	/* Initialize interrupt */
 	if (aperture->adev->device_name == AIE_DEV_GEN_S100 ||
 	    aperture->adev->device_name == AIE_DEV_GEN_S200) {
-		INIT_WORK(&aperture->backtrack, aie_aperture_backtrack);
-		ret = aie_aperture_create_l2_mask(aperture);
-		if (ret) {
-			dev_err(dev, "failed to initialize l2 mask resource.\n");
-			goto put_aperture_dev;
-		}
 
 		ret = xlnx_register_event(PM_NOTIFY_CB, VERSAL_EVENT_ERROR_PMC_ERR1,
 					  XPM_VERSAL_EVENT_ERROR_MASK_AIE_CR,
@@ -599,6 +593,10 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 						aperture);
 		break;
 	default:
+		if (adev->device_name == AIE_DEV_GEN_S100 ||
+		    adev->device_name == AIE_DEV_GEN_S200) {
+			break;
+		}
 		ret = devm_request_threaded_irq(dev, aperture->npi_irq[0], NULL, aie_interrupt,
 						IRQF_ONESHOT, dev_name(dev), aperture);
 		break;
