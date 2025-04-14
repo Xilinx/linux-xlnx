@@ -2622,7 +2622,6 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 		} else {
 			hdmi->cable_connected = 0;
 			hdmi->connector.status = connector_status_disconnected;
-			dev_info(hdmi->dev, "stream is not connected\n");
 			xlnx_hdmi_streamdown_callback(hdmi);
 		}
 		xlnx_hdmi_connect_callback(hdmi);
@@ -2753,8 +2752,6 @@ static irqreturn_t hdmitx_irq_thread(int irq, void *data)
 
 	if (hdmi->frl_status && hdmi->stream.is_frl)
 		xlnx_hdmi_frlintr_handler(hdmi);
-
-	hdmi->cable_connected = 1;
 
 	hdmi_mutex_unlock(&hdmi->hdmi_mutex);
 
