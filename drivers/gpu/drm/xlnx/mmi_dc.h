@@ -105,6 +105,7 @@ struct mmi_dc_plane;
  * @avbuf: AV buffer manager control register space
  * @misc: misc control register space
  * @irq: interrupt control register space
+ * @rst: external reset
  * @irq_num: interrupt lane number
  */
 struct mmi_dc {
@@ -119,6 +120,7 @@ struct mmi_dc {
 	void __iomem		*avbuf;
 	void __iomem		*misc;
 	void __iomem		*irq;
+	struct reset_control	*rst;
 	int			irq_num;
 };
 
