@@ -1450,6 +1450,7 @@ xv_vscaler_setup_video_fmt(struct xscaler_device *xscaler, u32 code_in)
 		break;
 	case MEDIA_BUS_FMT_VUY8_1X24:
 	case MEDIA_BUS_FMT_VUY10_1X30:
+	case MEDIA_BUS_FMT_VUY12_1X36:
 		dev_dbg(xscaler->xvip.dev,
 			"Vscaler Input Media Format YUV 444");
 		video_in = XVIDC_CSF_YCRCB_444;
@@ -1521,6 +1522,7 @@ static int xv_hscaler_setup_video_fmt(struct xscaler_device *xscaler,
 		break;
 	case MEDIA_BUS_FMT_VUY8_1X24:
 	case MEDIA_BUS_FMT_VUY10_1X30:
+	case MEDIA_BUS_FMT_VUY12_1X36:
 		dev_dbg(xscaler->xvip.dev,
 			"Hscaler Output Media Format YUV 444\n");
 		video_out = XVIDC_CSF_YCRCB_444;
@@ -1960,6 +1962,11 @@ static int xscaler_parse_of(struct xscaler_device *xscaler)
 				return -EINVAL;
 			}
 			xscaler->vip_formats[port_id] = vip_format;
+
+			/*
+			 * TODO: Add check for xlnx,video-width property
+			 * just like VPSS-CSC driver here
+			 */
 		}
 	}
 
