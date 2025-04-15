@@ -326,6 +326,8 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 			break;
 		case MEDIA_BUS_FMT_VUY8_1X24:
 		case MEDIA_BUS_FMT_VUY10_1X30:
+		case MEDIA_BUS_FMT_VUY12_1X36:
+			/* TODO: Add Condition to check BPC set in the IP */
 			fmt = XTPG_HLS_COLOR_FORMAT_YUV_444;
 			break;
 		case MEDIA_BUS_FMT_RBG888_1X24:
@@ -469,6 +471,7 @@ static int xtpg_set_format(struct v4l2_subdev *subdev,
 		case MEDIA_BUS_FMT_UYVY10_1X20:
 		case MEDIA_BUS_FMT_VUY8_1X24:
 		case MEDIA_BUS_FMT_VUY10_1X30:
+		case MEDIA_BUS_FMT_VUY12_1X36:
 		case MEDIA_BUS_FMT_RBG888_1X24:
 		case MEDIA_BUS_FMT_RBG101010_1X30:
 			__format->code = fmt->format.code;
