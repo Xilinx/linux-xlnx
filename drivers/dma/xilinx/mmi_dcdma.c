@@ -1252,7 +1252,7 @@ static int mmi_dcdma_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, mdev);
 
-	mdev->axi_clk = devm_clk_get_enabled(&pdev->dev, "axi_clk");
+	mdev->axi_clk = devm_clk_get_enabled(&pdev->dev, NULL);
 	if (IS_ERR(mdev->axi_clk))
 		return PTR_ERR(mdev->axi_clk);
 
