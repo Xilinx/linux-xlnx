@@ -939,6 +939,12 @@ a multiple of 4. The layouts of the luma and chroma planes are identical.
       - 4:4:4
       - Y, Cr, Cb
       - No
+    * - V4L2_PIX_FMT_X423
+      - 'X423'
+      - 12
+      - 4:4:4
+      - Y, Cb, Cr
+      - No
 
 .. raw:: latex
 
