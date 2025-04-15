@@ -341,6 +341,10 @@ const struct drm_format_info *__drm_format_info(u32 format)
 		  .num_planes = 3, .char_per_block =  { 4, 4, 4 },
 		  .block_w = { 3, 3, 3 }, .block_h = { 1, 1, 1 },
 		  .hsub = 1, .vsub = 1, .is_yuv = true },
+		{ .format = DRM_FORMAT_X423,		.depth = 0,
+		  .num_planes = 3, .char_per_block = { 3, 3, 3 },
+		  .block_w = { 2, 2, 2 }, .block_h = { 1, 1, 1 }, .hsub = 1,
+		  .vsub = 1, .is_yuv = true, },
 	};
 
 	unsigned int i;
