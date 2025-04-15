@@ -9,6 +9,7 @@ The Video Mixer always has one streaming input layer, known as master layer.
 
 Required properties:
  - compatible: Must contain atleast one of
+	"xlnx,mixer-5.3" (MIXER 5.3 version)
 	"xlnx,mixer-5.0" (MIXER 5.0 version)
 	"xlnx,mixer-4.0" (MIXER 4.0 version)
 	"xlnx,mixer-3.0" (MIXER 3.0 version)
@@ -75,6 +76,9 @@ Supported Formats:
 	 XVUY8888		"XV24"
 	 XV15			"XV15"
 	 XV20			"XV20"
+	 Y_U_V8			"y_u_v8"
+	 Y_U_V10		"y_u_v10"
+	 Y_U_V12		"y_u_v12"
 Note : Format strings are case sensitive.
 
 Example:
