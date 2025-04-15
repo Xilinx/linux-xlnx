@@ -80,6 +80,7 @@ enum xcsc_output_range {
 enum xcsc_color_depth {
 	XVIDC_BPC_8 = 8,
 	XVIDC_BPC_10 = 10,
+	XVIDC_BPC_12 = 12,
 };
 
 static const s32
@@ -452,6 +453,7 @@ static int xcsc_update_formats(struct xcsc_dev *xcsc)
 		break;
 	case MEDIA_BUS_FMT_VUY8_1X24:
 	case MEDIA_BUS_FMT_VUY10_1X30:
+	case MEDIA_BUS_FMT_VUY12_1X36:
 		dev_dbg(xcsc->xvip.dev, "Media Format In : YUV 444");
 		xcsc->cft_in = XVIDC_CSF_YCRCB_444;
 		break;
@@ -479,6 +481,7 @@ static int xcsc_update_formats(struct xcsc_dev *xcsc)
 		break;
 	case MEDIA_BUS_FMT_VUY8_1X24:
 	case MEDIA_BUS_FMT_VUY10_1X30:
+	case MEDIA_BUS_FMT_VUY12_1X36:
 		xcsc->cft_out = XVIDC_CSF_YCRCB_444;
 		dev_dbg(xcsc->xvip.dev, "Media Format Out : YUV 444");
 		if (color_in == MEDIA_BUS_FMT_RBG888_1X24)
@@ -836,6 +839,7 @@ static int xcsc_set_format(struct v4l2_subdev *subdev,
 	case MEDIA_BUS_FMT_VYYUYY10_4X20:
 	case MEDIA_BUS_FMT_UYVY10_1X20:
 	case MEDIA_BUS_FMT_VUY10_1X30:
+	case MEDIA_BUS_FMT_VUY12_1X36:
 		break;
 	default:
 		/* Unsupported Format. Default to RGB */
@@ -1064,6 +1068,9 @@ static int xcsc_parse_of(struct xcsc_dev *xcsc)
 		break;
 	case XVIDC_BPC_10:
 		xcsc->color_depth = XVIDC_BPC_10;
+		break;
+	case XVIDC_BPC_12:
+		xcsc->color_depth = XVIDC_BPC_12;
 		break;
 	default:
 		dev_err(dev, "Unsupported color depth %d", video_width[0]);
