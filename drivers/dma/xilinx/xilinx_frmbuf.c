@@ -103,6 +103,7 @@
 #define XILINX_FRMBUF_FMT_RGB16			35
 #define XILINX_FRMBUF_FMT_Y_U_V8		42
 #define XILINX_FRMBUF_FMT_Y_U_V10		43
+#define XILINX_FRMBUF_FMT_Y_U_V12		44
 
 /* FID Register */
 #define XILINX_FRMBUF_FID_MASK			BIT(0)
@@ -512,6 +513,16 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.drm_fmt = DRM_FORMAT_X403,
 		.fmt_bitmask = BIT(25),
 	},
+	{
+		.dts_name = "y_u_v12",
+		.id = XILINX_FRMBUF_FMT_Y_U_V12,
+		.bpw = 12,
+		.ppw = 1,
+		.num_planes = 3,
+		.drm_fmt = DRM_FORMAT_X423,
+		.v4l2_fmt = V4L2_PIX_FMT_X423,
+		.fmt_bitmask = BIT(26),
+	},
 };
 
 /**
@@ -602,11 +613,15 @@ static const struct of_device_id xilinx_frmbuf_of_ids[] = {
 		.data = (void *)&xlnx_fbwr_cfg_v21},
 	{ .compatible = "xlnx,axi-frmbuf-wr-v2.2",
 		.data = (void *)&xlnx_fbwr_cfg_v22},
+	{ .compatible = "xlnx,v-frmbuf-wr-v3.0",
+		.data = (void *)&xlnx_fbwr_cfg_v22},
 	{ .compatible = "xlnx,axi-frmbuf-rd-v2",
 		.data = (void *)&xlnx_fbrd_cfg_v20},
 	{ .compatible = "xlnx,axi-frmbuf-rd-v2.1",
 		.data = (void *)&xlnx_fbrd_cfg_v21},
 	{ .compatible = "xlnx,axi-frmbuf-rd-v2.2",
+		.data = (void *)&xlnx_fbrd_cfg_v22},
+	{ .compatible = "xlnx,v-frmbuf-rd-v3.0",
 		.data = (void *)&xlnx_fbrd_cfg_v22},
 	{/* end of list */}
 };
@@ -786,7 +801,8 @@ static void xilinx_xdma_set_config(struct dma_chan *chan, u32 fourcc, u32 type)
 
 	if ((!(xdev->cfg->flags & XILINX_THREE_PLANES_PROP)) &&
 	    (xil_chan->vid_fmt->id == XILINX_FRMBUF_FMT_Y_U_V8 ||
-	     xil_chan->vid_fmt->id == XILINX_FRMBUF_FMT_Y_U_V10)) {
+	     xil_chan->vid_fmt->id == XILINX_FRMBUF_FMT_Y_U_V10 ||
+	     xil_chan->vid_fmt->id == XILINX_FRMBUF_FMT_Y_U_V12)) {
 		dev_err(chan->device->dev, "doesn't support %s format\n",
 			xil_chan->vid_fmt->dts_name);
 		/* Restore to old video format */
