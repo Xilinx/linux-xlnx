@@ -1345,6 +1345,7 @@ static void v4l_fill_fmtdesc(struct v4l2_fmtdesc *fmt)
 	case V4L2_PIX_FMT_YUV444P:	descr = "3 Planar YUV 4:4:4 8-bit"; break;
 	case V4L2_PIX_FMT_YUV411P:	descr = "Planar YUV 4:1:1"; break;
 	case V4L2_PIX_FMT_X403:		descr = "3 Planar YUV 4:4:4 10-bit"; break;
+	case V4L2_PIX_FMT_X423:		descr = "3 Planar YUV 4:4:4 12-bit (N-C)"; break;
 	case V4L2_PIX_FMT_Y41P:		descr = "YUV 4:1:1 (Packed)"; break;
 	case V4L2_PIX_FMT_YUV444:	descr = "16-bit A/XYUV 4-4-4-4"; break;
 	case V4L2_PIX_FMT_XVUY32:	descr = "32-bit packed XVUY 8-8-8-8"; break;
