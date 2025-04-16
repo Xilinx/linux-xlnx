@@ -472,7 +472,7 @@ static int zynqmp_dp_reset(struct zynqmp_dp *dp, bool assert)
  * Return: 0 if the phy instances are initialized correctly, or the error code
  * returned from the callee functions.
  */
-static int zynqmp_dp_phy_init(struct zynqmp_dp *dp)
+int zynqmp_dp_phy_init(struct zynqmp_dp *dp)
 {
 	int ret;
 	int i;
@@ -508,7 +508,7 @@ static int zynqmp_dp_phy_init(struct zynqmp_dp *dp)
  *
  * Exit the phy.
  */
-static void zynqmp_dp_phy_exit(struct zynqmp_dp *dp)
+void zynqmp_dp_phy_exit(struct zynqmp_dp *dp)
 {
 	unsigned int i;
 	int ret;
@@ -1164,14 +1164,10 @@ static int zynqmp_dp_aux_init(struct zynqmp_dp *dp)
 			(rate / (1000 * 1000)));
 
 	zynqmp_dp_write(dp, ZYNQMP_DP_INT_EN, ZYNQMP_DP_INT_REPLY_RECEIVED |
-					      ZYNQMP_DP_INT_REPLY_TIMEOUT);
+			ZYNQMP_DP_INT_REPLY_TIMEOUT);
+	zynqmp_dp_write(dp, ZYNQMP_DP_TRANSMITTER_ENABLE, 1);
 
-	dp->aux.name = "ZynqMP DP AUX";
-	dp->aux.dev = dp->dev;
-	dp->aux.drm_dev = dp->bridge.dev;
-	dp->aux.transfer = zynqmp_dp_aux_transfer;
-
-	return drm_dp_aux_register(&dp->aux);
+	return 0;
 }
 
 /**
@@ -1494,6 +1490,17 @@ static int zynqmp_dp_bridge_attach(struct drm_bridge *bridge,
 		return ret;
 	}
 
+	dp->aux.name = "ZynqMP DP AUX";
+	dp->aux.dev = dp->dev;
+	dp->aux.drm_dev = dp->bridge.dev;
+	dp->aux.transfer = zynqmp_dp_aux_transfer;
+
+	ret = drm_dp_aux_register(&dp->aux);
+	if (ret) {
+		dev_err(dp->dev, "failed to register DP aux\n");
+		return ret;
+	}
+
 	if (dp->next_bridge) {
 		ret = drm_bridge_attach(bridge->encoder, dp->next_bridge,
 					bridge, flags);
@@ -1603,6 +1610,13 @@ static void zynqmp_dp_bridge_atomic_enable(struct drm_bridge *bridge,
 
 	/* Enable the encoder */
 	dp->enabled = true;
+
+	/* Initialize and register the AUX adapter. */
+	if (zynqmp_dp_aux_init(dp)) {
+		dev_err(dp->dev, "failed to initialize DP aux\n");
+		return;
+	}
+
 	zynqmp_dp_update_misc(dp);
 
 	zynqmp_dp_write(dp, ZYNQMP_DP_TX_PHY_POWER_DOWN, 0);
