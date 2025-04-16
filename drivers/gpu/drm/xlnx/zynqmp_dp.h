@@ -29,4 +29,7 @@ void zynqmp_dp_audio_disable(struct zynqmp_dp *dp);
 
 void zynqmp_dp_audio_write_n_m(struct zynqmp_dp *dp);
 
+int zynqmp_dp_phy_init(struct zynqmp_dp *dp);
+void zynqmp_dp_phy_exit(struct zynqmp_dp *dp);
+
 #endif /* _ZYNQMP_DP_H_ */
