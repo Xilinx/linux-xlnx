@@ -1535,8 +1535,10 @@ static void xlnx_hdmi_set_colordepth(struct xlnx_hdmi *hdmi)
 
 	/* Mask PIO Out Mask register */
 	xlnx_hdmi_pio_set_cd(hdmi);
+	if (hdmi->xvidc_colordepth > hdmi->config.bpc)
+		hdmi->xvidc_colordepth = hdmi->config.bpc;
 
-	switch (hdmi->config.bpc) {
+	switch (hdmi->xvidc_colordepth) {
 	case HDMI_TX_BPC_10:
 		regvalue = 1;
 		break;
@@ -2009,7 +2011,7 @@ static void xlnx_hdmi_connect_callback(struct xlnx_hdmi *hdmi)
 		xlnx_hdmi_stream_start(hdmi);
 		phy_cfg.hdmi.tx_params = 1;
 		phy_cfg.hdmi.ppc = hdmi->config.ppc;
-		phy_cfg.hdmi.bpc = hdmi->config.bpc;
+		phy_cfg.hdmi.bpc = hdmi->xvidc_colordepth;
 		phy_cfg.hdmi.fmt = hdmi->xvidc_colorfmt;
 		phy_cfg.hdmi.tx_tmdsclk = hdmi->tmds_clk;
 		ret = xlnx_hdmi_phy_configure(hdmi, &phy_cfg);
@@ -3138,7 +3140,7 @@ static u64 xlnx_hdmi_get_tmdsclk(struct xlnx_hdmi *hdmi, struct drm_display_mode
 		tmdsclk = tmdsclk >> 1;
 
 	if (hdmi->xvidc_colorfmt != HDMI_TX_CSF_YCRCB_422) {
-		switch (hdmi->config.bpc) {
+		switch (hdmi->xvidc_colordepth) {
 		case HDMI_TX_BPC_10:
 			tmdsclk = (tmdsclk * 5) >> 2;
 			break;
@@ -3297,7 +3299,7 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 
 		phy_cfg.hdmi.tx_params = 1;
 		phy_cfg.hdmi.ppc = config->ppc;
-		phy_cfg.hdmi.bpc = config->bpc;
+		phy_cfg.hdmi.bpc = hdmi->xvidc_colordepth;
 		phy_cfg.hdmi.fmt = hdmi->xvidc_colorfmt;
 		phy_cfg.hdmi.tx_tmdsclk = hdmi->tmds_clk;
 		ret = xlnx_hdmi_phy_configure(hdmi, &phy_cfg);
@@ -3311,9 +3313,9 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 					  1000);
 			lnk_clk = vid_clk;
 		} else {
-			pixelrate = div_u64(hdmi->tmds_clk * 8, config->bpc * 1000);
+			pixelrate = div_u64(hdmi->tmds_clk * 8, hdmi->xvidc_colordepth * 1000);
 			vid_clk = div_u64(pixelrate, config->ppc);
-			lnk_clk = div_u64(vid_clk * config->bpc, 8);
+			lnk_clk = div_u64(vid_clk * hdmi->xvidc_colordepth, 8);
 		}
 
 		xlnx_set_frl_link_clk(hdmi, lnk_clk);
@@ -3520,6 +3522,7 @@ static int xlnx_hdmi_initialize(struct xlnx_hdmi *hdmi)
 
 	/* set default color format to RGB */
 	hdmi->xvidc_colorfmt = HDMI_TX_CSF_RGB;
+	hdmi->xvidc_colordepth = hdmi->config.bpc;
 
 	/* Reset all peripherals */
 	xlnx_hdmi_piointr_disable(hdmi);
