@@ -3091,12 +3091,20 @@ color_formats xlnx_hdmi_find_media_bus(struct xlnx_hdmi *hdmi,
 	case DRM_FORMAT_VUY888:
 	case DRM_FORMAT_XVUY8888:
 	case DRM_FORMAT_Y8:
+	case DRM_FORMAT_YUV444:
 	case MEDIA_BUS_FMT_VUY8_1X24:
 		hdmi->xvidc_colordepth = HDMI_TX_BPC_8;
 		return HDMI_TX_CSF_YCRCB_444;
 	case DRM_FORMAT_XVUY2101010:
 	case DRM_FORMAT_Y10:
+	case DRM_FORMAT_X403:
+	case MEDIA_BUS_FMT_VUY10_1X30:
 		hdmi->xvidc_colordepth = HDMI_TX_BPC_10;
+		return HDMI_TX_CSF_YCRCB_444;
+	/* TODO: Fix using DRM and media formats in same switch case */
+	case DRM_FORMAT_X423:
+	case MEDIA_BUS_FMT_VUY12_1X36:
+		hdmi->xvidc_colordepth = HDMI_TX_BPC_12;
 		return HDMI_TX_CSF_YCRCB_444;
 	case DRM_FORMAT_YUYV:
 	case DRM_FORMAT_UYVY:
