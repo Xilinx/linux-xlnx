@@ -405,64 +405,6 @@ static int aie_part_block_set(struct aie_partition *apart,
 	return 0;
 }
 
-#ifndef CONFIG_ARM64_SW_TTBR0_PAN
-/**
- * aie_part_pin_user_region() - pin user pages for access
- * @apart: AI engine partition
- * @region: user space region to pin. Includes virtual address and size of the
- *	    user space buffer.
- * @return: 0 for success, and negative value for failure.
- *
- * This function pins all the pages of a user space buffer.
- */
-static int aie_part_pin_user_region(struct aie_partition *apart,
-				    struct aie_part_pinned_region *region)
-{
-	int ret, npages;
-	unsigned long first, last;
-	struct page **pages;
-
-	first = (region->user_addr & PAGE_MASK) >> PAGE_SHIFT;
-	last = ((region->user_addr + region->len - 1) & PAGE_MASK) >>
-		PAGE_SHIFT;
-	npages = last - first + 1;
-
-	pages = kcalloc(npages, sizeof(struct page *), GFP_KERNEL);
-	if (!pages)
-		return -ENOMEM;
-
-	ret = pin_user_pages_fast(region->user_addr, npages, 0, pages);
-	if (ret < 0) {
-		kfree(pages);
-		dev_err(&apart->dev, "Unable to pin user pages\n");
-		return ret;
-	} else if (ret != npages) {
-		unpin_user_pages(pages, ret);
-		kfree(pages);
-		dev_err(&apart->dev, "Unable to pin all user pages\n");
-		return -EFAULT;
-	}
-
-	region->pages = pages;
-	region->npages = npages;
-
-	return 0;
-}
-#endif
-
-/**
- * aie_part_unpin_user_region() - unpin user pages
- * @region: user space region to unpin.
- *
- * This function unpins all the pages of a user space buffer. User region passed
- * to this api must be pinned using aie_part_pin_user_region()
- */
-static void aie_part_unpin_user_region(struct aie_part_pinned_region *region)
-{
-	unpin_user_pages(region->pages, region->npages);
-	kfree(region->pages);
-}
-
 /**
  * aie_part_copy_user_region() - copy user space data to kernel space
  * @apart: AI engine partition
@@ -480,7 +422,6 @@ static int aie_part_copy_user_region(struct aie_partition *apart,
 				     struct aie_part_pinned_region *region,
 				     void *data)
 {
-#ifdef CONFIG_ARM64_SW_TTBR0_PAN
 	if (region->len == 0)
 		return 0;
 
@@ -497,14 +438,7 @@ static int aie_part_copy_user_region(struct aie_partition *apart,
 				  region->aie_dma_handle);
 		return -EFAULT;
 	}
-#else
-	int ret;
 
-	region->user_addr = (__u64)data;
-	ret = aie_part_pin_user_region(apart, region);
-	if (ret)
-		return ret;
-#endif
 	return 0;
 }
 
@@ -519,12 +453,8 @@ static int aie_part_copy_user_region(struct aie_partition *apart,
 static void aie_part_free_region(struct aie_partition *apart,
 				 struct aie_part_pinned_region *region)
 {
-#ifdef CONFIG_ARM64_SW_TTBR0_PAN
 	dma_free_coherent(&apart->dev, region->len, (void *)region->user_addr,
 			  region->aie_dma_handle);
-#else
-	aie_part_unpin_user_region(region);
-#endif
 }
 
 /**
@@ -604,7 +534,7 @@ static int aie_part_access_regs(struct aie_partition *apart, u32 num_reqs,
 
 			ret =  aie_part_set_dmabuf_bd(apart,
 				(struct aie_dmabuf_bd_args *)data_region.user_addr);
-			aie_part_unpin_user_region(&data_region);
+			aie_part_free_region(apart, &data_region);
 			break;
 		}
 		default:
