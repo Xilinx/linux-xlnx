@@ -214,7 +214,7 @@ static inline int aie_unregister_error_notification(struct device *dev)
 
 static inline struct aie_errors *aie_get_errors(struct device *dev)
 {
-	return NULL;
+	return ERR_PTR(-EINVAL);
 }
 
 static inline u32 aie_get_error_categories(struct aie_errors *aie_errs)

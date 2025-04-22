@@ -656,7 +656,7 @@ static bool aie_l1_backtrack(struct aie_partition *apart,
 
 		if (!aie_part_check_clk_enable_loc(apart, &loc))
 			continue;
-		ret |= aie_tile_backtrack(apart, loc, module, sw,
+		ret |= aie_tile_backtrack(apart, loc, AIE_MEM_MOD, sw,
 					  AIE_ARRAY_TILE_ERROR_BC_ID, status);
 		aie_clear_event_status(apart, &loc, AIE_MEM_MOD, bc_event);
 	}
@@ -1607,17 +1607,12 @@ static u32 aie_get_module_errors(struct aie_partition *apart,
 	const struct aie_error_attr *err_attr;
 	struct aie_location loc;
 	u32 srow, erow, scol, ecol, num_err = 0;
+	u32 ttype;
 
-	if (module == AIE_CORE_MOD) {
-		err_attr = apart->adev->core_errors;
-		srow = apart->range.start.row + 1;
-		erow = srow + apart->range.size.row - 1;
-	} else if (module == AIE_MEM_MOD) {
-		err_attr = apart->adev->mem_errors;
+	if (module == AIE_CORE_MOD || module == AIE_MEM_MOD) {
 		srow = apart->range.start.row + 1;
 		erow = srow + apart->range.size.row - 1;
 	} else {
-		err_attr = apart->adev->shim_errors;
 		srow = 0;
 		erow = 0;
 	}
@@ -1627,6 +1622,22 @@ static u32 aie_get_module_errors(struct aie_partition *apart,
 
 	for (loc.col = scol; loc.col <= ecol; loc.col++) {
 		for (loc.row = srow; loc.row <= erow; loc.row++) {
+			ttype = apart->adev->ops->get_tile_type(apart->adev,
+									&loc);
+			if (ttype == AIE_TILE_TYPE_TILE) {
+				if (module == AIE_CORE_MOD)
+					err_attr = apart->adev->core_errors;
+				else
+					err_attr = apart->adev->mem_errors;
+			} else if (ttype == AIE_TILE_TYPE_MEMORY) {
+				if (module == AIE_MEM_MOD)
+					err_attr = apart->adev->memtile_errors;
+				else
+					continue;
+			} else {
+				err_attr = apart->adev->shim_errors;
+			}
+
 			num_err +=
 				aie_get_errors_from_bitmap(apart, loc,
 							   module, err_attr,
@@ -1822,7 +1833,7 @@ struct aie_errors *aie_get_errors(struct device *dev)
 	num_errs = aie_get_error_count(apart);
 	if (!num_errs) {
 		mutex_unlock(&apart->mlock);
-		return NULL;
+		return ERR_PTR(-EINVAL);
 	}
 
 	aie_errs = kzalloc(sizeof(*aie_errs), GFP_KERNEL);
