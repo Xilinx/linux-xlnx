@@ -1003,7 +1003,7 @@ static const struct aie_dma_attr aie2ps_shimdma = {
 	},
 	.bd_regoff = AIE2PS_SHIMNOC_BD0_0_REGOFF,
 	.num_bds = 16,
-	.bd_len = 0x20U,
+	.bd_len = 0x30U,
 	.num_mm2s_chan = 2U,
 	.num_s2mm_chan = 2U,
 	.mm2s_sts_regoff = AIE2PS_SHIMNOC_DMA_MM2S_STATUS_REGOFF,
