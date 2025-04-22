@@ -229,6 +229,9 @@ struct aie_partition_query {
 	aie_part_id_get_val((part_id), START_COL)
 #define aie_part_id_get_num_cols(part_id) \
 	aie_part_id_get_val((part_id), NUM_COLS)
+#define aie_calc_part_id(start_col, num_col) \
+	(((start_col) << AIE_PART_ID_START_COL_SHIFT) + \
+	((num_col) << AIE_PART_ID_NUM_COLS_SHIFT))
 
 /**
  * struct aie_partition_req - AIE request partition arguments
