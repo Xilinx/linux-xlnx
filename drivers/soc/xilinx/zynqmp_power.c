@@ -319,7 +319,7 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 		if (ret < 0)
 			return ret;
 
-		if (pm_sub_family_code == VERSALNET_SUB_FAMILY_CODE)
+		if (pm_sub_family_code == VERSALNET_OR_VERSAL2_SUB_FAMILY_CODE)
 			node_id = PM_DEV_ACPU_0_0;
 		else
 			node_id = PM_DEV_ACPU_0;
