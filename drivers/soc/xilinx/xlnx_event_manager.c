@@ -84,7 +84,7 @@ static bool xlnx_is_error_event(const u32 node_id)
 
 	zynqmp_pm_get_family_info(&pm_family_code, &pm_sub_family_code);
 
-	if (pm_sub_family_code == VERSAL_SUB_FAMILY_CODE) {
+	if (pm_sub_family_code <= VERSAL_SUB_FAMILY_CODE_MAX) {
 		if (node_id == VERSAL_EVENT_ERROR_PMC_ERR1 ||
 		    node_id == VERSAL_EVENT_ERROR_PMC_ERR2 ||
 		    node_id == VERSAL_EVENT_ERROR_PSM_ERR1 ||

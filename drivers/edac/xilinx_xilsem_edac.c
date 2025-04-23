@@ -1250,7 +1250,7 @@ static int xsem_edac_probe(struct platform_device *pdev)
 		priv->cram_ce_mask = XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_CRAM_CE;
 		priv->cram_ue_mask = XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_CRAM_UE;
 		priv->npi_ue_mask = XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_NPI_UE;
-	} else if (device_sub_family_code == VERSAL_SUB_FAMILY_CODE) {
+	} else if (device_sub_family_code <= VERSAL_SUB_FAMILY_CODE_MAX) {
 		priv->sw_event_node_id = VERSAL_EVENT_ERROR_SW_ERR;
 		priv->cram_ce_mask = XPM_VERSAL_EVENT_ERROR_MASK_XSEM_CRAM_CE_5;
 		priv->cram_ue_mask = XPM_VERSAL_EVENT_ERROR_MASK_XSEM_CRAM_UE_6;
