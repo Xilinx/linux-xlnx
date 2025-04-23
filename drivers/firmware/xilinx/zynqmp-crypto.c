@@ -414,7 +414,7 @@ void *xlnx_get_crypto_dev_data(struct xlnx_feature *feature_map)
 	for (; feature->family; feature++) {
 		if (feature->family == pm_family_code &&
 		    (feature->subfamily == ALL_SUB_FAMILY_CODE ||
-		     feature->subfamily == pm_sub_family_code)) {
+		     pm_sub_family_code <= VERSAL_SUB_FAMILY_CODE_MAX)) {
 			if (feature->family == ZYNQMP_FAMILY_CODE ||
 			    feature->family == VERSAL_FAMILY_CODE) {
 				ret = zynqmp_pm_feature(feature->feature_id);
