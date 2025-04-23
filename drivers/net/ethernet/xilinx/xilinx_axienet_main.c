@@ -2056,7 +2056,6 @@ out:
 #endif
 	cur_p->tx_skb = skb;
 
-	tail_p = q->tx_bd_p + sizeof(*q->tx_bd_v) * q->tx_bd_tail;
 	/* Ensure BD write before starting transfer */
 	wmb();
 
@@ -5223,9 +5222,9 @@ static int axienet_probe(struct platform_device *pdev)
 			goto cleanup_clk;
 		if (lp->axienet_config->mactype == XAXIENET_1_2p5G &&
 		    !lp->eth_hasnobuf)
-			lp->eth_irq = platform_get_irq(pdev, 0);
+			/* Check for Ethernet core IRQ (optional) */
+			lp->eth_irq = platform_get_irq_optional(pdev, 0);
 
-		/* Check for Ethernet core IRQ (optional) */
 		if (lp->eth_irq <= 0)
 			dev_info(&pdev->dev, "Ethernet core IRQ not defined\n");
 
@@ -5396,11 +5395,6 @@ static int axienet_probe(struct platform_device *pdev)
 		ndev->netdev_ops = &axienet_netdev_dmaengine_ops;
 	else
 		ndev->netdev_ops = &axienet_netdev_ops;
-
-	lp->eth_irq = platform_get_irq(pdev, 0);
-	/* Check for Ethernet core IRQ (optional) */
-	if (lp->eth_irq <= 0)
-		dev_info(&pdev->dev, "Ethernet core IRQ not defined\n");
 
 	/* Retrieve the MAC address */
 	ret = of_get_mac_address(pdev->dev.of_node, mac_addr);
