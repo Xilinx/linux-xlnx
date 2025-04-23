@@ -248,6 +248,13 @@ static void *its_allocate_thunk(int reg)
 	return thunk;
 }
 
+u8 *its_static_thunk(int reg)
+{
+	u8 *thunk = __x86_indirect_its_thunk_array[reg];
+
+	return thunk;
+}
+
 #endif
 
 /*
