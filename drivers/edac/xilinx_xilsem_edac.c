@@ -1245,7 +1245,7 @@ static int xsem_edac_probe(struct platform_device *pdev)
 		goto free_edac_dev;
 	}
 
-	if (device_sub_family_code == VERSALNET_SUB_FAMILY_CODE) {
+	if (device_sub_family_code == VERSALNET_OR_VERSAL2_SUB_FAMILY_CODE) {
 		priv->sw_event_node_id = VERSAL_NET_EVENT_ERROR_SW_ERR;
 		priv->cram_ce_mask = XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_CRAM_CE;
 		priv->cram_ue_mask = XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_CRAM_UE;
