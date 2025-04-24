@@ -128,7 +128,6 @@
 #define XVMIX_GIE_EN_MASK		BIT(0)
 #define XVMIX_AP_EN_MASK		BIT(0)
 #define XVMIX_AP_RST_MASK		BIT(7)
-#define XVMIX_VFMT_SIZE			5
 #define XVMIX_MAX_NUM_SUB_PLANES	4
 #define XVMIX_SCALE_FACTOR_1X		0
 #define	XVMIX_SCALE_FACTOR_2X		1
@@ -544,8 +543,6 @@ static u32 xlnx_mix_get_bus_fmt(struct xlnx_mix *mixer)
 
 	master = &mixer->mixer_hw.layer_data[XVMIX_MASTER_LAYER_IDX];
 
-	master->hw_config.plane_3 = false;
-
 	switch (master->hw_config.vid_fmt) {
 	case DRM_FORMAT_BGR888:
 	case DRM_FORMAT_RGB888:
@@ -564,6 +561,7 @@ static u32 xlnx_mix_get_bus_fmt(struct xlnx_mix *mixer)
 	case DRM_FORMAT_AYUV:
 	case DRM_FORMAT_VUY888:
 	case DRM_FORMAT_XVUY8888:
+	case DRM_FORMAT_YUV444:
 		return MEDIA_BUS_FMT_VUY8_1X24;
 	case DRM_FORMAT_NV12:
 		return MEDIA_BUS_FMT_VYYUYY8_1X24;
@@ -572,15 +570,13 @@ static u32 xlnx_mix_get_bus_fmt(struct xlnx_mix *mixer)
 	case DRM_FORMAT_Y10:
 		return MEDIA_BUS_FMT_Y10_1X10;
 	case DRM_FORMAT_XVUY2101010:
+	case DRM_FORMAT_X403:
 		return MEDIA_BUS_FMT_VUY10_1X30;
 	case DRM_FORMAT_XV15:
 		return MEDIA_BUS_FMT_VYYUYY10_4X20;
 	case DRM_FORMAT_XV20:
 		return MEDIA_BUS_FMT_UYVY10_1X20;
-	case DRM_FORMAT_YUV444:
-	case DRM_FORMAT_X403:
 	case DRM_FORMAT_X423:
-		master->hw_config.plane_3 = true;
 		return MEDIA_BUS_FMT_YUV12_1X36;
 	default:
 		DRM_DEBUG_KMS("invalid layer format: %d\n",
@@ -1497,24 +1493,24 @@ static int xlnx_mix_set_layer_buff_addr(struct xlnx_mix_hw *mixer,
 	reg[0] = XVMIX_LAYER1_BUF1_V_DATA + offset;
 	reg[1] = XVMIX_LAYER1_BUF2_V_DATA + offset;
 	/* set only in case of 3 plane YUV444 8, 10 and 12 video formats */
-	if (mixer->three_planes_prop & layer_data->hw_config.plane_3)
+	if (mixer->three_planes_prop && layer_data->hw_config.plane_3)
 		reg[2] = XVMIX_LAYER1_BUF3_V_DATA + offset;
 
 	if (mixer->dma_addr_size == 64 && sizeof(dma_addr_t) == 8) {
 		reg_writeq(mixer->base, reg[0], luma_addr);
 		reg_writeq(mixer->base, reg[1], chroma_addr);
-		if (mixer->three_planes_prop & layer_data->hw_config.plane_3)
+		if (mixer->three_planes_prop && layer_data->hw_config.plane_3)
 			reg_writeq(mixer->base, reg[2], chroma_addr2);
 		/* TODO: Test 64 bit address configuration */
 	} else {
 		reg_writel(mixer->base, reg[0], (u32)luma_addr);
 		reg_writel(mixer->base, reg[1], (u32)chroma_addr);
-		if (mixer->three_planes_prop & layer_data->hw_config.plane_3)
+		if (mixer->three_planes_prop && layer_data->hw_config.plane_3)
 			reg_writel(mixer->base, reg[2], (u32)chroma_addr2);
 	}
 	layer_data->layer_regs.buff_addr1 = luma_addr;
 	layer_data->layer_regs.buff_addr2 = chroma_addr;
-	if (mixer->three_planes_prop & layer_data->hw_config.plane_3)
+	if (mixer->three_planes_prop && layer_data->hw_config.plane_3)
 		layer_data->layer_regs.buff_addr3 = chroma_addr2;
 
 	return 0;
@@ -1926,7 +1922,7 @@ static int xlnx_mix_set_plane(struct xlnx_mix_plane *plane,
 		}
 
 		/* Allocating the buffer for 3rd Plane use case */
-		if (mixer_hw->three_planes_prop & plane->mixer_layer->hw_config.plane_3) {
+		if (mixer_hw->three_planes_prop && plane->mixer_layer->hw_config.plane_3) {
 			chroma_addr2 = drm_fb_dma_get_gem_addr(fb, plane->base.state, 2);
 			if (!chroma_addr2) {
 				DRM_ERROR("failed to get chroma paddr 2\n");
@@ -2254,12 +2250,20 @@ static int xlnx_mix_parse_dt_bg_video_fmt(struct device_node *node,
 	layer->hw_config.min_width = XVMIX_LAYER_WIDTH_MIN;
 	layer->hw_config.min_height = XVMIX_LAYER_HEIGHT_MIN;
 
-	if (of_property_read_string(layer_node, "xlnx,vformat",
-				    &vformat)) {
+	if (of_property_count_u8_elems(layer_node, "xlnx,vformat") != sizeof(u32) + 1) {
+		DRM_ERROR("xlnx,vformat property missing or invalid\n");
+		return -EINVAL;
+	}
+
+	if (of_property_read_string(layer_node, "xlnx,vformat", &vformat)) {
 		DRM_ERROR("No xlnx,vformat value for layer 0 in dts\n");
 		return -EINVAL;
 	}
-	strscpy((char *)&layer->hw_config.vid_fmt, vformat, XVMIX_VFMT_SIZE);
+
+	layer->hw_config.vid_fmt = fourcc_code(vformat[0], vformat[1], vformat[2], vformat[3]);
+	if (!drm_format_info(layer->hw_config.vid_fmt))
+		return -EINVAL;
+
 	layer->hw_config.is_streaming =
 		of_property_read_bool(layer_node, "xlnx,layer-streaming");
 	if (of_property_read_u32(node, "xlnx,bpc", &mixer_hw->bg_layer_bpc)) {
@@ -2416,12 +2420,12 @@ static int xlnx_mix_dt_parse(struct device *dev, struct xlnx_mix *mixer)
 	    of_device_is_compatible(dev->of_node, "xlnx,mixer-4.0"))
 		dev_warn(dev, "xlnx,mixer-3.0/4.0 are deprecated.\n");
 
-	if (of_device_is_compatible(dev->of_node, "xlnx,mixer-5.3"))
+	if (of_device_is_compatible(dev->of_node, "xlnx,v-mix-5.3"))
 		mixer_hw->three_planes_prop = true;
 
 	if (of_device_is_compatible(dev->of_node, "xlnx,mixer-4.0") ||
 	    of_device_is_compatible(dev->of_node, "xlnx,mixer-5.0") ||
-	    of_device_is_compatible(dev->of_node, "xlnx,mixer-5.3")) {
+	    of_device_is_compatible(dev->of_node, "xlnx,v-mix-5.3")) {
 		mixer_hw->max_layers = 18;
 		mixer_hw->logo_en_mask = BIT(23);
 		mixer_hw->enable_all_mask = (GENMASK(16, 0) |
@@ -2515,6 +2519,7 @@ static int xlnx_mix_of_init_layer(struct device *dev, struct device_node *node,
 				  u32 max_width, struct xlnx_mix *mixer, int id)
 {
 	struct device_node *layer_node;
+	const struct drm_format_info *info;
 	const char *vformat;
 	int ret;
 
@@ -2543,14 +2548,28 @@ static int xlnx_mix_of_init_layer(struct device *dev, struct device_node *node,
 			layer->id);
 		return -EINVAL;
 	}
-	ret = of_property_read_string(layer_node, "xlnx,vformat", &vformat);
-	if (ret) {
-		dev_err(dev, "No mixer layer vformat in dts for layer id %d\n",
-			layer->id);
-		return ret;
+
+	if (of_property_count_u8_elems(layer_node, "xlnx,vformat") != sizeof(u32) + 1) {
+		DRM_ERROR("xlnx,vformat property missing or invalid\n");
+		return -EINVAL;
 	}
 
-	strscpy((char *)&layer->hw_config.vid_fmt, vformat, XVMIX_VFMT_SIZE);
+	if (of_property_read_string(layer_node, "xlnx,vformat", &vformat)) {
+		DRM_ERROR("No xlnx,vformat value for layer 0 in dts\n");
+		return -EINVAL;
+	}
+
+	layer->hw_config.vid_fmt = fourcc_code(vformat[0], vformat[1], vformat[2], vformat[3]);
+	info = drm_format_info(layer->hw_config.vid_fmt);
+	if (!info) {
+		DRM_ERROR("No DRM info, Invalid fourcc code\n");
+		return -EINVAL;
+	}
+
+	/* Set flag only for 3 planar video formats */
+	if (info->num_planes == 3)
+		layer->hw_config.plane_3 = true;
+
 	layer->hw_config.can_scale =
 		    of_property_read_bool(layer_node, "xlnx,layer-scale");
 	if (layer->hw_config.can_scale) {
@@ -3217,7 +3236,7 @@ static const struct of_device_id xlnx_mix_of_match[] = {
 	{ .compatible = "xlnx,mixer-3.0", },
 	{ .compatible = "xlnx,mixer-4.0", },
 	{ .compatible = "xlnx,mixer-5.0", },
-	{ .compatible = "xlnx,mixer-5.3", },
+	{ .compatible = "xlnx,v-mix-5.3", },
 	{ /* end of table */ },
 };
 MODULE_DEVICE_TABLE(of, xlnx_mix_of_match);
