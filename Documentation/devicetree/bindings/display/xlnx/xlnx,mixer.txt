@@ -9,7 +9,7 @@ The Video Mixer always has one streaming input layer, known as master layer.
 
 Required properties:
  - compatible: Must contain atleast one of
-	"xlnx,mixer-5.3" (MIXER 5.3 version)
+	"xlnx,v-mix-5.3" (MIXER 5.3 version)
 	"xlnx,mixer-5.0" (MIXER 5.0 version)
 	"xlnx,mixer-4.0" (MIXER 4.0 version)
 	"xlnx,mixer-3.0" (MIXER 3.0 version)
