@@ -4278,16 +4278,17 @@ static int axienet_pcs_config(struct phylink_pcs *pcs, unsigned int neg_mode,
 		}
 	}
 	if (lp->axienet_config->mactype == XAXIENET_10G_25G) {
-		if (lp->auto_neg) {
-			u32 autoneg_complete;
+		if (!lp->auto_neg)
+			return 0;
 
-			autoneg_complete = (axienet_ior(lp, XXV_STAT_AN_STS_OFFSET) &
-					    XXV_AN_COMPLETE_MASK);
+		u32 autoneg_complete;
 
-			/* If auto-negotiation is not completed, restart auto-neg */
-			return (neg_mode == (unsigned int)PHYLINK_PCS_NEG_INBAND_ENABLED &&
-				autoneg_complete == 0);
-		}
+		autoneg_complete = (axienet_ior(lp, XXV_STAT_AN_STS_OFFSET) &
+				    XXV_AN_COMPLETE_MASK);
+
+		/* If auto-negotiation is not completed, restart auto-neg */
+		return (neg_mode == (unsigned int)PHYLINK_PCS_NEG_INBAND_ENABLED &&
+			autoneg_complete == 0);
 	} else if (lp->axienet_config->mactype == XAXIENET_1G_10G_25G) {
 		bool an_enabled = false;
 
