@@ -19,7 +19,7 @@
  * resolutions under a 300Mhz pixel rate would work. Pick 4096x4096.
  */
 #define ZYNQMP_DISP_MAX_WIDTH				4096
-#define ZYNQMP_DISP_MAX_HEIGHT				4096
+#define ZYNQMP_DISP_MAX_HEIGHT				8192
 
 /* The DPDMA is limited to 44 bit addressing. */
 #define ZYNQMP_DISP_MAX_DMA_BIT				44
