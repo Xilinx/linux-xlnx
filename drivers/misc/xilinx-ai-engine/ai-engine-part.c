@@ -1097,13 +1097,16 @@ static int aie_create_tiles(struct aie_partition *apart)
 				put_device(tdev);
 				return ret;
 			}
-			ret = aie_tile_sysfs_create_entries(atile);
-			if (ret) {
-				dev_err(tdev, "failed to create tile sysfs: %d\n",
-					ret);
-				device_del(tdev);
-				put_device(tdev);
-				return ret;
+			if (apart->aperture->adev->dev_gen != AIE_DEVICE_GEN_AIE2PS) {
+				ret = aie_tile_sysfs_create_entries(atile);
+				if (ret) {
+					dev_err(tdev,
+						"failed to create tile sysfs: %d\n",
+						ret);
+					device_del(tdev);
+					put_device(tdev);
+					return ret;
+				}
 			}
 			atile++;
 		}
@@ -1214,11 +1217,13 @@ struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
 		return ERR_PTR(ret);
 	}
 
-	ret = aie_part_sysfs_create_entries(apart);
-	if (ret) {
-		dev_err(&apart->dev, "Failed to create partition sysfs.\n");
-		put_device(dev);
-		return ERR_PTR(ret);
+	if (aperture->adev->dev_gen != AIE_DEVICE_GEN_AIE2PS) {
+		ret = aie_part_sysfs_create_entries(apart);
+		if (ret) {
+			dev_err(&apart->dev, "Failed to create partition sysfs.\n");
+			put_device(dev);
+			return ERR_PTR(ret);
+		}
 	}
 
 	ret = aie_part_pm_ops_create(apart);
@@ -1251,7 +1256,8 @@ struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
  */
 static void aie_tile_remove(struct aie_tile *atile)
 {
-	aie_tile_sysfs_remove_entries(atile);
+	if (atile->apart->aperture->adev->dev_gen != AIE_DEVICE_GEN_AIE2PS)
+		aie_tile_sysfs_remove_entries(atile);
 	device_del(&atile->dev);
 	put_device(&atile->dev);
 }
@@ -1272,7 +1278,8 @@ void aie_part_remove(struct aie_partition *apart)
 	     index++, atile++)
 		aie_tile_remove(atile);
 
-	aie_part_sysfs_remove_entries(apart);
+	if (aperture->adev->dev_gen != AIE_DEVICE_GEN_AIE2PS)
+		aie_part_sysfs_remove_entries(apart);
 
 	device_del(&apart->dev);
 	put_device(&apart->dev);
