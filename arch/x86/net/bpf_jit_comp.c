@@ -1437,8 +1437,7 @@ static int emit_spectre_bhb_barrier(u8 **pprog, u8 *ip,
 	/* Insert IBHF instruction */
 	if ((cpu_feature_enabled(X86_FEATURE_CLEAR_BHB_LOOP) &&
 	     cpu_feature_enabled(X86_FEATURE_HYPERVISOR)) ||
-	    (cpu_feature_enabled(X86_FEATURE_CLEAR_BHB_HW) &&
-	     IS_ENABLED(CONFIG_X86_64))) {
+	    cpu_feature_enabled(X86_FEATURE_CLEAR_BHB_HW)) {
 		/*
 		 * Add an Indirect Branch History Fence (IBHF). IBHF acts as a
 		 * fence preventing branch history from before the fence from
@@ -1448,6 +1447,8 @@ static int emit_spectre_bhb_barrier(u8 **pprog, u8 *ip,
 		 * hardware that doesn't need or support it.  The REP and REX.W
 		 * prefixes are required by the microcode, and they also ensure
 		 * that the NOP is unlikely to be used in existing code.
+		 *
+		 * IBHF is not a valid instruction in 32-bit mode.
 		 */
 		EMIT5(0xF3, 0x48, 0x0F, 0x1E, 0xF8); /* ibhf */
 	}
