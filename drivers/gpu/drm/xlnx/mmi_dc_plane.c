@@ -523,26 +523,18 @@ static void mmi_dc_plane_atomic_update(struct drm_plane *plane,
 	struct drm_plane_state *new_state =
 		drm_atomic_get_new_plane_state(state, plane);
 	struct mmi_dc_plane *dc_plane = drm_to_dc_plane(plane);
-	bool format_changed = false;
+	struct mmi_dc *dc = dc_plane->dc;
 
 	if (!old_state->fb ||
 	    old_state->fb->format->format != new_state->fb->format->format)
-		format_changed = true;
-
-	if (format_changed) {
-		if (old_state->fb)
-			mmi_dc_plane_disable(dc_plane);
-		mmi_dc_plane_set_format(dc_plane, new_state->fb->format);
-	}
-
-	mmi_dc_plane_update(dc_plane, new_state);
+		dc->reconfig_hw = true;
 
 	if (plane->type == DRM_PLANE_TYPE_PRIMARY)
-		mmi_dc_set_global_alpha(dc_plane->dc, plane->state->alpha >> 8,
+		mmi_dc_set_global_alpha(dc_plane->dc, new_state->alpha >> 8,
 					true);
 
-	if (format_changed)
-		mmi_dc_plane_enable(dc_plane);
+	if (!dc->reconfig_hw)
+		mmi_dc_plane_update(dc_plane, new_state);
 }
 
 static void mmi_dc_plane_atomic_disable(struct drm_plane *plane,
@@ -730,4 +722,86 @@ void mmi_dc_destroy_planes(struct mmi_dc *dc)
 		if (dc->planes[i])
 			mmi_dc_plane_release_dma(dc->planes[i]);
 	}
+}
+
+/**
+ * mmi_dc_disable_planes - Stop DMA transfers and disable all planes.
+ * @dc: DC device
+ * @state: New atomic state to apply
+ */
+static void mmi_dc_disable_planes(struct mmi_dc *dc,
+				  struct drm_atomic_state *state)
+{
+	unsigned int i;
+
+	for (i = 0; i < MMI_DC_NUM_PLANES; ++i) {
+		struct mmi_dc_plane *dc_plane = dc->planes[i];
+		struct drm_plane *plane = &dc_plane->base;
+		struct drm_plane_state *old_state =
+			drm_atomic_get_old_plane_state(state, plane);
+
+		if (old_state && old_state->fb)
+			mmi_dc_plane_disable(dc_plane);
+	}
+}
+
+/**
+ * mmi_dc_enable_planes - Set formats and enable planes.
+ * @dc: DC device
+ * @state: New atomic state to apply
+ */
+static void mmi_dc_enable_planes(struct mmi_dc *dc,
+				 struct drm_atomic_state *state)
+{
+	unsigned int i;
+
+	for (i = 0; i < MMI_DC_NUM_PLANES; ++i) {
+		struct mmi_dc_plane *dc_plane = dc->planes[i];
+		struct drm_plane *plane = &dc_plane->base;
+		struct drm_plane_state *new_state =
+			drm_atomic_get_new_plane_state(state, plane);
+
+		if (new_state && new_state->fb) {
+			mmi_dc_plane_set_format(dc_plane,
+						new_state->fb->format);
+			mmi_dc_plane_enable(dc_plane);
+			if (plane->type == DRM_PLANE_TYPE_PRIMARY)
+				mmi_dc_set_global_alpha(dc_plane->dc,
+							new_state->alpha >> 8,
+							true);
+		}
+	}
+}
+
+/**
+ * mmi_dc_update_planes - Start DMA transfers to flush FBs.
+ * @dc: DC device
+ * @state: New atomic state to apply
+ */
+static void mmi_dc_update_planes(struct mmi_dc *dc,
+				 struct drm_atomic_state *state)
+{
+	unsigned int i;
+
+	for (i = 0; i < MMI_DC_NUM_PLANES; ++i) {
+		struct mmi_dc_plane *dc_plane = dc->planes[i];
+		struct drm_plane *plane = &dc_plane->base;
+		struct drm_plane_state *new_state =
+			drm_atomic_get_new_plane_state(state, plane);
+
+		if (new_state && new_state->fb)
+			mmi_dc_plane_update(dc_plane, new_state);
+	}
+}
+
+/**
+ * mmi_dc_reconfig_planes - Reset and reconfigure DC planes.
+ * @dc: DC device
+ * @state: New atomic state to apply
+ */
+void mmi_dc_reconfig_planes(struct mmi_dc *dc, struct drm_atomic_state *state)
+{
+	mmi_dc_disable_planes(dc, state);
+	mmi_dc_enable_planes(dc, state);
+	mmi_dc_update_planes(dc, state);
 }
