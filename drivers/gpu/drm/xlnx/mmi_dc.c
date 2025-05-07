@@ -242,10 +242,9 @@ static void mmi_dc_reset(struct mmi_dc *dc, bool reset)
  * mmi_dc_toggle_ext_reset - Reset DC hardware with external reset
  * @dc: MMI DC device
  */
-static void mmi_dc_toggle_ext_reset(struct mmi_dc *dc)
+void mmi_dc_toggle_ext_reset(struct mmi_dc *dc)
 {
 	reset_control_assert(dc->rst);
-	msleep(MMI_DC_MSLEEP_50MS);
 	reset_control_deassert(dc->rst);
 }
 

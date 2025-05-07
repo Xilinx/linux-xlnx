@@ -174,17 +174,6 @@ static void mmi_dc_crtc_atomic_disable(struct drm_crtc *crtc,
 static int mmi_dc_crtc_atomic_check(struct drm_crtc *crtc,
 				    struct drm_atomic_state *state)
 {
-	struct mmi_dc *dc = crtc_to_dc(crtc);
-	struct drm_plane *primary_plane = mmi_dc_plane_get_primary(dc);
-	struct drm_crtc_state *crtc_state =
-		drm_atomic_get_new_crtc_state(state, crtc);
-	struct drm_plane_state *primary_plane_state =
-		drm_atomic_get_new_plane_state(state, primary_plane);
-
-	if (crtc_state && primary_plane_state && crtc_state->active &&
-	    !primary_plane_state->fb)
-		return -EINVAL;
-
 	return drm_atomic_add_affected_planes(state, crtc);
 }
 
@@ -198,6 +187,15 @@ static void mmi_dc_crtc_atomic_flush(struct drm_crtc *crtc,
 				     struct drm_atomic_state *state)
 {
 	struct drm_pending_vblank_event *vblank;
+	struct mmi_dc *dc = crtc_to_dc(crtc);
+	struct drm_display_mode *adjusted_mode = &crtc->state->adjusted_mode;
+
+	if (dc->reconfig_hw) {
+		dc->reconfig_hw = false;
+		mmi_dc_toggle_ext_reset(dc);
+		mmi_dc_enable(dc, adjusted_mode);
+		mmi_dc_reconfig_planes(dc, state);
+	}
 
 	if (!crtc->state->event)
 		return;
