@@ -107,6 +107,7 @@ struct mmi_dc_plane;
  * @irq: interrupt control register space
  * @rst: external reset
  * @pixel_clk: pixel clock
+ * @is_ps_clk: flag for PS pixel clock source
  * @irq_num: interrupt lane number
  */
 struct mmi_dc {
@@ -123,6 +124,7 @@ struct mmi_dc {
 	void __iomem		*irq;
 	struct reset_control	*rst;
 	struct clk		*pixel_clk;
+	bool			is_ps_clk;
 	int			irq_num;
 };
 
