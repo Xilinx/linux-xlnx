@@ -67,6 +67,7 @@
 						MMI_DC_VIDEO_FRAME_SWITCH_PL_VID0_EN)
 
 #define MMI_DC_MISC_VID_CLK_PS			BIT(1)
+#define MMI_DC_MISC_VID_CLK_PL			0
 
 /* IRQ Registers */
 #define MMI_DC_INT_STATUS			(0x0000)
@@ -408,7 +409,10 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
 	mmi_dc_set_dma_align(dc);
 
 	/* Set video clock source */
-	dc_write_misc(dc, MMI_DC_MISC_VID_CLK, MMI_DC_MISC_VID_CLK_PS);
+	if (dc->is_ps_clk)
+		dc_write_misc(dc, MMI_DC_MISC_VID_CLK, MMI_DC_MISC_VID_CLK_PS);
+	else
+		dc_write_misc(dc, MMI_DC_MISC_VID_CLK, MMI_DC_MISC_VID_CLK_PL);
 
 	mmi_dc_reset(dc, true);
 	msleep(MMI_DC_MSLEEP_50MS);

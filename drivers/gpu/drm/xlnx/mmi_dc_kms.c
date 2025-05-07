@@ -523,10 +523,18 @@ static int mmi_dc_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, dc);
 	dc->dev = &pdev->dev;
 
-	dc->pixel_clk = devm_clk_get(dc->dev, "ps_vid_clk");
-	if (IS_ERR(dc->pixel_clk))
-		return dev_err_probe(dc->dev, PTR_ERR(dc->pixel_clk),
-				     "failed to get ps_vid_clk\n");
+	dc->pixel_clk = devm_clk_get(dc->dev, "pl_vid_func_clk");
+	if (IS_ERR(dc->pixel_clk)) {
+		dev_dbg(dc->dev, "failed to get pl_vid_func_clk %ld\n",
+			PTR_ERR(dc->pixel_clk));
+		dc->pixel_clk = devm_clk_get(dc->dev, "ps_vid_clk");
+		if (IS_ERR(dc->pixel_clk))
+			return dev_err_probe(dc->dev, PTR_ERR(dc->pixel_clk),
+					     "failed to get ps_vid_clk\n");
+		dc->is_ps_clk = true;
+	} else {
+		dc->is_ps_clk = false;
+	}
 
 	ret = mmi_dc_drm_init(dc);
 	if (ret < 0)
