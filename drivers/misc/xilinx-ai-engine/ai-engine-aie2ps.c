@@ -3258,7 +3258,7 @@ static int aie2ps_scan_part_clocks(struct aie_partition *apart)
 		void __iomem *va;
 		u32 val, nbitpos;
 
-		nbitpos = loc.col * (range->size.row - 1) + loc.row;
+		nbitpos = (loc.col - range->start.col) * (range->size.row - 1) + loc.row;
 
 		va = aperture->base +
 		     aie_cal_regoff(adev, loc,
