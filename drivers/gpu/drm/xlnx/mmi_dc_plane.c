@@ -241,7 +241,7 @@ static void mmi_dc_avbuf_plane_set_format(struct mmi_dc_plane *plane,
 	val |= format->buf_format << MMI_DC_AV_BUF_FMT_SHIFT(plane->id);
 	dc_write_avbuf(dc, MMI_DC_AV_BUF_FORMAT, val);
 
-	for (i = 0; i < MMI_DC_AV_BUF_NUM_SF; ++i) {
+	for (i = 0; i < MMI_DC_NUM_CC; ++i) {
 		u32 reg = MMI_DC_AV_BUF_PLANE_CC_SCALE_FACTOR(plane->id, i);
 
 		dc_write_avbuf(dc, reg, format->sf[i]);
