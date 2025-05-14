@@ -13,18 +13,20 @@
 #include <drm/drm_plane.h>
 
 #define MMI_DC_NUM_PLANES		(2)
-#define MMI_DC_MAX_NUM_SUB_PLANES	(3)
+#define MMI_DC_NUM_CC			(3)
+#define MMI_DC_MAX_NUM_SUB_PLANES	(MMI_DC_NUM_CC)
 #define MMI_DC_VBLANKS			(3)
 #define MMI_DC_DPTX_PORT_0		(12)
 #define MMI_DC_MAX_WIDTH		(4096)
 #define MMI_DC_MAX_HEIGHT		(4096)
+#define MMI_DC_SWAP(layer)		(MMI_DC_NUM_PLANES - 1 - (layer))
 
 /* ----------------------------------------------------------------------------
  * CSC Data
  */
 
-#define MMI_DC_CSC_NUM_COEFFS		(9)
-#define MMI_DC_CSC_NUM_OFFSETS		(3)
+#define MMI_DC_CSC_NUM_COEFFS		(MMI_DC_NUM_CC * MMI_DC_NUM_CC)
+#define MMI_DC_CSC_NUM_OFFSETS		(MMI_DC_NUM_CC)
 
 /* ----------------------------------------------------------------------------
  * MMI DC Plane Interface
@@ -45,7 +47,7 @@
 #define MMI_DC_AV_CHBUF(channel)			(0x0010 + 4 * (channel))
 #define MMI_DC_AV_BUF_OUTPUT_AUDIO_VIDEO_SELECT		(0x0070)
 #define MMI_DC_AV_BUF_PLANE_CC_SCALE_FACTOR(layer, cc)	(0x0200 + 0x0c * \
-							(layer) + 4 * (cc))
+							 MMI_DC_SWAP(layer) + 4 * (cc))
 
 #define MMI_DC_AV_CHBUF_BURST				(0x000f << 2)
 #define MMI_DC_AV_CHBUF_FLUSH				BIT(1)
