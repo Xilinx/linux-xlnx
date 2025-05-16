@@ -521,6 +521,12 @@ static int mmi_dc_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, dc);
 	dc->dev = &pdev->dev;
 
+	ret = dma_set_mask_and_coherent(dc->dev, DMA_BIT_MASK(48));
+	if (ret < 0) {
+		dev_err(dc->dev, "failed to set DMA mask %d\n", ret);
+		return ret;
+	}
+
 	dc->pixel_clk = devm_clk_get(dc->dev, "pl_vid_func_clk");
 	if (IS_ERR(dc->pixel_clk)) {
 		dev_dbg(dc->dev, "failed to get pl_vid_func_clk %ld\n",
