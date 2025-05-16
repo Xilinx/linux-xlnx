@@ -9,6 +9,7 @@
 #include <linux/delay.h>
 #include <linux/dma/xilinx_dpdma.h>
 #include <linux/dmapool.h>
+#include <linux/dma-mapping.h>
 #include <linux/iopoll.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -1251,6 +1252,12 @@ static int mmi_dcdma_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&ddev->channels);
 
 	platform_set_drvdata(pdev, mdev);
+
+	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(48));
+	if (ret < 0) {
+		dev_err(&pdev->dev, "failed to set DMA mask %d\n", ret);
+		return ret;
+	}
 
 	mdev->axi_clk = devm_clk_get_enabled(&pdev->dev, NULL);
 	if (IS_ERR(mdev->axi_clk))
