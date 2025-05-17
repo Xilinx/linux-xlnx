@@ -787,11 +787,11 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 	}
 
 	if (args->init_opts & AIE_PART_INIT_OPT_NMU_CONFIG) {
-		struct aie_range range = {};
+		struct aie_range range = {0};
 
 		opts |= ~AIE_PART_INIT_OPT_NMU_CONFIG;
 		if (apart->range.start.col == 0) {
-			range.size.col = 1;
+			range.size.col = 2;
 			ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_NMU_CONFIG, range, 0);
 			if (ret)
 				goto out;
