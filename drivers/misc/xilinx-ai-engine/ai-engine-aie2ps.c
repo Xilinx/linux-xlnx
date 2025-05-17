@@ -3339,14 +3339,15 @@ static int aie2ps_part_clear_mems(struct aie_partition *apart)
 /**
  * aie2ps_wake_tile_uc_core_up() - wake uc core up
  * @apart: AI engine partition
- * @loc: Location of tile
+ * @loc: Relative location of the tile
  * @return: return 0 if success negative value for failure.
  */
 static int aie2ps_wake_tile_uc_core_up(struct aie_partition *apart,
 				       struct aie_location *loc)
 {
-	const struct aie_aperture *aperture = apart->aperture;
+	struct aie_aperture *aperture = apart->aperture;
 	struct aie_device *adev = apart->adev;
+	struct aie_location loc_adjust = {0};
 	void __iomem *va;
 	u32 ttype, val;
 
@@ -3364,8 +3365,10 @@ static int aie2ps_wake_tile_uc_core_up(struct aie_partition *apart,
 		return -EINVAL;
 	}
 
+	loc_adjust.col = loc->col + apart->range.start.col;
+
 	va = aperture->base +
-	     aie_cal_regoff(adev, *loc, AIE2PS_SHIMNOC_UCMOD_CORE_CTRL_REGOFF);
+	     aie_aperture_cal_regoff(aperture, loc_adjust, AIE2PS_SHIMNOC_UCMOD_CORE_CTRL_REGOFF);
 	val = aie_get_field_val(&adev->shimnoc_uc_corectrl->wakeup, 0x1);
 	iowrite32(val, va);
 	return 0;
