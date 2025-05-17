@@ -1464,42 +1464,31 @@ int aie_partition_uc_zeroize_mem(struct device *dev, struct aie_location *loc, u
 }
 EXPORT_SYMBOL_GPL(aie_partition_uc_zeroize_mem);
 
-static int aie_apart_load_uc_phdr(struct aie_partition *apart, struct dma_chan *channel,
-				  const Elf32_Phdr *phdr, struct aie_dma_addrlen *addrlen,
+static int aie_apart_load_uc_phdr(struct aie_partition *apart,
+				  const Elf32_Phdr *phdr,
+				  struct aie_addrlen *addrlen,
 				  struct aie_part_mem *pmem)
 {
-	u32 end_col = apart->range.start.col + apart->range.size.col;
 	struct aie_device *adev = apart->adev;
 	struct aie_location loc = {.row = 0};
-	struct dma_async_tx_descriptor *txn;
-	__kernel_size_t tile_addr;
-	dma_cookie_t cookie;
+	__kernel_size_t tile_addr, offset;
 	u32 ttype;
 	int ret;
 
-	tile_addr = phdr->p_paddr + pmem->mem.offset;
+	tile_addr = (phdr->p_paddr & (pmem->mem.size - 1)) + pmem->mem.offset;
 
-	for (loc.col = apart->range.start.col; loc.col < end_col; loc.col++) {
-		u64 addr;
-
+	for (loc.col = 0; loc.col < apart->range.size.col; loc.col++) {
 		ttype = apart->adev->ops->get_tile_type(apart->adev, &loc);
 		if (ttype != AIE_TILE_TYPE_SHIMNOC)
 			continue;
-		addr = aie_cal_regoff(adev, loc, tile_addr);
-		addr += apart->aperture->res.start;
-		txn = dmaengine_prep_dma_memcpy(channel, addr, addrlen->dma_addr, addrlen->len, 0);
-		if (!txn) {
-			dev_err(&apart->dev, "Failed to prep dma cpy");
-			return -ENODEV;
-		}
-		cookie = dmaengine_submit(txn);
-		ret = dma_submit_error(cookie);
-		if (ret) {
-			dev_err(&apart->dev, "Failed submit dma txn");
+
+		offset = aie_cal_regoff(adev, loc, tile_addr);
+		ret = aie_part_write_register(apart, offset, addrlen->len, addrlen->addr, 0);
+		if (ret < 0) {
+			dev_err(&apart->dev, "failed to load cert.\n");
 			return ret;
 		}
-		dma_async_issue_pending(channel);
-		dma_sync_wait(channel, cookie);
+
 	}
 
 	return 0;
@@ -1515,11 +1504,9 @@ int aie_load_cert(struct device *dev, unsigned char *elf_addr)
 {
 	const Elf32_Ehdr *ehdr = (Elf32_Ehdr *)elf_addr;
 	u16 data_ops = AIE_PART_ZEROIZE_UC_MEM_ALL;
-	struct aie_dma_addrlen *addrlen;
+	struct aie_addrlen addrlen;
 	struct aie_partition *apart;
-	struct dma_chan *channel;
 	struct aie_device *adev;
-	dma_cap_mask_t mask;
 	u32 mem_type;
 	int ret = 0;
 	int i;
@@ -1534,21 +1521,10 @@ int aie_load_cert(struct device *dev, unsigned char *elf_addr)
 	if (!adev->ops->map_uc_mem)
 		return -EINVAL;
 
-	addrlen = kcalloc(ehdr->e_phnum, sizeof(*addrlen), GFP_KERNEL);
-	if (!addrlen)
-		return -ENOMEM;
-
 	ret = aie_part_pm_ops(apart, &data_ops, AIE_PART_INIT_OPT_UC_ZEROIZATION, apart->range, 1);
 	if (ret)
-		goto out;
+		return ret;
 
-	dma_cap_zero(mask);
-	dma_cap_set(DMA_MEMCPY, mask);
-	channel = dma_request_channel(mask, NULL, NULL);
-	if (!channel) {
-		ret = -ENODEV;
-		goto out;
-	}
 	for (i = 0; i < ehdr->e_phnum; i++) {
 		struct aie_part_mem pmem;
 		const Elf32_Phdr *phdr;
@@ -1556,10 +1532,10 @@ int aie_load_cert(struct device *dev, unsigned char *elf_addr)
 
 		phdr = (Elf32_Phdr *)(elf_addr + sizeof(*ehdr) + i * sizeof(*phdr));
 		sptr = elf_addr + phdr->p_offset;
-
 		/* ignore non-loadable sections */
 		if (phdr->p_type != PT_LOAD)
 			continue;
+
 		mem_type = adev->ops->map_uc_mem(apart, phdr->p_paddr, &pmem);
 		/* ignore non program mem and non priv data mem sections */
 		switch (mem_type) {
@@ -1569,33 +1545,18 @@ int aie_load_cert(struct device *dev, unsigned char *elf_addr)
 		default:
 			continue;
 		}
+
 		/* ignore uninitialized sections, as zeroize already initializes to zero */
 		if (!phdr->p_filesz)
 			continue;
 
-		addrlen[i].dma_addr = dma_map_single(&apart->dev, sptr, phdr->p_memsz,
-						     DMA_TO_DEVICE);
-		if (dma_mapping_error(&apart->dev, addrlen[i].dma_addr)) {
-			addrlen[i].dma_addr = 0;
-			ret = -ENOMEM;
-			break;
-		}
-		addrlen[i].len = phdr->p_memsz;
-		ret = aie_apart_load_uc_phdr(apart, channel, phdr, &addrlen[i], &pmem);
+		addrlen.addr = sptr;
+		addrlen.len = ALIGN(phdr->p_memsz, 4);
+
+		ret = aie_apart_load_uc_phdr(apart, phdr, &addrlen, &pmem);
 		if (ret)
 			break;
 	}
-
-	dmaengine_terminate_sync(channel);
-	dmaengine_synchronize(channel);
-	dma_release_channel(channel);
-out:
-	for (i = 0; i < ehdr->e_phnum; i++) {
-		if (!addrlen[i].dma_addr)
-			continue;
-		dma_unmap_single(&apart->dev, addrlen[i].dma_addr, addrlen[i].len, DMA_TO_DEVICE);
-	}
-	kfree(addrlen);
 
 	return ret;
 }

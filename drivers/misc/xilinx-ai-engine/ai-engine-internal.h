@@ -1055,6 +1055,16 @@ struct aie_dma_addrlen {
 };
 
 /**
+ * struct aie_addrlen - Stores the address and length of the transaction
+ * @addr: load cert src address.
+ * @len: length of the data to be transferred.
+ */
+struct aie_addrlen {
+	void *addr;
+	size_t len;
+};
+
+/**
  * struct aie_device - AI engine device structure
  * @apertures: list of apertures
  * @cdev: cdev for the AI engine
