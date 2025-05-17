@@ -666,26 +666,6 @@ int aie_partition_initialize(struct device *dev, struct aie_partition_init_args 
 }
 EXPORT_SYMBOL_GPL(aie_partition_initialize);
 
-static int aie2ps_part_aximm_isolation(struct aie_partition *apart)
-{
-	struct aie_range range = {};
-	int ret;
-	u16 dir;
-
-	range.start.col = apart->range.start.col;
-	range.size.col = 1;
-	dir = AIE_ISOLATE_WEST_MASK;
-	ret = aie_part_pm_ops(apart, &dir, AIE_PART_INIT_OPT_ISOLATE, range, 0);
-	if (ret)
-		return ret;
-
-	range.start.col = apart->range.size.col - 1;
-	dir = AIE_ISOLATE_EAST_MASK;
-	ret = aie_part_pm_ops(apart, &dir, AIE_PART_INIT_OPT_ISOLATE, range, 0);
-
-	return ret;
-}
-
 static int aie2ps_part_set_l2_irq(struct aie_partition *apart)
 {
 	struct aie_range range = {};
@@ -754,9 +734,6 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 	if (args->init_opts & AIE_PART_INIT_OPT_ISOLATE) {
 		opts |= AIE_PART_INIT_OPT_ISOLATE;
 		ret = aie_part_init_isolation(apart);
-		if (ret)
-			goto out;
-		ret = aie2ps_part_aximm_isolation(apart);
 		if (ret)
 			goto out;
 	}
