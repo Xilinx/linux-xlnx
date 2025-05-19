@@ -215,12 +215,12 @@
 };
 
 &can0 {
-	clocks = <&versal_net_clk CAN0_REF_2X>, <&versal_net_clk LPD_LSBUS>;
+	clocks = <&can0_clk>, <&versal_net_clk LPD_LSBUS>;
 	power-domains = <&versal_net_firmware PM_DEV_CAN_FD_0>;
 };
 
 &can1 {
-	clocks = <&versal_net_clk CAN1_REF_2X>, <&versal_net_clk LPD_LSBUS>;
+	clocks = <&can1_clk>, <&versal_net_clk LPD_LSBUS>;
 	power-domains = <&versal_net_firmware PM_DEV_CAN_FD_1>;
 };
 
