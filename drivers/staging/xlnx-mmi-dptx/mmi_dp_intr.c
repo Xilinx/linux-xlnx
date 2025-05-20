@@ -276,15 +276,6 @@ static int mmi_dp_handle_hotplug(struct dptx *dptx)
 	dptx->link.lanes = dptx->max_lanes;
 
 	/* Initiate link training */
-	if (dptx->fec) {
-		mmi_dp_set(dptx->base, CCTL, CCTL_ENHANCE_FRAMING_WITH_FEC_EN);
-
-		/* Set FEC_READY on the sink side */
-		retval = mmi_dp_write_dpcd(dptx, DP_FEC_CONFIGURATION, DP_FEC_READY);
-		if (retval)
-			return retval;
-	}
-
 	if (dptx->rx_caps.no_aux_transaction_link_training) {
 		mmi_dp_fast_link_training(dptx);
 	} else {
