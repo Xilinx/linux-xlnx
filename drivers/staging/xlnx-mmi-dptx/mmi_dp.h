@@ -241,7 +241,6 @@ struct rx_capabilities {
  * @cr_fail: Clock recovery fail flag
  * @ssc_en: Spread Spectrum clocking enabled flag
  * @enhanced_frame_cap: Enhanced frame capabilities flag
- * @fec: FEC flag
  * @edp: EDP flag
  * @dev: The struct device
  * @bridge: DRM Bridge
@@ -296,7 +295,6 @@ struct dptx {
 	u8 multipixel;
 	bool ssc_en;
 	bool enhanced_frame_cap;
-	bool fec;
 	bool edp;
 
 	struct device *dev;

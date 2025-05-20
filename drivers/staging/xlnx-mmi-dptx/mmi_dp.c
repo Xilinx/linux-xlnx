@@ -1115,7 +1115,6 @@ static int mmi_dp_probe(struct platform_device *pdev)
 	dptx->cr_fail = false;
 	dptx->mst = false; /* Should be disabled for HDCP. */
 	dptx->ssc_en = false;
-	dptx->fec = false;
 	dptx->streams = 1;
 	dptx->multipixel = DPTX_MP_QUAD_PIXEL;
 
