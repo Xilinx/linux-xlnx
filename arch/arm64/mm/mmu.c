@@ -1351,8 +1351,12 @@ int arch_add_memory(int nid, u64 start, u64 size,
 
 	memblock_clear_nomap(start, size);
 
-	ret = __add_pages(nid, start >> PAGE_SHIFT, size >> PAGE_SHIFT,
-			   params);
+	if (memblock_is_map_memory(start))
+		ret = __add_pages(nid, start >> PAGE_SHIFT, size >> PAGE_SHIFT,
+				  params);
+	else
+		ret = memblock_clear_nomap(start, size);
+
 	if (ret)
 		__remove_pgd_mapping(swapper_pg_dir,
 				     __phys_to_virt(start), size);
