@@ -63,7 +63,7 @@
 	#address-cells = <1>;
 	#size-cells = <0>;
 
-	flash@0 {
+	spi_flash: flash@0 {
 		compatible = "jedec,spi-nor";
 		reg = <0>;
 		#address-cells = <1>;
