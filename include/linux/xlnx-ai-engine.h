@@ -171,6 +171,13 @@ static inline u32 aie_get_error_category(struct aie_error *err)
 	return err->category;
 }
 
+int aie_partition_write_privileged_mem(struct device *dev, size_t offset, size_t len, void *data);
+int aie_partition_read_privileged_mem(struct device *dev, size_t offset, size_t len, void *data);
+bool aie_partition_check_noc_aximm(struct device *dev, struct aie_location *loc);
+int aie_partition_check_uc_aximm(struct device *dev, struct aie_location *loc);
+int aie_partition_uc_zeroize_mem(struct device *dev, struct aie_location *loc, u32 regval);
+int aie_load_cert(struct device *dev, unsigned char *elf_addr);
+
 #else
 static inline bool aie_partition_is_available(struct aie_partition_req *req)
 {
@@ -267,6 +274,36 @@ static inline int aie_get_tile_info(struct device *dev, struct aie_tile_info *ti
 
 static inline int aie_part_rscmgr_set_static_range(struct device *dev,
 						   u8 start_col, u8 num_col, void *meta)
+{
+	return -EINVAL;
+}
+
+int aie_partition_write_privileged_mem(struct device *dev, size_t offset, size_t len, void *data)
+{
+	return -EINVAL;
+}
+
+int aie_partition_read_privileged_mem(struct device *dev, size_t offset, size_t len, void *data)
+{
+	return -EINVAL;
+}
+
+bool aie_partition_check_noc_aximm(struct device *dev, struct aie_location *loc)
+{
+	return false;
+}
+
+int aie_partition_check_uc_aximm(struct device *dev, struct aie_location *loc)
+{
+	return 0;
+}
+
+int aie_partition_uc_zeroize_mem(struct device *dev, struct aie_location *loc, u32 regval)
+{
+	return -EINVAL;
+}
+
+int aie_load_cert(struct device *dev, unsigned char *elf_addr)
 {
 	return -EINVAL;
 }
