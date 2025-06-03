@@ -2001,9 +2001,9 @@ static int axienet_queue_xmit(struct sk_buff *skb,
 			return NETDEV_TX_BUSY;
 		}
 #ifdef CONFIG_AXIENET_HAS_MCDMA
-			mcdma_desc_set_phys_addr(lp, phys, cur_p);
+		mcdma_desc_set_phys_addr(lp, phys, cur_p);
 #else
-			desc_set_phys_addr(lp, phys, cur_p);
+		desc_set_phys_addr(lp, phys, cur_p);
 #endif
 	}
 
@@ -2038,9 +2038,9 @@ static int axienet_queue_xmit(struct sk_buff *skb,
 		phys = skb_frag_dma_map(ndev->dev.parent, frag, 0, len,
 					DMA_TO_DEVICE);
 #ifdef CONFIG_AXIENET_HAS_MCDMA
-			mcdma_desc_set_phys_addr(lp, phys, cur_p);
+		mcdma_desc_set_phys_addr(lp, phys, cur_p);
 #else
-			desc_set_phys_addr(lp, phys, cur_p);
+		desc_set_phys_addr(lp, phys, cur_p);
 #endif
 		cur_p->cntrl = len;
 		cur_p->tx_desc_mapping = DESC_DMA_MAP_PAGE;
@@ -2258,7 +2258,7 @@ static int axienet_recv(struct net_device *ndev, int budget,
 				skb->ip_summed = CHECKSUM_COMPLETE;
 			}
 
-		napi_gro_receive(napi, skb);
+			napi_gro_receive(napi, skb);
 
 			size += length;
 			packets++;
@@ -2273,9 +2273,9 @@ static int axienet_recv(struct net_device *ndev, int budget,
 				      lp->max_frm_size,
 				      DMA_FROM_DEVICE);
 #ifdef CONFIG_AXIENET_HAS_MCDMA
-			mcdma_desc_set_phys_addr(lp, phys, cur_p);
+		mcdma_desc_set_phys_addr(lp, phys, cur_p);
 #else
-			desc_set_phys_addr(lp, phys, cur_p);
+		desc_set_phys_addr(lp, phys, cur_p);
 #endif
 		if (unlikely(dma_mapping_error(ndev->dev.parent, phys))) {
 			phys = 0;
