@@ -836,9 +836,6 @@ static struct vm_area_struct *vma_merge_existing_range(struct vma_merge_struct *
 		err = dup_anon_vma(next, vma, &anon_dup);
 	}
 
-	if (err)
-		goto abort;
-
 	/*
 	 * In nearly all cases, we expand vmg->vma. There is one exception -
 	 * merge_right where we partially span the VMA. In this case we shrink
@@ -846,22 +843,11 @@ static struct vm_area_struct *vma_merge_existing_range(struct vma_merge_struct *
 	 */
 	expanded = !merge_right || merge_will_delete_vma;
 
-	if (commit_merge(vmg, adjust,
-			 merge_will_delete_vma ? vma : NULL,
-			 merge_will_delete_next ? next : NULL,
-			 adj_start, expanded)) {
-		if (anon_dup)
-			unlink_anon_vmas(anon_dup);
-
-		/*
-		 * We've cleaned up any cloned anon_vma's, no VMAs have been
-		 * modified, no harm no foul if the user requests that we not
-		 * report this and just give up, leaving the VMAs unmerged.
-		 */
-		if (!vmg->give_up_on_oom)
-			vmg->state = VMA_MERGE_ERROR_NOMEM;
-		return NULL;
-	}
+	if (err || commit_merge(vmg, adjust,
+			merge_will_delete_vma ? vma : NULL,
+			merge_will_delete_next ? next : NULL,
+			adj_start, expanded))
+		goto abort;
 
 	res = merge_left ? prev : next;
 	khugepaged_enter_vma(res, vmg->flags);
@@ -872,6 +858,9 @@ static struct vm_area_struct *vma_merge_existing_range(struct vma_merge_struct *
 abort:
 	vma_iter_set(vmg->vmi, start);
 	vma_iter_load(vmg->vmi);
+
+	if (anon_dup)
+		unlink_anon_vmas(anon_dup);
 
 	/*
 	 * This means we have failed to clone anon_vma's correctly, but no
