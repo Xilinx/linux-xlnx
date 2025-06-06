@@ -1650,6 +1650,8 @@ static int tsn_switch_fdb_init(struct platform_device *pdev)
 
 	/* If 'xlnx,packet-switch' is enabled */
 	if (lp.packet_switch) {
+		off_t ep_mac_reg;
+
 		/* Modify the Management Queue Options register of the
 		 * EP packet switch for multicast frames.
 		 */
@@ -1669,10 +1671,16 @@ static int tsn_switch_fdb_init(struct platform_device *pdev)
 		val = val | (1 << EP_PORT_STATUS_EP_STATE_SHIFT) |
 			EP_PORT_STATUS_CHG_BIT |
 			(mac_addr[5] << EP_PORT_STATUS_EP_MAC_ADDR_SHIFT);
-		/* Update Endpoint Extension Control Register with lower 4 bits of EP MAC */
 		axienet_iow(&lp, XAS_PORT_STATE_CTRL_OFFSET, val);
-		val = axienet_ior(&lp, XAS_MAC1_MNG_Q_OPTION_OFFSET);
-		axienet_iow(&lp, XAS_MAC1_MNG_Q_OPTION_OFFSET,
+
+		/* Update Endpoint Extension Control Register with lower 4 bits of EP MAC */
+		if (lp.num_tc <= XAE_MAX_LEGACY_TSN_TC)
+			ep_mac_reg = XAS_MAC1_MNG_Q_OPTION_OFFSET;
+		else
+			ep_mac_reg = XAE_EP_EXT_MGMT_DMA_MAP_OFFSET;
+
+		val = axienet_ior(&lp, ep_mac_reg);
+		axienet_iow(&lp, ep_mac_reg,
 			    (val | ((mac_addr[5] & 0xF) <<
 			     EP_EX_CTRL_REG_EP_MAC_ADDR_SHIFT)));
 	}
