@@ -3938,6 +3938,8 @@ static int xlnx_hdmi_probe(struct platform_device *pdev)
 			return -EPROBE_DEFER;
 		}
 	}
+	if (hdmi->config.vid_interface)
+		num_clks--;
 
 	ret = clk_bulk_get(&pdev->dev, num_clks, hdmitx_clks);
 	if (ret)
@@ -3973,8 +3975,10 @@ static int xlnx_hdmi_probe(struct platform_device *pdev)
 		clk_get_rate(hdmitx_clks[VIDEO_CLK].clk));
 	dev_dbg(hdmi->dev, "frl clk = %lu Hz\n",
 		clk_get_rate(hdmitx_clks[FRL_CLK].clk));
-	dev_dbg(hdmi->dev, "video aclk rate = %lu Hz\n",
-		clk_get_rate(hdmitx_clks[S_AXIS_VIDEO_ACLK].clk));
+
+	if (!hdmi->config.vid_interface)
+		dev_dbg(hdmi->dev, "video aclk rate = %lu Hz\n",
+			clk_get_rate(hdmitx_clks[S_AXIS_VIDEO_ACLK].clk));
 
 	hdmi->irq = platform_get_irq(pdev, 0);
 	if (hdmi->irq < 0) {
@@ -4044,6 +4048,9 @@ static void xlnx_hdmi_remove(struct platform_device *pdev)
 {
 	struct xlnx_hdmi *hdmi = platform_get_drvdata(pdev);
 	int num_clks = ARRAY_SIZE(hdmitx_clks);
+
+	if (hdmi->config.vid_interface)
+		num_clks--;
 
 	if (hdmi->bridge)
 		xlnx_bridge_disable(hdmi->bridge);
