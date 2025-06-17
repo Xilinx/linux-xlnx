@@ -231,6 +231,12 @@ enum xhdmi_frlltptype {
 	XLTP_RATE_CHANGE = 0xF,
 };
 
+enum xhdmi_vid_interface {
+	XHDMI_RX_AXI_STREAM = 0,
+	XHDMI_RX_NATIVE = 1,
+	XHDMI_RX_NATIVE_IDE = 2
+};
+
 union xhdmi_frlffeadjtype {
 	u32 data;
 	u8 byte[4];
@@ -441,6 +447,7 @@ struct xhdmirx_state {
 	int hdcp2x_timer_irq;
 	int edid_blocks_max;
 	u16 edid_ram_size;
+	u8 vid_interface;
 	u8 *hdcp1x_key;
 	u8 max_ppc;
 	u8 max_bpc;
@@ -3818,6 +3825,19 @@ static int xhdmirx_parse_of(struct xhdmirx_state *xhdmi)
 		}
 	}
 
+	ret = of_property_read_u8(node, "xlnx,vid-interface",
+				  &xhdmi->vid_interface);
+	if (ret) {
+		dev_err(dev, "xlnx,vid-interface property not found.\n");
+		return ret;
+	}
+
+	if (xhdmi->vid_interface > XHDMI_RX_NATIVE_IDE) {
+		dev_err(dev, "dt video interface %d  is invalid.\n",
+			xhdmi->vid_interface);
+		return -EINVAL;
+	}
+
 	return ret;
 }
 
@@ -4522,6 +4542,13 @@ static int xhdmirx_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	num_clks = ARRAY_SIZE(xhdmirx_clks);
+	ret = xhdmirx_parse_of(xhdmi);
+	if (ret)
+		return ret;
+
+	if (xhdmi->vid_interface)
+		num_clks--;
+
 	xhdmi->clks = devm_kcalloc(xhdmi->dev, num_clks,
 				   sizeof(*xhdmi->clks), GFP_KERNEL);
 	if (!xhdmi->clks)
@@ -4572,10 +4599,6 @@ static int xhdmirx_probe(struct platform_device *pdev)
 		dev_err(xhdmi->dev, "failed to register irq handler %d\n", ret);
 		goto wrkq_err;
 	}
-
-	ret = xhdmirx_parse_of(xhdmi);
-	if (ret)
-		goto wrkq_err;
 
 	for (i = 0; i < XHDMI_MAX_LANES; i++) {
 		char phy_name[16];
@@ -4687,6 +4710,10 @@ static void xhdmirx_remove(struct platform_device *pdev)
 	cancel_delayed_work(&xhdmi->delayed_work_enable_hotplug);
 	destroy_workqueue(xhdmi->work_queue);
 	mutex_destroy(&xhdmi->xhdmi_mutex);
+
+	if (xhdmi->vid_interface)
+		num_clks--;
+
 	clk_bulk_disable_unprepare(num_clks, xhdmi->clks);
 
 	dev_info(xhdmi->dev, "driver removed successfully\n");
