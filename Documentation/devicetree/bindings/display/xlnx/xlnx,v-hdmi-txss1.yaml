@@ -173,6 +173,19 @@ dependencies:
   xlnx,include-hdcp-1-4: [ 'xlnx,hdcp1x-keymgmt' ]
   xlnx,hdcp1x-keymgmt: [ 'xlnx,include-hdcp-1-4' ]
 
+allOf:
+  - if:
+      properties:
+        xlnx,vid-interface:
+          const: 0
+    then:
+      required:
+        - clock-names
+      properties:
+        clock-names:
+          contains:
+            const: s_axis_video_aclk
+
 examples:
   - |
     #include <dt-bindings/interrupt-controller/arm-gic.h>
