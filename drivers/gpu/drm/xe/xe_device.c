@@ -37,6 +37,7 @@
 #include "xe_gt_printk.h"
 #include "xe_gt_sriov_vf.h"
 #include "xe_guc.h"
+#include "xe_guc_pc.h"
 #include "xe_hw_engine_group.h"
 #include "xe_hwmon.h"
 #include "xe_irq.h"
@@ -871,31 +872,37 @@ void xe_device_td_flush(struct xe_device *xe)
 	if (!IS_DGFX(xe) || GRAPHICS_VER(xe) < 20)
 		return;
 
-	if (XE_WA(xe_root_mmio_gt(xe), 16023588340)) {
+	gt = xe_root_mmio_gt(xe);
+	if (XE_WA(gt, 16023588340)) {
+		/* A transient flush is not sufficient: flush the L2 */
 		xe_device_l2_flush(xe);
-		return;
-	}
+	} else {
+		xe_guc_pc_apply_flush_freq_limit(&gt->uc.guc.pc);
+		
+		/* Execute TDF flush on all graphics GTs */
+		for_each_gt(gt, xe, id) {
+			if (xe_gt_is_media_type(gt))
+				continue;
 
-	for_each_gt(gt, xe, id) {
-		if (xe_gt_is_media_type(gt))
-			continue;
+			if (xe_force_wake_get(gt_to_fw(gt), XE_FW_GT))
+				return;
 
-		if (xe_force_wake_get(gt_to_fw(gt), XE_FW_GT))
-			return;
+			xe_mmio_write32(gt, XE2_TDF_CTRL, TRANSIENT_FLUSH_REQUEST);
+			/*
+			 * FIXME: We can likely do better here with our choice of
+			 * timeout. Currently we just assume the worst case, i.e. 150us,
+			 * which is believed to be sufficient to cover the worst case
+			 * scenario on current platforms if all cache entries are
+			 * transient and need to be flushed..
+			 */
+			if (xe_mmio_wait32(gt, XE2_TDF_CTRL, TRANSIENT_FLUSH_REQUEST, 0,
+					   150, NULL, false))
+				xe_gt_err_once(gt, "TD flush timeout\n");
 
-		xe_mmio_write32(gt, XE2_TDF_CTRL, TRANSIENT_FLUSH_REQUEST);
-		/*
-		 * FIXME: We can likely do better here with our choice of
-		 * timeout. Currently we just assume the worst case, i.e. 150us,
-		 * which is believed to be sufficient to cover the worst case
-		 * scenario on current platforms if all cache entries are
-		 * transient and need to be flushed..
-		 */
-		if (xe_mmio_wait32(gt, XE2_TDF_CTRL, TRANSIENT_FLUSH_REQUEST, 0,
-				   150, NULL, false))
-			xe_gt_err_once(gt, "TD flush timeout\n");
-
-		xe_force_wake_put(gt_to_fw(gt), XE_FW_GT);
+			xe_force_wake_put(gt_to_fw(gt), XE_FW_GT);
+		}
+		
+		xe_guc_pc_remove_flush_freq_limit(&xe_root_mmio_gt(xe)->uc.guc.pc);
 	}
 }
 
