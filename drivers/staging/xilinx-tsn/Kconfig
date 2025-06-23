@@ -8,6 +8,7 @@ if NET_VENDOR_XILINX
 config XILINX_TSN
 	tristate "Enable Xilinx's TSN IP"
 	select PHYLIB
+	select NET_DEVLINK
 	help
 	  Enable Xilinx's TSN IP.
 

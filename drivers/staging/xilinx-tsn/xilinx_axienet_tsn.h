@@ -803,6 +803,7 @@ struct axienet_tsn_txq {
  * @txqs: TX queues to MCDMA & TADMA channel mapping
  * @pcpmap: PCP to queues mapping information
  * @qbv_enabled: Bitmask of the QBV enabled queues
+ * @devlink: devlink instance currently used to set scheduled PTP parameters
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -930,6 +931,7 @@ struct axienet_local {
 	struct axienet_tsn_txq txqs[XAE_MAX_TSN_TC];
 	u8 pcpmap[XAE_MAX_TSN_TC];
 	u32 qbv_enabled;
+	struct devlink *devlink;
 };
 
 /**
@@ -1263,6 +1265,7 @@ int axienet_qbv_init(struct net_device *ndev);
 int axienet_set_schedule(struct net_device *ndev, void __user *useraddr);
 int axienet_get_schedule(struct net_device *ndev, void __user *useraddr);
 int axienet_tsn_shaper_tc(struct net_device *dev, enum tc_setup_type type, void *type_data);
+int axienet_qbv_enabled(struct axienet_local *lp);
 #endif
 
 #if IS_ENABLED(CONFIG_XILINX_TSN_QBR)

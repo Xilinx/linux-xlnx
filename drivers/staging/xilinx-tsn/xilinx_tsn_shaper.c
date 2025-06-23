@@ -26,6 +26,11 @@
 /* Maximum supported cycle time in nanoseconds */
 #define XLNX_TAPRIO_MAX_CYCLE_TIME_NS		(BIT(30) - 1)
 
+int axienet_qbv_enabled(struct axienet_local *lp)
+{
+	return axienet_qbv_ior(lp, CONFIG_CHANGE) & CC_ADMIN_GATE_ENABLE_BIT;
+}
+
 static inline int axienet_map_gs_to_hw(struct axienet_local *lp, u32 gs)
 {
 	u8 be_queue = 0;
