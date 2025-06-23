@@ -44,9 +44,11 @@
 #include <linux/net_tstamp.h>
 #include <linux/random.h>
 #include <net/sock.h>
+#include <net/devlink.h>
 #include <linux/xilinx_phy.h>
 
 #include "xilinx_axienet_tsn.h"
+#include "xilinx_tsn_switch.h"
 
 /* Descriptors defines for Tx and Rx DMA */
 #define TX_BD_NUM_DEFAULT		64
@@ -178,6 +180,15 @@ static struct axienet_ethtools_stat axienet_get_ethtools_strings_stats[] = {
 	{ "rx_bytes" },
 	{ "tx_errors" },
 	{ "rx_errors" },
+};
+
+struct axienet_devlink {
+	struct axienet_local *lp;
+};
+
+enum axienet_devlink_param_id {
+	AXIENET_DEVLINK_PARAM_ID_BASE = DEVLINK_PARAM_GENERIC_ID_MAX,
+	AXIENET_DEVLINK_PARAM_PTP_SCHED,
 };
 
 /**
@@ -1681,6 +1692,242 @@ static const struct of_device_id axienet_of_match[] = {
 
 MODULE_DEVICE_TABLE(of, axienet_of_match);
 
+/* No custom devlink ops are currently implemented */
+static const struct devlink_ops axienet_devlink_ops = {
+};
+
+static int axienet_devlink_ptp_sched_get(struct devlink *devlink, u32 id,
+					 struct devlink_param_gset_ctx *ctx)
+{
+	struct axienet_devlink *priv = devlink_priv(devlink);
+	struct axienet_local *lp = priv->lp;
+	u8 ptp_gates, ptp_rel_prio;
+	int i, len = 0;
+
+	ptp_gates = xlnx_switch_get_ptp_gates(lp->switch_prt);
+	ptp_rel_prio = xlnx_switch_get_ptp_rel_prio(lp->switch_prt);
+	for (i = 0; i < lp->num_tc; i++) {
+		if (ptp_gates & BIT(i)) {
+			len += scnprintf(ctx->val.vstr + len,
+					 sizeof(ctx->val.vstr) - len,
+					 "%d:%c,", i,
+					 (ptp_rel_prio & BIT(i)) ? 'H' : 'L');
+		}
+	}
+
+	return 0;
+}
+
+/*
+ * This devlink parameter has already been validated by the
+ * `devlink_param.validate()` function, ensuring the string conforms to the
+ * expected format:
+ *
+ * [<queue_no>:<H|L>[,<queue_no>:<H|L>...]]
+ *
+ * In this format, the first character is a digit representing the queue number,
+ * the third character is either 'H' or 'L' indicating the priority, and an
+ * optional comma appears as the fourth character for multiple entries. The
+ * function processes the input string in four-character segments, extracting
+ * the queue number and relative priority from the appropriate positions in each
+ * segment.
+ *
+ * The QBV status check is performed here instead of `devlink_param.validate()`
+ * function since it is not related to input argument validation.
+ */
+static int axienet_devlink_ptp_sched_set(struct devlink *devlink, u32 id,
+					 struct devlink_param_gset_ctx *ctx,
+					 struct netlink_ext_ack *extack)
+{
+	struct axienet_devlink *priv = devlink_priv(devlink);
+	struct axienet_local *lp = priv->lp;
+	u8 ptp_gates = 0, ptp_rel_prio = 0;
+	int i;
+
+#if IS_ENABLED(CONFIG_XILINX_TSN_QBV)
+	/* As per the programming sequence, configuration of the PTP gates and
+	 * PTP relative priority should happen when QBV gate is not enabled
+	 */
+	if (axienet_qbv_enabled(lp)) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "PTP sched parameters can't be changed when QBV is enabled");
+		return -EBUSY;
+	}
+#endif
+	for (i = 0; i < strlen(ctx->val.vstr); i += 4) {
+		int queue = hex_to_bin(ctx->val.vstr[i]);
+
+		ptp_gates |= BIT(queue);
+		if (toupper(ctx->val.vstr[i + 2]) == 'H')
+			ptp_rel_prio |= BIT(queue);
+	}
+
+	pr_debug("ptp_gates: 0x%x, ptp_rel_prio: 0x%x\n", ptp_gates,
+		 ptp_rel_prio);
+	xlnx_switch_set_ptp_gates(lp->switch_prt, ptp_gates);
+	xlnx_switch_set_ptp_rel_prio(lp->switch_prt, ptp_rel_prio);
+
+	return 0;
+}
+
+/* This devlink parameter should be a string formatted as:
+ *
+ * [<queue_no>:<H|L>[,<queue_no>:<H|L>...]]
+ *
+ * Here, `<queue_no>` is a priority queue number (maximum value 7), represented
+ * by a single character, followed by a colon `:`, and then either `H` or `L` to
+ * indicate priority. Thus, each entry must be at least three characters long.
+ * If multiple queues are specified, entries are separated by a comma `,`. To
+ * validate the input string, ensure that each entry contains the required three
+ * characters with valid values, and that commas are used correctly between
+ * multiple entries. Finally, verify that the string ends properly after
+ * processing all entries.
+ */
+static int axienet_devlink_ptp_sched_validate(struct devlink *devlink, u32 id,
+					      union devlink_param_value val,
+					      struct netlink_ext_ack *extack)
+{
+	struct axienet_devlink *priv = devlink_priv(devlink);
+	struct axienet_local *lp = priv->lp;
+	u32 pqmr, queues = 0;
+	const char *p, *end;
+
+	p = val.vstr;
+	end = val.vstr + strlen(val.vstr);
+	while (end - p >= 3) {
+		int queue, c;
+
+		c = *p++;
+		if (!isdigit(c)) {
+			NL_SET_ERR_MSG_MOD(extack,
+					   "Queue number missing");
+			return -EINVAL;
+		}
+
+		queue = hex_to_bin(c);
+		if (queue >= lp->num_tc) {
+			NL_SET_ERR_MSG_FMT_MOD(extack,
+					       "Invalid queue number %d\n",
+					       queue);
+			return -EINVAL;
+		}
+
+		if (queues & BIT(queue)) {
+			NL_SET_ERR_MSG_FMT_MOD(extack,
+					       "Q%d found more than once\n",
+					       queue);
+			return -EINVAL;
+		}
+		queues |= BIT(queue);
+
+		c = *p++;
+		if (c != ':') {
+			NL_SET_ERR_MSG_FMT_MOD(extack,
+					       "Expected ':' after Q%d",
+					       queue);
+			return -EINVAL;
+		}
+
+		c = toupper(*p++);
+		if (c != 'H' && c != 'L') {
+			NL_SET_ERR_MSG_FMT_MOD(extack,
+					       "Expected 'H' or 'L' for Q%d",
+					       queue);
+			return -EINVAL;
+		}
+
+		if (*p != ',' && *p != '\0') {
+			NL_SET_ERR_MSG_FMT_MOD(extack,
+					       "Expected ',' after relative priority for Q%d",
+					       queue);
+			return -EINVAL;
+		}
+
+		if (*p == ',')
+			p++;
+	}
+
+	if (p < end) {
+		NL_SET_ERR_MSG_MOD(extack, "Invalid input");
+		return -EINVAL;
+	}
+
+	/* PTP assignment to both express and preemptible MACs is not supported
+	 * by IP
+	 */
+	pqmr = xlnx_switch_get_pqmr();
+	if ((pqmr & queues) && (~pqmr & queues)) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "Can't assign PTP traffic to both EMAC and PMAC");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static const struct devlink_param axienet_devlink_params[] = {
+	DEVLINK_PARAM_DRIVER(AXIENET_DEVLINK_PARAM_PTP_SCHED,
+			     "ptp_sched", DEVLINK_PARAM_TYPE_STRING,
+			     BIT(DEVLINK_PARAM_CMODE_RUNTIME),
+			     axienet_devlink_ptp_sched_get,
+			     axienet_devlink_ptp_sched_set,
+			     axienet_devlink_ptp_sched_validate),
+};
+
+static int axienet_register_devlink(struct axienet_local *lp)
+{
+	struct axienet_devlink *priv;
+	int ret;
+
+	lp->devlink = devlink_alloc(&axienet_devlink_ops, sizeof(*priv),
+				    lp->dev);
+	if (!lp->devlink)
+		return -ENOMEM;
+
+	priv = devlink_priv(lp->devlink);
+	priv->lp = lp;
+	ret = devlink_params_register(lp->devlink, axienet_devlink_params,
+				      ARRAY_SIZE(axienet_devlink_params));
+	if (ret) {
+		dev_err(lp->dev, "devlink_params_register failed, err: %d\n",
+			ret);
+		goto err_unregister;
+	}
+
+	devlink_register(lp->devlink);
+
+	return ret;
+
+err_unregister:
+	devlink_free(lp->devlink);
+	return ret;
+}
+
+static void axienet_unregister_devlink(struct axienet_local *lp)
+{
+	devlink_unregister(lp->devlink);
+	devlink_params_unregister(lp->devlink, axienet_devlink_params,
+				  ARRAY_SIZE(axienet_devlink_params));
+	devlink_free(lp->devlink);
+}
+
+static int axienet_ptp_sched_init(struct axienet_local *lp)
+{
+	if (lp->num_tc <= XAE_MAX_LEGACY_TSN_TC)
+		return 0;
+
+	if (axienet_ior(lp, XAE_TSN_ABL_OFFSET) & TSN_BRIDGEEP_EPONLY)
+		return 0;
+
+	return axienet_register_devlink(lp);
+}
+
+static void axienet_ptp_sched_cleanup(struct axienet_local *lp)
+{
+	if (lp->devlink)
+		axienet_unregister_devlink(lp);
+}
+
 /**
  * axienet_probe - Axi Ethernet probe function.
  * @pdev:	Pointer to platform device structure.
@@ -1930,14 +2177,20 @@ static int axienet_probe(struct platform_device *pdev)
 		goto err_mdio;
 	}
 
+	ret = axienet_ptp_sched_init(lp);
+	if (ret)
+		goto err_clear_sysfs;
+
 	ret = register_netdev(lp->ndev);
 	if (ret) {
 		dev_err(lp->dev, "register_netdev() error (%i)\n", ret);
-		goto err_clear_sysfs;
+		goto err_unregister_devlink;
 	}
 
 	return 0;
 
+err_unregister_devlink:
+	axienet_ptp_sched_cleanup(lp);
 err_clear_sysfs:
 	axeinet_mcdma_remove_sysfs_tsn(&lp->dev->kobj);
 err_mdio:
@@ -1956,6 +2209,7 @@ static void axienet_remove(struct platform_device *pdev)
 	struct axienet_local *lp = netdev_priv(ndev);
 
 	unregister_netdev(ndev);
+	axienet_ptp_sched_cleanup(lp);
 
 	if (lp->mii_bus)
 		axienet_mdio_teardown_tsn(lp);
