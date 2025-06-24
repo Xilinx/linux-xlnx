@@ -119,8 +119,11 @@ static void io_buffer_unmap(struct io_ring_ctx *ctx, struct io_mapped_ubuf **slo
 	if (imu != &dummy_ubuf) {
 		if (!refcount_dec_and_test(&imu->refs))
 			return;
-		for (i = 0; i < imu->nr_bvecs; i++)
-			unpin_user_page(imu->bvec[i].bv_page);
+		for (i = 0; i < imu->nr_bvecs; i++) {
+			struct folio *folio = page_folio(imu->bvec[i].bv_page);
+
+			unpin_user_folio(folio, 1);
+		}
 		if (imu->acct_pages)
 			io_unaccount_mem(ctx, imu->acct_pages);
 		kvfree(imu);
@@ -1010,8 +1013,10 @@ static int io_sqe_buffer_register(struct io_ring_ctx *ctx, struct iovec *iov,
 done:
 	if (ret) {
 		kvfree(imu);
-		if (pages)
-			unpin_user_pages(pages, nr_pages);
+		if (pages) {
+			for (i = 0; i < nr_pages; i++)
+				unpin_user_folio(page_folio(pages[i]), 1);
+		}
 	}
 	kvfree(pages);
 	return ret;
