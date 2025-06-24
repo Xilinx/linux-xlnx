@@ -840,6 +840,17 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 			goto out;
 	}
 
+	if (args->init_opts & AIE_PART_INIT_OPT_DIS_TLAST_ERROR) {
+		u16 data = 0;
+
+		opts |= AIE_PART_INIT_OPT_DIS_TLAST_ERROR;
+		ret = aie_part_pm_ops(apart, &data,
+				      AIE_PART_INIT_OPT_DIS_TLAST_ERROR,
+				      apart->range, 1);
+		if (ret)
+			goto out;
+	}
+
 	if (opts)
 		dev_warn(&apart->dev, "Invalid init_opts: 0x%x", opts);
 

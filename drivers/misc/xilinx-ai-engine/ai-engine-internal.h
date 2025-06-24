@@ -1276,6 +1276,12 @@ struct aie_op_ecc_scrub_period {
 	u16 scrub_period; /* Value to be written to the ecc scrub period register */
 } __aligned(4);
 
+struct aie_op_tlast {
+	u16 type; /* Operation Type */
+	u16 len; /* Operation struct length */
+	u16 state; /* Value to be written to the error on tlast bit to enable/disable */
+} __aligned(4);
+
 /**
  * struct aie_pm_ops - AI engine plm calls struct.
  * @pkt_va: pm ops data virtual address.
