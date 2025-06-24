@@ -143,6 +143,7 @@ enum pm_aie_operations {
 	XILINX_AIE_OPS_HW_ERR_INT = 17U,
 	XILINX_AIE_OPS_HW_ERR_MASK = 18U,
 	XILINX_AIE_OPS_ENB_MEM_PRIV = 19U,
+	XILINX_AIE_OPS_CTRL_PKT_TLAST_ERR = 20U,
 	XILINX_AIE_OPS_ENB_AXI_MM_ERR_EVENT = 32U,     /* Backward compatibility for AIE1/AIE2 */
 	XILINX_AIE_OPS_SET_L2_CTRL_NPI_INTR = 64U,     /* Backward compatibility for AIE1/AIE2 */
 	XILINX_AIE_OPS_PROG_MEM_ZEROIZATION = 128U,    /* Backward compatibility for AIE1/AIE2 */
