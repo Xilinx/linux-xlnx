@@ -48,6 +48,7 @@ properties:
         - pattern: "^renesas,fsi2-(r8a7740|sh73a0)$"
         - pattern: "^renesas,hspi-r8a777[89]$"
         - pattern: "^renesas,sysc-(r8a73a4|r8a7740|rmobile|sh73a0)$"
+        - pattern: "^renesas,proxo-xp$"
         - enum:
             - renesas,imr-lx4
             - renesas,mtu2-r7s72100
