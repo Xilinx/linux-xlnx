@@ -14,14 +14,16 @@ description:
   quartz-based oscillators.
 
 properties:
+  compatible:
+    const: renesas,proxo-xp
+
+  reg:
+    maxItems: 1
+
   '#clock-cells':
     const: 0
 
-  compatible:
-    enum:
-      - renesas,proxo-xp
-
-  reg:
+  clock-output-names:
     maxItems: 1
 
   renesas,crystal-frequency:
@@ -30,7 +32,6 @@ properties:
 
 required:
   - '#clock-cells'
-  - compatible
   - reg
 
 additionalProperties: false
