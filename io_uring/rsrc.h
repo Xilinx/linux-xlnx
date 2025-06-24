@@ -56,6 +56,7 @@ struct io_imu_folio_data {
 	/* For non-head/tail folios, has to be fully included */
 	unsigned int	nr_pages_mid;
 	unsigned int	folio_shift;
+	unsigned long	first_folio_page_idx;
 };
 
 void io_rsrc_node_ref_zero(struct io_rsrc_node *node);
