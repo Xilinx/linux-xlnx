@@ -46,6 +46,7 @@ int aie_part_pm_ops_flush(struct aie_partition *apart)
 		pm_ops->offset -= sizeof(*pm_ops->op_range);
 
 	trace_aie_pm_ops(apart->aperture->node_id, pm_ops->pkt_va, pm_ops->offset, pm_ops->pkt_dma);
+
 	ret = versal2_pm_aie2ps_operation(apart->aperture->node_id, pm_ops->offset,
 					  upper_32_bits(pm_ops->pkt_dma),
 					  lower_32_bits(pm_ops->pkt_dma));
@@ -402,6 +403,24 @@ again:
 			return ret;
 		*((u16 *)data) = op->val;
 		goto again;
+	}
+	if (type & AIE_PART_INIT_OPT_DIS_TLAST_ERROR) {
+		struct aie_op_tlast *op;
+
+		if (check_add_overflow(pm_ops->offset, sizeof(*op), &end) ||
+		    end >= pm_ops->size) {
+			ret = aie_part_pm_ops_flush(apart);
+			if (ret)
+				return ret;
+			goto again;
+		}
+		type &= AIE_PART_INIT_OPT_DIS_TLAST_ERROR;
+		op = pm_ops->pkt_va + pm_ops->offset;
+		pm_ops->offset += sizeof(*op);
+		op->type = XILINX_AIE_OPS_CTRL_PKT_TLAST_ERR;
+		op->len = sizeof(*op);
+		op->state = *((u16 *)data);
+		*((u16 *)data) = op->state;
 	}
 	if (type & AIE_PART_INIT_OPT_HANDSHAKE) {
 		struct aie_op_handshake *op;
