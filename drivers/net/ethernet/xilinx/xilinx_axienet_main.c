@@ -835,14 +835,35 @@ static int dcmac_gt_reset(struct net_device *ndev)
 	return ret;
 }
 
+static inline int get_mrmac_gtlanes_count(int port_speed)
+{
+	int lane_count;
+
+	switch (port_speed) {
+	case SPEED_40000:
+	case SPEED_100000:
+		lane_count = 1;
+		break;
+	case SPEED_50000:
+		lane_count = 2;
+		break;
+	default:
+		/* 10G / 25G */
+		lane_count = 4;
+		break;
+	}
+	return lane_count;
+}
+
 static inline int axienet_mrmac_gt_reset(struct net_device *ndev)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
 	u32 err, val;
-	int i;
+	int i, num_gtlanes;
 
+	num_gtlanes = get_mrmac_gtlanes_count(lp->max_speed);
 	if (mrmac_pll_rst == 0) {
-		for (i = 0; i < MRMAC_MAX_GT_LANES; i++) {
+		for (i = 0; i < num_gtlanes; i++) {
 			iowrite32(MRMAC_GT_RST_ALL_MASK, (lp->gt_ctrl +
 				  (MRMAC_GT_LANE_OFFSET * i) +
 				  MRMAC_GT_CTRL_OFFSET));

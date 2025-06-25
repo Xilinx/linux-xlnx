@@ -732,7 +732,6 @@ enum temac_stat {
 #define MRMAC_GT_25G_MASK		0x00000002
 
 #define MRMAC_GT_LANE_OFFSET		BIT(16)
-#define MRMAC_MAX_GT_LANES		4
 #define GT_MODE_NARROW			"Narrow"
 
 /* DCMAC Register Definitions */
