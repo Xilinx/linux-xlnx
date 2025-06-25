@@ -43,8 +43,6 @@ struct cfs_overlay_item {
 	void			*mem;
 };
 
-static DEFINE_MUTEX(overlay_lock);
-
 static int create_overlay(struct cfs_overlay_item *overlay, void *blob)
 {
 	int err;
