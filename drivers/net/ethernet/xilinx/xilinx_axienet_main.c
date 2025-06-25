@@ -593,7 +593,14 @@ static inline void axienet_mrmac_reset(struct axienet_local *lp)
 	reg = axienet_ior(lp, MRMAC_MODE_OFFSET);
 	reg &= ~MRMAC_CTL_RATE_CFG_MASK;
 
-	if (lp->max_speed == SPEED_25000) {
+	if (lp->max_speed == SPEED_100000) {
+		axis_cfg = MRMAC_CTL_AXIS_CFG_100G_IND_384;
+		serdes_width = (lp->gt_mode_narrow ?
+				MRMAC_CTL_SERDES_WIDTH_100G_NRW :
+				MRMAC_CTL_SERDES_WIDTH_100G_WIDE);
+		reg |= MRMAC_CTL_DATA_RATE_100G;
+
+	} else if (lp->max_speed == SPEED_25000) {
 		axis_cfg = (lp->mrmac_stream_dwidth == MRMAC_STREAM_DWIDTH_128 ?
 			    MRMAC_CTL_AXIS_CFG_25G_IND_128 :
 			    MRMAC_CTL_AXIS_CFG_25G_IND_64);
@@ -883,7 +890,11 @@ static inline int axienet_mrmac_gt_reset(struct net_device *ndev)
 		mrmac_pll_rst = 1;
 	}
 
-	if (lp->max_speed == SPEED_25000)
+	if (lp->max_speed == SPEED_100000)
+		iowrite32(MRMAC_GT_100G_MASK, (lp->gt_ctrl +
+			  MRMAC_GT_LANE_OFFSET * lp->gt_lane +
+			  MRMAC_GT_RATE_OFFSET));
+	else if (lp->max_speed == SPEED_25000)
 		iowrite32(MRMAC_GT_25G_MASK, (lp->gt_ctrl +
 			  MRMAC_GT_LANE_OFFSET * lp->gt_lane +
 			  MRMAC_GT_RATE_OFFSET));
@@ -2910,14 +2921,19 @@ static int axienet_open(struct net_device *ndev)
 			goto err_phy;
 		}
 
-		axienet_iow(lp, MRMAC_STATRX_VALID_CTRL_OFFSET, MRMAC_STS_ALL_MASK);
-		val = axienet_ior(lp, MRMAC_STATRX_VALID_CTRL_OFFSET);
+		/* Distinguish a mis-reported status=good for 10G/25G MRMAC */
+		if (lp->max_speed == SPEED_10000 ||
+		    lp->max_speed == SPEED_25000) {
+			axienet_iow(lp, MRMAC_STATRX_VALID_CTRL_OFFSET, MRMAC_STS_ALL_MASK);
+			val = axienet_ior(lp, MRMAC_STATRX_VALID_CTRL_OFFSET);
 
-		if (!(val & MRMAC_RX_VALID_MASK)) {
-			netdev_err(ndev, "MRMAC Link is down! No recent RX Valid Control Code\n");
-			ret = -ENODEV;
-			goto err_phy;
+			if (!(val & MRMAC_RX_VALID_MASK)) {
+				netdev_err(ndev, "MRMAC Link is down! No recent RX Valid Control Code\n");
+				ret = -ENODEV;
+				goto err_phy;
+			}
 		}
+
 		netdev_info(ndev, "MRMAC setup at %d\n", lp->max_speed);
 		axienet_iow(lp, MRMAC_TICK_OFFSET, MRMAC_TICK_TRIGGER);
 	}
