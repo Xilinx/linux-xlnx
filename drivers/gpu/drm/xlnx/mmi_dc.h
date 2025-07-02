@@ -167,5 +167,7 @@ int mmi_dc_create_planes(struct mmi_dc *dc, struct drm_device *drm);
 void mmi_dc_destroy_planes(struct mmi_dc *dc);
 void mmi_dc_reconfig_planes(struct mmi_dc *dc, struct drm_atomic_state *state);
 void mmi_dc_reset_planes(struct mmi_dc *dc);
+bool mmi_dc_has_visible_planes(struct mmi_dc *dc,
+			       struct drm_atomic_state *state);
 
 #endif /* __MMI_DC_H__ */
