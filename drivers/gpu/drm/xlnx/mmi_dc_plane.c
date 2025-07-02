@@ -841,3 +841,26 @@ void mmi_dc_reset_planes(struct mmi_dc *dc)
 			dc_plane->format.hw = NULL;
 	}
 }
+
+/**
+ * mmi_dc_has_visible_planes - Check if at least one plane is visible.
+ * @dc: DC device
+ * @state: New atomic state to check planes visibility against
+ */
+bool mmi_dc_has_visible_planes(struct mmi_dc *dc,
+			       struct drm_atomic_state *state)
+{
+	unsigned int i;
+
+	for (i = 0; i < MMI_DC_NUM_PLANES; ++i) {
+		struct mmi_dc_plane *dc_plane = dc->planes[i];
+		struct drm_plane *plane = &dc_plane->base;
+		struct drm_plane_state *new_state =
+			drm_atomic_get_new_plane_state(state, plane);
+
+		if (new_state && new_state->fb)
+			return true;
+	}
+
+	return false;
+}
