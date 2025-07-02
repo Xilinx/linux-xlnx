@@ -239,13 +239,14 @@ static void mmi_dc_reset(struct mmi_dc *dc, bool reset)
 }
 
 /**
- * mmi_dc_toggle_ext_reset - Reset DC hardware with external reset
+ * mmi_dc_reset_hw - Reset DC hardware with external reset
  * @dc: MMI DC device
  */
-void mmi_dc_toggle_ext_reset(struct mmi_dc *dc)
+void mmi_dc_reset_hw(struct mmi_dc *dc)
 {
 	reset_control_assert(dc->rst);
 	reset_control_deassert(dc->rst);
+	mmi_dc_reset_planes(dc);
 }
 
 /**
@@ -287,7 +288,7 @@ void mmi_dc_disable(struct mmi_dc *dc)
 	mmi_dc_avbuf_disable(dc);
 	mmi_dc_blend_disable(dc);
 	mmi_dc_set_stream(dc, NULL);
-	mmi_dc_toggle_ext_reset(dc);
+	mmi_dc_reset_hw(dc);
 }
 
 /**
@@ -389,7 +390,7 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
 		return dev_err_probe(dc->dev, PTR_ERR(dc->rst),
 				     "failed to get reset control\n");
 
-	mmi_dc_toggle_ext_reset(dc);
+	mmi_dc_reset_hw(dc);
 
 	dc_write_misc(dc, MMI_DC_MISC_WPROTS, 0);
 	dc_write_misc(dc, MMI_DC_VIDEO_FRAME_SWITCH,
