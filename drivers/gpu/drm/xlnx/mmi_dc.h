@@ -157,7 +157,7 @@ void mmi_dc_enable(struct mmi_dc *dc, struct drm_display_mode *mode);
 void mmi_dc_disable(struct mmi_dc *dc);
 int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm);
 void mmi_dc_fini(struct mmi_dc *dc);
-void mmi_dc_toggle_ext_reset(struct mmi_dc *dc);
+void mmi_dc_reset_hw(struct mmi_dc *dc);
 
 void mmi_dc_drm_handle_vblank(struct mmi_dc_drm *drm);
 struct drm_plane *mmi_dc_plane_get_primary(struct mmi_dc *dc);
@@ -166,5 +166,6 @@ unsigned int mmi_dc_planes_get_dma_align(struct mmi_dc *dc);
 int mmi_dc_create_planes(struct mmi_dc *dc, struct drm_device *drm);
 void mmi_dc_destroy_planes(struct mmi_dc *dc);
 void mmi_dc_reconfig_planes(struct mmi_dc *dc, struct drm_atomic_state *state);
+void mmi_dc_reset_planes(struct mmi_dc *dc);
 
 #endif /* __MMI_DC_H__ */
