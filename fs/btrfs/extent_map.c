@@ -1250,6 +1250,7 @@ next:
 
 static long btrfs_scan_root(struct btrfs_root *root, struct btrfs_em_shrink_ctx *ctx)
 {
+	struct btrfs_fs_info *fs_info = root->fs_info;
 	struct btrfs_inode *inode;
 	long nr_dropped = 0;
 	u64 min_ino = ctx->last_ino + 1;
@@ -1264,7 +1265,7 @@ static long btrfs_scan_root(struct btrfs_root *root, struct btrfs_em_shrink_ctx 
 		iput(&inode->vfs_inode);
 
 		if (ctx->scanned >= ctx->nr_to_scan ||
-		    btrfs_fs_closing(inode->root->fs_info))
+		    btrfs_fs_closing(fs_info))
 			break;
 
 		cond_resched();
