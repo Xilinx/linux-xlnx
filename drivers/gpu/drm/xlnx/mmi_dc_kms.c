@@ -188,12 +188,10 @@ static void mmi_dc_crtc_atomic_flush(struct drm_crtc *crtc,
 {
 	struct drm_pending_vblank_event *vblank;
 	struct mmi_dc *dc = crtc_to_dc(crtc);
-	struct drm_display_mode *adjusted_mode = &crtc->state->adjusted_mode;
 
 	if (dc->reconfig_hw) {
 		dc->reconfig_hw = false;
-		mmi_dc_toggle_ext_reset(dc);
-		mmi_dc_enable(dc, adjusted_mode);
+		mmi_dc_reset_hw(dc);
 		mmi_dc_reconfig_planes(dc, state);
 	}
 
