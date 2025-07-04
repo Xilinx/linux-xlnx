@@ -33,7 +33,7 @@
 #include "xlnx_drv.h"
 
 #define XLNX_PL_DISP_MAX_NUM_PLANES	3
-#define XLNX_PL_DISP_VFMT_SIZE		5
+
 /*
  * Overview
  * --------
@@ -612,7 +612,8 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 		goto err_dma;
 	}
 
-	strscpy((char *)&xlnx_pl_disp->fmt, vformat, XLNX_PL_DISP_VFMT_SIZE);
+	xlnx_pl_disp->fmt = fourcc_code(vformat[0], vformat[1],
+					vformat[2], vformat[3]);
 	info = drm_format_info(xlnx_pl_disp->fmt);
 	if (!info) {
 		dev_err(dev, "Invalid video format in dts\n");
