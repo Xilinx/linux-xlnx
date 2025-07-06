@@ -1359,6 +1359,7 @@ static void hisi_acc_vfio_pci_close_device(struct vfio_device *core_vdev)
 			struct hisi_acc_vf_core_device, core_device.vdev);
 	struct hisi_qm *vf_qm = &hisi_acc_vdev->vf_qm;
 
+	hisi_acc_vf_disable_fds(hisi_acc_vdev);
 	iounmap(vf_qm->io_base);
 	vfio_pci_core_close_device(core_vdev);
 }
