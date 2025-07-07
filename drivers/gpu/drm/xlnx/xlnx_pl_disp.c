@@ -390,13 +390,6 @@ static struct drm_plane_funcs xlnx_pl_disp_plane_funcs = {
 	.atomic_get_property = xlnx_pl_disp_plane_atomic_get_property,
 };
 
-static inline struct xlnx_pl_disp *drm_crtc_to_dma(struct drm_crtc *crtc)
-{
-	struct xlnx_crtc *xlnx_crtc = to_xlnx_crtc(crtc);
-
-	return crtc_to_dma(xlnx_crtc);
-}
-
 static void xlnx_pl_disp_crtc_atomic_begin(struct drm_crtc *crtc,
 					   struct drm_atomic_state *state)
 {
