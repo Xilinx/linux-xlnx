@@ -305,9 +305,9 @@ static int tadma_set_contiguous_mode(struct net_device *ndev, enum qtype qtype)
 	u32 last_trigger;
 	int sid, ret;
 
-	if (lp->get_sid >= lp->num_streams - 1) {
+	if (lp->get_sid >= lp->num_streams) {
 		dev_info(&ndev->dev, "Can't support more than %d streams\n",
-			 lp->get_sid + 1);
+			 lp->get_sid);
 		return -EINVAL;
 	}
 
