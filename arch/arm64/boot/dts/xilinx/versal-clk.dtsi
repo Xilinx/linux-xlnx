@@ -78,8 +78,6 @@
 
 			versal_sec_cfg: versal-sec-cfg {
 				compatible = "xlnx,versal-sec-cfg";
-				#address-cells = <1>;
-				#size-cells = <1>;
 				nvmem-layout {
 					compatible = "fixed-layout";
 					#address-cells = <1>;
