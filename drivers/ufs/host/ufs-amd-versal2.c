@@ -346,7 +346,6 @@ static int ufs_versal2_init(struct ufs_hba *hba)
 	host->ctlecompval0 = (u8)(cal >> 16);
 	host->ctlecompval1 = (u8)(cal >> 24);
 
-	hba->quirks |= UFSHCD_QUIRK_BROKEN_AUTO_HIBERN8;
 	hba->quirks |= UFSHCD_QUIRK_SKIP_DEF_UNIPRO_TIMEOUT_SETTING;
 
 	return 0;
