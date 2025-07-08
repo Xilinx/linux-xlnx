@@ -285,9 +285,24 @@ static int tadma_sfm_program(struct net_device *ndev, int sid,
 	return 0;
 }
 
+static u32 tadma_get_last_sfm_trigger(struct axienet_local *lp)
+{
+	u32 sfm_offset, trigger;
+
+	if (lp->get_sid == 0)
+		return 0;
+
+	sfm_offset = sfm_entry_offset(lp, lp->get_sid - 1);
+	trigger = tadma_ior(lp, sfm_offset) & XTADMA_STR_TIME_TICKS_MASK;
+	trigger *= XTADMA_STR_TIME_NS_PER_TICK;
+
+	return trigger;
+}
+
 static int tadma_set_contiguous_mode(struct net_device *ndev, enum qtype qtype)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
+	u32 last_trigger;
 	int sid, ret;
 
 	if (lp->get_sid >= lp->num_streams - 1) {
@@ -302,9 +317,18 @@ static int tadma_set_contiguous_mode(struct net_device *ndev, enum qtype qtype)
 		return -EINVAL;
 	}
 
+	last_trigger = tadma_get_last_sfm_trigger(lp);
+	if (last_trigger + NSEC_PER_MSEC > XTADMA_STR_TIME_MAX) {
+		dev_warn(&ndev->dev,
+			 "Can't add contiguous mode stream for qt %d as it exceeds max time %ld ns\n",
+			 qtype, XTADMA_STR_TIME_MAX);
+		return -ERANGE;
+	}
+
 	sid = lp->get_sid++;
 	lp->get_sfm++;
-	ret = tadma_sfm_program(ndev, sid, qtype, NSEC_PER_MSEC, 0);
+	ret = tadma_sfm_program(ndev, sid, qtype, last_trigger + NSEC_PER_MSEC,
+				0);
 	if (ret)
 		return ret;
 

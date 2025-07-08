@@ -70,6 +70,9 @@
 #define XTADMA_STR_FETCH_ENTRY_SIZE	64
 #define XTADMA_STR_TIME_TICKS_SHIFT	0
 #define XTADMA_STR_TIME_TICKS_MASK	(0x7FFFFFF)
+#define XTADMA_STR_TIME_NS_PER_TICK	8
+#define XTADMA_STR_TIME_MAX		((BIT(27) - 1) * \
+					 XTADMA_STR_TIME_NS_PER_TICK)
 
 #define XTADMA_STR_ID_SHIFT		0
 #define XTADMA_STR_ID_MASK		0xFF
@@ -92,7 +95,6 @@
 
 #define SFM_UPPER 0
 #define SFM_LOWER 1
-
 
 enum qtype {
 	qt_st = 0,
