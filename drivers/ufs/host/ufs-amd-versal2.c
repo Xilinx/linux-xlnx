@@ -33,6 +33,10 @@
 #define MPHY_FAST_RX_AFE_CAL		BIT(2)
 #define MPHY_FW_CALIB_CFG_VAL		BIT(8)
 
+#define MPHY_RX_OVRD_EN			BIT(3)
+#define MPHY_RX_OVRD_VAL		BIT(2)
+#define MPHY_RX_ACK_MASK		BIT(0)
+
 #define TX_RX_CFG_RDY_MASK      GENMASK(3, 0)
 
 #define TIMEOUT_MICROSEC	1000000
@@ -343,6 +347,7 @@ static int ufs_versal2_init(struct ufs_hba *hba)
 	host->ctlecompval1 = (u8)(cal >> 24);
 
 	hba->quirks |= UFSHCD_QUIRK_BROKEN_AUTO_HIBERN8;
+	hba->quirks |= UFSHCD_QUIRK_SKIP_DEF_UNIPRO_TIMEOUT_SETTING;
 
 	return 0;
 }
@@ -440,12 +445,118 @@ static int ufs_versal2_link_startup_notify(struct ufs_hba *hba,
 	return ret;
 }
 
+static int ufs_versal2_phy_ratesel(struct ufs_hba *hba, u32 activelanes, u32 rx_req)
+{
+	u32 time_left, reg, lane;
+	int ret;
+
+	for (lane = 0; lane < activelanes; lane++) {
+		time_left = TIMEOUT_MICROSEC;
+		ret = ufs_versal2_phy_reg_read(hba, RX_OVRD_IN_1(lane), &reg);
+		if (ret)
+			return ret;
+
+		reg |= MPHY_RX_OVRD_EN;
+		if (rx_req)
+			reg |= MPHY_RX_OVRD_VAL;
+		else
+			reg &= ~MPHY_RX_OVRD_VAL;
+
+		ret = ufs_versal2_phy_reg_write(hba, RX_OVRD_IN_1(lane), reg);
+		if (ret)
+			return ret;
+
+		do {
+			ret = ufs_versal2_phy_reg_read(hba, RX_PCS_OUT(lane), &reg);
+			if (ret)
+				return ret;
+
+			reg &= MPHY_RX_ACK_MASK;
+			if (reg == rx_req)
+				break;
+
+			time_left--;
+			usleep_range(1, 5);
+		} while (time_left);
+
+		if (!time_left) {
+			dev_err(hba->dev, "Invalid Rx Ack value.\n");
+			return -ETIMEDOUT;
+		}
+	}
+
+	return 0;
+}
+
+static int ufs_versal2_pwr_change_notify(struct ufs_hba *hba, enum ufs_notify_change_status status,
+					 struct ufs_pa_layer_attr *dev_max_params,
+					 struct ufs_pa_layer_attr *dev_req_params)
+{
+	struct ufs_versal2_host *host = ufshcd_get_variant(hba);
+	u32 lane, reg, rate = 0;
+	int ret = 0;
+
+	if (status == PRE_CHANGE) {
+		memcpy(dev_req_params, dev_max_params, sizeof(struct ufs_pa_layer_attr));
+
+		/* If it is not a calibrated part, switch PWRMODE to SLOW_MODE */
+		if (!host->attcompval0 && !host->attcompval1 && !host->ctlecompval0 &&
+		    !host->ctlecompval1) {
+			dev_req_params->pwr_rx = SLOW_MODE;
+			dev_req_params->pwr_tx = SLOW_MODE;
+			return 0;
+		}
+
+		if (dev_req_params->pwr_rx == SLOW_MODE || dev_req_params->pwr_rx == SLOWAUTO_MODE)
+			return 0;
+
+		if (dev_req_params->hs_rate == PA_HS_MODE_B)
+			rate = 1;
+
+		 /* Select the rate */
+		ret = ufshcd_dme_set(hba, UIC_ARG_MIB(CBRATESEL), rate);
+		if (ret)
+			return ret;
+
+		ret = ufshcd_dme_set(hba, UIC_ARG_MIB(VS_MPHYCFGUPDT), 1);
+		if (ret)
+			return ret;
+
+		ret = ufs_versal2_phy_ratesel(hba, dev_req_params->lane_tx, 1);
+		if (ret)
+			return ret;
+
+		ret = ufs_versal2_phy_ratesel(hba, dev_req_params->lane_tx, 0);
+		if (ret)
+			return ret;
+
+		/* Remove rx_req override */
+		for (lane = 0; lane < dev_req_params->lane_tx; lane++) {
+			ret = ufs_versal2_phy_reg_read(hba, RX_OVRD_IN_1(lane), &reg);
+			if (ret)
+				return ret;
+
+			reg &= ~MPHY_RX_OVRD_EN;
+			ret = ufs_versal2_phy_reg_write(hba, RX_OVRD_IN_1(lane), reg);
+			if (ret)
+				return ret;
+		}
+
+		if (dev_req_params->lane_tx == UFS_LANE_2 && dev_req_params->lane_rx == UFS_LANE_2)
+			ret = ufshcd_dme_configure_adapt(hba, dev_req_params->gear_tx,
+							 PA_INITIAL_ADAPT);
+	}
+
+	return ret;
+}
+
 static struct ufs_hba_variant_ops ufs_versal2_hba_vops = {
 	.name			= "ufs-versal2-pltfm",
 	.init			= ufs_versal2_init,
 	.link_startup_notify	= ufs_versal2_link_startup_notify,
 	.hce_enable_notify	= ufs_versal2_hce_enable_notify,
 	.isr			= ufs_versal2_isr,
+	.pwr_change_notify	= ufs_versal2_pwr_change_notify,
 };
 
 static const struct of_device_id ufs_versal2_pltfm_match[] = {
