@@ -1,0 +1,167 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/display/xlnx/xlnx,dsi.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx MIPI DSI Tx Subsystem
+
+maintainers:
+  - Katta Dhanunjanrao <katta.dhanunjanrao@amd.com>
+
+description:
+  The Xilinx MIPI DSI Tx Subsystem is used to display MIPI DSI-2
+  traffic received in the form of AXI4 Stream video data.
+  The subsystem consists of a MIPI D-PHY in master mode which receives the
+  data packets from the MIPI DSI-2 Tx IP which encapsulates the
+  packet data.
+  For more details, please refer to PG238 Xilinx MIPI DSI-2 Tx Subsystem.
+
+properties:
+  compatible:
+    const: xlnx,dsi
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    maxItems: 1
+
+  clocks:
+    description: List of clock specifiers
+    items:
+      - description: Video clock
+      - description: AXIS Lite clock
+
+  clock-names:
+    items:
+      - const: dphy_clk_200M
+      - const: s_axis_aclk
+
+  xlnx,dsi-data-type:
+    description: |
+      This denotes the CSI Data type selected in hw design.
+      Packets other than this data type (except for RAW8 and
+      User defined data types) will be filtered out.
+      Possible values are as below:
+      0 : RGB888
+      1 : RGB666
+      2 : RGB666_PACKED
+      3 : RGB565
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 0
+    maximum: 3
+
+  xlnx,dsi-num-lanes:
+    description: |
+      Possible number of DSI lanes for the Tx controller.
+      Based on xlnx,dsi-num-lanes and line rate for the MIPI
+      D-PHY core in Mbps, the AXI4-stream received by MIPI DSI
+      Tx IP core adds markers as per DSI protocol and the packet
+      thus frame is convered to serial data by MIPI D-PHY core.
+      The possible values are:
+      1       - For 1 lane enabled in IP.
+      1 2     - For 2 lanes enabled in IP.
+      1 2 3   - For 3 lanes enabled in IP.
+      1 2 3 4 - For 4 lanes enabled in IP.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 1
+    maximum: 4
+
+  xlnx,dsi-cmd-mode:
+    description: Denotes command mode enable.
+    type: boolean
+
+  xlnx,vpss:
+    description: VPSS handle when its connected to DSI as bridge.
+    maxItems: 1
+
+  simple-panel:
+    type: object
+    description: Panel node that's connected to DSI-2 TX.
+    allOf:
+      - $ref: ../panel/panel-simple.yaml#
+    required:
+      - compatible
+    unevaluatedProperties: false
+
+  ports:
+    type: object
+    properties:
+      "#address-cells":
+        const: 1
+
+      "#size-cells":
+        const: 0
+
+      port@0:
+        type: object
+        $ref: /schemas/graph.yaml#/properties/port
+        description: Input / sink port node, single endpoint describing
+                     the DSI-2 TX IP receiver.
+        properties:
+          reg:
+            const: 0
+
+          endpoint:
+            type: object
+
+            properties:
+              remote-endpoint: true
+
+            required:
+              - remote-endpoint
+
+            additionalProperties: false
+
+        required:
+          - reg
+          - endpoint
+
+        additionalProperties: false
+
+    required:
+      - "#address-cells"
+      - "#size-cells"
+      - port@0
+
+    additionalProperties: false
+
+required:
+  - reg
+  - clocks
+  - clock-names
+  - xlnx,dsi-num-lanes
+  - xlnx,dsi-data-type
+  - interrupts
+  - simple-panel
+  - ports
+
+additionalProperties: false
+
+examples:
+  - |
+    mipi_dsi_tx_subsystem@80000000 {
+        compatible = "xlnx,dsi";
+        reg = <0x80000000 0x10000>;
+        clocks = <&misc_clk_0>, <&misc_clk_1>;
+        clock-names = "dphy_clk_200M", "s_axis_aclk";
+        xlnx,dsi-num-lanes = <4>;
+        xlnx,dsi-data-type = <0>;
+        xlnx,vpss = <&v_proc_ss_0>;
+        interrupts = <0 108 4>;
+        simple_panel: simple-panel {
+            compatible = "auo,b101uan01";
+            power-supply = <&vcc_lcd_reg>;
+        };
+        ports {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            port@0 {
+               reg = <0>;
+               dsi_encoder: endpoint {
+                   remote-endpoint = <&xyz_port>;
+               };
+            };
+        };
+    };
