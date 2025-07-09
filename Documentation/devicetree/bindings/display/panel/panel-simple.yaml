@@ -41,6 +41,8 @@ properties:
       - ampire,am800600p5tmqw-tb8h
         # AU Optronics Corporation 10.1" WSVGA TFT LCD panel
       - auo,b101aw03
+        # AU Optronics Corporation 10.1" Amorphous Silicon TFT LCD panel
+      - auo,b101uan01
         # AU Optronics Corporation 10.1" WXGA TFT LCD panel
       - auo,b101xtn01
         # AU Optronics Corporation 11.6" HD (1366x768) color TFT-LCD panel
