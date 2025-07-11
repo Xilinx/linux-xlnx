@@ -868,4 +868,5 @@ void blk_unregister_queue(struct gendisk *disk)
 	mutex_unlock(&q->sysfs_dir_lock);
 
 	blk_debugfs_remove(disk);
+	kobject_put(&disk->queue_kobj);
 }
