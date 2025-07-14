@@ -18,14 +18,6 @@
 #define TIMEOUT_US		(timeout * 1000000)
 #define POLL_PERIOD_US		(2000)
 
-#define in_range(b, start, len) (		\
-{						\
-typeof(b) b_ = (b);				\
-typeof(start) start_ = (start);			\
-((b_) >= (start_) && (b_) < (start_) + (len));	\
-}						\
-)
-
 /* DPU fingerprint, target info */
 #define DPU_PMU_IP_RST		(0x004)
 #define DPU_IPVER_INFO		(0x1E0)
