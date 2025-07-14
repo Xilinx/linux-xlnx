@@ -23,6 +23,7 @@
 #include <linux/nospec.h>
 #include <linux/slab.h>
 #include <linux/iommu.h>
+#include <linux/minmax.h>
 #ifdef CONFIG_DEBUG_FS
 #include <linux/debugfs.h>
 #endif
