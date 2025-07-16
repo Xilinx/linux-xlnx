@@ -3228,7 +3228,7 @@ static int aie2ps_set_part_clocks(struct aie_partition *apart)
 			prev_range = op_range;
 		}
 	}
-	if (!prev_ops)
+	if (prev_ops)
 		ret = aie_part_pm_ops(apart, NULL, prev_ops, prev_range, 0);
 	if (ret)
 		return ret;
