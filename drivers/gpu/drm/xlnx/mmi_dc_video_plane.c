@@ -6,9 +6,8 @@
  */
 
 #include "mmi_dc.h"
+#include "mmi_dc_dma.h"
 #include "mmi_dc_plane.h"
-
-#include <linux/dma/xilinx_dpdma.h>
 
 #include <drm/drm_blend.h>
 #include <drm/drm_fb_dma_helper.h>
@@ -95,13 +94,11 @@ struct mmi_dc_format_info {
  * @base: generic MMI DC plane
  * @format: active pixel format
  * @dmas: DMA channels used
- * @xt: DMA transfer template
  */
 struct mmi_dc_video_plane {
 	struct mmi_dc_plane		base;
 	struct mmi_dc_format_info	format;
-	struct dma_chan			*dmas[MMI_DC_MAX_NUM_SUB_PLANES];
-	struct dma_interleaved_template *xt;
+	struct mmi_dc_dma_chan		*dmas[MMI_DC_MAX_NUM_SUB_PLANES];
 };
 
 /* TODO: more scaling factors */
@@ -326,9 +323,8 @@ unsigned int mmi_dc_planes_get_dma_align(struct mmi_dc *dc)
 {
 	struct mmi_dc_plane *plane = dc->planes[MMI_DC_PLANE1];
 	struct mmi_dc_video_plane *video_plane = to_video_plane(plane);
-	struct dma_chan *dma_channel = video_plane->dmas[0];
 
-	return 1 << dma_channel->device->copy_align;
+	return mmi_dc_dma_copy_align(video_plane->dmas[0]);
 }
 
 /**
@@ -345,16 +341,16 @@ static int mmi_dc_video_plane_request_dma(struct mmi_dc_video_plane *plane)
 	unsigned int i;
 
 	for (i = 0; i < MMI_DC_NUM_CC; ++i) {
-		struct dma_chan *dma_channel;
-		char dma_channel_name[32];
+		struct mmi_dc_dma_chan *dma_chan;
+		char dma_chan_name[32];
 
-		snprintf(dma_channel_name, sizeof(dma_channel_name),
-			 "vid.%u.%u", plane->base.id, i);
-		dma_channel = dma_request_chan(dc->dev, dma_channel_name);
-		if (IS_ERR(dma_channel))
-			return dev_err_probe(dc->dev, PTR_ERR(dma_channel),
+		snprintf(dma_chan_name, sizeof(dma_chan_name), "vid.%u.%u",
+			 plane->base.id, i);
+		dma_chan = mmi_dc_dma_request_channel(dc->dev, dma_chan_name);
+		if (IS_ERR(dma_chan))
+			return dev_err_probe(dc->dev, PTR_ERR(dma_chan),
 					     "failed to request dma channel");
-		plane->dmas[i] = dma_channel;
+		plane->dmas[i] = dma_chan;
 	}
 
 	return 0;
@@ -369,11 +365,11 @@ static void mmi_dc_video_plane_release_dma(struct mmi_dc_video_plane *plane)
 	unsigned int i;
 
 	for (i = 0; i < MMI_DC_NUM_CC; ++i) {
-		struct dma_chan *dma_channel = plane->dmas[i];
+		struct mmi_dc_dma_chan *dma_chan = plane->dmas[i];
 
-		if (dma_channel) {
-			dmaengine_terminate_sync(dma_channel);
-			dma_release_channel(dma_channel);
+		if (dma_chan) {
+			mmi_dc_dma_stop_transfer(dma_chan);
+			mmi_dc_dma_release_channel(dma_chan);
 		}
 	}
 }
@@ -388,34 +384,20 @@ static void mmi_dc_video_plane_release_dma(struct mmi_dc_video_plane *plane)
 static void mmi_dc_video_plane_submit_dma(struct mmi_dc_video_plane *plane,
 					  struct drm_plane_state *state)
 {
-	struct mmi_dc *dc = plane->base.dc;
 	const struct drm_format_info *info = plane->format.drm;
 	unsigned int i;
 
 	for (i = 0; i < info->num_planes; ++i) {
-		unsigned int width = state->crtc_w / (i ? info->hsub : 1);
-		unsigned int height = state->crtc_h / (i ? info->vsub : 1);
-		struct dma_chan *dma_channel = plane->dmas[i];
-		struct dma_async_tx_descriptor *desc;
+		size_t width = state->crtc_w / (i ? info->hsub : 1);
+		size_t height = state->crtc_h / (i ? info->vsub : 1);
+		size_t pitch = state->fb->pitches[i];
+		size_t size = width * info->cpp[i];
+		struct mmi_dc_dma_chan *dma_chan = plane->dmas[i];
+		dma_addr_t src_addr =
+			drm_fb_dma_get_gem_addr(state->fb, state, i);
 
-		plane->xt->numf = height;
-		plane->xt->src_start = drm_fb_dma_get_gem_addr(state->fb,
-							       state, i);
-		plane->xt->sgl[0].size = width * info->cpp[i];
-		plane->xt->sgl[0].icg = state->fb->pitches[i] -
-					plane->xt->sgl[0].size;
-
-		desc = dmaengine_prep_interleaved_dma(dma_channel, plane->xt,
-						      DMA_CTRL_ACK |
-						      DMA_PREP_REPEAT |
-						      DMA_PREP_LOAD_EOT);
-		if (!desc) {
-			dev_err(dc->dev, "failed to prepare DMA descriptor\n");
-			return;
-		}
-
-		dmaengine_submit(desc);
-		dma_async_issue_pending(dma_channel);
+		mmi_dc_dma_start_transfer(dma_chan, src_addr, size, pitch,
+					  height, true);
 	}
 }
 
@@ -460,19 +442,8 @@ static void mmi_dc_video_plane_set_format(struct mmi_dc_video_plane *plane,
 
 	mmi_dc_avbuf_plane_set_format(plane);
 
-	for (i = 0; i < info->num_planes; ++i) {
-		struct dma_chan *dma_channel = plane->dmas[i];
-		struct xilinx_dpdma_peripheral_config pconfig = {
-			.video_group = true,
-		};
-		struct dma_slave_config sconfig = {
-			.direction = DMA_MEM_TO_DEV,
-			.peripheral_config = &pconfig,
-			.peripheral_size = sizeof(pconfig),
-		};
-
-		dmaengine_slave_config(dma_channel, &sconfig);
-	}
+	for (i = 0; i < info->num_planes; ++i)
+		mmi_dc_dma_config_channel(plane->dmas[i], 0, true);
 }
 
 /**
@@ -581,7 +552,7 @@ static void mmi_dc_video_plane_disable(struct mmi_dc_plane *plane)
 	int i;
 
 	for (i = 0; i < video_plane->format.drm->num_planes; ++i)
-		dmaengine_terminate_sync(video_plane->dmas[i]);
+		mmi_dc_dma_stop_transfer(video_plane->dmas[i]);
 
 	mmi_dc_avbuf_plane_disable(video_plane);
 	mmi_dc_blend_plane_disable(video_plane);
@@ -631,7 +602,6 @@ static struct mmi_dc_video_plane *
 mmi_dc_video_plane_create(struct mmi_dc *dc, struct drm_device *drm,
 			  enum mmi_dc_plane_id id, enum drm_plane_type type)
 {
-	size_t xt_alloc_size;
 	struct mmi_dc_video_plane *plane;
 	int ret;
 
@@ -653,16 +623,6 @@ mmi_dc_video_plane_create(struct mmi_dc *dc, struct drm_device *drm,
 	ret = mmi_dc_video_plane_request_dma(plane);
 	if (ret < 0)
 		return ERR_PTR(ret);
-
-	xt_alloc_size = sizeof(struct dma_interleaved_template) +
-			sizeof(struct data_chunk);
-	plane->xt = devm_kzalloc(dc->dev, xt_alloc_size, GFP_KERNEL);
-	if (!plane->xt)
-		return ERR_PTR(-ENOMEM);
-
-	plane->xt->dir = DMA_MEM_TO_DEV;
-	plane->xt->src_sgl = true;
-	plane->xt->frame_size = 1;
 
 	return plane;
 }
