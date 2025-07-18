@@ -25555,6 +25555,13 @@ R:	Vishal Sagar <vishal.sagar@amd.com>
 S:	Maintained
 F:	drivers/gpu/drm/xlnx/hdcp/
 
+XILINX SCENECHANGE DRIVER
+M:	Asif Ikbal <asif.ikbal@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-scd.yaml
+F:	drivers/media/platform/xilinx/xilinx-scenechange.c
+
 XILINX DEMOSAIC DRIVER
 M:	Kunal Rane <kunal.rane@amd.com>
 L:	git@amd.com
