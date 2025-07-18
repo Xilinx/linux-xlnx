@@ -11,8 +11,10 @@
 #include <linux/device.h>
 #include <drm/drm_modes.h>
 
-#define MMI_DC_NUM_PLANES		(2)
+#define MMI_DC_NUM_PLANES		(3)
 #define MMI_DC_NUM_CC			(3)
+#define MMI_DC_CURSOR_WIDTH		(128)
+#define MMI_DC_CURSOR_HEIGHT		(128)
 
 #define MMI_DC_AV_BUF_OUTPUT_AUDIO_VIDEO_SELECT		(0x0070)
 

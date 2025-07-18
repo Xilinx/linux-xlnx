@@ -89,6 +89,17 @@ struct drm_plane *mmi_dc_plane_get_primary(struct mmi_dc *dc)
 }
 
 /**
+ * mmi_dc_plane_get_cursor - Get DC cursor plane
+ * @dc: DC device
+ *
+ * Return: DRM cursor plane.
+ */
+struct drm_plane *mmi_dc_plane_get_cursor(struct mmi_dc *dc)
+{
+	return &dc->planes[MMI_DC_CURSOR]->base;
+}
+
+/**
  * mmi_dc_planes_set_possible_crtc - Set possible CRTC for all planes
  * @dc: DC device
  * @crtc_mask: CRTC mask to assign
@@ -115,6 +126,7 @@ int mmi_dc_create_planes(struct mmi_dc *dc, struct drm_device *drm)
 						 enum mmi_dc_plane_id id) = {
 		[MMI_DC_PLANE0] = mmi_dc_create_overlay_plane,
 		[MMI_DC_PLANE1] = mmi_dc_create_primary_plane,
+		[MMI_DC_CURSOR] = mmi_dc_create_cursor_plane,
 	};
 	unsigned int i;
 
