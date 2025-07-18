@@ -12,6 +12,7 @@
 #include <linux/reset.h>
 
 #include "mmi_dc.h"
+#include "mmi_dc_plane.h"
 
 /* DC DP Stream Registers */
 #define MMI_DC_DP_MAIN_STREAM_HTOTAL	(0x0000)
