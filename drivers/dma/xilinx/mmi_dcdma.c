@@ -198,6 +198,7 @@ struct mmi_dcdma_device;
  * @mdev: DCDMA device
  * @active_desc: descriptor currently running by the hardware
  * @wait_to_stop: queue to wait for outstanding transactions before the stop
+ * @dst_addr: in-device channel destination address
  * @video_group: flag if multi-channel operations are requested for a video
  */
 struct mmi_dcdma_chan {
@@ -209,6 +210,7 @@ struct mmi_dcdma_chan {
 
 	struct mmi_dcdma_sw_desc *active_desc;
 	wait_queue_head_t wait_to_stop;
+	dma_addr_t dst_addr;
 	bool video_group;
 };
 
@@ -363,6 +365,7 @@ static void mmi_dcdma_sw_desc_set_dma_addr(struct mmi_dcdma_sw_desc *desc,
  * mmi_dcdma_chan_prep_interleaved_dma - Prepare an interleaved DMA descriptor
  * @chan: DMA channel
  * @xt: interleaved DMA transfer template
+ * @flags: DMA transfer configuration flags
  *
  * Prepare DCDMA descriptor for an interleaved DMA transfer.
  *
@@ -370,11 +373,13 @@ static void mmi_dcdma_sw_desc_set_dma_addr(struct mmi_dcdma_sw_desc *desc,
  */
 static struct mmi_dcdma_sw_desc *
 mmi_dcdma_chan_prep_interleaved_dma(struct mmi_dcdma_chan *chan,
-				    struct dma_interleaved_template *xt)
+				    struct dma_interleaved_template *xt,
+				    unsigned long flags)
 {
 	struct mmi_dcdma_sw_desc *sw_desc;
 	struct mmi_dcdma_hw_desc *hw_desc;
 	size_t line_size, stride, data_size;
+	bool repeat = flags & DMA_PREP_REPEAT;
 
 	if (!IS_ALIGNED(xt->src_start, MMI_DCDMA_ALIGN_BYTES)) {
 		dev_err(chan->mdev->base.dev,
@@ -387,7 +392,8 @@ mmi_dcdma_chan_prep_interleaved_dma(struct mmi_dcdma_chan *chan,
 	if (!sw_desc)
 		return NULL;
 
-	mmi_dcdma_sw_desc_set_dma_addr(sw_desc, sw_desc, xt->src_start);
+	mmi_dcdma_sw_desc_set_dma_addr(sw_desc, repeat ? sw_desc : NULL,
+				       xt->src_start);
 
 	hw_desc = &sw_desc->hw;
 	line_size = ALIGN(xt->sgl[0].size, MMI_DCDMA_LINESIZE_ALIGN_BITS >> 3);
@@ -400,14 +406,15 @@ mmi_dcdma_chan_prep_interleaved_dma(struct mmi_dcdma_chan *chan,
 
 	hw_desc->ctrl.preamble = MMI_DCDMA_DESC_CTRL_PREAMBLE;
 	hw_desc->ctrl.update_en = 0; /* set 1 to receive PTS */
-	hw_desc->ctrl.ignore_done = 1;
-	hw_desc->ctrl.last_descriptor = 0;
+	hw_desc->ctrl.ignore_done = repeat;
+	hw_desc->ctrl.last_descriptor = !repeat;
 	hw_desc->ctrl.last_descriptor_frame = 1;
 	hw_desc->data_size = data_size;
 	hw_desc->line_or_tile = 0;
 	hw_desc->line_size = line_size;
 	hw_desc->line_stride = stride >> 4; /* 16 bytes blocks */
-	hw_desc->irq_en = 0;
+	hw_desc->target_addr = chan->dst_addr;
+	hw_desc->irq_en = !repeat;
 
 	return sw_desc;
 }
@@ -570,9 +577,14 @@ static void mmi_dcdma_chan_handle_error(struct mmi_dcdma_chan *chan, u32 error)
  */
 static void mmi_dcdma_chan_handle_done(struct mmi_dcdma_chan *chan)
 {
-	struct mmi_dcdma_device *mdev = chan->mdev;
+	unsigned long flags;
 
-	dev_err(mdev->base.dev, "chan%u: done reported\n", chan->id);
+	spin_lock_irqsave(&chan->vchan.lock, flags);
+	if (chan->active_desc) {
+		vchan_cookie_complete(&chan->active_desc->vdesc);
+		chan->active_desc = NULL;
+	}
+	spin_unlock_irqrestore(&chan->vchan.lock, flags);
 }
 
 /**
@@ -990,10 +1002,10 @@ mmi_dcdma_prep_interleaved_dma(struct dma_chan *dchan,
 	if (!xt->numf || !xt->sgl[0].size)
 		return NULL;
 
-	if (!(flags & DMA_PREP_REPEAT) || !(flags & DMA_PREP_LOAD_EOT))
+	if (flags & DMA_PREP_REPEAT && !(flags & DMA_PREP_LOAD_EOT))
 		return NULL;
 
-	desc = mmi_dcdma_chan_prep_interleaved_dma(chan, xt);
+	desc = mmi_dcdma_chan_prep_interleaved_dma(chan, xt, flags);
 	if (!desc)
 		return NULL;
 
@@ -1039,6 +1051,7 @@ static int mmi_dcdma_config(struct dma_chan *dchan,
 		return -EINVAL;
 
 	spin_lock_irqsave(&chan->vchan.lock, flags);
+	chan->dst_addr = config->dst_addr;
 	if (pconfig)
 		chan->video_group = pconfig->video_group;
 	spin_unlock_irqrestore(&chan->vchan.lock, flags);
