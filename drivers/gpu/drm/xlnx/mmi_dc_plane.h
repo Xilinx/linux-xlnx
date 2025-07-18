@@ -114,11 +114,16 @@ struct mmi_dc_plane *mmi_dc_create_overlay_plane(struct mmi_dc *dc,
 						 struct drm_device *drm,
 						 enum mmi_dc_plane_id id);
 
+struct mmi_dc_plane *mmi_dc_create_cursor_plane(struct mmi_dc *dc,
+						struct drm_device *drm,
+						enum mmi_dc_plane_id id);
+
 /* ----------------------------------------------------------------------------
  * DC Plane to CRTC Interface
  */
 
 struct drm_plane *mmi_dc_plane_get_primary(struct mmi_dc *dc);
+struct drm_plane *mmi_dc_plane_get_cursor(struct mmi_dc *dc);
 void mmi_dc_planes_set_possible_crtc(struct mmi_dc *dc, u32 crtc_mask);
 unsigned int mmi_dc_planes_get_dma_align(struct mmi_dc *dc);
 int mmi_dc_create_planes(struct mmi_dc *dc, struct drm_device *drm);
