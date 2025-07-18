@@ -10,16 +10,11 @@
 
 #include <linux/device.h>
 #include <drm/drm_modes.h>
-#include <drm/drm_plane.h>
 
 #define MMI_DC_NUM_PLANES		(2)
 #define MMI_DC_NUM_CC			(3)
-#define MMI_DC_MAX_NUM_SUB_PLANES	(MMI_DC_NUM_CC)
-#define MMI_DC_VBLANKS			(3)
-#define MMI_DC_DPTX_PORT_0		(12)
-#define MMI_DC_MAX_WIDTH		(4096)
-#define MMI_DC_MAX_HEIGHT		(4096)
-#define MMI_DC_SWAP(layer)		(MMI_DC_NUM_PLANES - 1 - (layer))
+
+#define MMI_DC_AV_BUF_OUTPUT_AUDIO_VIDEO_SELECT		(0x0070)
 
 /* ----------------------------------------------------------------------------
  * CSC Data
@@ -27,48 +22,6 @@
 
 #define MMI_DC_CSC_NUM_COEFFS		(MMI_DC_NUM_CC * MMI_DC_NUM_CC)
 #define MMI_DC_CSC_NUM_OFFSETS		(MMI_DC_NUM_CC)
-
-/* ----------------------------------------------------------------------------
- * MMI DC Plane Interface
- */
-
-/* Blender Registers */
-#define MMI_DC_V_BLEND_LAYER_CONTROL(layer)		(0x0018 + 4 * (layer))
-#define MMI_DC_V_BLEND_INCSC_COEFF(layer, coeff)	(0x0044 + 0x3c * \
-							(layer) + 4 * (coeff))
-#define MMI_DC_V_BLEND_CC_INCSC_OFFSET(layer, cc)	(0x0068 + 0x3c * \
-							(layer) + 4 * (cc))
-
-#define MMI_DC_V_BLEND_RGB_MODE				BIT(1)
-#define MMI_DC_V_BLEND_EN_US				BIT(0)
-
-/* AV Buffer Registers */
-#define MMI_DC_AV_BUF_FORMAT				(0)
-#define MMI_DC_AV_CHBUF(channel)			(0x0010 + 4 * (channel))
-#define MMI_DC_AV_BUF_OUTPUT_AUDIO_VIDEO_SELECT		(0x0070)
-#define MMI_DC_AV_BUF_PLANE_CC_SCALE_FACTOR(layer, cc)	(0x0200 + 0x0c * \
-							 MMI_DC_SWAP(layer) + 4 * (cc))
-
-#define MMI_DC_AV_CHBUF_BURST				(0x000f << 2)
-#define MMI_DC_AV_CHBUF_FLUSH				BIT(1)
-#define MMI_DC_AV_CHBUF_EN				BIT(0)
-
-#define MMI_DC_AV_BUF_FMT_CR_Y0_CB_Y1			(1)
-#define MMI_DC_AV_BUF_FMT_Y0_CB_Y1_CR			(3)
-#define MMI_DC_AV_BUF_FMT_YV24				(5)
-
-#define MMI_DC_AV_BUF_FMT_RGB888			(10)
-#define MMI_DC_AV_BUF_FMT_YV16CI_420			(20)
-#define MMI_DC_AV_BUF_FMT_RGBA8888			(32)
-
-#define MMI_DC_AV_BUF_FMT_SHIFT(layer)			(8 * (layer))
-#define MMI_DC_AV_BUF_FMT_MASK(layer)			(0xff << \
-							 MMI_DC_AV_BUF_FMT_SHIFT(layer))
-#define MMI_DC_AV_BUF_VID_STREAM_SEL_MASK(layer)	(0x0003 << 2 * (layer))
-#define MMI_DC_AV_BUF_VID_STREAM_SEL_MEM(layer)		(0x0001 << 2 * (layer))
-#define MMI_DC_AV_BUF_VID_STREAM_SEL_NONE(layer)	(0x0003 << 2 * (layer))
-#define MMI_DC_AV_BUF_8BIT_SF				(0x00010101)
-#define MMI_DC_AV_BUF_NUM_SF				(9)
 
 extern const u16 csc_zero_matrix[MMI_DC_CSC_NUM_COEFFS];
 extern const u16 csc_identity_matrix[MMI_DC_CSC_NUM_COEFFS];
@@ -158,16 +111,6 @@ void mmi_dc_disable(struct mmi_dc *dc);
 int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm);
 void mmi_dc_fini(struct mmi_dc *dc);
 void mmi_dc_reset_hw(struct mmi_dc *dc);
-
 void mmi_dc_drm_handle_vblank(struct mmi_dc_drm *drm);
-struct drm_plane *mmi_dc_plane_get_primary(struct mmi_dc *dc);
-void mmi_dc_planes_set_possible_crtc(struct mmi_dc *dc, u32 crtc_mask);
-unsigned int mmi_dc_planes_get_dma_align(struct mmi_dc *dc);
-int mmi_dc_create_planes(struct mmi_dc *dc, struct drm_device *drm);
-void mmi_dc_destroy_planes(struct mmi_dc *dc);
-void mmi_dc_reconfig_planes(struct mmi_dc *dc, struct drm_atomic_state *state);
-void mmi_dc_reset_planes(struct mmi_dc *dc);
-bool mmi_dc_has_visible_planes(struct mmi_dc *dc,
-			       struct drm_atomic_state *state);
 
 #endif /* __MMI_DC_H__ */

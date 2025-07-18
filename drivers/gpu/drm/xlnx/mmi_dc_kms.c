@@ -31,6 +31,12 @@
 #include <drm/drm_vblank.h>
 
 #include "mmi_dc.h"
+#include "mmi_dc_plane.h"
+
+#define MMI_DC_VBLANKS			(3)
+#define MMI_DC_DPTX_PORT_0		(12)
+#define MMI_DC_MAX_WIDTH		(4096)
+#define MMI_DC_MAX_HEIGHT		(4096)
 
 /**
  * DOC: wb(bool)
