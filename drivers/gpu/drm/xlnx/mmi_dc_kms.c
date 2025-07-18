@@ -260,12 +260,13 @@ static const struct drm_crtc_funcs mmi_dc_dpsub_crtc_funcs = {
  */
 static int mmi_dc_create_crtc(struct mmi_dc *dc)
 {
-	struct drm_plane *plane = mmi_dc_plane_get_primary(dc);
+	struct drm_plane *primary = mmi_dc_plane_get_primary(dc);
+	struct drm_plane *cursor = mmi_dc_plane_get_cursor(dc);
 	struct drm_crtc *crtc = &dc->drm->crtc;
 	int ret;
 
 	/* TODO cursor plane */
-	ret = drm_crtc_init_with_planes(&dc->drm->drm, crtc, plane, NULL,
+	ret = drm_crtc_init_with_planes(&dc->drm->drm, crtc, primary, cursor,
 					&mmi_dc_dpsub_crtc_funcs, NULL);
 	if (ret < 0) {
 		dev_err(dc->dev, "failed to init DRM CRTC: %d\n", ret);
@@ -495,6 +496,8 @@ static int mmi_dc_drm_init(struct mmi_dc *dc)
 	drm->mode_config.min_height = 0;
 	drm->mode_config.max_width = MMI_DC_MAX_WIDTH;
 	drm->mode_config.max_height = MMI_DC_MAX_HEIGHT;
+	drm->mode_config.cursor_width = MMI_DC_CURSOR_WIDTH;
+	drm->mode_config.cursor_height = MMI_DC_CURSOR_HEIGHT;
 
 	ret = drm_vblank_init(drm, 1);
 	if (ret < 0) {
