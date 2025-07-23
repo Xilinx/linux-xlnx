@@ -25658,6 +25658,14 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-hls.yaml
 F:	drivers/media/platform/xilinx/xilinx-hls.c
 
+XILINX MIPI DSI DRIVER
+M:	Katta Dhanunjanrao <katta.dhanunjanrao@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/display/xlnx/xlnx,dsi.yaml
+F:	drivers/gpu/drm/xlnx/xlnx_dsi.c
+
 XILINX MULTISCALER DRIVER
 M:	Kunal Rane <kunal.rane@amd.com>
 L:	git@amd.com
