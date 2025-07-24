@@ -31,6 +31,9 @@
 )
 // end copied section
 
+#define CPUID_LEAF_MODEL_ID			0x1A
+#define CPUID_LEAF_MODEL_ID_CORE_TYPE_SHIFT	24
+
 #define X86_VENDOR_INTEL	0
 
 #include INTEL_FAMILY_HEADER
@@ -88,6 +91,11 @@
 #define COUNTER_KIND_PERF_PREFIX_LEN strlen(COUNTER_KIND_PERF_PREFIX)
 #define PERF_DEV_NAME_BYTES 32
 #define PERF_EVT_NAME_BYTES 32
+
+#define INTEL_ECORE_TYPE	0x20
+#define INTEL_PCORE_TYPE	0x40
+
+#define ROUND_UP_TO_PAGE_SIZE(n) (((n) + 0x1000UL-1UL) & ~(0x1000UL-1UL))
 
 enum counter_scope { SCOPE_CPU, SCOPE_CORE, SCOPE_PACKAGE };
 enum counter_type { COUNTER_ITEMS, COUNTER_CYCLES, COUNTER_SECONDS, COUNTER_USEC, COUNTER_K2M };
@@ -1079,8 +1087,8 @@ int backwards_count;
 char *progname;
 
 #define CPU_SUBSET_MAXCPUS	1024	/* need to use before probe... */
-cpu_set_t *cpu_present_set, *cpu_effective_set, *cpu_allowed_set, *cpu_affinity_set, *cpu_subset;
-size_t cpu_present_setsize, cpu_effective_setsize, cpu_allowed_setsize, cpu_affinity_setsize, cpu_subset_size;
+cpu_set_t *cpu_present_set, *cpu_possible_set, *cpu_effective_set, *cpu_allowed_set, *cpu_affinity_set, *cpu_subset;
+size_t cpu_present_setsize, cpu_possible_setsize, cpu_effective_setsize, cpu_allowed_setsize, cpu_affinity_setsize, cpu_subset_size;
 #define MAX_ADDED_THREAD_COUNTERS 24
 #define MAX_ADDED_CORE_COUNTERS 8
 #define MAX_ADDED_PACKAGE_COUNTERS 16
@@ -1848,6 +1856,7 @@ struct cpu_topology {
 	int logical_node_id;	/* 0-based count within the package */
 	int physical_core_id;
 	int thread_id;
+	int type;
 	cpu_set_t *put_ids;	/* Processing Unit/Thread IDs */
 } *cpus;
 
@@ -3233,7 +3242,7 @@ void delta_core(struct core_data *new, struct core_data *old)
 	old->c6 = new->c6 - old->c6;
 	old->c7 = new->c7 - old->c7;
 	old->core_temp_c = new->core_temp_c;
-	old->core_throt_cnt = new->core_throt_cnt;
+	old->core_throt_cnt = new->core_throt_cnt - old->core_throt_cnt;
 	old->mc6_us = new->mc6_us - old->mc6_us;
 
 	DELTA_WRAP32(new->core_energy.raw_value, old->core_energy.raw_value);
@@ -4482,6 +4491,38 @@ unsigned long pmt_read_counter(struct pmt_counter *ppmt, unsigned int domain_id)
 	return (value & value_mask) >> value_shift;
 }
 
+
+/* Rapl domain enumeration helpers */
+static inline int get_rapl_num_domains(void)
+{
+	int num_packages = topo.max_package_id + 1;
+	int num_cores_per_package;
+	int num_cores;
+
+	if (!platform->has_per_core_rapl)
+		return num_packages;
+
+	num_cores_per_package = topo.max_core_id + 1;
+	num_cores = num_cores_per_package * num_packages;
+
+	return num_cores;
+}
+
+static inline int get_rapl_domain_id(int cpu)
+{
+	int nr_cores_per_package = topo.max_core_id + 1;
+	int rapl_core_id;
+
+	if (!platform->has_per_core_rapl)
+		return cpus[cpu].physical_package_id;
+
+	/* Compute the system-wide unique core-id for @cpu */
+	rapl_core_id = cpus[cpu].physical_core_id;
+	rapl_core_id += cpus[cpu].physical_package_id * nr_cores_per_package;
+
+	return rapl_core_id;
+}
+
 /*
  * get_counters(...)
  * migrate to cpu
@@ -4535,7 +4576,7 @@ int get_counters(struct thread_data *t, struct core_data *c, struct pkg_data *p)
 		goto done;
 
 	if (platform->has_per_core_rapl) {
-		status = get_rapl_counters(cpu, c->core_id, c, p);
+		status = get_rapl_counters(cpu, get_rapl_domain_id(cpu), c, p);
 		if (status != 0)
 			return status;
 	}
@@ -4601,7 +4642,7 @@ int get_counters(struct thread_data *t, struct core_data *c, struct pkg_data *p)
 		p->sys_lpi = cpuidle_cur_sys_lpi_us;
 
 	if (!platform->has_per_core_rapl) {
-		status = get_rapl_counters(cpu, p->package_id, c, p);
+		status = get_rapl_counters(cpu, get_rapl_domain_id(cpu), c, p);
 		if (status != 0)
 			return status;
 	}
@@ -5659,6 +5700,32 @@ int init_thread_id(int cpu)
 	return 0;
 }
 
+int set_my_cpu_type(void)
+{
+	unsigned int eax, ebx, ecx, edx;
+	unsigned int max_level;
+
+	__cpuid(0, max_level, ebx, ecx, edx);
+
+	if (max_level < CPUID_LEAF_MODEL_ID)
+		return 0;
+
+	__cpuid(CPUID_LEAF_MODEL_ID, eax, ebx, ecx, edx);
+
+	return (eax >> CPUID_LEAF_MODEL_ID_CORE_TYPE_SHIFT);
+}
+
+int set_cpu_hybrid_type(int cpu)
+{
+	if (cpu_migrate(cpu))
+		return -1;
+
+	int type = set_my_cpu_type();
+
+	cpus[cpu].type = type;
+	return 0;
+}
+
 /*
  * snapshot_proc_interrupts()
  *
@@ -6410,7 +6477,18 @@ static void probe_intel_uncore_frequency_cluster(void)
 		sprintf(path, "%s/current_freq_khz", path_base);
 		sprintf(name_buf, "UMHz%d.%d", domain_id, cluster_id);
 
-		add_counter(0, path, name_buf, 0, SCOPE_PACKAGE, COUNTER_K2M, FORMAT_AVERAGE, 0, package_id);
+		/*
+		 * Once add_couter() is called, that counter is always read
+		 * and reported -- So it is effectively (enabled & present).
+		 * Only call add_counter() here if legacy BIC_UNCORE_MHZ (UncMHz)
+		 * is (enabled).  Since we are in this routine, we
+		 * know we will not probe and set (present) the legacy counter.
+		 *
+		 * This allows "--show/--hide UncMHz" to be effective for
+		 * the clustered MHz counters, as a group.
+		 */
+		if BIC_IS_ENABLED(BIC_UNCORE_MHZ)
+			add_counter(0, path, name_buf, 0, SCOPE_PACKAGE, COUNTER_K2M, FORMAT_AVERAGE, 0, package_id);
 
 		if (quiet)
 			continue;
@@ -7524,7 +7602,7 @@ void linux_perf_init(void)
 
 void rapl_perf_init(void)
 {
-	const unsigned int num_domains = (platform->has_per_core_rapl ? topo.max_core_id : topo.max_package_id) + 1;
+	const unsigned int num_domains = get_rapl_num_domains();
 	bool *domain_visited = calloc(num_domains, sizeof(bool));
 
 	rapl_counter_info_perdomain = calloc(num_domains, sizeof(*rapl_counter_info_perdomain));
@@ -7565,8 +7643,7 @@ void rapl_perf_init(void)
 				continue;
 
 			/* Skip already seen and handled RAPL domains */
-			next_domain =
-			    platform->has_per_core_rapl ? cpus[cpu].physical_core_id : cpus[cpu].physical_package_id;
+			next_domain = get_rapl_domain_id(cpu);
 
 			assert(next_domain < num_domains);
 
@@ -8188,6 +8265,33 @@ int dir_filter(const struct dirent *dirp)
 		return 0;
 }
 
+char *possible_file = "/sys/devices/system/cpu/possible";
+char possible_buf[1024];
+
+int initialize_cpu_possible_set(void)
+{
+	FILE *fp;
+
+	fp = fopen(possible_file, "r");
+	if (!fp) {
+		warn("open %s", possible_file);
+		return -1;
+	}
+	if (fread(possible_buf, sizeof(char), 1024, fp) == 0) {
+		warn("read %s", possible_file);
+		goto err;
+	}
+	if (parse_cpu_str(possible_buf, cpu_possible_set, cpu_possible_setsize)) {
+		warnx("%s: cpu str malformat %s\n", possible_file, cpu_effective_str);
+		goto err;
+	}
+	return 0;
+
+err:
+	fclose(fp);
+	return -1;
+}
+
 void topology_probe(bool startup)
 {
 	int i;
@@ -8218,6 +8322,16 @@ void topology_probe(bool startup)
 	cpu_present_setsize = CPU_ALLOC_SIZE((topo.max_cpu_num + 1));
 	CPU_ZERO_S(cpu_present_setsize, cpu_present_set);
 	for_all_proc_cpus(mark_cpu_present);
+
+	/*
+	 * Allocate and initialize cpu_possible_set
+	 */
+	cpu_possible_set = CPU_ALLOC((topo.max_cpu_num + 1));
+	if (cpu_possible_set == NULL)
+		err(3, "CPU_ALLOC");
+	cpu_possible_setsize = CPU_ALLOC_SIZE((topo.max_cpu_num + 1));
+	CPU_ZERO_S(cpu_possible_setsize, cpu_possible_set);
+	initialize_cpu_possible_set();
 
 	/*
 	 * Allocate and initialize cpu_effective_set
@@ -8286,6 +8400,8 @@ void topology_probe(bool startup)
 	CPU_ZERO_S(cpu_affinity_setsize, cpu_affinity_set);
 
 	for_all_proc_cpus(init_thread_id);
+
+	for_all_proc_cpus(set_cpu_hybrid_type);
 
 	/*
 	 * For online cpus
@@ -8551,6 +8667,35 @@ void check_perf_access(void)
 		bic_enabled &= ~BIC_IPC;
 }
 
+bool perf_has_hybrid_devices(void)
+{
+	/*
+	 *  0: unknown
+	 *  1: has separate perf device for p and e core
+	 * -1: doesn't have separate perf device for p and e core
+	 */
+	static int cached;
+
+	if (cached > 0)
+		return true;
+
+	if (cached < 0)
+		return false;
+
+	if (access("/sys/bus/event_source/devices/cpu_core", F_OK)) {
+		cached = -1;
+		return false;
+	}
+
+	if (access("/sys/bus/event_source/devices/cpu_atom", F_OK)) {
+		cached = -1;
+		return false;
+	}
+
+	cached = 1;
+	return true;
+}
+
 int added_perf_counters_init_(struct perf_counter_info *pinfo)
 {
 	size_t num_domains = 0;
@@ -8607,29 +8752,56 @@ int added_perf_counters_init_(struct perf_counter_info *pinfo)
 			if (domain_visited[next_domain])
 				continue;
 
-			perf_type = read_perf_type(pinfo->device);
+			/*
+			 * Intel hybrid platforms expose different perf devices for P and E cores.
+			 * Instead of one, "/sys/bus/event_source/devices/cpu" device, there are
+			 * "/sys/bus/event_source/devices/{cpu_core,cpu_atom}".
+			 *
+			 * This makes it more complicated to the user, because most of the counters
+			 * are available on both and have to be handled manually, otherwise.
+			 *
+			 * Code below, allow user to use the old "cpu" name, which is translated accordingly.
+			 */
+			const char *perf_device = pinfo->device;
+
+			if (strcmp(perf_device, "cpu") == 0 && perf_has_hybrid_devices()) {
+				switch (cpus[cpu].type) {
+				case INTEL_PCORE_TYPE:
+					perf_device = "cpu_core";
+					break;
+
+				case INTEL_ECORE_TYPE:
+					perf_device = "cpu_atom";
+					break;
+
+				default: /* Don't change, we will probably fail and report a problem soon. */
+					break;
+				}
+			}
+
+			perf_type = read_perf_type(perf_device);
 			if (perf_type == (unsigned int)-1) {
 				warnx("%s: perf/%s/%s: failed to read %s",
-				      __func__, pinfo->device, pinfo->event, "type");
+				      __func__, perf_device, pinfo->event, "type");
 				continue;
 			}
 
-			perf_config = read_perf_config(pinfo->device, pinfo->event);
+			perf_config = read_perf_config(perf_device, pinfo->event);
 			if (perf_config == (unsigned int)-1) {
 				warnx("%s: perf/%s/%s: failed to read %s",
-				      __func__, pinfo->device, pinfo->event, "config");
+				      __func__, perf_device, pinfo->event, "config");
 				continue;
 			}
 
 			/* Scale is not required, some counters just don't have it. */
-			perf_scale = read_perf_scale(pinfo->device, pinfo->event);
+			perf_scale = read_perf_scale(perf_device, pinfo->event);
 			if (perf_scale == 0.0)
 				perf_scale = 1.0;
 
 			fd_perf = open_perf_counter(cpu, perf_type, perf_config, -1, 0);
 			if (fd_perf == -1) {
 				warnx("%s: perf/%s/%s: failed to open counter on cpu%d",
-				      __func__, pinfo->device, pinfo->event, cpu);
+				      __func__, perf_device, pinfo->event, cpu);
 				continue;
 			}
 
@@ -8639,7 +8811,7 @@ int added_perf_counters_init_(struct perf_counter_info *pinfo)
 
 			if (debug)
 				fprintf(stderr, "Add perf/%s/%s cpu%d: %d\n",
-					pinfo->device, pinfo->event, cpu, pinfo->fd_perf_per_domain[next_domain]);
+					perf_device, pinfo->event, cpu, pinfo->fd_perf_per_domain[next_domain]);
 		}
 
 		pinfo = pinfo->next;
@@ -8762,7 +8934,7 @@ struct pmt_mmio *pmt_mmio_open(unsigned int target_guid)
 		if (fd_pmt == -1)
 			goto loop_cleanup_and_break;
 
-		mmap_size = (size + 0x1000UL) & (~0x1000UL);
+		mmap_size = ROUND_UP_TO_PAGE_SIZE(size);
 		mmio = mmap(0, mmap_size, PROT_READ, MAP_SHARED, fd_pmt, 0);
 		if (mmio != MAP_FAILED) {
 
@@ -9001,6 +9173,18 @@ void turbostat_init()
 	}
 }
 
+void affinitize_child(void)
+{
+	/* Prefer cpu_possible_set, if available */
+	if (sched_setaffinity(0, cpu_possible_setsize, cpu_possible_set)) {
+		warn("sched_setaffinity cpu_possible_set");
+
+		/* Otherwise, allow child to run on same cpu set as turbostat */
+		if (sched_setaffinity(0, cpu_allowed_setsize, cpu_allowed_set))
+			warn("sched_setaffinity cpu_allowed_set");
+	}
+}
+
 int fork_it(char **argv)
 {
 	pid_t child_pid;
@@ -9016,6 +9200,7 @@ int fork_it(char **argv)
 	child_pid = fork();
 	if (!child_pid) {
 		/* child */
+		affinitize_child();
 		execvp(argv[0], argv);
 		err(errno, "exec %s", argv[0]);
 	} else {

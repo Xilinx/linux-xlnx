@@ -702,6 +702,21 @@ static int xe_bo_move(struct ttm_buffer_object *ttm_bo, bool evict,
 		goto out;
 	}
 
+	/* Reject BO eviction if BO is bound to current VM. */
+	if (evict && ctx->resv) {
+		struct drm_gpuvm_bo *vm_bo;
+
+		drm_gem_for_each_gpuvm_bo(vm_bo, &bo->ttm.base) {
+			struct xe_vm *vm = gpuvm_to_vm(vm_bo->vm);
+
+			if (xe_vm_resv(vm) == ctx->resv &&
+			    xe_vm_in_preempt_fence_mode(vm)) {
+				ret = -EBUSY;
+				goto out;
+			}
+		}
+	}
+
 	/*
 	 * Failed multi-hop where the old_mem is still marked as
 	 * TTM_PL_FLAG_TEMPORARY, should just be a dummy move.
@@ -1115,6 +1130,8 @@ static void xe_ttm_bo_destroy(struct ttm_buffer_object *ttm_bo)
 {
 	struct xe_bo *bo = ttm_to_xe_bo(ttm_bo);
 	struct xe_device *xe = ttm_to_xe_device(ttm_bo->bdev);
+	struct xe_tile *tile;
+	u8 id;
 
 	if (bo->ttm.base.import_attach)
 		drm_prime_gem_destroy(&bo->ttm.base, NULL);
@@ -1122,8 +1139,9 @@ static void xe_ttm_bo_destroy(struct ttm_buffer_object *ttm_bo)
 
 	xe_assert(xe, list_empty(&ttm_bo->base.gpuva.list));
 
-	if (bo->ggtt_node && bo->ggtt_node->base.size)
-		xe_ggtt_remove_bo(bo->tile->mem.ggtt, bo);
+	for_each_tile(tile, xe, id)
+		if (bo->ggtt_node[id] && bo->ggtt_node[id]->base.size)
+			xe_ggtt_remove_bo(tile->mem.ggtt, bo);
 
 #ifdef CONFIG_PROC_FS
 	if (bo->client)
@@ -1293,6 +1311,10 @@ struct xe_bo *___xe_bo_create_locked(struct xe_device *xe, struct xe_bo *bo,
 		return ERR_PTR(-EINVAL);
 	}
 
+	/* XE_BO_FLAG_GGTTx requires XE_BO_FLAG_GGTT also be set */
+	if ((flags & XE_BO_FLAG_GGTT_ALL) && !(flags & XE_BO_FLAG_GGTT))
+		return ERR_PTR(-EINVAL);
+
 	if (flags & (XE_BO_FLAG_VRAM_MASK | XE_BO_FLAG_STOLEN) &&
 	    !(flags & XE_BO_FLAG_IGNORE_MIN_PAGE_SIZE) &&
 	    ((xe->info.vram_flags & XE_VRAM_FLAGS_NEED64K) ||
@@ -1439,7 +1461,8 @@ static struct xe_bo *
 __xe_bo_create_locked(struct xe_device *xe,
 		      struct xe_tile *tile, struct xe_vm *vm,
 		      size_t size, u64 start, u64 end,
-		      u16 cpu_caching, enum ttm_bo_type type, u32 flags)
+		      u16 cpu_caching, enum ttm_bo_type type, u32 flags,
+		      u64 alignment)
 {
 	struct xe_bo *bo = NULL;
 	int err;
@@ -1468,6 +1491,8 @@ __xe_bo_create_locked(struct xe_device *xe,
 	if (IS_ERR(bo))
 		return bo;
 
+	bo->min_align = alignment;
+
 	/*
 	 * Note that instead of taking a reference no the drm_gpuvm_resv_bo(),
 	 * to ensure the shared resv doesn't disappear under the bo, the bo
@@ -1480,19 +1505,29 @@ __xe_bo_create_locked(struct xe_device *xe,
 	bo->vm = vm;
 
 	if (bo->flags & XE_BO_FLAG_GGTT) {
-		if (!tile && flags & XE_BO_FLAG_STOLEN)
-			tile = xe_device_get_root_tile(xe);
+		struct xe_tile *t;
+		u8 id;
 
-		xe_assert(xe, tile);
+		if (!(bo->flags & XE_BO_FLAG_GGTT_ALL)) {
+			if (!tile && flags & XE_BO_FLAG_STOLEN)
+				tile = xe_device_get_root_tile(xe);
 
-		if (flags & XE_BO_FLAG_FIXED_PLACEMENT) {
-			err = xe_ggtt_insert_bo_at(tile->mem.ggtt, bo,
-						   start + bo->size, U64_MAX);
-		} else {
-			err = xe_ggtt_insert_bo(tile->mem.ggtt, bo);
+			xe_assert(xe, tile);
 		}
-		if (err)
-			goto err_unlock_put_bo;
+
+		for_each_tile(t, xe, id) {
+			if (t != tile && !(bo->flags & XE_BO_FLAG_GGTTx(t)))
+				continue;
+
+			if (flags & XE_BO_FLAG_FIXED_PLACEMENT) {
+				err = xe_ggtt_insert_bo_at(t->mem.ggtt, bo,
+							   start + bo->size, U64_MAX);
+			} else {
+				err = xe_ggtt_insert_bo(t->mem.ggtt, bo);
+			}
+			if (err)
+				goto err_unlock_put_bo;
+		}
 	}
 
 	return bo;
@@ -1508,16 +1543,18 @@ struct xe_bo *
 xe_bo_create_locked_range(struct xe_device *xe,
 			  struct xe_tile *tile, struct xe_vm *vm,
 			  size_t size, u64 start, u64 end,
-			  enum ttm_bo_type type, u32 flags)
+			  enum ttm_bo_type type, u32 flags, u64 alignment)
 {
-	return __xe_bo_create_locked(xe, tile, vm, size, start, end, 0, type, flags);
+	return __xe_bo_create_locked(xe, tile, vm, size, start, end, 0, type,
+				     flags, alignment);
 }
 
 struct xe_bo *xe_bo_create_locked(struct xe_device *xe, struct xe_tile *tile,
 				  struct xe_vm *vm, size_t size,
 				  enum ttm_bo_type type, u32 flags)
 {
-	return __xe_bo_create_locked(xe, tile, vm, size, 0, ~0ULL, 0, type, flags);
+	return __xe_bo_create_locked(xe, tile, vm, size, 0, ~0ULL, 0, type,
+				     flags, 0);
 }
 
 struct xe_bo *xe_bo_create_user(struct xe_device *xe, struct xe_tile *tile,
@@ -1527,7 +1564,7 @@ struct xe_bo *xe_bo_create_user(struct xe_device *xe, struct xe_tile *tile,
 {
 	struct xe_bo *bo = __xe_bo_create_locked(xe, tile, vm, size, 0, ~0ULL,
 						 cpu_caching, ttm_bo_type_device,
-						 flags | XE_BO_FLAG_USER);
+						 flags | XE_BO_FLAG_USER, 0);
 	if (!IS_ERR(bo))
 		xe_bo_unlock_vm_held(bo);
 
@@ -1551,6 +1588,17 @@ struct xe_bo *xe_bo_create_pin_map_at(struct xe_device *xe, struct xe_tile *tile
 				      size_t size, u64 offset,
 				      enum ttm_bo_type type, u32 flags)
 {
+	return xe_bo_create_pin_map_at_aligned(xe, tile, vm, size, offset,
+					       type, flags, 0);
+}
+
+struct xe_bo *xe_bo_create_pin_map_at_aligned(struct xe_device *xe,
+					      struct xe_tile *tile,
+					      struct xe_vm *vm,
+					      size_t size, u64 offset,
+					      enum ttm_bo_type type, u32 flags,
+					      u64 alignment)
+{
 	struct xe_bo *bo;
 	int err;
 	u64 start = offset == ~0ull ? 0 : offset;
@@ -1561,7 +1609,8 @@ struct xe_bo *xe_bo_create_pin_map_at(struct xe_device *xe, struct xe_tile *tile
 		flags |= XE_BO_FLAG_GGTT;
 
 	bo = xe_bo_create_locked_range(xe, tile, vm, size, start, end, type,
-				       flags | XE_BO_FLAG_NEEDS_CPU_ACCESS);
+				       flags | XE_BO_FLAG_NEEDS_CPU_ACCESS,
+				       alignment);
 	if (IS_ERR(bo))
 		return bo;
 
@@ -1975,6 +2024,7 @@ int xe_gem_create_ioctl(struct drm_device *dev, void *data,
 	struct xe_file *xef = to_xe_file(file);
 	struct drm_xe_gem_create *args = data;
 	struct xe_vm *vm = NULL;
+	ktime_t end = 0;
 	struct xe_bo *bo;
 	unsigned int bo_flags;
 	u32 handle;
@@ -2047,6 +2097,10 @@ int xe_gem_create_ioctl(struct drm_device *dev, void *data,
 		vm = xe_vm_lookup(xef, args->vm_id);
 		if (XE_IOCTL_DBG(xe, !vm))
 			return -ENOENT;
+	}
+
+retry:
+	if (vm) {
 		err = xe_vm_lock(vm, true);
 		if (err)
 			goto out_vm;
@@ -2060,6 +2114,8 @@ int xe_gem_create_ioctl(struct drm_device *dev, void *data,
 
 	if (IS_ERR(bo)) {
 		err = PTR_ERR(bo);
+		if (xe_vm_validate_should_retry(NULL, err, &end))
+			goto retry;
 		goto out_vm;
 	}
 
@@ -2333,14 +2389,18 @@ void xe_bo_put_commit(struct llist_head *deferred)
 
 void xe_bo_put(struct xe_bo *bo)
 {
+	struct xe_tile *tile;
+	u8 id;
+
 	might_sleep();
 	if (bo) {
 #ifdef CONFIG_PROC_FS
 		if (bo->client)
 			might_lock(&bo->client->bos_lock);
 #endif
-		if (bo->ggtt_node && bo->ggtt_node->ggtt)
-			might_lock(&bo->ggtt_node->ggtt->lock);
+		for_each_tile(tile, xe_bo_device(bo), id)
+			if (bo->ggtt_node[id] && bo->ggtt_node[id]->ggtt)
+				might_lock(&bo->ggtt_node[id]->ggtt->lock);
 		drm_gem_object_put(&bo->ttm.base);
 	}
 }

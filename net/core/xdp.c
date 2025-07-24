@@ -381,8 +381,8 @@ void __xdp_return(void *data, struct xdp_mem_info *mem, bool napi_direct,
 		page = virt_to_head_page(data);
 		if (napi_direct && xdp_return_frame_no_direct())
 			napi_direct = false;
-		/* No need to check ((page->pp_magic & ~0x3UL) == PP_SIGNATURE)
-		 * as mem->type knows this a page_pool page
+		/* No need to check netmem_is_pp() as mem->type knows this a
+		 * page_pool page
 		 */
 		page_pool_put_full_page(page->pp, page, napi_direct);
 		break;

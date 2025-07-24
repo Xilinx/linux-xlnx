@@ -6,7 +6,7 @@
  * Copyright (C) 2011-2012 Avionic Design GmbH
  */
 
-#define DEFAULT_SYMBOL_NAMESPACE PWM
+#define DEFAULT_SYMBOL_NAMESPACE "PWM"
 
 #include <linux/acpi.h>
 #include <linux/module.h>
@@ -148,7 +148,7 @@ static bool pwm_state_valid(const struct pwm_state *state)
 	 * and supposed to be ignored. So also ignore any strange values and
 	 * consider the state ok.
 	 */
-	if (state->enabled)
+	if (!state->enabled)
 		return true;
 
 	if (!state->period)

@@ -388,6 +388,7 @@ enum {
 	NVME_CTRL_CTRATT_PREDICTABLE_LAT	= 1 << 5,
 	NVME_CTRL_CTRATT_NAMESPACE_GRANULARITY	= 1 << 7,
 	NVME_CTRL_CTRATT_UUID_LIST		= 1 << 9,
+	NVME_CTRL_SGLS_MSDS                     = 1 << 19,
 };
 
 struct nvme_lbaf {
@@ -1953,7 +1954,7 @@ enum {
 	NVME_SC_BAD_ATTRIBUTES		= 0x180,
 	NVME_SC_INVALID_PI		= 0x181,
 	NVME_SC_READ_ONLY		= 0x182,
-	NVME_SC_ONCS_NOT_SUPPORTED	= 0x183,
+	NVME_SC_CMD_SIZE_LIM_EXCEEDED	= 0x183,
 
 	/*
 	 * I/O Command Set Specific - Fabrics commands:

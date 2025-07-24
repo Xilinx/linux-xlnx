@@ -155,7 +155,7 @@ struct blk_mq_alloc_data {
 
 	/* allocate multiple requests/tags in one go */
 	unsigned int nr_tags;
-	struct request **cached_rq;
+	struct rq_list *cached_rqs;
 
 	/* input & output parameter */
 	struct blk_mq_ctx *ctx;
@@ -450,5 +450,11 @@ do {								\
 
 #define blk_mq_run_dispatch_ops(q, dispatch_ops)		\
 	__blk_mq_run_dispatch_ops(q, true, dispatch_ops)	\
+
+static inline bool blk_mq_can_poll(struct request_queue *q)
+{
+	return (q->limits.features & BLK_FEAT_POLL) &&
+		q->tag_set->map[HCTX_TYPE_POLL].nr_queues;
+}
 
 #endif

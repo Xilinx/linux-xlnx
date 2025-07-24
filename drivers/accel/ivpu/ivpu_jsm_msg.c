@@ -7,6 +7,8 @@
 #include "ivpu_hw.h"
 #include "ivpu_ipc.h"
 #include "ivpu_jsm_msg.h"
+#include "ivpu_pm.h"
+#include "vpu_jsm_api.h"
 
 const char *ivpu_jsm_msg_type_to_str(enum vpu_ipc_msg_type type)
 {
@@ -48,9 +50,10 @@ const char *ivpu_jsm_msg_type_to_str(enum vpu_ipc_msg_type type)
 	IVPU_CASE_TO_STR(VPU_JSM_MSG_HWS_RESUME_ENGINE_DONE);
 	IVPU_CASE_TO_STR(VPU_JSM_MSG_STATE_DUMP);
 	IVPU_CASE_TO_STR(VPU_JSM_MSG_STATE_DUMP_RSP);
-	IVPU_CASE_TO_STR(VPU_JSM_MSG_BLOB_DEINIT);
+	IVPU_CASE_TO_STR(VPU_JSM_MSG_BLOB_DEINIT_DEPRECATED);
 	IVPU_CASE_TO_STR(VPU_JSM_MSG_DYNDBG_CONTROL);
 	IVPU_CASE_TO_STR(VPU_JSM_MSG_JOB_DONE);
+	IVPU_CASE_TO_STR(VPU_JSM_MSG_NATIVE_FENCE_SIGNALLED);
 	IVPU_CASE_TO_STR(VPU_JSM_MSG_ENGINE_RESET_DONE);
 	IVPU_CASE_TO_STR(VPU_JSM_MSG_ENGINE_PREEMPT_DONE);
 	IVPU_CASE_TO_STR(VPU_JSM_MSG_REGISTER_DB_DONE);
@@ -131,7 +134,7 @@ int ivpu_jsm_get_heartbeat(struct ivpu_device *vdev, u32 engine, u64 *heartbeat)
 	struct vpu_jsm_msg resp;
 	int ret;
 
-	if (engine > VPU_ENGINE_COPY)
+	if (engine != VPU_ENGINE_COMPUTE)
 		return -EINVAL;
 
 	req.payload.query_engine_hb.engine_idx = engine;
@@ -154,15 +157,17 @@ int ivpu_jsm_reset_engine(struct ivpu_device *vdev, u32 engine)
 	struct vpu_jsm_msg resp;
 	int ret;
 
-	if (engine > VPU_ENGINE_COPY)
+	if (engine != VPU_ENGINE_COMPUTE)
 		return -EINVAL;
 
 	req.payload.engine_reset.engine_idx = engine;
 
 	ret = ivpu_ipc_send_receive(vdev, &req, VPU_JSM_MSG_ENGINE_RESET_DONE, &resp,
 				    VPU_IPC_CHAN_ASYNC_CMD, vdev->timeout.jsm);
-	if (ret)
+	if (ret) {
 		ivpu_err_ratelimited(vdev, "Failed to reset engine %d: %d\n", engine, ret);
+		ivpu_pm_trigger_recovery(vdev, "Engine reset failed");
+	}
 
 	return ret;
 }
@@ -173,7 +178,7 @@ int ivpu_jsm_preempt_engine(struct ivpu_device *vdev, u32 engine, u32 preempt_id
 	struct vpu_jsm_msg resp;
 	int ret;
 
-	if (engine > VPU_ENGINE_COPY)
+	if (engine != VPU_ENGINE_COMPUTE)
 		return -EINVAL;
 
 	req.payload.engine_preempt.engine_idx = engine;
@@ -345,15 +350,17 @@ int ivpu_jsm_hws_resume_engine(struct ivpu_device *vdev, u32 engine)
 	struct vpu_jsm_msg resp;
 	int ret;
 
-	if (engine >= VPU_ENGINE_NB)
+	if (engine != VPU_ENGINE_COMPUTE)
 		return -EINVAL;
 
 	req.payload.hws_resume_engine.engine_idx = engine;
 
 	ret = ivpu_ipc_send_receive(vdev, &req, VPU_JSM_MSG_HWS_RESUME_ENGINE_DONE, &resp,
 				    VPU_IPC_CHAN_ASYNC_CMD, vdev->timeout.jsm);
-	if (ret)
+	if (ret) {
 		ivpu_err_ratelimited(vdev, "Failed to resume engine %d: %d\n", engine, ret);
+		ivpu_pm_trigger_recovery(vdev, "Engine resume failed");
+	}
 
 	return ret;
 }
@@ -408,26 +415,18 @@ int ivpu_jsm_hws_setup_priority_bands(struct ivpu_device *vdev)
 {
 	struct vpu_jsm_msg req = { .type = VPU_JSM_MSG_SET_PRIORITY_BAND_SETUP };
 	struct vpu_jsm_msg resp;
+	struct ivpu_hw_info *hw = vdev->hw;
+	struct vpu_ipc_msg_payload_hws_priority_band_setup *setup =
+		&req.payload.hws_priority_band_setup;
 	int ret;
 
-	/* Idle */
-	req.payload.hws_priority_band_setup.grace_period[0] = 0;
-	req.payload.hws_priority_band_setup.process_grace_period[0] = 50000;
-	req.payload.hws_priority_band_setup.process_quantum[0] = 160000;
-	/* Normal */
-	req.payload.hws_priority_band_setup.grace_period[1] = 50000;
-	req.payload.hws_priority_band_setup.process_grace_period[1] = 50000;
-	req.payload.hws_priority_band_setup.process_quantum[1] = 300000;
-	/* Focus */
-	req.payload.hws_priority_band_setup.grace_period[2] = 50000;
-	req.payload.hws_priority_band_setup.process_grace_period[2] = 50000;
-	req.payload.hws_priority_band_setup.process_quantum[2] = 200000;
-	/* Realtime */
-	req.payload.hws_priority_band_setup.grace_period[3] = 0;
-	req.payload.hws_priority_band_setup.process_grace_period[3] = 50000;
-	req.payload.hws_priority_band_setup.process_quantum[3] = 200000;
-
-	req.payload.hws_priority_band_setup.normal_band_percentage = 10;
+	for (int band = VPU_JOB_SCHEDULING_PRIORITY_BAND_IDLE;
+	     band < VPU_JOB_SCHEDULING_PRIORITY_BAND_COUNT; band++) {
+		setup->grace_period[band] = hw->hws.grace_period[band];
+		setup->process_grace_period[band] = hw->hws.process_grace_period[band];
+		setup->process_quantum[band] = hw->hws.process_quantum[band];
+	}
+	setup->normal_band_percentage = 10;
 
 	ret = ivpu_ipc_send_receive_internal(vdev, &req, VPU_JSM_MSG_SET_PRIORITY_BAND_SETUP_RSP,
 					     &resp, VPU_IPC_CHAN_ASYNC_CMD, vdev->timeout.jsm);
@@ -554,4 +553,12 @@ int ivpu_jsm_dct_disable(struct ivpu_device *vdev)
 
 	return ivpu_ipc_send_receive_internal(vdev, &req, VPU_JSM_MSG_DCT_DISABLE_DONE, &resp,
 					      VPU_IPC_CHAN_ASYNC_CMD, vdev->timeout.jsm);
+}
+
+int ivpu_jsm_state_dump(struct ivpu_device *vdev)
+{
+	struct vpu_jsm_msg req = { .type = VPU_JSM_MSG_STATE_DUMP };
+
+	return ivpu_ipc_send_and_wait(vdev, &req, VPU_IPC_CHAN_ASYNC_CMD,
+				      vdev->timeout.state_dump_msg);
 }

@@ -1192,6 +1192,9 @@ struct dwc3_scratchpad_array {
  *              hibernation
  * @force_hiber_wake: flag set when the gadget driver is forcefully triggering
 		a hibernation wakeup event
+ * @wakeup_pending_funcs: Indicates whether any interface has requested for
+ *			 function wakeup in bitmap format where bit position
+ *			 represents interface_id.
  */
 struct dwc3 {
 	struct work_struct	drd_work;
@@ -1435,6 +1438,7 @@ struct dwc3 {
 	u32			*saved_regs;
 	u32			irq_wakeup;
 	bool			force_hiber_wake;
+	u32			wakeup_pending_funcs;
 };
 
 #define INCRX_BURST_MODE 0
@@ -1599,7 +1603,7 @@ struct dwc3_gadget_ep_cmd_params {
 #define DWC3_HAS_OTG			BIT(3)
 
 /* prototypes */
-void dwc3_set_prtcap(struct dwc3 *dwc, u32 mode);
+void dwc3_set_prtcap(struct dwc3 *dwc, u32 mode, bool ignore_susphy);
 void dwc3_set_mode(struct dwc3 *dwc, u32 mode);
 u32 dwc3_core_fifo_space(struct dwc3_ep *dep, u8 type);
 

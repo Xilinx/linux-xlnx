@@ -95,6 +95,12 @@ struct v3d_perfmon {
 	u64 values[] __counted_by(ncounters);
 };
 
+enum v3d_irq {
+	V3D_CORE_IRQ,
+	V3D_HUB_IRQ,
+	V3D_MAX_IRQS,
+};
+
 struct v3d_dev {
 	struct drm_device drm;
 
@@ -105,6 +111,8 @@ struct v3d_dev {
 	int rev;
 
 	bool single_irq_line;
+
+	int irq[V3D_MAX_IRQS];
 
 	struct v3d_perfmon_info perfmon_info;
 

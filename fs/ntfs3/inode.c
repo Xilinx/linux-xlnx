@@ -410,6 +410,9 @@ end_enum:
 	if (!std5)
 		goto out;
 
+	if (is_bad_inode(inode))
+		goto out;
+
 	if (!is_match && name) {
 		err = -ENOENT;
 		goto out;
@@ -799,6 +802,10 @@ static ssize_t ntfs_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 
 	if (is_resident(ni)) {
 		/* Switch to buffered write. */
+		ret = 0;
+		goto out;
+	}
+	if (is_compressed(ni)) {
 		ret = 0;
 		goto out;
 	}
@@ -2105,5 +2112,6 @@ const struct address_space_operations ntfs_aops_cmpr = {
 	.read_folio	= ntfs_read_folio,
 	.readahead	= ntfs_readahead,
 	.dirty_folio	= block_dirty_folio,
+	.direct_IO	= ntfs_direct_IO,
 };
 // clang-format on
