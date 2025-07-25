@@ -54,6 +54,10 @@ properties:
     $ref: /schemas/types.yaml#/definitions/uint32
     enum: [10, 12]
 
+  xlnx,dyn-bpc:
+    description: Whether the Dynamic BPC feature is enabled or not in the design.
+    type: boolean
+
   xlnx,include-edh:
     description: Whether the EDH processor is enabled or not in the design.
     type: boolean
@@ -127,6 +131,7 @@ examples:
         clock-names = "s_axi_aclk", "sdi_rx_clk", "video_out_clk";
         interrupts = <0 89 4>;
         xlnx,bpp = <10>;
+        xlnx,dyn-bpc;
         xlnx,include-edh;
         xlnx,line-rate = "12G_SDI_8DS";
         ports {
