@@ -3,6 +3,7 @@
  * Xilinx SDI Rx Subsystem
  *
  * Copyright (C) 2017 Xilinx, Inc.
+ * Copyright (C) 2025, Advanced Micro Devices, Inc. All rights reserved.
  *
  * Contacts: Vishal Sagar <vsagar@xilinx.com>
  *
@@ -88,6 +89,12 @@
 #define XSDIRX_MDL_CTRL_MODE_12GI_EN_MASK	BIT(12)
 #define XSDIRX_MDL_CTRL_MODE_12GF_EN_MASK	BIT(13)
 #define XSDIRX_MDL_CTRL_MODE_AUTO_DET_MASK	GENMASK(13, 8)
+/* Dynamic BPC mode set bits */
+#define XSDIRX_MDL_CTRL_MODE_DYNAMIC_BPC_MASK	GENMASK(15, 14)
+/* Dynamic BPC: set 14th bit for 10-bit mode */
+#define XSDIRX_MDL_CTRL_MODE_10B_DYNAMIC_BPC_MASK	BIT(14)
+/* Dynamic BPC: set 15th bit for 12-bit mode */
+#define XSDIRX_MDL_CTRL_MODE_12B_DYNAMIC_BPC_MASK	BIT(15)
 
 #define XSDIRX_MDL_CTRL_FORCED_MODE_OFFSET	16
 #define XSDIRX_MDL_CTRL_FORCED_MODE_MASK	GENMASK(18, 16)
@@ -305,6 +312,7 @@ enum sdi_family_enc {
  * @iomem: Base address of subsystem
  * @irq: requested irq number
  * @include_edh: EDH processor presence
+ * @dynamic_bpc: holds if dynamic bpc is enabled or disabled
  * @mode: 3G/6G/12G mode
  * @clks: array of clocks
  * @num_clks: number of clocks
@@ -317,6 +325,7 @@ struct xsdirxss_core {
 	void __iomem *iomem;
 	int irq;
 	bool include_edh;
+	bool dynamic_bpc;
 	int mode;
 	struct clk_bulk_data *clks;
 	int num_clks;
@@ -1087,7 +1096,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 	struct xsdirxss_core *core = &state->core;
 	u32 mode, payload = 0, val, family, valid, tscan;
 	u8 byte1 = 0, active_luma = 0, pic_type = 0, framerate = 0;
-	u8 sampling = XST352_BYTE3_COLOR_FORMAT_422;
+	u8 sampling = XST352_BYTE3_COLOR_FORMAT_422, stream_bpc = 0;
 	struct v4l2_mbus_framefmt *format = &state->format;
 	u32 bpc = XST352_BYTE4_BIT_DEPTH_10;
 	u8 is_3GB;
@@ -1128,11 +1137,32 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 				XSDIRX_TS_DET_STAT_SCAN_OFFSET;
 	}
 
-	if ((bpc == XST352_BYTE4_BIT_DEPTH_10 && core->bpc != 10) ||
-	    (bpc == XST352_BYTE4_BIT_DEPTH_12 && core->bpc != 12)) {
-		dev_dbg(core->dev, "Bit depth not supported. bpc = %d core->bpc = %d\n",
-			bpc, core->bpc);
+	if (bpc == XST352_BYTE4_BIT_DEPTH_10) {
+		stream_bpc = 10;
+	} else if (bpc == XST352_BYTE4_BIT_DEPTH_12) {
+		stream_bpc = 12;
+	} else {
+		dev_err(core->dev, "Unsupported BPC value: 0x%x\n", bpc);
 		return -EINVAL;
+	}
+	/* The Dynamic BPC support in SDI Rx  */
+	if (stream_bpc != core->bpc) {
+		if (core->dynamic_bpc) {
+			u32 ctlregval = xsdirxss_read(core, XSDIRX_MDL_CTRL_REG);
+
+			ctlregval &= ~XSDIRX_MDL_CTRL_MODE_DYNAMIC_BPC_MASK;
+			if (bpc == XST352_BYTE4_BIT_DEPTH_10) {
+				ctlregval |= XSDIRX_MDL_CTRL_MODE_10B_DYNAMIC_BPC_MASK;
+				xsdirxss_write(core, XSDIRX_MDL_CTRL_REG, ctlregval);
+			} else if (bpc == XST352_BYTE4_BIT_DEPTH_12) {
+				ctlregval |= XSDIRX_MDL_CTRL_MODE_12B_DYNAMIC_BPC_MASK;
+				xsdirxss_write(core, XSDIRX_MDL_CTRL_REG, ctlregval);
+			}
+		} else {
+			dev_dbg(core->dev, "Bit depth not supported. stream bpc = %d core->bpc = %d\n",
+				stream_bpc, core->bpc);
+			return -EINVAL;
+		}
 	}
 
 	family = (val & XSDIRX_TS_DET_STAT_FAMILY_MASK) >>
@@ -2431,6 +2461,10 @@ static int xsdirxss_parse_of(struct xsdirxss_state *xsdirxss)
 	core->include_edh = of_property_read_bool(node, "xlnx,include-edh");
 	dev_dbg(core->dev, "EDH property = %s\n",
 		core->include_edh ? "Present" : "Absent");
+
+	core->dynamic_bpc = of_property_read_bool(node, "xlnx,dyn-bpc");
+	dev_dbg(core->dev, "Dynamic BPC property = %s\n",
+		core->dynamic_bpc ? "Present" : "Absent");
 
 	ret = of_property_read_string(node, "xlnx,line-rate", &sdi_std);
 	if (ret < 0) {
