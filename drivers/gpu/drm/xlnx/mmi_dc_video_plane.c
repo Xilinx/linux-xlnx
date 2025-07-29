@@ -569,7 +569,7 @@ static void mmi_dc_video_plane_reset(struct mmi_dc_plane *plane)
  * DC Plane Interface Overrides
  */
 
-static void mmi_dc_primary_plane_update(struct mmi_dc_plane *plane,
+static void mmi_dc_overlay_plane_update(struct mmi_dc_plane *plane,
 					struct drm_atomic_state *state)
 {
 	struct drm_plane_state *plane_state =
@@ -579,7 +579,7 @@ static void mmi_dc_primary_plane_update(struct mmi_dc_plane *plane,
 	mmi_dc_video_plane_update(plane, state);
 }
 
-static void mmi_dc_primary_plane_disable(struct mmi_dc_plane *plane)
+static void mmi_dc_overlay_plane_disable(struct mmi_dc_plane *plane)
 {
 	mmi_dc_video_plane_disable(plane);
 	mmi_dc_set_global_alpha(plane->dc, 0, false);
@@ -645,11 +645,6 @@ struct mmi_dc_plane *mmi_dc_create_primary_plane(struct mmi_dc *dc,
 	if (IS_ERR(plane))
 		return (void *)plane;
 
-	drm_plane_create_alpha_property(&plane->base.base);
-
-	plane->base.funcs.update = mmi_dc_primary_plane_update;
-	plane->base.funcs.disable = mmi_dc_primary_plane_disable;
-
 	return &plane->base;
 }
 
@@ -670,6 +665,11 @@ struct mmi_dc_plane *mmi_dc_create_overlay_plane(struct mmi_dc *dc,
 
 	if (IS_ERR(plane))
 		return (void *)plane;
+
+	drm_plane_create_alpha_property(&plane->base.base);
+
+	plane->base.funcs.update = mmi_dc_overlay_plane_update;
+	plane->base.funcs.disable = mmi_dc_overlay_plane_disable;
 
 	return  &plane->base;
 }

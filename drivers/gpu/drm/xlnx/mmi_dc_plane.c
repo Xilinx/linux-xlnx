@@ -85,7 +85,7 @@ const struct drm_plane_funcs mmi_dc_drm_plane_funcs = {
  */
 struct drm_plane *mmi_dc_plane_get_primary(struct mmi_dc *dc)
 {
-	return &dc->planes[MMI_DC_PLANE1]->base;
+	return &dc->planes[MMI_DC_PLANE0]->base;
 }
 
 /**
@@ -124,8 +124,8 @@ int mmi_dc_create_planes(struct mmi_dc *dc, struct drm_device *drm)
 	static struct mmi_dc_plane *(*factory[])(struct mmi_dc *dc,
 						 struct drm_device *drm,
 						 enum mmi_dc_plane_id id) = {
-		[MMI_DC_PLANE0] = mmi_dc_create_overlay_plane,
-		[MMI_DC_PLANE1] = mmi_dc_create_primary_plane,
+		[MMI_DC_PLANE0] = mmi_dc_create_primary_plane,
+		[MMI_DC_PLANE1] = mmi_dc_create_overlay_plane,
 		[MMI_DC_CURSOR] = mmi_dc_create_cursor_plane,
 	};
 	unsigned int i;
