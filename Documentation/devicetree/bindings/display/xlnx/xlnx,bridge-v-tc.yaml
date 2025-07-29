@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/display/xlnx/xlnx,bridge-v-tc.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx Video Timing Controller(VTC)
+
+maintainers:
+  - Gugulothu Rajesh <rajesh.gugulothu@amd.com>
+
+description:
+  Xilinx VTC is a general purpose video timing generator and detector.
+  The input side of this core automatically detects horizontal and
+  vertical synchronization, pulses, polarity, blanking timing and active pixels.
+  While on the output, it generates the horizontal and vertical blanking and
+  synchronization pulses used with a standard video system including support
+  for programmable pulse polarity. The core is commonly used with Video in to
+  AXI4-Stream core to detect the format and timing of incoming video data or
+  with AXI4-Stream to Video out core to generate outgoing video timing for
+  downstream sinks like a video monitor.
+
+properties:
+  compatible:
+    const: xlnx,bridge-v-tc-6.1
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    description: List of clock specifiers
+    items:
+      - description: AXI Lite clock
+      - description: Video clock
+
+  clock-names:
+    items:
+      - const: s_axi_aclk
+      - const: clk
+
+  xlnx,pixels-per-clock:
+    description: This denotes pixels per clock of the stream.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [1, 2, 4]
+
+required:
+  - reg
+  - clocks
+  - clock-names
+  - xlnx,pixels-per-clock
+
+additionalProperties: false
+
+examples:
+  - |
+        v-tc@80030000 {
+            compatible = "xlnx,bridge-v-tc-6.1";
+            reg = <0x80030000 0x10000>;
+            clock-names = "s_axi_aclk", "clk";
+            clocks = <&misc_clk_0>, <&misc_clk_1>;
+            xlnx,pixels-per-clock = <2>;
+        };
