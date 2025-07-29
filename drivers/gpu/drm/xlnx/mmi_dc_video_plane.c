@@ -54,6 +54,18 @@
 #define MMI_DC_AV_BUF_VID_STREAM_SEL_NONE(layer)	(0x0003 << 2 * (layer))
 #define MMI_DC_AV_BUF_8BIT_SF				(0x00010101)
 
+/* Crop & Position (Partial Blend) Registers */
+#define MMI_DC_PB_CONTROL				(0x0c3c)
+#define MMI_DC_PB_SIZE					(0x0c40)
+#define MMI_DC_PB_OFFSET				(0x0c44)
+
+#define MMI_DC_PB_ENABLE				BIT(28)
+#define MMI_DC_PB_TRIGGER				BIT(29)
+#define MMI_DC_PB_X_SHIFT				(0)
+#define MMI_DC_PB_Y_SHIFT				(14)
+#define MMI_DC_PB_X_MASK				GENMASK(13, 0)
+#define MMI_DC_PB_Y_MASK				GENMASK(27, 14)
+
 /* ----------------------------------------------------------------------------
  * DC Video Plane Misc Defines
  */
@@ -298,6 +310,78 @@ static void mmi_dc_avbuf_plane_disable(struct mmi_dc_video_plane *plane)
 }
 
 /* ----------------------------------------------------------------------------
+ * DC Plane Cropping and Positioning Ops
+ */
+
+/**
+ * mmi_dc_pb_plane_disable - Disable DC partial blending for the given plane
+ * @plane: DC video plane
+ */
+static void mmi_dc_pb_plane_disable(struct mmi_dc_video_plane *plane)
+{
+	struct mmi_dc *dc = plane->base.dc;
+
+	dc_write_misc(dc, MMI_DC_PB_CONTROL, MMI_DC_PB_TRIGGER);
+}
+
+/**
+ * mmi_dc_pb_plane_enable - Enable DC partial blending for the given plane
+ * @plane: DC video plane
+ */
+static void mmi_dc_pb_plane_enable(struct mmi_dc_video_plane *plane)
+{
+	struct mmi_dc *dc = plane->base.dc;
+	u32 val = dc_read_misc(dc, MMI_DC_PB_CONTROL);
+
+	val |= MMI_DC_PB_ENABLE | MMI_DC_PB_TRIGGER;
+	dc_write_misc(dc, MMI_DC_PB_CONTROL, val);
+}
+
+/**
+ * mmi_dc_pb_plane_move - Move the plane
+ * @plane: DC video plane
+ * @x: horizontal plane offset
+ * @y: vertical plane offset
+ */
+static void mmi_dc_pb_plane_move(struct mmi_dc_video_plane *plane,
+				 u32 x, u32 y)
+{
+	struct mmi_dc *dc = plane->base.dc;
+	u32 val = dc_read_misc(dc, MMI_DC_PB_CONTROL);
+
+	val &= ~(MMI_DC_PB_X_MASK | MMI_DC_PB_Y_MASK);
+	val |= x << MMI_DC_PB_X_SHIFT & MMI_DC_PB_X_MASK;
+	val |= y << MMI_DC_PB_Y_SHIFT & MMI_DC_PB_Y_MASK;
+	dc_write_misc(dc, MMI_DC_PB_CONTROL, val);
+}
+
+/**
+ * mmi_dc_pb_plane_crop - Crop the plane
+ * @plane: DC video plane
+ * @x: left coordinate of the plane cropping rectangle
+ * @y: top coordinate of the plane cropping rectangle
+ * @w: width of the plane cropping rectangle
+ * @h: height of the plane cropping rectangle
+ */
+static void mmi_dc_pb_plane_crop(struct mmi_dc_video_plane *plane,
+				 u32 x, u32 y, u32 w, u32 h)
+{
+	struct mmi_dc *dc = plane->base.dc;
+	u32 val = dc_read_misc(dc, MMI_DC_PB_OFFSET);
+
+	val &= ~(MMI_DC_PB_X_MASK | MMI_DC_PB_Y_MASK);
+	val |= x << MMI_DC_PB_X_SHIFT & MMI_DC_PB_X_MASK;
+	val |= y << MMI_DC_PB_Y_SHIFT & MMI_DC_PB_Y_MASK;
+	dc_write_misc(dc, MMI_DC_PB_OFFSET, val);
+
+	val = dc_read_misc(dc, MMI_DC_PB_SIZE);
+	val &= ~(MMI_DC_PB_X_MASK | MMI_DC_PB_Y_MASK);
+	val |= w << MMI_DC_PB_X_SHIFT & MMI_DC_PB_X_MASK;
+	val |= h << MMI_DC_PB_Y_SHIFT & MMI_DC_PB_Y_MASK;
+	dc_write_misc(dc, MMI_DC_PB_SIZE, val);
+}
+
+/* ----------------------------------------------------------------------------
  * DC Video Plane Utils
  */
 
@@ -388,8 +472,8 @@ static void mmi_dc_video_plane_submit_dma(struct mmi_dc_video_plane *plane,
 	unsigned int i;
 
 	for (i = 0; i < info->num_planes; ++i) {
-		size_t width = state->crtc_w / (i ? info->hsub : 1);
-		size_t height = state->crtc_h / (i ? info->vsub : 1);
+		size_t width = state->fb->width / (i ? info->hsub : 1);
+		size_t height = state->fb->height / (i ? info->vsub : 1);
 		size_t pitch = state->fb->pitches[i];
 		size_t size = width * info->cpp[i];
 		struct mmi_dc_dma_chan *dma_chan = plane->dmas[i];
@@ -487,6 +571,37 @@ mmi_dc_drm_video_plane_create(struct drm_device *drm,
 	return plane;
 }
 
+/**
+ * mmi_dc_video_plane_check_fb_state - Check FB and generic plane state.
+ * @plane: video plane
+ * @state: DRM atomic state to validate
+ * @can_position: can this plane be repositioned on the screen?
+ *
+ * Return: 0 if all checks passed, error code otherwise.
+ */
+static int mmi_dc_video_plane_check_fb_state(struct mmi_dc_plane *plane,
+					     struct drm_atomic_state *state,
+					     bool can_position)
+{
+	struct drm_plane_state *plane_state =
+		drm_atomic_get_new_plane_state(state, &plane->base);
+	struct drm_crtc_state *crtc_state =
+		drm_atomic_get_crtc_state(state, plane_state->crtc);
+
+	if (IS_ERR(crtc_state))
+		return PTR_ERR(crtc_state);
+
+	if (plane_state->fb &&
+	    (plane_state->fb->width != crtc_state->adjusted_mode.hdisplay ||
+	     plane_state->fb->height != crtc_state->adjusted_mode.vdisplay))
+		return -EINVAL;
+
+	return drm_atomic_helper_check_plane_state(plane_state, crtc_state,
+						   DRM_PLANE_NO_SCALING,
+						   DRM_PLANE_NO_SCALING,
+						   can_position, false);
+}
+
 /* ----------------------------------------------------------------------------
  * DC Plane Interface Implementation
  */
@@ -501,18 +616,7 @@ static void mmi_dc_video_plane_destroy(struct mmi_dc_plane *plane)
 static int mmi_dc_video_plane_check(struct mmi_dc_plane *plane,
 				    struct drm_atomic_state *state)
 {
-	struct drm_plane_state *plane_state =
-		drm_atomic_get_new_plane_state(state, &plane->base);
-	struct drm_crtc_state *crtc_state =
-		drm_atomic_get_crtc_state(state, plane_state->crtc);
-
-	if (IS_ERR(crtc_state))
-		return PTR_ERR(crtc_state);
-
-	return drm_atomic_helper_check_plane_state(plane_state, crtc_state,
-						   DRM_PLANE_NO_SCALING,
-						   DRM_PLANE_NO_SCALING,
-						   false, false);
+	return mmi_dc_video_plane_check_fb_state(plane, state, false);
 }
 
 static void mmi_dc_video_plane_update(struct mmi_dc_plane *plane,
@@ -569,19 +673,44 @@ static void mmi_dc_video_plane_reset(struct mmi_dc_plane *plane)
  * DC Plane Interface Overrides
  */
 
-static void mmi_dc_overlay_plane_update(struct mmi_dc_plane *plane,
-					struct drm_atomic_state *state)
+static int mmi_dc_overlay_plane_check(struct mmi_dc_plane *plane,
+				      struct drm_atomic_state *state)
 {
 	struct drm_plane_state *plane_state =
 		drm_atomic_get_new_plane_state(state, &plane->base);
 
+	if (plane_state->crtc_x < 0 || plane_state->crtc_y < 0)
+		return -EINVAL;
+
+	return mmi_dc_video_plane_check_fb_state(plane, state, true);
+}
+
+static void mmi_dc_overlay_plane_update(struct mmi_dc_plane *plane,
+					struct drm_atomic_state *state)
+{
+	struct mmi_dc_video_plane *video_plane = to_video_plane(plane);
+	struct drm_plane_state *plane_state =
+		drm_atomic_get_new_plane_state(state, &plane->base);
+	u32 src_x = plane_state->src.x1 >> 16;
+	u32 src_y = plane_state->src.y1 >> 16;
+	u32 src_w = drm_rect_width(&plane_state->src) >> 16;
+	u32 src_h = drm_rect_height(&plane_state->src) >> 16;
+	u32 dst_x = plane_state->dst.x1;
+	u32 dst_y = plane_state->dst.y1;
+
 	mmi_dc_set_global_alpha(plane->dc, plane_state->alpha >> 8, true);
+	mmi_dc_pb_plane_crop(video_plane, src_x, src_y, src_w, src_h);
+	mmi_dc_pb_plane_move(video_plane, dst_x, dst_y);
+	mmi_dc_pb_plane_enable(video_plane);
 	mmi_dc_video_plane_update(plane, state);
 }
 
 static void mmi_dc_overlay_plane_disable(struct mmi_dc_plane *plane)
 {
+	struct mmi_dc_video_plane *video_plane = to_video_plane(plane);
+
 	mmi_dc_video_plane_disable(plane);
+	mmi_dc_pb_plane_disable(video_plane);
 	mmi_dc_set_global_alpha(plane->dc, 0, false);
 }
 
@@ -668,6 +797,7 @@ struct mmi_dc_plane *mmi_dc_create_overlay_plane(struct mmi_dc *dc,
 
 	drm_plane_create_alpha_property(&plane->base.base);
 
+	plane->base.funcs.check = mmi_dc_overlay_plane_check;
 	plane->base.funcs.update = mmi_dc_overlay_plane_update;
 	plane->base.funcs.disable = mmi_dc_overlay_plane_disable;
 
