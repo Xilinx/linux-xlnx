@@ -43,6 +43,10 @@ properties:
     $ref: /schemas/types.yaml#/definitions/uint32
     enum: [1, 2, 4]
 
+  xlnx,arbitrary-res-en:
+    description: Enable arbitrary resolution mode.
+    type: boolean
+
 required:
   - reg
   - clocks
@@ -59,4 +63,5 @@ examples:
             clock-names = "s_axi_aclk", "clk";
             clocks = <&misc_clk_0>, <&misc_clk_1>;
             xlnx,pixels-per-clock = <2>;
+            xlnx,arbitrary-res-en;
         };
