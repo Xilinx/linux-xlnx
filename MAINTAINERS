@@ -25812,6 +25812,13 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/display/xlnx/xlnx,vpss-csc.yaml
 F:	drivers/gpu/drm/xlnx/xlnx_csc.c
 
+XLNX BRIDGE VTC DRIVER
+M:	Rajesh Gugulothu <rajesh.gugulothu@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/display/xlnx/xlnx,bridge-v-tc.yaml
+F:	drivers/gpu/drm/xlnx/xlnx_vtc.c
+
 XILINX VPSS BRIDGE SCALER DRIVER
 M:	Kunal Rane <kunal.rane@amd.com>
 L:	git@amd.com
