@@ -424,9 +424,7 @@ again:
 	}
 	if (type & AIE_PART_INIT_OPT_HANDSHAKE) {
 		struct aie_op_handshake *op;
-		struct aie_op_handshake_data *hs_data = data;
-		void *hs_va;
-		dma_addr_t hs_dma;
+		struct aie_op_handshake_addr *hs_addr = data;
 
 		if (check_add_overflow(pm_ops->offset, sizeof(*op), &end) ||
 		    end >= pm_ops->size) {
@@ -436,32 +434,17 @@ again:
 			goto again;
 		}
 
-		if (virt_addr_valid(hs_data->addr)) {
-			hs_va = dmam_alloc_coherent(&apart->dev, hs_data->size, &hs_dma,
-						    GFP_KERNEL);
-			if (!hs_va)
-				return -ENOMEM;
-			memcpy(hs_va, hs_data->addr, hs_data->size);
-
-		} else {
-			hs_va = hs_data->addr;
-			hs_dma = dma_map_single(&apart->dev, hs_va, hs_data->size, DMA_TO_DEVICE);
-			if (dma_mapping_error(&apart->dev, hs_dma))
-				return -ENOMEM;
-			dma_sync_single_for_device(&apart->dev, hs_dma, hs_data->size,
-						   DMA_TO_DEVICE);
-		}
-
 		type &= ~AIE_PART_INIT_OPT_HANDSHAKE;
 		op = pm_ops->pkt_va + pm_ops->offset;
 		pm_ops->offset += sizeof(*op);
 		op->type = XILINX_AIE_OPS_HANDSHAKE;
-		op->len = sizeof(*op) + hs_data->size;
-		op->low_addr = hs_dma & 0xFFFFFFFFULL;
-		op->high_addr = hs_dma >> 32;
-		ret = aie_part_pm_ops_flush(apart);
-		if (virt_addr_valid(hs_data->addr))
-			dmam_free_coherent(&apart->dev, hs_data->size, hs_va, hs_dma);
+		op->len = sizeof(*op) + hs_addr->size;
+		op->offset = hs_addr->offset;
+		op->low_addr = hs_addr->hs_dma & 0xFFFFFFFFULL;
+		op->high_addr = hs_addr->hs_dma >> 32;
+		if (flush)
+			ret = aie_part_pm_ops_flush(apart);
+
 		if (ret)
 			return ret;
 		goto again;

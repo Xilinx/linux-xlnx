@@ -700,6 +700,115 @@ static int aie2ps_part_set_l2_irq(struct aie_partition *apart)
 	return ret;
 }
 
+int aie2ps_part_write_handshake(struct aie_partition *apart,
+				struct aie_op_handshake_data *data,
+				uint32_t handshake_cols)
+
+{
+	int ret = 0, uc_priv = AIE_MEM_MAX + AIE_UC_PRIVATE_DATA_MEM;
+	struct aie_op_handshake_addr *hs_addr;
+	struct aie_part_mem *pmem = apart->pmems;
+	struct aie_op_handshake_data *hs_data;
+	struct aie_range range = {0};
+	size_t hs_addr_end;
+	bool flush = false;
+
+	hs_addr = kmalloc_array(handshake_cols,
+				sizeof(struct aie_op_handshake_addr),
+				GFP_KERNEL);
+	if (!hs_addr)
+		return -ENOMEM;
+
+	for (u32 i = 0; i < handshake_cols; i++) {
+		hs_data = &data[i];
+		hs_addr[i].size = hs_data->size;
+		hs_addr[i].offset = hs_data->offset;
+
+		if (check_add_overflow(hs_addr[i].offset, hs_addr[i].size, &hs_addr_end) ||
+		    hs_addr_end >= pmem[uc_priv].mem.size) {
+			dev_err(&apart->dev,
+				"offset 0x%zx, 0x%zx out of bound\n",
+				hs_addr[i].offset, hs_addr[i].size);
+			ret = -EINVAL;
+			goto out;
+		}
+
+		if (aie_validate_location(apart, hs_data->loc)) {
+			dev_err(&apart->dev,
+				"Invalid (%d,%d) out of part(%d,%d)\n",
+				hs_data->loc.col, hs_data->loc.row,
+				apart->range.size.col, apart->range.size.row);
+			ret = -EINVAL;
+			goto out;
+		}
+
+		range.start.col = hs_data->loc.col + apart->range.start.col;
+		range.size.col = 1U;
+
+		if (virt_addr_valid(hs_data->addr)) {
+			hs_addr[i].hs_va = dmam_alloc_coherent(&apart->dev,
+							       hs_data->size,
+							       &hs_addr[i].hs_dma,
+							       GFP_KERNEL);
+			if (!hs_addr[i].hs_va) {
+				ret = -ENOMEM;
+				goto clear;
+			}
+			memcpy(hs_addr[i].hs_va, hs_data->addr, hs_data->size);
+		} else {
+			hs_addr[i].hs_va = hs_data->addr;
+			hs_addr[i].hs_dma = dma_map_single(&apart->dev,
+							   hs_addr[i].hs_va,
+							   hs_data->size,
+							   DMA_TO_DEVICE);
+			if (dma_mapping_error(&apart->dev, hs_addr[i].hs_dma)) {
+				ret = -ENOMEM;
+				goto clear;
+			}
+
+			dma_sync_single_for_device(&apart->dev,
+						   hs_addr[i].hs_dma,
+						   hs_data->size,
+						   DMA_TO_DEVICE);
+		}
+
+		flush = ((i + 1) == handshake_cols) ? true : false;
+		ret = aie_part_pm_ops(apart, &hs_addr[i],
+				      AIE_PART_INIT_OPT_HANDSHAKE, range,
+				      flush);
+		if (ret) {
+			dev_err(&apart->dev,
+				"handshake region write failed in col %d",
+				hs_data->loc.col);
+			ret = -EFAULT;
+			goto clear;
+		}
+	}
+
+clear:
+	/*
+	 * The dma buffer is either unmapped/freed depending on the input
+	 * address after the handshake data is copied using DMA
+	 * to the handshake region.
+	 */
+	for (u32 i = 0; i < handshake_cols; i++) {
+		hs_data = &data[i];
+
+		if (hs_addr[i].hs_va)	{
+			if (virt_addr_valid(hs_data->addr))
+				dmam_free_coherent(&apart->dev, hs_data->size,
+						   hs_addr[i].hs_va, hs_addr[i].hs_dma);
+			else
+				dma_unmap_single(&apart->dev, hs_addr[i].hs_dma,
+						 hs_data->size, DMA_TO_DEVICE);
+		}
+	}
+
+out:
+	kfree(hs_addr);
+	return ret;
+}
+
 int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_init_args *args)
 {
 	u32 opts;
@@ -822,13 +931,15 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 		goto out;
 
 	if (args->init_opts & AIE_PART_INIT_OPT_HANDSHAKE) {
-		struct aie_op_handshake_data data = {
-			.addr = args->handshake,
-			.size = args->handshake_size
-		};
+		if (!args->handshake || args->handshake_cols < 1U) {
+			dev_err(&apart->dev, "failed to write handshake region!\n");
+			goto out;
+		}
 
 		opts |= AIE_PART_INIT_OPT_HANDSHAKE;
-		ret = aie_part_pm_ops(apart, &data, AIE_PART_INIT_OPT_HANDSHAKE, apart->range, 1);
+		ret = aie2ps_part_write_handshake(apart, args->handshake,
+						  args->handshake_cols);
+
 		if (ret)
 			goto out;
 	}

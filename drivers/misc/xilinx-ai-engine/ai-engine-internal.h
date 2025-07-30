@@ -234,6 +234,18 @@ enum aie_uc_mem_type {
 };
 
 /*
+ * Macro for AI engine memory type.
+ * To access the uc memories in partition memory,
+ * AIE_MEM_MAX can be added to the uc mem type.
+ */
+enum aie_memory_type {
+	AIE_TILE_DATA_MEM,
+	AIE_TILE_PROG_MEM,
+	AIE_MEMTILE_DATA_MEM,
+	AIE_MEM_MAX
+};
+
+/*
  * enum aie_shim_switch_type - identifies different switches in shim tile.
  */
 enum aie_shim_switch_type {
@@ -1245,14 +1257,10 @@ struct aie_op_uc_zeroisation {
 	u16 flag;         /* Value to be written to the uc zeroization register */
 } __aligned(4);
 
-struct aie_op_handshake_data {
-	void *addr;
-	size_t size;
-};
-
 struct aie_op_handshake {
 	u16 type;         /* Operation Type */
 	u16 len;          /* Operation struct length*/
+	u32 offset;	  /* Handshake region offset */
 	u32 high_addr; /* physical address of the buffer that has handshake data */
 	u32 low_addr;
 } __aligned(4);
@@ -1297,6 +1305,13 @@ struct aie_pm_ops {
 	size_t size;
 	size_t offset;
 	struct aie_op_start_num_col *op_range;
+};
+
+struct aie_op_handshake_addr {
+	void *hs_va;
+	size_t size;
+	size_t offset;
+	dma_addr_t hs_dma;
 };
 
 /**
@@ -1801,5 +1816,9 @@ int aie_part_maskpoll_register(struct aie_partition *apart, u32 offset, u32 data
 			       u32 timeout);
 int aie_partition_uc_zeroize_mem(struct device *dev, struct aie_location *loc, u32 regval);
 int aie_error_handling_init(struct aie_partition *apart);
+int aie2ps_part_write_handshake(struct aie_partition *apart,
+				struct aie_op_handshake_data *data,
+				uint32_t handshake_cols);
+
 
 #endif /* AIE_INTERNAL_H */

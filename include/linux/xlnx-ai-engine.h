@@ -161,6 +161,9 @@ int aie_partition_write(struct device *dev, struct aie_location loc,
 int aie_partition_uc_wakeup(struct device *dev, struct aie_location *loc);
 int aie_partition_initialize(struct device *dev, struct aie_partition_init_args *args);
 int aie_partition_teardown(struct device *dev);
+int aie_partition_handshake_update(struct device *dev,
+				   struct aie_op_handshake_data *handshake,
+				   uint32_t handshake_cols);
 /**
  * aie_get_error_category() - Get the category of an AIE error
  * @err: AI engine hardware error
