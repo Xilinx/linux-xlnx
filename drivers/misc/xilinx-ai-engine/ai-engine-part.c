@@ -1481,14 +1481,12 @@ static int aie_apart_load_uc_phdr(struct aie_partition *apart,
 		ttype = apart->adev->ops->get_tile_type(apart->adev, &loc);
 		if (ttype != AIE_TILE_TYPE_SHIMNOC)
 			continue;
-
 		offset = aie_cal_regoff(adev, loc, tile_addr);
 		ret = aie_part_write_register(apart, offset, addrlen->len, addrlen->addr, 0);
 		if (ret < 0) {
 			dev_err(&apart->dev, "failed to load cert.\n");
 			return ret;
 		}
-
 	}
 
 	return 0;
@@ -1545,7 +1543,6 @@ int aie_load_cert(struct device *dev, unsigned char *elf_addr)
 		default:
 			continue;
 		}
-
 		/* ignore uninitialized sections, as zeroize already initializes to zero */
 		if (!phdr->p_filesz)
 			continue;
@@ -1561,3 +1558,34 @@ int aie_load_cert(struct device *dev, unsigned char *elf_addr)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(aie_load_cert);
+
+/**
+ * aie_partition_handshake_update() - loads cert in program memory of uc in shim tile.
+ * @dev: AI Engine partition device
+ * @handshake: struct with the handshake write info.
+ * @return: 0 on success, negative value on failure.
+ */
+int aie_partition_handshake_update(struct device *dev,
+				   struct aie_op_handshake_data *handshake,
+				   uint32_t handshake_cols)
+{
+	struct aie_partition *apart;
+	int ret;
+
+	if (!dev || !handshake || !handshake_cols)
+		return -EINVAL;
+
+	apart = dev_to_aiepart(dev);
+	if (!apart)
+		return -EINVAL;
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+
+	ret = aie2ps_part_write_handshake(apart, handshake, handshake_cols);
+
+	mutex_unlock(&apart->mlock);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(aie_partition_handshake_update);

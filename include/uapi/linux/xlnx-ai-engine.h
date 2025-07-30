@@ -256,6 +256,19 @@ struct aie_partition_req {
 };
 
 /**
+ * struct aie_op_handshake_data - AI engine uc handshake region information
+ * @addr: handshake data address from where the data needs to be copied.
+ * @size: handshake data size.
+ * @offset: offset for handshake region update.
+ */
+struct aie_op_handshake_data {
+	void *addr;
+	size_t size;
+	size_t offset;
+	struct aie_location loc;
+};
+
+/**
  * struct aie_partition_init_args - AIE partition initialization arguments
  * @locs: Allocated array of tile locations that will be used
  * @num_tiles: Number of tiles to use
@@ -269,8 +282,8 @@ struct aie_partition_init_args {
 	__u32 num_tiles;
 	__u32 init_opts;
 	__u32 ecc_scrub;
-	__u32 *handshake;
-	__u32 handshake_size;
+	__u32 handshake_cols;
+	struct aie_op_handshake_data *handshake;
 };
 
 /*
