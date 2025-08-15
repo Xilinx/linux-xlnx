@@ -36,6 +36,9 @@ ssize_t aie_aperture_show_hardware_info(struct device *dev,
 	case AIE_DEVICE_GEN_AIEML:
 		len += scnprintf(&buffer[len], max(0L, size - len), "aieml\n");
 		break;
+	case AIE_DEVICE_GEN_AIE2PS:
+		len += scnprintf(&buffer[len], max(0L, size - len), "aie2ps\n");
+		break;
 	default:
 		len += scnprintf(&buffer[len], max(0L, size - len),
 				 "invalid\n");
