@@ -471,6 +471,7 @@ struct aie_bd_aieml_dim_attr {
  * @use_next: buffer descriptor use next bd field attributes
  * @addr: buffer descriptor address attributes
  * @addr_2: buffer descriptor address attributes of second address
+ * @addr_3: buffer descriptor address attributes of extended address
  * @lock: buffer descriptor lock attributes
  * @lock_2: buffer descriptor lock attributes of second lock
  * @packet: buffer descriptor packet attributes
@@ -496,6 +497,7 @@ struct aie_bd_attr {
 	struct aie_single_reg_field use_next;
 	struct aie_bd_addr_attr addr;
 	struct aie_bd_addr_attr addr_2;
+	struct aie_bd_addr_attr addr_3;
 	struct aie_bd_lock_attr lock;
 	struct aie_bd_lock_attr lock_2;
 	struct aie_bd_pkt_attr packet;
@@ -538,6 +540,7 @@ struct aie_bd_attr {
  * @num_s2mm_chan: number of S2MM channels
  * @num_bds: number of buffer descriptors
  * @bd_len: length of a buffer descriptor in bytes
+ * @num_bd_regs: number of buffer descriptor registers
  */
 struct aie_dma_attr {
 	struct aie_single_reg_field laddr;
@@ -558,6 +561,7 @@ struct aie_dma_attr {
 	u32 num_s2mm_chan;
 	u32 num_bds;
 	u32 bd_len;
+	u32 num_bd_regs;
 };
 
 struct aie_aperture;

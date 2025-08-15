@@ -331,8 +331,7 @@ int aie_aperture_remove(struct aie_aperture *aperture)
 	}
 	mutex_unlock(&aperture->mlock);
 
-	if (aperture->adev->dev_gen != AIE_DEVICE_GEN_AIE2PS)
-		aie_aperture_sysfs_remove_entries(aperture);
+	aie_aperture_sysfs_remove_entries(aperture);
 
 	of_node_clear_flag(aperture->dev.of_node, OF_POPULATED);
 	device_del(&aperture->dev);
@@ -576,12 +575,10 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 		goto put_aperture_dev;
 	}
 
-	if (aperture->adev->dev_gen != AIE_DEVICE_GEN_AIE2PS) {
-		ret = aie_aperture_sysfs_create_entries(aperture);
-		if (ret) {
-			dev_err(dev, "Failed to create aperture sysfs: %d\n", ret);
-			goto put_aperture_dev;
-		}
+	ret = aie_aperture_sysfs_create_entries(aperture);
+	if (ret) {
+		dev_err(dev, "Failed to create aperture sysfs: %d\n", ret);
+		goto put_aperture_dev;
 	}
 
 	INIT_WORK(&aperture->backtrack, aie_aperture_backtrack);
