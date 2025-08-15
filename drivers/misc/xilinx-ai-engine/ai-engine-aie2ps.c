@@ -625,34 +625,34 @@ static const struct aie_event_prop aie2ps_memtile_lock_error_prop[] = {
 
 static const struct aie_event_prop aie2ps_memtile_bus_error_prop[] = {
 	{
-		.event = 58U,
+		.event = 138U,
 		.event_str = "axi_mm_slave_error",
 	},
 };
 
 static const struct aie_event_prop aie2ps_shim_bus_error_prop[] = {
 	{
-		.event = 71U,
+		.event = 121U,
 		.event_str = "axi_mm_byte_strobe_error",
 	},
 	{
-		.event = 70U,
+		.event = 120U,
 		.event_str = "axi_mm_unsecure_access_in_secure_mode",
 	},
 	{
-		.event = 69U,
+		.event = 119U,
 		.event_str = "axi_mm_unsupported_traffic",
 	},
 	{
-		.event = 68U,
+		.event = 118U,
 		.event_str = "axi_mm_slave_nsu_error",
 	},
 	{
-		.event = 67U,
+		.event = 117U,
 		.event_str = "axi_mm_decode_nsu_error",
 	},
 	{
-		.event = 64U,
+		.event = 114U,
 		.event_str = "axi_mm_slave_tile_error",
 	},
 };
@@ -670,13 +670,22 @@ static const struct aie_event_prop aie2ps_shim_stream_error_prop[] = {
 
 static const struct aie_event_prop aie2ps_shim_dma_error_prop[] = {
 	{
-		.event = 73U,
-		.event_str = "dma_mm2s_error",
+		.event = 125U,
+		.event_str = "noc_1_dma_mm2s_error",
 	},
 	{
-		.event = 72U,
-		.event_str = "dma_s2mm_error",
+		.event = 124U,
+		.event_str = "noc_0_dma_mm2s_error",
 	},
+	{
+		.event = 123U,
+		.event_str = "noc_1_dma_s2mm_error",
+	},
+	{
+		.event = 122U,
+		.event_str = "noc_0_dma_s2mm_error",
+	},
+
 };
 
 static const struct aie_err_category aie2ps_core_err_category[] = {
@@ -940,6 +949,7 @@ static const struct aie_dma_attr aie2ps_tiledma = {
 	.bd_regoff = AIE2PS_TILE_MEMMOD_BD0_0_REGOFF,
 	.num_bds = 16,
 	.bd_len = 0x18U,
+	.num_bd_regs = 6U,
 	.num_mm2s_chan = 2U,
 	.num_s2mm_chan = 2U,
 	.mm2s_sts_regoff = AIE2PS_TILE_MEMMOD_DMA_MM2S_STATUS_REGOFF,
@@ -966,6 +976,7 @@ static const struct aie_dma_attr aie2ps_memtiledma = {
 	.bd_regoff = AIE2PS_MEMORY_BD0_0_REGOFF,
 	.num_bds = 48,
 	.bd_len = 0x20U,
+	.num_bd_regs = 8U,
 	.num_mm2s_chan = 6U,
 	.num_s2mm_chan = 6U,
 	.mm2s_sts_regoff = AIE2PS_MEMORY_DMA_MM2S_STATUS_REGOFF,
@@ -1004,6 +1015,7 @@ static const struct aie_dma_attr aie2ps_shimdma = {
 	.bd_regoff = AIE2PS_SHIMNOC_BD0_0_REGOFF,
 	.num_bds = 16,
 	.bd_len = 0x30U,
+	.num_bd_regs = 9U,
 	.num_mm2s_chan = 2U,
 	.num_s2mm_chan = 2U,
 	.mm2s_sts_regoff = AIE2PS_SHIMNOC_DMA_MM2S_STATUS_REGOFF,
@@ -1361,10 +1373,6 @@ static const struct aie_bd_pkt_attr aie2ps_shim_pktbd = {
 };
 
 static const struct aie_bd_axi_attr aie2ps_shim_axibd = {
-	.smid = {
-		.mask = GENMASK(31, 28),
-		.regoff = 0x14U,
-	},
 	.cache = {
 		.mask = GENMASK(27, 24),
 		.regoff = 0x14U,
@@ -1460,6 +1468,12 @@ static const struct aie_bd_attr aie2ps_shimbd = {
 			.regoff = 0x8U,
 		},
 	},
+	.addr_3 = {
+		.addr = {
+			.mask = GENMASK(8, 0),
+			.regoff = 0x20U,
+		},
+	},
 	.compression_en = {
 		.mask = BIT(31),
 		.regoff = 0x10U,
@@ -1477,7 +1491,7 @@ static const struct aie_bd_attr aie2ps_shimbd = {
 	.axi = aie2ps_shim_axibd,
 	.aie2ps_dim = aie2ps_shim_dimbd,
 	.num_dims = 3,
-	.bd_idx_off = 0x20U,
+	.bd_idx_off = 0x30U,
 };
 
 static char *aie2ps_core_status_str[] = {
@@ -2100,6 +2114,9 @@ ssize_t aie2ps_sysfs_get_uc_core_status(struct aie_partition *apart,
 	status = apart->adev->ops->get_uc_core_sts(apart, loc);
 	if (status & AIE2PS_UCCORE_STS_MASK0) {
 		len += scnprintf(&buffer[len], max(0L, size - len), "sleep");
+		is_delimit_req = true;
+	} else {
+		len += scnprintf(&buffer[len], max(0L, size - len), "not in sleep");
 		is_delimit_req = true;
 	}
 
@@ -2933,7 +2950,7 @@ static ssize_t aie2ps_get_tile_sysfs_bd_metadata(struct aie_partition *apart,
 	ttype = aie2ps_get_tile_type(apart->adev, loc);
 	enabled = aie_part_check_clk_enable_loc(apart, loc);
 	for (u32 bd = 0; bd < dma_attr->num_bds; bd++) {
-		u32 bd_data[AIE_MAX_BD_SIZE];
+		u32 bd_data[dma_attr->num_bd_regs];
 		u32 i, index, base_bdoff;
 		u64 value;
 
@@ -2947,7 +2964,7 @@ static ssize_t aie2ps_get_tile_sysfs_bd_metadata(struct aie_partition *apart,
 
 		base_bdoff = dma_attr->bd_regoff + (bd_attr->bd_idx_off * bd);
 		memset(bd_data, 0, sizeof(bd_data));
-		for (i = 0; i < dma_attr->bd_len / sizeof(u32); i++) {
+		for (i = 0; i < dma_attr->num_bd_regs; i++) {
 			u32 regoff;
 
 			regoff = aie_cal_regoff(apart->adev, *loc,
