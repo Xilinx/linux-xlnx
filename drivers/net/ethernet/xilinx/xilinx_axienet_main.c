@@ -5086,7 +5086,7 @@ static int axienet_probe(struct platform_device *pdev)
 		ret = of_property_read_string(pdev->dev.of_node,
 					      "xlnx,gt-mode",
 					      &gt_mode);
-		if (ret != -EINVAL && !strcasecmp(gt_mode, GT_MODE_NARROW))
+		if (ret == 0 && !strcasecmp(gt_mode, GT_MODE_NARROW))
 			lp->gt_mode_narrow = true;
 
 		/* Default AXI4-stream data widths */
