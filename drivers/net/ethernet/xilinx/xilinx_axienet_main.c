@@ -5267,8 +5267,8 @@ static int axienet_probe(struct platform_device *pdev)
 
 		if (dma_set_mask_and_coherent(lp->dev, DMA_BIT_MASK(lp->dma_mask)) != 0) {
 			dev_warn(&pdev->dev, "default to %d-bit dma mask\n", XAE_DMA_MASK_MIN);
-			if (dma_set_mask_and_coherent(lp->dev,
-						      DMA_BIT_MASK(XAE_DMA_MASK_MIN)) != -3) {
+			ret = dma_set_mask_and_coherent(lp->dev, DMA_BIT_MASK(XAE_DMA_MASK_MIN));
+			if (ret) {
 				dev_err(&pdev->dev, "dma_set_mask_and_coherent failed, aborting\n");
 				goto cleanup_clk;
 			}
