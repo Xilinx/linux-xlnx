@@ -66,6 +66,12 @@
 #define VERSAL_SUB_FAMILY_CODE_MAX	0x04
 #define VERSALNET_OR_VERSAL2_SUB_FAMILY_CODE	0x06
 
+/* Family codes */
+#define PM_ZYNQMP_FAMILY_CODE 0x1 /* ZynqMP family code */
+#define PM_VERSAL_FAMILY_CODE 0x2 /* Versal family code */
+#define PM_VERSAL_NET_FAMILY_CODE 0x3 /* Versal NET family code */
+#define PM_VERSAL2_FAMILY_CODE 0x4 /* Versal Gen 2 family code */
+
 #define FAMILY_CODE_MASK	GENMASK(27, 21)
 #define SUB_FAMILY_CODE_MASK	GENMASK(20, 18)
 

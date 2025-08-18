@@ -75,6 +75,11 @@ struct platform_fw_data {
 	 * while loading PDI image based on the platform
 	 */
 	bool load_pdi_word_swap;
+
+	/*
+	 * Family code for platform.
+	 */
+	u32 family_code;
 };
 
 static struct platform_fw_data *active_platform_fw_data;
@@ -896,6 +901,7 @@ static const struct platform_fw_data platform_fw_data_versal2 = {
 	.prep_pm_cmd_header = prep_pm_hdr_api_features,
 	/* TF-A does only transparent forwarding do word swapping here */
 	.load_pdi_word_swap = true,
+	.family_code = PM_VERSAL2_FAMILY_CODE,
 };
 
 static const struct platform_fw_data platform_fw_data_versal = {
@@ -904,6 +910,7 @@ static const struct platform_fw_data platform_fw_data_versal = {
 	.prep_pm_cmd_header = prep_pm_hdr_feature_check,
 	/* the word swapping is done in TF-A */
 	.load_pdi_word_swap = false,
+	.family_code = PM_VERSAL_FAMILY_CODE,
 };
 
 static const struct platform_fw_data platform_fw_data_versal_net = {
@@ -912,6 +919,7 @@ static const struct platform_fw_data platform_fw_data_versal_net = {
 	.prep_pm_cmd_header = prep_pm_hdr_feature_check,
 	/* the word swapping is done in TF-A */
 	.load_pdi_word_swap = false,
+	.family_code = PM_VERSAL_NET_FAMILY_CODE,
 };
 
 static const struct platform_fw_data platform_fw_data_zynqmp = {
@@ -920,6 +928,7 @@ static const struct platform_fw_data platform_fw_data_zynqmp = {
 	.prep_pm_cmd_header = prep_pm_hdr_feature_check,
 	/* the word swapping is done in TF-A */
 	.load_pdi_word_swap = false,
+	.family_code = PM_ZYNQMP_FAMILY_CODE,
 };
 
 static const struct of_device_id zynqmp_firmware_of_match[] = {
