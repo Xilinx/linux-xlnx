@@ -194,6 +194,7 @@ struct cqspi_driver_platdata {
 #define CQSPI_REG_READCAPTURE_DELAY_LSB		1
 #define CQSPI_REG_READCAPTURE_DELAY_MASK	0xF
 #define CQSPI_REG_READCAPTURE_DQS_ENABLE	BIT(8)
+#define CQSPI_REG_READCAPTURE_PHY_DELAY_MASK	0x1E
 
 #define CQSPI_REG_SIZE				0x14
 #define CQSPI_REG_SIZE_ADDRESS_LSB		0
@@ -225,6 +226,7 @@ struct cqspi_driver_platdata {
 #define CQSPI_REG_WR_DISABLE_AUTO_POLL		BIT(14)
 #define CQSPI_REG_WRCOMPLETION_POLLCNT_MASK	0xFF0000
 #define CQSPI_REG_WRCOMPLETION_POLLCNY_LSB	16
+#define CQSPI_REG_WRCOMPLETION_PHY_POLLCNT	0x3
 
 #define CQSPI_REG_IRQSTATUS			0x40
 #define CQSPI_REG_IRQMASK			0x44
@@ -340,7 +342,8 @@ struct cqspi_driver_platdata {
 #define CQSPI_DLL_MODE_MASTER		0
 #define CQSPI_DLL_MODE_BYPASS		1
 #define TAP_GRAN_SEL_MIN_FREQ		120000000
-#define CQSPI_TX_TAP_MASTER		0x1E
+#define CQSPI_DDR_TX_TAP_MASTER		0x1E
+#define CQSPI_SDR_TX_TAP_MASTER		0x3C
 #define CQSPI_MAX_DLL_TAPS		127
 
 #define	CQSPI_SELECT_LOWER_CS		BIT(0)
@@ -575,10 +578,11 @@ static int cqspi_command_read(struct cqspi_flash_pdata *f_pdata,
 	size_t read_len;
 	int status;
 
-	status = cqspi_enable_dtr(f_pdata, op, CQSPI_REG_OP_EXT_STIG_LSB);
-	if (status)
-		return status;
-
+	if (f_pdata->dtr) {
+		status = cqspi_enable_dtr(f_pdata, op, CQSPI_REG_OP_EXT_STIG_LSB);
+		if (status)
+			return status;
+	}
 	if (!n_rx || n_rx > CQSPI_STIG_DATA_LEN_MAX || !rxbuf) {
 		dev_err(&cqspi->pdev->dev,
 			"Invalid input argument, len %zu rxbuf 0x%p\n",
@@ -655,7 +659,7 @@ static int cqspi_command_read(struct cqspi_flash_pdata *f_pdata,
 	return 0;
 }
 
-static int cqspi_setdlldelay(struct spi_mem *mem, const struct spi_mem_op *op)
+static int cqspi_setdlldelay(struct spi_mem *mem, const struct spi_mem_op *op, u32 txtap)
 {
 	struct cqspi_st *cqspi = spi_controller_get_devdata(mem->spi->controller);
 	u8 dummy_incr, dummy_flag = 0, max_tap, count, windowsize, avg_rxtap;
@@ -666,7 +670,6 @@ static int cqspi_setdlldelay(struct spi_mem *mem, const struct spi_mem_op *op)
 	int i, ret;
 	unsigned int reg;
 	bool id_matched, rxtapfound = false;
-	u32 txtap = 0;
 	s8 max_windowsize = -1;
 
 	reg = readl(cqspi->iobase + CQSPI_REG_CONFIG);
@@ -702,7 +705,7 @@ static int cqspi_setdlldelay(struct spi_mem *mem, const struct spi_mem_op *op)
 	       CQSPI_REG_PHY_CONFIG_RESYNC_FLD_MASK,
 	       cqspi->iobase + CQSPI_REG_PHY_CONFIG);
 
-	txtap = CQSPI_TX_TAP_MASTER <<
+	txtap = txtap <<
 		CQSPI_REG_PHY_CONFIG_TX_DLL_DLY_LSB;
 	max_tap = CQSPI_MAX_DLL_TAPS;
 
@@ -827,6 +830,33 @@ static void cqspi_setup_ddrmode(struct cqspi_st *cqspi)
 	writel(reg, cqspi->iobase + CQSPI_REG_CONFIG);
 }
 
+static void cqspi_setup_sdrphymode(struct cqspi_st *cqspi)
+{
+	u32 reg;
+
+	reg = readl(cqspi->iobase + CQSPI_REG_CONFIG);
+	reg &= ~CQSPI_REG_CONFIG_ENABLE_MASK;
+	writel(reg, cqspi->iobase + CQSPI_REG_CONFIG);
+
+	reg |= CQSPI_REG_CONFIG_PHY_ENABLE_MASK;
+	writel(reg, cqspi->iobase + CQSPI_REG_CONFIG);
+
+	/* Program POLL_CNT */
+	reg = readl(cqspi->iobase + CQSPI_REG_WR_COMPLETION_CTRL);
+	reg &= ~CQSPI_REG_WRCOMPLETION_POLLCNT_MASK;
+	reg |= (CQSPI_REG_WRCOMPLETION_PHY_POLLCNT <<
+		CQSPI_REG_WRCOMPLETION_POLLCNY_LSB);
+	writel(reg, cqspi->iobase + CQSPI_REG_WR_COMPLETION_CTRL);
+
+	reg = readl(cqspi->iobase + CQSPI_REG_READCAPTURE);
+	reg &= ~CQSPI_REG_READCAPTURE_PHY_DELAY_MASK;
+	writel(reg, cqspi->iobase + CQSPI_REG_READCAPTURE);
+
+	reg = readl(cqspi->iobase + CQSPI_REG_CONFIG);
+	reg |= CQSPI_REG_CONFIG_ENABLE_MASK;
+	writel(reg, cqspi->iobase + CQSPI_REG_CONFIG);
+}
+
 static void cqspi_setup_sdrmode(struct cqspi_st *cqspi)
 {
 	u32 reg;
@@ -870,14 +900,20 @@ static void cqspi_periodictuning(struct work_struct *work)
 	struct cqspi_st *cqspi = spi_controller_get_devdata(mem->spi->controller);
 	u8 buf[CQSPI_READ_ID_LEN];
 	int ret;
+	u32 txtap;
 
 	if (!mem->request_completion.done)
 		wait_for_completion(&mem->request_completion);
 
+	if (cqspi->f_pdata[spi_get_chipselect(mem->spi, 0)].dtr)
+		txtap = CQSPI_DDR_TX_TAP_MASTER;
+	else
+		txtap = CQSPI_SDR_TX_TAP_MASTER;
+
 	reinit_completion(&cqspi->tuning_complete);
 	cqspi->tuning_op.data.buf.in = buf;
 	cqspi->tuning_op.data.nbytes = CQSPI_READ_ID_LEN;
-	ret = cqspi_setdlldelay(mem, &cqspi->tuning_op);
+	ret = cqspi_setdlldelay(mem, &cqspi->tuning_op, txtap);
 	complete_all(&cqspi->tuning_complete);
 	if (ret) {
 		dev_err(&cqspi->pdev->dev,
@@ -888,13 +924,47 @@ static void cqspi_periodictuning(struct work_struct *work)
 	}
 }
 
+static int cqspi_setup_phymode(struct spi_mem *mem, const struct spi_mem_op *op)
+{
+	struct cqspi_st *cqspi = spi_controller_get_devdata(mem->spi->controller);
+	int ret;
+	u32 txtap;
+
+	cqspi_setup_sdrphymode(cqspi);
+	txtap = CQSPI_SDR_TX_TAP_MASTER;
+
+	if (cqspi->clk_tuned)
+		return 0;
+
+	memcpy(&cqspi->tuning_op, op, sizeof(struct spi_mem_op));
+
+	cqspi->f_pdata[spi_get_chipselect(mem->spi, 0)].dtr = false;
+
+	ret = cqspi_setdlldelay(mem, op, txtap);
+	if (ret)
+		return ret;
+
+	complete_all(&cqspi->tuning_complete);
+	if (cqspi->tuning_scheduled) {
+		cancel_delayed_work_sync(&mem->complete_work);
+		flush_delayed_work(&mem->complete_work);
+	}
+	INIT_DELAYED_WORK(&mem->complete_work, cqspi_periodictuning);
+	schedule_delayed_work(&mem->complete_work,
+			      msecs_to_jiffies(CQSPI_TUNING_PERIODICITY_MS));
+	cqspi->tuning_scheduled = true;
+	return 0;
+}
+
 static int cqspi_setup_edgemode(struct spi_mem *mem,
 				const struct spi_mem_op *op)
 {
 	struct cqspi_st *cqspi = spi_controller_get_devdata(mem->spi->controller);
 	int ret;
+	u32 txtap;
 
 	cqspi_setup_ddrmode(cqspi);
+	txtap = CQSPI_DDR_TX_TAP_MASTER;
 
 	if (cqspi->clk_tuned)
 		return 0;
@@ -902,7 +972,7 @@ static int cqspi_setup_edgemode(struct spi_mem *mem,
 
 	cqspi->f_pdata[spi_get_chipselect(mem->spi, 0)].dtr = true;
 
-	ret = cqspi_setdlldelay(mem, op);
+	ret = cqspi_setdlldelay(mem, op, txtap);
 	if (ret)
 		return ret;
 
@@ -1845,6 +1915,12 @@ static int cqspi_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)
 		ret = cqspi_setup_edgemode(mem, op);
 		if (ret)
 			return ret;
+	} else if (mem->spi->controller->flags & SPI_CONTROLLER_SDR_PHY) {
+		ret = cqspi_setup_phymode(mem, op);
+		if (ret) {
+			f_pdata->dtr = false;
+			cqspi_setup_sdrmode(cqspi);
+		}
 	} else {
 		f_pdata->dtr = false;
 		if (cqspi->clk_tuned)
