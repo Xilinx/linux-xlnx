@@ -57,23 +57,11 @@
 
 #define PM_PINCTRL_PARAM_SET_VERSION	2
 
-#define ZYNQMP_FAMILY_CODE 0x23
-#define VERSAL_FAMILY_CODE 0x26
-
-/* When all subfamily of platform need to support */
-#define ALL_SUB_FAMILY_CODE		0x00
-#define VERSAL_SUB_FAMILY_CODE		0x01
-#define VERSAL_SUB_FAMILY_CODE_MAX	0x04
-#define VERSALNET_OR_VERSAL2_SUB_FAMILY_CODE	0x06
-
 /* Family codes */
 #define PM_ZYNQMP_FAMILY_CODE 0x1 /* ZynqMP family code */
 #define PM_VERSAL_FAMILY_CODE 0x2 /* Versal family code */
 #define PM_VERSAL_NET_FAMILY_CODE 0x3 /* Versal NET family code */
 #define PM_VERSAL2_FAMILY_CODE 0x4 /* Versal Gen 2 family code */
-
-#define FAMILY_CODE_MASK	GENMASK(27, 21)
-#define SUB_FAMILY_CODE_MASK	GENMASK(20, 18)
 
 #define API_ID_MASK		GENMASK(7, 0)
 #define MODULE_ID_MASK		GENMASK(11, 8)
@@ -613,7 +601,7 @@ int zynqmp_firmware_pm_sysfs_entry(struct platform_device *pdev);
 #if IS_REACHABLE(CONFIG_ZYNQMP_FIRMWARE)
 int zynqmp_pm_get_api_version(u32 *version);
 int zynqmp_pm_get_chipid(u32 *idcode, u32 *version);
-int zynqmp_pm_get_family_info(u32 *family, u32 *subfamily);
+int zynqmp_pm_get_family_info(u32 *family);
 int zynqmp_pm_get_trustzone_version(u32 *version);
 int zynqmp_pm_get_sip_svc_version(u32 *version);
 int zynqmp_pm_load_pdi_word_swap(const u64 address, u64 *swapped_address);
@@ -702,7 +690,7 @@ static inline int zynqmp_pm_get_chipid(u32 *idcode, u32 *version)
 	return -ENODEV;
 }
 
-static inline int zynqmp_pm_get_family_info(u32 *family, u32 *subfamily)
+static inline int zynqmp_pm_get_family_info(u32 *family)
 {
 	return -ENODEV;
 }

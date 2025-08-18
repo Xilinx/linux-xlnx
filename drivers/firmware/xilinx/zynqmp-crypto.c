@@ -398,7 +398,6 @@ void *xlnx_get_crypto_dev_data(struct xlnx_feature *feature_map)
 	struct xlnx_feature *feature;
 	u32 v;
 	u32 pm_family_code;
-	u32 pm_sub_family_code;
 	int ret;
 
 	ret = zynqmp_pm_get_api_version(&v);
@@ -406,17 +405,15 @@ void *xlnx_get_crypto_dev_data(struct xlnx_feature *feature_map)
 		return ERR_PTR(ret);
 
 	/* Get the Family code and sub family code of platform */
-	ret = zynqmp_pm_get_family_info(&pm_family_code, &pm_sub_family_code);
+	ret = zynqmp_pm_get_family_info(&pm_family_code);
 	if (ret < 0)
 		return ERR_PTR(ret);
 
 	feature = feature_map;
 	for (; feature->family; feature++) {
-		if (feature->family == pm_family_code &&
-		    (feature->subfamily == ALL_SUB_FAMILY_CODE ||
-		     pm_sub_family_code <= VERSAL_SUB_FAMILY_CODE_MAX)) {
-			if (feature->family == ZYNQMP_FAMILY_CODE ||
-			    feature->family == VERSAL_FAMILY_CODE) {
+		if (feature->family == pm_family_code) {
+			if (feature->family == PM_ZYNQMP_FAMILY_CODE ||
+			    feature->family == PM_VERSAL_FAMILY_CODE) {
 				ret = zynqmp_pm_feature(feature->feature_id);
 				if (ret < 0)
 					return ERR_PTR(ret);

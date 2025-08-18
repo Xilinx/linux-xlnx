@@ -391,8 +391,7 @@ static struct xilinx_ecdsa_drv_ctx versal_ecdsa_drv_ctx[] = {
 
 static struct xlnx_feature ecdsa_feature_map[] = {
 	{
-		.family = VERSAL_FAMILY_CODE,
-		.subfamily = VERSAL_SUB_FAMILY_CODE,
+		.family = PM_VERSAL_FAMILY_CODE,
 		.feature_id = XSECURE_API_ELLIPTIC_VALIDATE_KEY,
 		.data = &versal_ecdsa_drv_ctx,
 	},
