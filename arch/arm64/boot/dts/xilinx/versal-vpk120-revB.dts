@@ -7,6 +7,8 @@
  * Michal Simek <michal.simek@amd.com>
  */
 
+#include <dt-bindings/net/ti-dp83867.h>
+#include <dt-bindings/gpio/gpio.h>
 #include "versal.dtsi"
 #include "versal-clk.dtsi"
 
@@ -117,10 +119,11 @@
 			#phy-cells = <1>;
 			compatible = "ethernet-phy-id2000.a231";
 			reg = <1>;
-			ti,rx-internal-delay = <0xb>;
-			ti,tx-internal-delay = <0xa>;
+			ti,rx-internal-delay = <DP83867_RGMIIDCTL_3_00_NS>;
+			ti,tx-internal-delay = <DP83867_RGMIIDCTL_2_75_NS>;
 			ti,fifo-depth = <1>;
 			ti,dp83867-rxctrl-strap-quirk;
+			reset-gpios = <&gpio1 48 GPIO_ACTIVE_LOW>;
 		};
 	};
 };
