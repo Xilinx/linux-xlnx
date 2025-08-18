@@ -33,13 +33,11 @@
 /**
  * struct xlnx_feature - Feature data
  * @family:	Family code of platform
- * @subfamily:	Subfamily code of platform
  * @feature_id:	Feature id of module
  * @data:	Collection of all supported platform data
  */
 struct xlnx_feature {
 	u32 family;
-	u32 subfamily;
 	u32 feature_id;
 	void *data;
 };

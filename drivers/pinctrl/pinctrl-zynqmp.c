@@ -2,7 +2,8 @@
 /*
  * ZynqMP pin controller
  *
- * Copyright (C) 2020, 2021 Xilinx, Inc.
+ * Copyright (C), 2020 - 2022 Xilinx, Inc.
+ * Copyright (C), 2022 - 2025 Advanced Micro Devices, Inc.
  *
  * Sai Krishna Potthuri <lakshmi.sai.krishna.potthuri@xilinx.com>
  * Rajan Vaja <rajan.vaja@xilinx.com>
@@ -104,7 +105,6 @@ struct zynqmp_pctrl_group {
 
 static struct pinctrl_desc zynqmp_desc;
 static u32 family_code;
-static u32 sub_family_code;
 
 static int zynqmp_pctrl_get_groups_count(struct pinctrl_dev *pctldev)
 {
@@ -609,7 +609,7 @@ static int zynqmp_pinctrl_prepare_func_groups(struct device *dev, u32 fid,
 				return -ENOMEM;
 
 			for (pin = 0; pin < groups[resp[i]].npins; pin++) {
-				if (family_code == ZYNQMP_FAMILY_CODE)
+				if (family_code == PM_ZYNQMP_FAMILY_CODE)
 					__set_bit(groups[resp[i]].pins[pin], used_pins);
 				else
 					__set_bit((u8)groups[resp[i]].pins[pin] - 1, used_pins);
@@ -1001,11 +1001,11 @@ static int zynqmp_pinctrl_probe(struct platform_device *pdev)
 	if (!pctrl)
 		return -ENOMEM;
 
-	ret = zynqmp_pm_get_family_info(&family_code, &sub_family_code);
+	ret = zynqmp_pm_get_family_info(&family_code);
 	if (ret < 0)
 		return ret;
 
-	if (family_code == ZYNQMP_FAMILY_CODE) {
+	if (family_code == PM_ZYNQMP_FAMILY_CODE) {
 		ret = zynqmp_pinctrl_prepare_pin_desc(&pdev->dev, &zynqmp_desc.pins,
 						      &zynqmp_desc.npins);
 	} else {

@@ -80,18 +80,18 @@ struct registered_event_data {
 
 static bool xlnx_is_error_event(const u32 node_id)
 {
-	u32 pm_family_code, pm_sub_family_code;
+	u32 pm_family_code;
 
-	zynqmp_pm_get_family_info(&pm_family_code, &pm_sub_family_code);
+	zynqmp_pm_get_family_info(&pm_family_code);
 
-	if (pm_sub_family_code <= VERSAL_SUB_FAMILY_CODE_MAX) {
+	if (pm_family_code == PM_VERSAL_FAMILY_CODE) {
 		if (node_id == VERSAL_EVENT_ERROR_PMC_ERR1 ||
 		    node_id == VERSAL_EVENT_ERROR_PMC_ERR2 ||
 		    node_id == VERSAL_EVENT_ERROR_PSM_ERR1 ||
 		    node_id == VERSAL_EVENT_ERROR_PSM_ERR2 ||
 		    node_id == VERSAL_EVENT_ERROR_SW_ERR)
 			return true;
-	} else {
+	} else if (pm_family_code == PM_VERSAL_NET_FAMILY_CODE) {
 		if (node_id == VERSAL_NET_EVENT_ERROR_PMC_ERR1 ||
 		    node_id == VERSAL_NET_EVENT_ERROR_PMC_ERR2 ||
 		    node_id == VERSAL_NET_EVENT_ERROR_PMC_ERR3 ||
@@ -99,8 +99,10 @@ static bool xlnx_is_error_event(const u32 node_id)
 		    node_id == VERSAL_NET_EVENT_ERROR_PSM_ERR2 ||
 		    node_id == VERSAL_NET_EVENT_ERROR_PSM_ERR3 ||
 		    node_id == VERSAL_NET_EVENT_ERROR_PSM_ERR4 ||
-		    node_id == VERSAL_NET_EVENT_ERROR_SW_ERR ||
-		    node_id == VERSAL2_EVENT_ERROR_PMC_ERR1 ||
+		    node_id == VERSAL_NET_EVENT_ERROR_SW_ERR)
+			return true;
+	} else if (pm_family_code == PM_VERSAL2_FAMILY_CODE) {
+		if (node_id == VERSAL2_EVENT_ERROR_PMC_ERR1 ||
 		    node_id == VERSAL2_EVENT_ERROR_PMC_ERR2 ||
 		    node_id == VERSAL2_EVENT_ERROR_PMC_ERR3 ||
 		    node_id == VERSAL2_EVENT_ERROR_LPDSLCR_ERR1 ||

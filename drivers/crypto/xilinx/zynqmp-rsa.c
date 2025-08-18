@@ -172,8 +172,7 @@ static struct skcipher_alg zynqmp_alg = {
 
 static struct xlnx_feature rsa_feature_map[] = {
 	{
-		.family = ZYNQMP_FAMILY_CODE,
-		.subfamily = ALL_SUB_FAMILY_CODE,
+		.family = PM_ZYNQMP_FAMILY_CODE,
 		.feature_id = PM_SECURE_RSA,
 		.data = &zynqmp_alg,
 	},

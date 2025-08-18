@@ -482,14 +482,12 @@ static struct xilinx_rsa_drv_ctx versal_rsa_drv_ctx = {
 
 static struct xlnx_feature rsa_feature_map[] = {
 	{
-		.family = ZYNQMP_FAMILY_CODE,
-		.subfamily = ALL_SUB_FAMILY_CODE,
+		.family = PM_ZYNQMP_FAMILY_CODE,
 		.feature_id = PM_SECURE_RSA,
 		.data = &zynqmp_rsa_drv_ctx,
 	},
 	{
-		.family = VERSAL_FAMILY_CODE,
-		.subfamily = VERSAL_SUB_FAMILY_CODE,
+		.family = PM_VERSAL_FAMILY_CODE,
 		.feature_id = XSECURE_API_RSA_PUBLIC_ENCRYPT,
 		.data = &versal_rsa_drv_ctx,
 	},

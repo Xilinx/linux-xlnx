@@ -703,15 +703,14 @@ int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param,
 				 u32 value)
 {
 	u32 pm_family_code;
-	u32 pm_sub_family_code;
 	int ret;
 
-	/* Get the Family code and sub family code of platform */
-	ret = zynqmp_pm_get_family_info(&pm_family_code, &pm_sub_family_code);
+	/* Get the Family code of platform */
+	ret = zynqmp_pm_get_family_info(&pm_family_code);
 	if (ret < 0)
 		return ret;
 
-	if (pm_family_code == ZYNQMP_FAMILY_CODE &&
+	if (pm_family_code == PM_ZYNQMP_FAMILY_CODE &&
 	    param == PM_PINCTRL_CONFIG_TRI_STATE) {
 		ret = zynqmp_pm_feature(PM_PINCTRL_CONFIG_PARAM_SET);
 		if (ret < PM_PINCTRL_PARAM_SET_VERSION) {
