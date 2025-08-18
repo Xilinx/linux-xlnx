@@ -1202,7 +1202,6 @@ static int xsem_edac_probe(struct platform_device *pdev)
 	struct xsem_edac_priv *priv;
 	void __iomem *plmrtca_baseaddr;
 	struct edac_device_ctl_info *dci;
-	u32 device_sub_family_code;
 	u32 family_code;
 	int rc;
 
@@ -1238,26 +1237,26 @@ static int xsem_edac_probe(struct platform_device *pdev)
 	}
 
 	priv->slr_info = devm_kzalloc(&pdev->dev, sizeof(struct xsem_ssit_status), GFP_KERNEL);
-	rc = zynqmp_pm_get_family_info(&family_code, &device_sub_family_code);
+	rc = zynqmp_pm_get_family_info(&family_code);
 	if (rc) {
 		if (rc == -ENODEV)
 			rc = -EPROBE_DEFER;
 		goto free_edac_dev;
 	}
 
-	if (device_sub_family_code == VERSALNET_OR_VERSAL2_SUB_FAMILY_CODE) {
+	if (family_code == PM_VERSAL_NET_FAMILY_CODE) {
 		priv->sw_event_node_id = VERSAL_NET_EVENT_ERROR_SW_ERR;
 		priv->cram_ce_mask = XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_CRAM_CE;
 		priv->cram_ue_mask = XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_CRAM_UE;
 		priv->npi_ue_mask = XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_NPI_UE;
-	} else if (device_sub_family_code <= VERSAL_SUB_FAMILY_CODE_MAX) {
+	} else if (family_code == PM_VERSAL_FAMILY_CODE) {
 		priv->sw_event_node_id = VERSAL_EVENT_ERROR_SW_ERR;
 		priv->cram_ce_mask = XPM_VERSAL_EVENT_ERROR_MASK_XSEM_CRAM_CE_5;
 		priv->cram_ue_mask = XPM_VERSAL_EVENT_ERROR_MASK_XSEM_CRAM_UE_6;
 		priv->npi_ue_mask = XPM_VERSAL_EVENT_ERROR_MASK_XSEM_NPI_UE_7;
 	} else {
-		edac_printk(KERN_ERR, EDAC_DEVICE, "Invalid Device Sub family code %d\n",
-			    device_sub_family_code);
+		edac_printk(KERN_ERR, EDAC_DEVICE, "Invalid Device family code %d\n",
+			    family_code);
 	}
 	rc = xlnx_register_event(PM_NOTIFY_CB, priv->sw_event_node_id,
 				 priv->cram_ce_mask | priv->cram_ue_mask | priv->npi_ue_mask,

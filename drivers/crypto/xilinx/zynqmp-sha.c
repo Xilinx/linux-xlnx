@@ -347,14 +347,12 @@ static struct xilinx_sha_drv_ctx versal_sha3_drv_ctx = {
 
 static struct xlnx_feature sha_feature_map[] = {
 	{
-		.family = ZYNQMP_FAMILY_CODE,
-		.subfamily = ALL_SUB_FAMILY_CODE,
+		.family = PM_ZYNQMP_FAMILY_CODE,
 		.feature_id = PM_SECURE_SHA,
 		.data = &zynqmp_sha3_drv_ctx,
 	},
 	{
-		.family = VERSAL_FAMILY_CODE,
-		.subfamily = VERSAL_SUB_FAMILY_CODE,
+		.family = PM_VERSAL_FAMILY_CODE,
 		.feature_id = XSECURE_API_SHA3_UPDATE,
 		.data = &versal_sha3_drv_ctx,
 	},
