@@ -103,42 +103,6 @@ int zynqmp_pm_get_chipid(u32 *idcode, u32 *version)
 EXPORT_SYMBOL_GPL(zynqmp_pm_get_chipid);
 
 /**
- * zynqmp_pm_get_family_info() - Get family info of platform
- * @family:	Returned family code value
- * @subfamily:	Returned sub-family code value
- *
- * Return: Returns status, either success or error+reason
- */
-int zynqmp_pm_get_family_info(u32 *family, u32 *subfamily)
-{
-	u32 ret_payload[PAYLOAD_ARG_CNT];
-	u32 idcode;
-	static u32 pm_family_code;
-	static u32 pm_sub_family_code;
-	int ret;
-
-	/* Check is family or sub-family code already received */
-	if (pm_family_code && pm_sub_family_code) {
-		*family = pm_family_code;
-		*subfamily = pm_sub_family_code;
-		return 0;
-	}
-
-	ret = zynqmp_pm_invoke_fn(PM_GET_CHIPID, ret_payload, 0);
-	if (ret < 0)
-		return ret;
-
-	idcode = ret_payload[1];
-	pm_family_code = FIELD_GET(FAMILY_CODE_MASK, idcode);
-	pm_sub_family_code = FIELD_GET(SUB_FAMILY_CODE_MASK, idcode);
-	*family = pm_family_code;
-	*subfamily = pm_sub_family_code;
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_get_family_info);
-
-/**
  * zynqmp_pm_get_trustzone_version() - Get secure trustzone firmware version
  * @version:	Returned version value
  *
