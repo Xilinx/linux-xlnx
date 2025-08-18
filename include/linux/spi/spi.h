@@ -602,6 +602,8 @@ struct spi_controller {
 #define SPI_CONTROLLER_MULTI_CS		BIT(7)
 #define	SPI_CONTROLLER_NO_4B		BIT(8)	/* No 4-byte mode support */
 
+#define	SPI_CONTROLLER_SDR_PHY		BIT(9)	/* High speed mode in SDR */
+
 	/* Flag indicating if the allocation of this struct is devres-managed */
 	bool			devm_allocated;
 
