@@ -906,6 +906,14 @@ static const struct platform_fw_data platform_fw_data_versal = {
 	.load_pdi_word_swap = false,
 };
 
+static const struct platform_fw_data platform_fw_data_versal_net = {
+	.do_feature_check = do_feature_check_basic,
+	.zynqmp_pm_fw_call = __zynqmp_pm_fw_call_basic,
+	.prep_pm_cmd_header = prep_pm_hdr_feature_check,
+	/* the word swapping is done in TF-A */
+	.load_pdi_word_swap = false,
+};
+
 static const struct platform_fw_data platform_fw_data_zynqmp = {
 	.do_feature_check = do_feature_check_basic,
 	.zynqmp_pm_fw_call = __zynqmp_pm_fw_call_basic,
@@ -922,6 +930,10 @@ static const struct of_device_id zynqmp_firmware_of_match[] = {
 	{
 		.compatible = "xlnx,versal-firmware",
 		.data = &platform_fw_data_versal,
+	},
+	{
+		.compatible = "xlnx,versal-net-firmware",
+		.data = &platform_fw_data_versal_net,
 	},
 	{
 		.compatible = "xlnx,versal2-firmware",
