@@ -898,7 +898,15 @@ static const struct platform_fw_data platform_fw_data_versal2 = {
 	.load_pdi_word_swap = true,
 };
 
-static const struct platform_fw_data platform_fw_data_zynqmp_and_versal = {
+static const struct platform_fw_data platform_fw_data_versal = {
+	.do_feature_check = do_feature_check_basic,
+	.zynqmp_pm_fw_call = __zynqmp_pm_fw_call_basic,
+	.prep_pm_cmd_header = prep_pm_hdr_feature_check,
+	/* the word swapping is done in TF-A */
+	.load_pdi_word_swap = false,
+};
+
+static const struct platform_fw_data platform_fw_data_zynqmp = {
 	.do_feature_check = do_feature_check_basic,
 	.zynqmp_pm_fw_call = __zynqmp_pm_fw_call_basic,
 	.prep_pm_cmd_header = prep_pm_hdr_feature_check,
@@ -909,11 +917,11 @@ static const struct platform_fw_data platform_fw_data_zynqmp_and_versal = {
 static const struct of_device_id zynqmp_firmware_of_match[] = {
 	{
 		.compatible = "xlnx,zynqmp-firmware",
-		.data = &platform_fw_data_zynqmp_and_versal,
+		.data = &platform_fw_data_zynqmp,
 	},
 	{
 		.compatible = "xlnx,versal-firmware",
-		.data = &platform_fw_data_zynqmp_and_versal,
+		.data = &platform_fw_data_versal,
 	},
 	{
 		.compatible = "xlnx,versal2-firmware",
