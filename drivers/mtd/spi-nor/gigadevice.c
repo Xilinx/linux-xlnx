@@ -16,6 +16,56 @@
 #define SPINOR_GD_OCT_DTR	0xe7	/* Enable Octal DTR. */
 #define SPINOR_GD_EXSPI		0xff	/* Enable Extended SPI (default) */
 
+static int spi_nor_gigadevice_phy_enable(struct spi_nor *nor)
+{
+	struct spi_mem_op op;
+	u8 *buf = nor->bouncebuf;
+	int ret;
+
+	ret = spi_nor_write_enable(nor);
+	if (ret)
+		goto ret;
+
+	buf[0] = SPINOR_GD_EXSPI;
+
+	op = (struct spi_mem_op)
+		SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_GD_WR_ANY_REG, 1),
+			   SPI_MEM_OP_ADDR(4, SPINOR_REG_GD_CFR0V, 1),
+			   SPI_MEM_OP_NO_DUMMY,
+			   SPI_MEM_OP_DATA_OUT(1, buf, 1));
+
+	spi_nor_spimem_setup_op(nor, &op, SNOR_PROTO_1_1_1);
+
+	ret = spi_mem_exec_op(nor->spimem, &op);
+	if (ret)
+		goto ret;
+
+	if ((nor->flags & SNOR_F_HAS_STACKED) && nor->spimem->spi->cs_index_mask == 1)
+		return 0;
+
+	nor->spimem->spi->controller->flags |= SPI_CONTROLLER_SDR_PHY;
+	/* Read flash ID to make sure the switch was successful. */
+	op = (struct spi_mem_op)
+		SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_RDID, 1),
+			   SPI_MEM_OP_NO_ADDR,
+			   SPI_MEM_OP_DUMMY(0, 1),
+			   SPI_MEM_OP_DATA_IN(nor->info->id->len, buf, 1));
+
+	spi_nor_spimem_setup_op(nor, &op, SNOR_PROTO_1_1_1);
+
+	ret = spi_mem_exec_op(nor->spimem, &op);
+	if (ret)
+		goto ret;
+
+	if (memcmp(buf, nor->info->id->bytes, nor->info->id->len))
+		goto ret;
+
+	return 0;
+ret:
+	nor->spimem->spi->controller->flags &= ~SPI_CONTROLLER_SDR_PHY;
+	return 0;
+}
+
 static int spi_nor_gigadevice_octal_dtr_enable(struct spi_nor *nor, bool enable)
 {
 	struct spi_mem_op op;
@@ -113,6 +163,7 @@ static void gd25lx256e_default_init(struct spi_nor *nor)
 	nor->flags &= ~SNOR_F_HAS_16BIT_SR;
 	params->set_octal_dtr = spi_nor_gigadevice_octal_dtr_enable;
 	params->set_4byte_addr_mode = gd25lx256e_set_4byte_addr_mode;
+	params->phy_enable = spi_nor_gigadevice_phy_enable;
 }
 
 static int gd25lx256e_post_sfdp_fixup(struct spi_nor *nor)

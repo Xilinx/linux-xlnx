@@ -45,6 +45,39 @@
 		   SPI_MEM_OP_NO_DUMMY,					\
 		   SPI_MEM_OP_NO_DATA)
 
+static int micron_st_nor_phy_enable(struct spi_nor *nor)
+{
+	struct spi_mem_op op;
+	u8 *buf = nor->bouncebuf;
+	int ret;
+
+	buf[0] = SPINOR_MT_EXSPI;
+	op = (struct spi_mem_op)
+		MICRON_ST_NOR_WR_ANY_REG_OP(nor->addr_nbytes,
+					    SPINOR_REG_MT_CFR0V, 1, buf);
+	ret = spi_nor_write_any_volatile_reg(nor, &op, SNOR_PROTO_1_1_1);
+	if (ret)
+		goto ret;
+
+	if ((nor->flags & SNOR_F_HAS_STACKED) && nor->spimem->spi->cs_index_mask == 1)
+		return 0;
+
+	nor->spimem->spi->controller->flags |= SPI_CONTROLLER_SDR_PHY;
+	/* Read flash ID to make sure the switch was successful. */
+	ret = spi_nor_read_id(nor, 0, 0, buf, SNOR_PROTO_1_1_1);
+	if (ret) {
+		dev_dbg(nor->dev, "error %d reading JEDEC ID after disabling 1D-1D-1D mode\n", ret);
+		goto ret;
+	}
+
+	if (memcmp(buf, nor->info->id->bytes, nor->info->id->len))
+		goto ret;
+
+	return 0;
+ret:
+	nor->spimem->spi->controller->flags &= ~SPI_CONTROLLER_SDR_PHY;
+	return 0;
+}
 static int micron_st_nor_octal_dtr_en(struct spi_nor *nor)
 {
 	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
@@ -133,6 +166,7 @@ static void mt35xu512aba_default_init(struct spi_nor *nor)
 	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
 
 	params->set_octal_dtr = micron_st_nor_set_octal_dtr;
+	params->phy_enable = micron_st_nor_phy_enable;
 }
 
 static int mt35xu512aba_post_sfdp_fixup(struct spi_nor *nor)
