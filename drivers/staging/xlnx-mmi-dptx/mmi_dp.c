@@ -451,7 +451,7 @@ static void mmi_dp_soft_reset_all(struct dptx *dptx)
  */
 void mmi_dp_core_init_phy(struct dptx *dptx)
 {
-	mmi_dp_set(dptx->base, PHYIF_CTRL, PHYIF_PHY_WIDTH);
+	mmi_dp_clr(dptx->base, PHYIF_CTRL, PHYIF_PHY_WIDTH);
 }
 
 /**
@@ -614,22 +614,6 @@ void mmi_dp_phy_set_lanes(struct dptx *dptx, unsigned int lanes)
 void mmi_dp_phy_set_rate(struct dptx *dptx, unsigned int rate)
 {
 	dptx_dbg(dptx, "%s: rate=%d\n", __func__, rate);
-
-	switch (rate) {
-	case DPTX_PHYIF_CTRL_RATE_RBR:
-	case DPTX_PHYIF_CTRL_RATE_HBR:
-		/* Set 20-bit PHY width */
-		mmi_dp_clr(dptx->base, PHYIF_CTRL, PHYIF_PHY_WIDTH);
-		break;
-	case DPTX_PHYIF_CTRL_RATE_HBR2:
-	case DPTX_PHYIF_CTRL_RATE_HBR3:
-		/* Set 40-bit PHY width */
-		mmi_dp_set(dptx->base, PHYIF_CTRL, PHYIF_PHY_WIDTH);
-		break;
-	default:
-		dptx_warn(dptx, "Invalid PHY rate %d\n", rate);
-		break;
-	}
 
 	mmi_dp_write_mask(dptx, PHYIF_CTRL, PHYIF_PHY_RATE, rate);
 }
