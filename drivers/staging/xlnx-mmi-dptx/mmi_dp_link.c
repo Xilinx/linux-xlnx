@@ -160,7 +160,7 @@ void mmi_dp_video_ts_calculate(struct dptx *dptx, int lane_num, int rate,
 		link_clk = 40500;
 	}
 
-	numerator = dptx->selected_pixel_clock * (color_dep / 8);
+	numerator = (dptx->selected_pixel_clock * color_dep) / 8;
 	denominator = (link_rate) * 10 * lane_num * 100;
 	fixp = drm_fixp_from_fraction(numerator * 64, denominator);
 	tu = drm_fixp2int(fixp);
