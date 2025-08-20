@@ -70,6 +70,7 @@
 /*
  * Register offsets
  */
+#define AIE2PS_SHIMNOC_S2MM_0_TASK_QUEUE_REGOFF		0x00009304U
 #define AIE2PS_SHIMNOC_BD0_0_REGOFF			0x00009000U
 #define AIE2PS_SHIMNOC_BD15_7_REGOFF			0x000092ecU
 #define AIE2PS_SHIMNOC_LOCK_REGOFF			0x00000000U
@@ -1055,6 +1056,10 @@ static const struct aie_dma_attr aie2ps_shimdma = {
 		.mask = GENMASK(27, 24),
 		.regoff = 0x0,
 	},
+	.taskq_bd = {
+		.mask = GENMASK(3, 0),
+		.regoff = AIE2PS_SHIMNOC_S2MM_0_TASK_QUEUE_REGOFF,
+	},
 	.bd_regoff = AIE2PS_SHIMNOC_BD0_0_REGOFF,
 	.num_bds = 16,
 	.bd_len = 0x30U,
@@ -1063,6 +1068,8 @@ static const struct aie_dma_attr aie2ps_shimdma = {
 	.num_s2mm_chan = 2U,
 	.mm2s_sts_regoff = AIE2PS_SHIMNOC_DMA_MM2S_STATUS_REGOFF,
 	.s2mm_sts_regoff = AIE2PS_SHIMNOC_DMA_S2MM_STATUS_REGOFF,
+	.chan_idx_offset = 0x8U,
+	.chan_dir_offset = 0x10U,
 };
 
 static const struct aie_strmsw_port_attr aie2ps_tile_mstrs[AIE_STRMSW_MAX] = {
@@ -4117,6 +4124,9 @@ int aie2ps_device_init(struct aie_device *adev)
 	adev->noc_outstanding_aximm = &aie2ps_noc_outstanding_aximm;
 	adev->uc_outstanding_aximm = &aie2ps_uc_outstanding_aximm;
 	adev->shim_errors = &aie2ps_shim_error;
+	adev->tile_bd = &aie2ps_tilebd;
+	adev->shim_bd = &aie2ps_shimbd;
+	adev->memtile_bd = &aie2ps_memtilebd;
 	adev->tile_dma = &aie2ps_tiledma;
 	adev->shim_dma = &aie2ps_shimdma;
 	adev->memtile_dma = &aie2ps_memtiledma;
