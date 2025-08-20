@@ -480,32 +480,26 @@ int aie_dma_end_cpu_access(struct dma_buf *dmabuf,
 }
 
 /**
- * aie_part_attach_dmabuf_req() - Handle attaching dmabuf to an AI engine
- *				  partition request
+ * aie_part_attach_dmabuf_fd() - Handle attaching dmabuf to an AI engine
+ *				 partition for given dmabuf file descriptor
  * @apart: AI engine partition
- * @user_args: user AI engine dmabuf argument
+ * @dmabuf_fd: DMABUF file descriptor
  *
  * @return: 0 for success, negative value for failure
  *
  * This function attaches a dmabuf to the specified AI engine partition and map
  * the attachment. It checks if the dmabuf is already attached, if it is not
- * attached, attach it. It returns the number of entries of the attachment to
- * the AI engine dmabuf user argument. If user wants to know the sg list, it
- * can use AI engine get sg ioctl.
+ * attached, attach it.
  */
-long aie_part_attach_dmabuf_req(struct aie_partition *apart,
-				void __user *user_args)
+long aie_part_attach_dmabuf_fd(struct aie_partition *apart, int dmabuf_fd)
 {
 	struct aie_dmabuf *adbuf;
 	struct dma_buf *dbuf;
 	long ret;
-	int dmabuf_fd = (int)(uintptr_t)user_args;
 
-	trace_aie_part_attach_dmabuf_req(apart, dmabuf_fd);
 	dbuf = dma_buf_get(dmabuf_fd);
 	if (IS_ERR(dbuf)) {
-		dev_err(&apart->dev, "failed to get dmabuf from %d.\n",
-			dmabuf_fd);
+		dev_err(&apart->dev, "failed to get dmabuf from %d", dmabuf_fd);
 		return PTR_ERR(dbuf);
 	}
 
@@ -524,10 +518,77 @@ long aie_part_attach_dmabuf_req(struct aie_partition *apart,
 	mutex_unlock(&apart->mlock);
 
 	if (IS_ERR(adbuf)) {
-		dev_err(&apart->dev, "failed to attach dmabuf\n");
+		dev_err(&apart->dev, "failed to attach dmabuf");
 		dma_buf_put(dbuf);
 		return PTR_ERR(adbuf);
 	}
+
+	return 0;
+}
+
+/**
+ * aie_part_attach_dmabuf_req() - Handle attaching dmabuf to an AI engine
+ *				  partition request
+ * @apart: AI engine partition
+ * @user_args: user AI engine dmabuf argument
+ *
+ * @return: 0 for success, negative value for failure
+ *
+ * This function attaches a dmabuf to the specified AI engine partition and map
+ * the attachment. It checks if the dmabuf is already attached, if it is not
+ * attached, attach it. It returns the number of entries of the attachment to
+ * the AI engine dmabuf user argument. If user wants to know the sg list, it
+ * can use AI engine get sg ioctl.
+ */
+long aie_part_attach_dmabuf_req(struct aie_partition *apart,
+				void __user *user_args)
+{
+	int dmabuf_fd = (int)(uintptr_t)user_args;
+
+	trace_aie_part_attach_dmabuf_req(apart, dmabuf_fd);
+	return aie_part_attach_dmabuf_fd(apart, dmabuf_fd);
+}
+
+/**
+ * aie_part_detach_dmabuf_fd() - Handle detaching dmabuf from an AI engine
+ *				 partition given a file descriptor
+ * @apart: AI engine partition
+ * @dmabuf_fd: DMABUF file descriptor
+ *
+ * @return: 0 for success, negative value for failure
+ *
+ * This function unmaps and detaches a dmabuf from the specified AI engine
+ * partition.
+ */
+long aie_part_detach_dmabuf_fd(struct aie_partition *apart, int dmabuf_fd)
+{
+	struct aie_dmabuf *adbuf;
+	struct dma_buf *dbuf;
+	int ret;
+
+	dbuf = dma_buf_get(dmabuf_fd);
+	if (IS_ERR(dbuf)) {
+		dev_err(&apart->dev, "failed to get dmabuf %d", dmabuf_fd);
+		return PTR_ERR(dbuf);
+	}
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret) {
+		dma_buf_put(dbuf);
+		return ret;
+	}
+
+	adbuf = aie_part_find_dmabuf(apart, dbuf);
+	dma_buf_put(dbuf);
+	if (!adbuf) {
+		dev_err(&apart->dev, "failed to find dmabuf %d", dmabuf_fd);
+		mutex_unlock(&apart->mlock);
+		return -EINVAL;
+	}
+
+	aie_part_dmabuf_attach_put(adbuf);
+
+	mutex_unlock(&apart->mlock);
 
 	return 0;
 }
@@ -546,39 +607,10 @@ long aie_part_attach_dmabuf_req(struct aie_partition *apart,
 long aie_part_detach_dmabuf_req(struct aie_partition *apart,
 				void __user *user_args)
 {
-	struct aie_dmabuf *adbuf;
-	struct dma_buf *dbuf;
-	int dmabuf_fd;
-	int ret;
-
-	dmabuf_fd = (int)(uintptr_t)user_args;
+	int dmabuf_fd = (int)(uintptr_t)user_args;
 
 	trace_aie_part_detach_dmabuf_req(apart, dmabuf_fd);
-	dbuf = dma_buf_get(dmabuf_fd);
-	if (IS_ERR(dbuf)) {
-		dev_err(&apart->dev, "failed to get dmabuf %d.\n", dmabuf_fd);
-		return PTR_ERR(dbuf);
-	}
-
-	ret = mutex_lock_interruptible(&apart->mlock);
-	if (ret) {
-		dma_buf_put(dbuf);
-		return ret;
-	}
-
-	adbuf = aie_part_find_dmabuf(apart, dbuf);
-	dma_buf_put(dbuf);
-	if (!adbuf) {
-		dev_err(&apart->dev, "failed to find dmabuf %d.\n", dmabuf_fd);
-		mutex_unlock(&apart->mlock);
-		return -EINVAL;
-	}
-
-	aie_part_dmabuf_attach_put(adbuf);
-
-	mutex_unlock(&apart->mlock);
-
-	return 0;
+	return aie_part_detach_dmabuf_fd(apart, dmabuf_fd);
 }
 
 /**

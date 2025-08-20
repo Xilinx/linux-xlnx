@@ -1670,8 +1670,10 @@ int aie_mem_get_info(struct aie_partition *apart, unsigned long arg);
 
 long aie_part_attach_dmabuf_req(struct aie_partition *apart,
 				void __user *user_args);
+long aie_part_attach_dmabuf_fd(struct aie_partition *apart, int dmabuf_fd);
 long aie_part_detach_dmabuf_req(struct aie_partition *apart,
 				void __user *user_args);
+long aie_part_detach_dmabuf_fd(struct aie_partition *apart, int dmabuf_fd);
 long aie_part_set_bd_from_user(struct aie_partition *apart,
 					void __user *user_args);
 long aie_part_set_bd(struct aie_partition *apart,
@@ -1859,7 +1861,10 @@ u32 aie_get_core_lr(struct aie_partition *apart,
 u32 aie_get_core_sp(struct aie_partition *apart,
 		    struct aie_location *loc);
 int aie_dma_mem_alloc(struct aie_partition *apart, __kernel_size_t size);
+void *aie_dma_mem_alloc_buffer(struct aie_partition *apart, size_t bufsize,
+			       int *dmabuf_fd);
 int aie_dma_mem_free(int fd);
+void aie_dma_mem_free_buffer(struct aie_partition *apart, int dmabuf_fd);
 int aie_dma_begin_cpu_access(struct dma_buf *dmabuf,
 			     enum dma_data_direction direction);
 int aie_dma_end_cpu_access(struct dma_buf *dmabuf,
