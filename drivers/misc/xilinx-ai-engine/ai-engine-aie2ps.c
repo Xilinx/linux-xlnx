@@ -1389,6 +1389,40 @@ static const struct aie_strmsw_port_attr aie2ps_shim_slvs[AIE_STRMSW_MAX] = {
 	},
 };
 
+static const struct aie_single_reg_field aie2ps_mux_ports[] = {
+	/* only ports 3 and 7 are valid */
+	{.mask = 0, .regoff = 0},
+	{.mask = 0, .regoff = 0},
+	{.mask = 0, .regoff = 0},
+	{
+		.mask = GENMASK(11, 10),
+		.regoff = 0x02104,
+	},
+	{.mask = 0, .regoff = 0},
+	{.mask = 0, .regoff = 0},
+	{.mask = 0, .regoff = 0},
+	{
+		.mask = GENMASK(15, 14),
+		.regoff = 0x02104,
+	},
+};
+
+static const struct aie_single_reg_field aie2ps_demux_ports[] = {
+	/* only ports 1 and 4 are valid */
+	{.mask = 0, .regoff = 0},
+	{
+		.mask = GENMASK(3, 2),
+		.regoff = 0x02108,
+	},
+	{.mask = 0, .regoff = 0},
+	{
+		.mask = GENMASK(7, 6),
+		.regoff = 0x02108,
+	},
+	{.mask = 0, .regoff = 0},
+	{.mask = 0, .regoff = 0},
+};
+
 static const struct aie_strmsw_attr aie2ps_shim_strmsw = {
 	.mstr_en = {
 		.mask = BIT(31),
@@ -1405,6 +1439,8 @@ static const struct aie_strmsw_attr aie2ps_shim_strmsw = {
 	},
 	.slv_ports = aie2ps_shim_slvs,
 	.slv_config_base = AIE2PS_SHIMNOC_SS_SLV_CONFIG_CTRL_REGOFF,
+	.mux_ports = aie2ps_mux_ports,
+	.demux_ports = aie2ps_demux_ports,
 };
 
 static char *aie2ps_dma_chan_status_str[] = {
