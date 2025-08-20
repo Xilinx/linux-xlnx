@@ -414,7 +414,7 @@ again:
 				return ret;
 			goto again;
 		}
-		type &= AIE_PART_INIT_OPT_DIS_TLAST_ERROR;
+		type &= ~AIE_PART_INIT_OPT_DIS_TLAST_ERROR;
 		op = pm_ops->pkt_va + pm_ops->offset;
 		pm_ops->offset += sizeof(*op);
 		op->type = XILINX_AIE_OPS_CTRL_PKT_TLAST_ERR;
