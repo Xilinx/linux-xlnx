@@ -180,6 +180,7 @@ bool aie_partition_check_noc_aximm(struct device *dev, struct aie_location *loc)
 int aie_partition_check_uc_aximm(struct device *dev, struct aie_location *loc);
 int aie_partition_uc_zeroize_mem(struct device *dev, struct aie_location *loc, u32 regval);
 int aie_load_cert(struct device *dev, unsigned char *elf_addr);
+int aie_load_cert_broadcast(struct device *dev, void *elf_addr);
 
 #else
 static inline bool aie_partition_is_available(struct aie_partition_req *req)
@@ -307,6 +308,11 @@ int aie_partition_uc_zeroize_mem(struct device *dev, struct aie_location *loc, u
 }
 
 int aie_load_cert(struct device *dev, unsigned char *elf_addr)
+{
+	return -EINVAL;
+}
+
+int aie_load_cert_broadcast(struct device *dev, void *elf_addr)
 {
 	return -EINVAL;
 }
