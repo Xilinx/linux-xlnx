@@ -79,6 +79,21 @@
 #define AIE2PS_SHIMNOC_DMA_MM2S_STATUS_REGOFF		0x00009328U
 #define AIE2PS_SHIMNOC_UCMOD_CORE_CTRL_REGOFF		0x000C0004U
 #define AIE2PS_SHIMNOC_AXI_OUTSTANDING_TX_REGOFF	0x00002120U
+#define AIE2PS_SHIMNOC_SS_MSTR_CONFIG_CTRL_REGOFF	0x0003F000U
+#define AIE2PS_SHIMNOC_SS_MSTR_CONFIG_FIFO_REGOFF	0x0003F004U
+#define AIE2PS_SHIMNOC_SS_MSTR_CONFIG_SOUTH_REGOFF	0x0003F008U
+#define AIE2PS_SHIMNOC_SS_MSTR_CONFIG_WEST_REGOFF	0x0003F020U
+#define AIE2PS_SHIMNOC_SS_MSTR_CONFIG_NORTH_REGOFF	0x0003F030U
+#define AIE2PS_SHIMNOC_SS_MSTR_CONFIG_EAST_REGOFF	0x0003F048U
+#define AIE2PS_SHIMNOC_SS_MSTR_CONFIG_UC_REGOFF		0x0003F058U
+#define AIE2PS_SHIMNOC_SS_SLV_CONFIG_CTRL_REGOFF	0x0003F100U
+#define AIE2PS_SHIMNOC_SS_SLV_CONFIG_FIFO_REGOFF	0x0003F104U
+#define AIE2PS_SHIMNOC_SS_SLV_CONFIG_SOUTH_REGOFF	0x0003F108U
+#define AIE2PS_SHIMNOC_SS_SLV_CONFIG_WEST_REGOFF	0x0003F128U
+#define AIE2PS_SHIMNOC_SS_SLV_CONFIG_NORTH_REGOFF	0x0003F138U
+#define AIE2PS_SHIMNOC_SS_SLV_CONFIG_EAST_REGOFF	0x0003F148U
+#define AIE2PS_SHIMNOC_SS_SLV_CONFIG_TRACE_REGOFF	0x0003F158U
+#define AIE2PS_SHIMNOC_SS_SLV_CONFIG_UC_REGOFF		0x0003F15CU
 #define AIE2PS_UCMOD_AXI_OUTSTANDING_TX_REGOFF		0x000C0024U
 #define AIE2PS_SHIMNOC_UCMOD_MEM_PRIV_REGOFF		0x000C0034U
 #define AIE2PS_SHIMNOC_UCMOD_MEM_DM_ECC_ERR_GEN		0x000C003CU
@@ -114,6 +129,15 @@
 #define AIE2PS_MEMORY_LOCK_UNDERFLOW_REGOFF		0x000C0428U
 #define AIE2PS_MEMORY_DMA_S2MM_STATUS_REGOFF		0x000A0660U
 #define AIE2PS_MEMORY_DMA_MM2S_STATUS_REGOFF		0x000A0680U
+#define AIE2PS_MEMORY_SS_MSTR_CONFIG_DMA_REGOFF		0x000B0000U
+#define AIE2PS_MEMORY_SS_MSTR_CONFIG_CTRL_REGOFF	0x000B0018U
+#define AIE2PS_MEMORY_SS_MSTR_CONFIG_SOUTH_REGOFF	0x000B001CU
+#define AIE2PS_MEMORY_SS_MSTR_CONFIG_NORTH_REGOFF	0x000B002CU
+#define AIE2PS_MEMORY_SS_SLV_CONFIG_DMA_REGOFF		0x000B0100U
+#define AIE2PS_MEMORY_SS_SLV_CONFIG_CTRL_REGOFF		0x000B0118U
+#define AIE2PS_MEMORY_SS_SLV_CONFIG_SOUTH_REGOFF	0x000B011CU
+#define AIE2PS_MEMORY_SS_SLV_CONFIG_NORTH_REGOFF	0x000B0134U
+#define AIE2PS_MEMORY_SS_SLV_CONFIG_TRACE_REGOFF	0x000B0144U
 
 #define AIE2PS_TILE_COREMOD_BMLL0_PART1_REGOFF		0x00030000U
 #define AIE2PS_TILE_COREMOD_BMHH7_PART4_REGOFF		0x000307F0U
@@ -141,6 +165,25 @@
 #define AIE2PS_TILE_COREMOD_CORE_PC_REGOFF		0x00032d00U
 #define AIE2PS_TILE_COREMOD_CORE_SP_REGOFF		0x00032d20U
 #define AIE2PS_TILE_COREMOD_CORE_LR_REGOFF		0x00032d30U
+#define AIE2PS_TILE_SS_MSTR_CONFIG_CORE_REGOFF		0x0003F000U
+#define AIE2PS_TILE_SS_MSTR_CONFIG_DMA_REGOFF		0x0003F004U
+#define AIE2PS_TILE_SS_MSTR_CONFIG_CTRL_REGOFF		0x0003F00CU
+#define AIE2PS_TILE_SS_MSTR_CONFIG_FIFO_REGOFF		0x0003F010U
+#define AIE2PS_TILE_SS_MSTR_CONFIG_SOUTH_REGOFF		0x0003F014U
+#define AIE2PS_TILE_SS_MSTR_CONFIG_WEST_REGOFF		0x0003F024U
+#define AIE2PS_TILE_SS_MSTR_CONFIG_NORTH_REGOFF		0x0003F034U
+#define AIE2PS_TILE_SS_MSTR_CONFIG_EAST_REGOFF		0x0003F04CU
+#define AIE2PS_TILE_SS_SLV_CONFIG_CORE_REGOFF		0x0003F100U
+#define AIE2PS_TILE_SS_SLV_CONFIG_DMA_REGOFF		0x0003F104U
+#define AIE2PS_TILE_SS_SLV_CONFIG_CTRL_REGOFF		0x0003F10CU
+#define AIE2PS_TILE_SS_SLV_CONFIG_FIFO_REGOFF		0x0003F110U
+#define AIE2PS_TILE_SS_SLV_CONFIG_SOUTH_REGOFF		0x0003F114U
+#define AIE2PS_TILE_SS_SLV_CONFIG_WEST_REGOFF		0x0003F12CU
+#define AIE2PS_TILE_SS_SLV_CONFIG_NORTH_REGOFF		0x0003F13CU
+#define AIE2PS_TILE_SS_SLV_CONFIG_EAST_REGOFF		0x0003F14CU
+#define AIE2PS_TILE_SS_SLV_CONFIG_AIETRACE_REGOFF	0x0003F15CU
+#define AIE2PS_TILE_SS_SLV_CONFIG_MEMTRACE_REGOFF	0x0003F160U
+
 #define AIE2PS_TILE_MEMMOD_BD0_0_REGOFF			0x0001D000U
 #define AIE2PS_TILE_MEMMOD_GROUPERROR_REGOFF		0x00014514U
 #define AIE2PS_TILE_MEMMOD_GROUP0_REGOFF		0x00014500U
@@ -1020,6 +1063,348 @@ static const struct aie_dma_attr aie2ps_shimdma = {
 	.num_s2mm_chan = 2U,
 	.mm2s_sts_regoff = AIE2PS_SHIMNOC_DMA_MM2S_STATUS_REGOFF,
 	.s2mm_sts_regoff = AIE2PS_SHIMNOC_DMA_S2MM_STATUS_REGOFF,
+};
+
+static const struct aie_strmsw_port_attr aie2ps_tile_mstrs[AIE_STRMSW_MAX] = {
+	{
+		/* AIE_STRMSW_CORE */
+		.num_ports = 1U,
+		.port_regoff = AIE2PS_TILE_SS_MSTR_CONFIG_CORE_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_DMA */
+		.num_ports = 2U,
+		.port_regoff = AIE2PS_TILE_SS_MSTR_CONFIG_DMA_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_CTRL */
+		.num_ports = 1U,
+		.port_regoff = AIE2PS_TILE_SS_MSTR_CONFIG_CTRL_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_FIFO */
+		.num_ports = 1U,
+		.port_regoff = AIE2PS_TILE_SS_MSTR_CONFIG_FIFO_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_SOUTH */
+		.num_ports = 4U,
+		.port_regoff = AIE2PS_TILE_SS_MSTR_CONFIG_SOUTH_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_WEST */
+		.num_ports = 4U,
+		.port_regoff = AIE2PS_TILE_SS_MSTR_CONFIG_WEST_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_NORTH */
+		.num_ports = 6U,
+		.port_regoff = AIE2PS_TILE_SS_MSTR_CONFIG_NORTH_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_EAST */
+		.num_ports = 4U,
+		.port_regoff = AIE2PS_TILE_SS_MSTR_CONFIG_EAST_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_TRACE */
+		.num_ports = 0U,
+		.port_regoff = 0x0U,
+	},
+};
+
+static const struct aie_strmsw_port_attr aie2ps_tile_slvs[AIE_STRMSW_MAX] = {
+	{
+		/* AIE_STRMSW_CORE */
+		.num_ports = 1U,
+		.port_regoff = AIE2PS_TILE_SS_SLV_CONFIG_CORE_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_DMA */
+		.num_ports = 2U,
+		.port_regoff = AIE2PS_TILE_SS_SLV_CONFIG_DMA_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_CTRL */
+		.num_ports = 1U,
+		.port_regoff = AIE2PS_TILE_SS_SLV_CONFIG_CTRL_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_FIFO */
+		.num_ports = 1U,
+		.port_regoff = AIE2PS_TILE_SS_SLV_CONFIG_FIFO_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_SOUTH */
+		.num_ports = 6U,
+		.port_regoff = AIE2PS_TILE_SS_SLV_CONFIG_SOUTH_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_WEST */
+		.num_ports = 4U,
+		.port_regoff = AIE2PS_TILE_SS_SLV_CONFIG_WEST_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_NORTH */
+		.num_ports = 4U,
+		.port_regoff = AIE2PS_TILE_SS_SLV_CONFIG_NORTH_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_EAST */
+		.num_ports = 4U,
+		.port_regoff = AIE2PS_TILE_SS_SLV_CONFIG_EAST_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_TRACE */
+		.num_ports = 2U,
+		.port_regoff = AIE2PS_TILE_SS_SLV_CONFIG_AIETRACE_REGOFF,
+	},
+};
+
+static const struct aie_strmsw_attr aie2ps_tile_strmsw = {
+	.mstr_en = {
+		.mask = BIT(31),
+		.regoff = 0x0U,
+	},
+	.config = {
+		.mask = GENMASK(6, 0),
+		.regoff = 0x0U,
+	},
+	.mstr_ports = aie2ps_tile_mstrs,
+	.slv_en = {
+		.mask = BIT(31),
+		.regoff = 0x0U,
+	},
+	.slv_ports = aie2ps_tile_slvs,
+	.slv_config_base = AIE2PS_TILE_SS_SLV_CONFIG_CORE_REGOFF,
+};
+
+static const struct aie_strmsw_port_attr aie2ps_memory_mstrs[AIE_STRMSW_MAX] = {
+	{
+		/* AIE_STRMSW_CORE */
+		.num_ports = 0U,
+		.port_regoff = 0x0U,
+	},
+	{
+		/* AIE_STRMSW_DMA */
+		.num_ports = 6U,
+		.port_regoff = AIE2PS_MEMORY_SS_MSTR_CONFIG_DMA_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_CTRL */
+		.num_ports = 1U,
+		.port_regoff = AIE2PS_MEMORY_SS_MSTR_CONFIG_CTRL_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_FIFO */
+		.num_ports = 0U,
+		.port_regoff = 0x0U,
+	},
+	{
+		/* AIE_STRMSW_SOUTH */
+		.num_ports = 4U,
+		.port_regoff = AIE2PS_MEMORY_SS_MSTR_CONFIG_SOUTH_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_WEST */
+		.num_ports = 0U,
+		.port_regoff = 0x0U,
+	},
+	{
+		/* AIE_STRMSW_NORTH */
+		.num_ports = 6U,
+		.port_regoff = AIE2PS_MEMORY_SS_MSTR_CONFIG_NORTH_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_EAST */
+		.num_ports = 0U,
+		.port_regoff = 0x0U,
+	},
+	{
+		/* AIE_STRMSW_TRACE */
+		.num_ports = 0U,
+		.port_regoff = 0x0U,
+	},
+};
+
+static const struct aie_strmsw_port_attr aie2ps_memory_slvs[AIE_STRMSW_MAX] = {
+	{
+		/* AIE_STRMSW_CORE */
+		.num_ports = 0U,
+		.port_regoff = 0x0U,
+	},
+	{
+		/* AIE_STRMSW_DMA */
+		.num_ports = 6U,
+		.port_regoff = AIE2PS_MEMORY_SS_SLV_CONFIG_DMA_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_CTRL */
+		.num_ports = 1U,
+		.port_regoff = AIE2PS_MEMORY_SS_SLV_CONFIG_CTRL_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_FIFO */
+		.num_ports = 0U,
+		.port_regoff = 0x0U,
+	},
+	{
+		/* AIE_STRMSW_SOUTH */
+		.num_ports = 6U,
+		.port_regoff = AIE2PS_MEMORY_SS_SLV_CONFIG_SOUTH_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_WEST */
+		.num_ports = 0U,
+		.port_regoff = 0x0U,
+	},
+	{
+		/* AIE_STRMSW_NORTH */
+		.num_ports = 4U,
+		.port_regoff = AIE2PS_MEMORY_SS_SLV_CONFIG_NORTH_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_EAST */
+		.num_ports = 0U,
+		.port_regoff = 0x0U,
+	},
+	{
+		/* AIE_STRMSW_TRACE */
+		.num_ports = 1U,
+		.port_regoff = AIE2PS_MEMORY_SS_SLV_CONFIG_TRACE_REGOFF,
+	},
+};
+
+static const struct aie_strmsw_attr aie2ps_memory_strmsw = {
+	.mstr_en = {
+		.mask = BIT(31),
+		.regoff = 0x0U,
+	},
+	.config = {
+		.mask = GENMASK(6, 0),
+		.regoff = 0x0U,
+	},
+	.mstr_ports = aie2ps_memory_mstrs,
+	.slv_en = {
+		.mask = BIT(31),
+		.regoff = 0x0U,
+	},
+	.slv_ports = aie2ps_memory_slvs,
+	.slv_config_base = AIE2PS_MEMORY_SS_SLV_CONFIG_DMA_REGOFF,
+};
+
+static const struct aie_strmsw_port_attr aie2ps_shim_mstrs[AIE_STRMSW_MAX] = {
+	{
+		/* AIE_STRMSW_CORE */
+		.num_ports = 1U,
+		.port_regoff = AIE2PS_SHIMNOC_SS_MSTR_CONFIG_UC_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_DMA */
+		.num_ports = 0U,
+		.port_regoff = 0x0U,
+	},
+	{
+		/* AIE_STRMSW_CTRL */
+		.num_ports = 1U,
+		.port_regoff = AIE2PS_SHIMNOC_SS_MSTR_CONFIG_CTRL_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_FIFO */
+		.num_ports = 1U,
+		.port_regoff = AIE2PS_SHIMNOC_SS_MSTR_CONFIG_FIFO_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_SOUTH */
+		.num_ports = 6U,
+		.port_regoff = AIE2PS_SHIMNOC_SS_MSTR_CONFIG_SOUTH_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_WEST */
+		.num_ports = 4U,
+		.port_regoff = AIE2PS_SHIMNOC_SS_MSTR_CONFIG_WEST_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_NORTH */
+		.num_ports = 6U,
+		.port_regoff = AIE2PS_SHIMNOC_SS_MSTR_CONFIG_NORTH_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_EAST */
+		.num_ports = 4U,
+		.port_regoff = AIE2PS_SHIMNOC_SS_MSTR_CONFIG_EAST_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_TRACE */
+		.num_ports = 0U,
+		.port_regoff = 0x0U,
+	},
+};
+
+static const struct aie_strmsw_port_attr aie2ps_shim_slvs[AIE_STRMSW_MAX] = {
+	{
+		/* AIE_STRMSW_CORE */
+		.num_ports = 1U,
+		.port_regoff = AIE2PS_SHIMNOC_SS_SLV_CONFIG_UC_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_DMA */
+		.num_ports = 0U,
+		.port_regoff = 0x0U,
+	},
+	{
+		/* AIE_STRMSW_CTRL */
+		.num_ports = 1U,
+		.port_regoff = AIE2PS_SHIMNOC_SS_SLV_CONFIG_CTRL_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_FIFO */
+		.num_ports = 1U,
+		.port_regoff = AIE2PS_SHIMNOC_SS_SLV_CONFIG_FIFO_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_SOUTH */
+		.num_ports = 8U,
+		.port_regoff = AIE2PS_SHIMNOC_SS_SLV_CONFIG_SOUTH_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_WEST */
+		.num_ports = 4U,
+		.port_regoff = AIE2PS_SHIMNOC_SS_SLV_CONFIG_WEST_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_NORTH */
+		.num_ports = 4U,
+		.port_regoff = AIE2PS_SHIMNOC_SS_SLV_CONFIG_NORTH_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_EAST */
+		.num_ports = 4U,
+		.port_regoff = AIE2PS_SHIMNOC_SS_SLV_CONFIG_EAST_REGOFF,
+	},
+	{
+		/* AIE_STRMSW_TRACE */
+		.num_ports = 1U,
+		.port_regoff = AIE2PS_SHIMNOC_SS_SLV_CONFIG_TRACE_REGOFF,
+	},
+};
+
+static const struct aie_strmsw_attr aie2ps_shim_strmsw = {
+	.mstr_en = {
+		.mask = BIT(31),
+		.regoff = 0x0U,
+	},
+	.config = {
+		.mask = GENMASK(6, 0),
+		.regoff = 0x0U,
+	},
+	.mstr_ports = aie2ps_shim_mstrs,
+	.slv_en = {
+		.mask = BIT(31),
+		.regoff = 0x0U,
+	},
+	.slv_ports = aie2ps_shim_slvs,
+	.slv_config_base = AIE2PS_SHIMNOC_SS_SLV_CONFIG_CTRL_REGOFF,
 };
 
 static char *aie2ps_dma_chan_status_str[] = {
@@ -3432,6 +3817,183 @@ static int aie2ps_map_uc_mem(struct aie_partition *apart, u64 addr,
 	return AIE_UC_MEM_MAX;
 }
 
+/**
+ * aie2ps_tile_port_verify() - verifies stream switch ports can connect in AIE tile
+ * @ttype: type of AI Engine tile
+ * @slv: slave port type
+ * @slv_port_num: slave port number
+ * @mstr: master port type
+ * @mstr_port_num: master port number
+ * @return: return 0 if success -EINVAL if invalid
+ */
+static int aie2ps_tile_port_verify(u8 ttype,
+				   enum aie_strmsw_port_type slv, u8 slv_port_num,
+				   enum aie_strmsw_port_type mstr, u8 mstr_port_num)
+{
+	int ret = 0;
+
+	switch (slv) {
+	case AIE_STRMSW_CORE:
+		if (mstr == AIE_STRMSW_CORE)
+			ret = -EINVAL;
+		break;
+	case AIE_STRMSW_DMA:
+		if (mstr == AIE_STRMSW_DMA && slv_port_num != mstr_port_num)
+			ret = -EINVAL;
+		break;
+	case AIE_STRMSW_CTRL:
+		if (mstr == AIE_STRMSW_DMA || mstr == AIE_STRMSW_CTRL)
+			ret = -EINVAL;
+		break;
+	case AIE_STRMSW_FIFO:
+		break;
+	case AIE_STRMSW_SOUTH:
+	case AIE_STRMSW_WEST:
+	case AIE_STRMSW_NORTH:
+	case AIE_STRMSW_EAST:
+		if (mstr == slv && mstr_port_num != slv_port_num)
+			ret = -EINVAL;
+		break;
+	case AIE_STRMSW_TRACE:
+		if (mstr == AIE_STRMSW_SOUTH || mstr == AIE_STRMSW_FIFO ||
+		    (mstr == AIE_STRMSW_DMA && mstr_port_num == 0))
+			break;
+		ret = -EINVAL;
+		break;
+	default:
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+
+/**
+ * aie2ps_memory_port_verify() - verifies stream switch ports can connect in AIE
+ *				 memory tile
+ * @ttype: type of AI Engine tile
+ * @slv: slave port type
+ * @slv_port_num: slave port number
+ * @mstr: master port type
+ * @mstr_port_num: master port number
+ * @return: return 0 if success -EINVAL if invalid
+ */
+static int aie2ps_memory_port_verify(u8 ttype,
+				     enum aie_strmsw_port_type slv, u8 slv_port_num,
+				     enum aie_strmsw_port_type mstr, u8 mstr_port_num)
+{
+	int ret = 0;
+
+	switch (slv) {
+	case AIE_STRMSW_DMA:
+		if (mstr == AIE_STRMSW_DMA && slv_port_num != mstr_port_num)
+			ret = -EINVAL;
+		break;
+	case AIE_STRMSW_CTRL:
+		if ((mstr == AIE_STRMSW_DMA && mstr_port_num != 5) ||
+		    mstr == AIE_STRMSW_CTRL)
+			ret = -EINVAL;
+		break;
+	case AIE_STRMSW_SOUTH:
+	case AIE_STRMSW_NORTH:
+		if ((mstr == AIE_STRMSW_SOUTH || mstr == AIE_STRMSW_NORTH) &&
+		    slv_port_num != mstr_port_num)
+			ret = -EINVAL;
+		break;
+	case AIE_STRMSW_TRACE:
+		if (mstr == AIE_STRMSW_SOUTH ||
+		    (mstr == AIE_STRMSW_DMA && mstr_port_num == 5))
+			break;
+		ret = -EINVAL;
+		break;
+	default:
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+
+/**
+ * aie2ps_shim_port_verify() - verifies stream switch ports can connect in AIE
+ *			       shim tile
+ * @ttype: type of AI Engine tile
+ * @slv: slave port type
+ * @slv_port_num: slave port number
+ * @mstr: master port type
+ * @mstr_port_num: master port number
+ * @return: return 0 if success -EINVAL if invalid
+ */
+static int aie2ps_shim_port_verify(u8 ttype,
+				   enum aie_strmsw_port_type slv, u8 slv_port_num,
+				   enum aie_strmsw_port_type mstr, u8 mstr_port_num)
+{
+	int ret = 0;
+
+	switch (slv) {
+	case AIE_STRMSW_CORE:
+		if (mstr == AIE_STRMSW_CORE)
+			ret = -EINVAL;
+		break;
+	case AIE_STRMSW_CTRL:
+		if (mstr == AIE_STRMSW_CTRL)
+			ret = -EINVAL;
+		break;
+	case AIE_STRMSW_FIFO:
+	case AIE_STRMSW_SOUTH:
+		break;
+	case AIE_STRMSW_WEST:
+	case AIE_STRMSW_NORTH:
+	case AIE_STRMSW_EAST:
+		if (mstr == slv && slv_port_num != mstr_port_num)
+			ret = -EINVAL;
+		break;
+	case AIE_STRMSW_TRACE:
+		if (mstr == AIE_STRMSW_SOUTH || mstr == AIE_STRMSW_FIFO ||
+		    (mstr == AIE_STRMSW_WEST && mstr_port_num == 0) ||
+		    (mstr == AIE_STRMSW_NORTH && mstr_port_num == 0) ||
+		    (mstr == AIE_STRMSW_EAST && mstr_port_num == 0))
+			break;
+		ret = -EINVAL;
+		break;
+	default:
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+
+/**
+ * aie2ps_port_verify() - verifies stream switch ports can connect for given
+ *			  tile type
+ * @ttype: type of AI Engine tile
+ * @slv: slave port type
+ * @slv_port_num: slave port number
+ * @mstr: master port type
+ * @mstr_port_num: master port number
+ * @return: return 0 if success -EINVAL if invalid
+ */
+static int aie2ps_port_verify(u8 ttype,
+			      enum aie_strmsw_port_type slv, u8 slv_port_num,
+			      enum aie_strmsw_port_type mstr, u8 mstr_port_num)
+{
+	switch (ttype) {
+	case AIE_TILE_TYPE_TILE:
+		return aie2ps_tile_port_verify(ttype,
+					       slv, slv_port_num,
+					       mstr, mstr_port_num);
+	case AIE_TILE_TYPE_MEMORY:
+		return aie2ps_memory_port_verify(ttype,
+						 slv, slv_port_num,
+						 mstr, mstr_port_num);
+	case AIE_TILE_TYPE_SHIMPL:
+	case AIE_TILE_TYPE_SHIMNOC:
+		return aie2ps_shim_port_verify(ttype,
+					       slv, slv_port_num,
+					       mstr, mstr_port_num);
+	default:
+		return -EINVAL;
+	}
+}
+
 static const struct aie_tile_operations aie2ps_ops = {
 	.get_tile_type = aie2ps_get_tile_type,
 	.get_mem_info = aie2ps_get_mem_info,
@@ -3465,6 +4027,7 @@ static const struct aie_tile_operations aie2ps_ops = {
 	.part_clear_context = aie2ps_part_clear_context,
 	.part_clean = aie2ps_part_clean,
 	.part_reset = aie2ps_part_reset,
+	.strmsw_port_verify = aie2ps_port_verify,
 };
 
 /**
@@ -3521,6 +4084,9 @@ int aie2ps_device_init(struct aie_device *adev)
 	adev->tile_dma = &aie2ps_tiledma;
 	adev->shim_dma = &aie2ps_shimdma;
 	adev->memtile_dma = &aie2ps_memtiledma;
+	adev->tile_strmsw = &aie2ps_tile_strmsw;
+	adev->memory_strmsw = &aie2ps_memory_strmsw;
+	adev->shim_strmsw = &aie2ps_shim_strmsw;
 	adev->shimnoc_uc_corectrl = &aie2ps_shimnoc_uc_core_ctrl;
 	adev->aperture_sysfs_attr = &aie2ps_aperture_sysfs_attr;
 	adev->part_sysfs_attr = &aie2ps_part_sysfs_attr;
