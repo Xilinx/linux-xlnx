@@ -564,6 +564,50 @@ struct aie_dma_attr {
 	u32 num_bd_regs;
 };
 
+/*
+ * enum aie_strmsw_port_type - identifies the type of stream switch port
+ */
+enum aie_strmsw_port_type {
+	AIE_STRMSW_CORE,
+	AIE_STRMSW_DMA,
+	AIE_STRMSW_CTRL,
+	AIE_STRMSW_FIFO,
+	AIE_STRMSW_SOUTH,
+	AIE_STRMSW_WEST,
+	AIE_STRMSW_NORTH,
+	AIE_STRMSW_EAST,
+	AIE_STRMSW_TRACE,
+	AIE_STRMSW_MAX
+};
+
+/**
+ * struct aie_strmsw_port_attr - AI engine stream switch port attributes structure
+ * @num_ports: number of ports
+ * @port_regoff: base address of port
+ */
+struct aie_strmsw_port_attr {
+	u32 num_ports;
+	u32 port_regoff;
+};
+
+/**
+ * struct aie_strmsw_attr - AI engine stream switch attributes structure
+ * @mstr_en: master port enable address field attributes
+ * @config: master port configuration address field attributes
+ * @mstr_ports: port attributes for all master port types
+ * @slv_en: slave port enable address field attributes
+ * @slv_ports: port attributes for all slave port types
+ * @slv_config_base: base register address for slave port configurations
+ */
+struct aie_strmsw_attr {
+	struct aie_single_reg_field mstr_en;
+	struct aie_single_reg_field config;
+	const struct aie_strmsw_port_attr *mstr_ports;
+	struct aie_single_reg_field slv_en;
+	const struct aie_strmsw_port_attr *slv_ports;
+	u32 slv_config_base;
+};
+
 struct aie_aperture;
 /**
  * struct aie_tile_operations - AI engine device operations
@@ -612,6 +656,7 @@ struct aie_aperture;
  * @part_clear_context: partition clear context, subset of partition init.
  * @part_clean: partition clean for tiles.
  * @part_reset: reset partition.
+ * @strmsw_port_verify: verify stream switch port configuration
  *
  * Different AI engine device version has its own device
  * operation.
@@ -679,6 +724,9 @@ struct aie_tile_operations {
 	int (*part_clear_context)(struct aie_partition *apart);
 	int (*part_clean)(struct aie_partition *apart);
 	int (*part_reset)(struct aie_partition *apart);
+	int (*strmsw_port_verify)(u8 ttype,
+				  enum aie_strmsw_port_type slv, u8 slv_port_num,
+				  enum aie_strmsw_port_type mstr, u8 mstr_port_num);
 };
 
 /**
@@ -1101,6 +1149,9 @@ struct aie_addrlen {
  * @shim_dma: SHIM DMA attribute
  * @tile_dma: tile DMA attribute
  * @memtile_dma: MEM tile DMA attribute
+ * @tile_strmsw: tile stream switch attributes
+ * @memory_strmsw: memtile stream switch attributes
+ * @shim_strmsw: shim stream switch attributes
  * @pl_events: pl module event attribute
  * @memtile_events: memory tile event attribute
  * @mem_events: memory module event attribute
@@ -1152,6 +1203,9 @@ struct aie_device {
 	const struct aie_dma_attr *shim_dma;
 	const struct aie_dma_attr *tile_dma;
 	const struct aie_dma_attr *memtile_dma;
+	const struct aie_strmsw_attr *tile_strmsw;
+	const struct aie_strmsw_attr *memory_strmsw;
+	const struct aie_strmsw_attr *shim_strmsw;
 	const struct aie_event_attr *pl_events;
 	const struct aie_event_attr *memtile_events;
 	const struct aie_event_attr *mem_events;
@@ -1823,6 +1877,7 @@ int aie_error_handling_init(struct aie_partition *apart);
 int aie2ps_part_write_handshake(struct aie_partition *apart,
 				struct aie_op_handshake_data *data,
 				uint32_t handshake_cols);
-
-
+int aie_part_set_strmsw_cct(struct aie_partition *apart, struct aie_location *loc,
+			    enum aie_strmsw_port_type slv, u8 slv_port_num,
+			    enum aie_strmsw_port_type mstr, u8 mstr_port_num);
 #endif /* AIE_INTERNAL_H */
