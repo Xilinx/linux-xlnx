@@ -614,6 +614,196 @@ long aie_part_detach_dmabuf_req(struct aie_partition *apart,
 }
 
 /**
+ * aie_part_push_bd() - push buffer descriptor to DMA task queue
+ * @apart: AI engine partition
+ * @loc: AI engine tile location
+ * @bd_id: buffer descriptor index
+ * @dir: direction of data movement (MM2S, S2MM)
+ * @chan_id: dma channel index
+ *
+ * @return: 0 for success, -EINVAL for failure
+ */
+int aie_part_push_bd(struct aie_partition *apart, struct aie_location *loc,
+		     u8 bd_id, u8 dir, u8 chan_id)
+{
+	struct aie_device *adev = apart->adev;
+	const struct aie_dma_attr *dma_attr;
+	u32 regval, offset;
+	void __iomem *va;
+	u8 ttype;
+
+	ttype = adev->ops->get_tile_type(adev, loc);
+	if (ttype != AIE_TILE_TYPE_SHIMNOC) {
+		dev_err(&apart->dev, "invalid tile type");
+		return -EINVAL;
+	}
+
+	dma_attr = adev->shim_dma;
+	/* check valid direction and channel id */
+	if (dir == AIE_MM2S_DIR) {
+		if (chan_id >= dma_attr->num_mm2s_chan)
+			return -EINVAL;
+	} else if (dir == AIE_S2MM_DIR) {
+		if (chan_id >= dma_attr->num_s2mm_chan)
+			return -EINVAL;
+	} else {
+		return -EINVAL;
+	}
+
+	offset = dma_attr->taskq_bd.regoff +
+		(dma_attr->chan_idx_offset * chan_id) +
+		(dma_attr->chan_dir_offset * dir);
+	regval = aie_get_field_val(&dma_attr->taskq_bd, bd_id);
+	va = apart->aperture->base + aie_cal_regoff(adev, *loc, offset);
+
+	writel(regval, va);
+	return 0;
+}
+
+/**
+ * aie_part_set_valid_bd() - set buffer descriptor valid field
+ * @apart: AI engine partition
+ * @loc: AI engine tile location
+ * @bd: pointer to buffer descriptor data
+ *
+ * @return: 0 for success, -EINVAL for failure
+ */
+int aie_part_set_valid_bd(struct aie_partition *apart, struct aie_location loc,
+			  u32 *bd)
+{
+	struct aie_device *adev = apart->adev;
+	const struct aie_bd_attr *bd_attr;
+	u32 *tmpbd;
+	u8 ttype;
+
+	ttype = adev->ops->get_tile_type(apart->adev, &loc);
+	switch (ttype) {
+	case AIE_TILE_TYPE_TILE:
+		bd_attr = adev->tile_bd;
+		break;
+	case AIE_TILE_TYPE_MEMORY:
+		bd_attr = adev->memtile_bd;
+		break;
+	case AIE_TILE_TYPE_SHIMNOC:
+		bd_attr = adev->shim_bd;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (!bd_attr || !bd)
+		return -EINVAL;
+
+	tmpbd = (u32 *)((char *)bd + bd_attr->valid_bd.regoff);
+	*tmpbd |= aie_get_field_val(&bd_attr->valid_bd, 1);
+
+	return 0;
+}
+
+/**
+ * aie_part_set_len_bd() - set buffer descriptor length field
+ * @apart: AI engine partition
+ * @loc: AI engine tile location
+ * @bd: pointer to buffer descriptor data
+ * @len: length of data
+ *
+ * @return: 0 for success, -EINVAL for failure
+ */
+int aie_part_set_len_bd(struct aie_partition *apart, struct aie_location loc,
+			u32 *bd, size_t len)
+{
+	struct aie_device *adev = apart->adev;
+	const struct aie_bd_attr *bd_attr;
+	u32 *tmpbd;
+	u8 ttype;
+
+	ttype = adev->ops->get_tile_type(apart->adev, &loc);
+	switch (ttype) {
+	case AIE_TILE_TYPE_TILE:
+		bd_attr = adev->tile_bd;
+		break;
+	case AIE_TILE_TYPE_MEMORY:
+		bd_attr = adev->memtile_bd;
+		break;
+	case AIE_TILE_TYPE_SHIMNOC:
+		bd_attr = adev->shim_bd;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (!bd_attr || !bd)
+		return -EINVAL;
+
+	tmpbd = (u32 *)((char *)bd + bd_attr->addr.length.regoff);
+	*tmpbd |= aie_get_field_val(&bd_attr->addr.length, len);
+
+	return 0;
+}
+
+/**
+ * aie_part_set_dmabuf_bd_kernel() - Set AI engine SHIM DMA buffer descriptor
+ * @apart: AI engine partition
+ * @args: user AI engine dmabuf argument
+ *
+ * @return: 0 for success, negative value for failure
+ *
+ * This function set the user specified buffer descriptor into the SHIM DMA
+ * buffer descriptor. The structure should contain no userspace pointers
+ */
+int aie_part_set_dmabuf_bd_kernel(struct aie_partition *apart,
+				  struct aie_dmabuf_bd_args *args)
+{
+	const struct aie_dma_attr *shim_dma = apart->adev->shim_dma;
+	u32 *bd, *tmpbd, len, laddr, haddr, regval;
+	dma_addr_t addr;
+	int ret;
+
+	ret = aie_part_validate_bdloc(apart, args->loc, args->bd_id);
+	if (ret) {
+		dev_err(&apart->dev, "invalid SHIM DMA BD reg address.\n");
+		return -EINVAL;
+	}
+
+	bd = args->bd;
+	if (!bd)
+		return -EINVAL;
+
+	regval = bd[shim_dma->buflen.regoff / sizeof(u32)];
+	len = aie_get_reg_field(&shim_dma->buflen, regval);
+	if (!len) {
+		dev_err(&apart->dev, "no buf length from shim dma bd.\n");
+		return -EINVAL;
+	}
+
+	/* Get device address from virtual address */
+	addr = aie_part_get_dmabuf_da_from_off(apart, args->buf_fd, 0, len);
+	if (!addr) {
+		dev_err(&apart->dev, "invalid buffer 0x%llx, 0x%x.\n",
+			addr, len);
+		return -EINVAL;
+	}
+
+	/* Set low 32bit address */
+	laddr = lower_32_bits(addr);
+	tmpbd = (u32 *)((char *)bd + shim_dma->laddr.regoff);
+	*tmpbd &= ~shim_dma->laddr.mask;
+	*tmpbd |= aie_get_field_val(&shim_dma->laddr, laddr);
+
+	/* Set high 32bit address */
+	haddr = upper_32_bits(addr);
+	tmpbd = (u32 *)((char *)bd + shim_dma->haddr.regoff);
+	*tmpbd &= ~shim_dma->haddr.mask;
+	*tmpbd |= aie_get_field_val(&shim_dma->haddr, haddr);
+
+	ret = aie_part_set_shimdma_bd(apart, args->loc, args->bd_id, bd);
+	if (ret)
+		dev_err(&apart->dev, "failed to set to shim dma bd.\n");
+
+	return ret;
+}
+
+/**
  * aie_part_set_bd() - Set AI engine SHIM DMA buffer descriptor
  * @apart: AI engine partition
  * @args: user AI engine dmabuf argument

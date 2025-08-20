@@ -88,8 +88,12 @@ enum aie_tile_type {
 #define AIE_MAX_MM2S_CH		6U
 #define AIE_MAX_S2MM_CH		6U
 
+/* DMA directions */
+#define AIE_S2MM_DIR		0U
+#define AIE_MM2S_DIR		1U
+
 /* Max size of DMA buffer descriptors */
-#define AIE_MAX_BD_SIZE		8U
+#define AIE_MAX_BD_SIZE		9U
 
 /* Program memory offset and size index */
 #define AIE_PM_MEM_OFFSET_IDX	1U
@@ -532,6 +536,7 @@ struct aie_bd_attr {
  * @curbd: current buffer descriptor field attributes
  * @qsts: queue status field attributes
  * @fifo_cnt: FIFO counter field attributes
+ * @taskq_bd: DMA channel task queue start bd attributes
  * @bd_regoff: SHIM DMA buffer descriptors register offset
  * @mm2s_sts_regoff: MM2S status register offset
  * @s2mm_sts_regoff: S2MM status register offset
@@ -541,6 +546,8 @@ struct aie_bd_attr {
  * @num_bds: number of buffer descriptors
  * @bd_len: length of a buffer descriptor in bytes
  * @num_bd_regs: number of buffer descriptor registers
+ * @chan_idx_offset: dma channel ID index offset in bytes
+ * @chan_dir_offset: dma channel direction index offset in bytes
  */
 struct aie_dma_attr {
 	struct aie_single_reg_field laddr;
@@ -553,6 +560,7 @@ struct aie_dma_attr {
 	struct aie_single_reg_field curbd;
 	struct aie_single_reg_field qsts;
 	struct aie_single_reg_field fifo_cnt;
+	struct aie_single_reg_field taskq_bd;
 	u32 bd_regoff;
 	u32 mm2s_sts_regoff;
 	u32 s2mm_sts_regoff;
@@ -562,6 +570,8 @@ struct aie_dma_attr {
 	u32 num_bds;
 	u32 bd_len;
 	u32 num_bd_regs;
+	u32 chan_idx_offset;
+	u32 chan_dir_offset;
 };
 
 /*
@@ -1674,6 +1684,14 @@ long aie_part_attach_dmabuf_fd(struct aie_partition *apart, int dmabuf_fd);
 long aie_part_detach_dmabuf_req(struct aie_partition *apart,
 				void __user *user_args);
 long aie_part_detach_dmabuf_fd(struct aie_partition *apart, int dmabuf_fd);
+int aie_part_push_bd(struct aie_partition *apart, struct aie_location *loc,
+		     u8 bd_id, u8 dir, u8 chan_id);
+int aie_part_set_valid_bd(struct aie_partition *apart, struct aie_location loc,
+			  u32 *bd);
+int aie_part_set_len_bd(struct aie_partition *apart, struct aie_location loc,
+			u32 *bd, size_t len);
+int aie_part_set_dmabuf_bd_kernel(struct aie_partition *apart,
+				  struct aie_dmabuf_bd_args *args);
 long aie_part_set_bd_from_user(struct aie_partition *apart,
 					void __user *user_args);
 long aie_part_set_bd(struct aie_partition *apart,
