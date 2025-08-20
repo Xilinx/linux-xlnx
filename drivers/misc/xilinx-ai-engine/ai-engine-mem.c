@@ -345,6 +345,76 @@ int aie_dma_mem_free(int fd)
 }
 
 /**
+ * aie_dma_mem_alloc_buffer() - Allocates dma memory, creates dmabuf, attaches
+ *				dmabuf to ai-engine partition and returns
+ *				virtual address of the buffer and dmabuf file
+ *				descriptor.
+ * @apart: AI Engine partition instance
+ * @bufsize: buffer size
+ * @dmabuf_fd: where dmabuf file descriptor is stored
+ * @return: virtual address for buffer error pointer for failure
+ */
+void *aie_dma_mem_alloc_buffer(struct aie_partition *apart, size_t bufsize,
+			       int *dmabuf_fd)
+{
+	struct aie_part_mem *pmem;
+	struct dma_buf *dbuf;
+	int ret, fd;
+
+	if (!apart || !dmabuf_fd || bufsize == 0) {
+		dev_err(&apart->dev, "Invalid arguments");
+		return ERR_PTR(-EINVAL);
+	}
+
+	fd = aie_dma_mem_alloc(apart, bufsize);
+	if (fd < 0) {
+		dev_err(&apart->dev, "Failed to allocate dma memory");
+		return ERR_PTR(fd);
+	}
+	*dmabuf_fd = fd;
+
+	ret = aie_part_attach_dmabuf_fd(apart, fd);
+	if (ret < 0) {
+		aie_dma_mem_free(fd);
+		return ERR_PTR(ret);
+	}
+
+	dbuf = dma_buf_get(fd);
+	if (IS_ERR(dbuf)) {
+		ret = PTR_ERR(dbuf);
+		goto err;
+	}
+
+	pmem = (struct aie_part_mem *)dbuf->priv;
+	if (!pmem) {
+		dev_err(&apart->dev, "Failed to get partition memory instance");
+		ret = -EINVAL;
+		goto err;
+	}
+
+	dma_buf_put(dbuf);
+	return (void *)pmem->mem.offset;
+err:
+	dma_buf_put(dbuf);
+	aie_part_detach_dmabuf_fd(apart, fd);
+	aie_dma_mem_free(fd);
+	return ERR_PTR(ret);
+}
+
+/**
+ * aie_dma_mem_free_buffer() - Called to free buffer created with
+ *			       aie_dma_mem_alloc_buffer(). Will detach the
+ *			       dmabuf and then free dma memory.
+ * @apart: AI Engine partition instance
+ * @dmabuf_fd: dmabuf file descriptor returned by aie_dma_mem_alloc_buffer()
+ */
+void aie_dma_mem_free_buffer(struct aie_partition *apart, int dmabuf_fd)
+{
+	aie_part_detach_dmabuf_fd(apart, dmabuf_fd);
+	aie_dma_mem_free(dmabuf_fd);
+}
+
+/**
  * aie_mem_get_info() - get AI engine memories information
  * @apart: AI engine partition
  * @arg: argument from user to enquire AI engine partition memory information
