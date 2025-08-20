@@ -10,6 +10,10 @@
 #include "ai-engine-internal.h"
 
 #define AIE_PORT_OFFSET	4U
+#define AIE_MUX_PL	0U
+#define AIE_MUX_NOC	1U
+#define AIE_DEMUX_PL	0U
+#define AIE_DEMUX_NOC	1U
 
 /**
  * aie_part_strmsw_get_slv_id() - gets slave id given port numbert and type
@@ -178,4 +182,90 @@ int aie_part_set_strmsw_cct(struct aie_partition *apart, struct aie_location *lo
 	}
 
 	return ret;
+}
+
+/**
+ * aie_part_enable_noc_to_aie() - configures the mux to enable an input stream
+ *				  from NoC for given location
+ * @apart: AI Engine partition
+ * @loc: AI Engine tile location
+ * @port_num: stream switch port number to enable input
+ * @return: 0 for success, -EINVAL for failure
+ */
+int aie_part_enable_noc_to_aie(struct aie_partition *apart,
+			       struct aie_location *loc, u8 port_num)
+{
+	struct aie_device *adev = apart->adev;
+	const struct aie_strmsw_attr *strmsw;
+	void __iomem *va;
+	u32 regval;
+	u8 ttype;
+
+	if (adev->dev_gen != AIE_DEVICE_GEN_AIE2PS) {
+		dev_err(&adev->dev,
+			"failed to configure input stream mux, device not supported");
+		return -EINVAL;
+	}
+
+	ttype = adev->ops->get_tile_type(adev, loc);
+	if (ttype != AIE_TILE_TYPE_SHIMNOC) {
+		dev_err(&apart->dev, "invalid tile type");
+		return -EINVAL;
+	}
+	strmsw = adev->shim_strmsw;
+
+	if (port_num != 3 && port_num != 7) {
+		dev_err(&apart->dev, "invalid port number");
+		return -EINVAL;
+	}
+
+	regval = aie_get_field_val(&strmsw->mux_ports[port_num], AIE_MUX_NOC);
+	va = apart->aperture->base +
+		aie_cal_regoff(adev, *loc, strmsw->mux_ports[port_num].regoff);
+
+	writel(regval, va);
+	return 0;
+}
+
+/**
+ * aie_part_enable_aie_to_noc() - configures the demux to enable an output stream
+ *				  to NoC for given location
+ * @apart: AI Engine partition
+ * @loc: AI Engine tile location
+ * @port_num: stream switch port number to enable output
+ * @return: 0 for success, -EINVAL for failure
+ */
+int aie_part_enable_aie_to_noc(struct aie_partition *apart,
+			       struct aie_location *loc, u8 port_num)
+{
+	struct aie_device *adev = apart->adev;
+	const struct aie_strmsw_attr *strmsw;
+	void __iomem *va;
+	u32 regval;
+	u8 ttype;
+
+	if (adev->dev_gen != AIE_DEVICE_GEN_AIE2PS) {
+		dev_err(&adev->dev,
+			"failed to configure output stream demux, device not supported");
+		return -EINVAL;
+	}
+
+	ttype = adev->ops->get_tile_type(adev, loc);
+	if (ttype != AIE_TILE_TYPE_SHIMNOC) {
+		dev_err(&apart->dev, "invalid tile type");
+		return -EINVAL;
+	}
+	strmsw = adev->shim_strmsw;
+
+	if (port_num != 1 && port_num != 3) {
+		dev_err(&apart->dev, "invalid port number");
+		return -EINVAL;
+	}
+
+	regval = aie_get_field_val(&strmsw->demux_ports[port_num], AIE_DEMUX_NOC);
+	va = apart->aperture->base +
+		aie_cal_regoff(adev, *loc, strmsw->demux_ports[port_num].regoff);
+
+	writel(regval, va);
+	return 0;
 }
