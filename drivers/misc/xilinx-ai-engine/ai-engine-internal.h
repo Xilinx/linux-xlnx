@@ -598,6 +598,8 @@ struct aie_strmsw_port_attr {
  * @slv_en: slave port enable address field attributes
  * @slv_ports: port attributes for all slave port types
  * @slv_config_base: base register address for slave port configurations
+ * @mux_ports: port attributes for input stream mux
+ * @demux_ports: port attributes for output stream demux
  */
 struct aie_strmsw_attr {
 	struct aie_single_reg_field mstr_en;
@@ -606,6 +608,8 @@ struct aie_strmsw_attr {
 	struct aie_single_reg_field slv_en;
 	const struct aie_strmsw_port_attr *slv_ports;
 	u32 slv_config_base;
+	const struct aie_single_reg_field *mux_ports;
+	const struct aie_single_reg_field *demux_ports;
 };
 
 struct aie_aperture;
@@ -1880,4 +1884,8 @@ int aie2ps_part_write_handshake(struct aie_partition *apart,
 int aie_part_set_strmsw_cct(struct aie_partition *apart, struct aie_location *loc,
 			    enum aie_strmsw_port_type slv, u8 slv_port_num,
 			    enum aie_strmsw_port_type mstr, u8 mstr_port_num);
+int aie_part_enable_noc_to_aie(struct aie_partition *apart,
+			       struct aie_location *loc, u8 port_num);
+int aie_part_enable_aie_to_noc(struct aie_partition *apart,
+			       struct aie_location *loc, u8 port_num);
 #endif /* AIE_INTERNAL_H */
