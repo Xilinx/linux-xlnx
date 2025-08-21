@@ -37,6 +37,7 @@
 #include "xe_gt_printk.h"
 #include "xe_gt_sriov_vf.h"
 #include "xe_guc.h"
+#include "xe_guc_pc.h"
 #include "xe_hw_engine_group.h"
 #include "xe_hwmon.h"
 #include "xe_irq.h"
@@ -374,6 +375,11 @@ err:
 	return ERR_PTR(err);
 }
 
+static bool xe_driver_flr_disabled(struct xe_device *xe)
+{
+	return xe_mmio_read32(xe_root_mmio_gt(xe), GU_CNTL_PROTECTED) & DRIVERINT_FLR_DIS;
+}
+
 /*
  * The driver-initiated FLR is the highest level of reset that we can trigger
  * from within the driver. It is different from the PCI FLR in that it doesn't
@@ -387,16 +393,11 @@ err:
  * if/when a new instance of i915 is bound to the device it will do a full
  * re-init anyway.
  */
-static void xe_driver_flr(struct xe_device *xe)
+static void __xe_driver_flr(struct xe_device *xe)
 {
 	const unsigned int flr_timeout = 3 * MICRO; /* specs recommend a 3s wait */
 	struct xe_gt *gt = xe_root_mmio_gt(xe);
 	int ret;
-
-	if (xe_mmio_read32(gt, GU_CNTL_PROTECTED) & DRIVERINT_FLR_DIS) {
-		drm_info_once(&xe->drm, "BIOS Disabled Driver-FLR\n");
-		return;
-	}
 
 	drm_dbg(&xe->drm, "Triggering Driver-FLR\n");
 
@@ -436,6 +437,16 @@ static void xe_driver_flr(struct xe_device *xe)
 
 	/* Clear sticky completion status */
 	xe_mmio_write32(gt, GU_DEBUG, DRIVERFLR_STATUS);
+}
+
+static void xe_driver_flr(struct xe_device *xe)
+{
+	if (xe_driver_flr_disabled(xe)) {
+		drm_info_once(&xe->drm, "BIOS Disabled Driver-FLR\n");
+		return;
+	}
+
+	__xe_driver_flr(xe);
 }
 
 static void xe_driver_flr_fini(void *arg)
@@ -694,7 +705,9 @@ int xe_device_probe(struct xe_device *xe)
 	}
 
 	/* Allocate and map stolen after potential VRAM resize */
-	xe_ttm_stolen_mgr_init(xe);
+	err = xe_ttm_stolen_mgr_init(xe);
+	if (err)
+		return err;
 
 	/*
 	 * Now that GT is initialized (TTM in particular),
@@ -705,6 +718,12 @@ int xe_device_probe(struct xe_device *xe)
 	err = xe_display_init_noaccel(xe);
 	if (err)
 		goto err;
+
+	for_each_tile(tile, xe, id) {
+		err = xe_tile_init(tile);
+		if (err)
+			goto err;
+	}
 
 	for_each_gt(gt, xe, id) {
 		last_gt = id;
@@ -789,6 +808,24 @@ void xe_device_remove(struct xe_device *xe)
 
 void xe_device_shutdown(struct xe_device *xe)
 {
+	struct xe_gt *gt;
+	u8 id;
+
+	drm_dbg(&xe->drm, "Shutting down device\n");
+
+	if (xe_driver_flr_disabled(xe)) {
+		xe_display_pm_shutdown(xe);
+
+		xe_irq_suspend(xe);
+
+		for_each_gt(gt, xe, id)
+			xe_gt_shutdown(gt);
+
+		xe_display_pm_shutdown_late(xe);
+	} else {
+		/* BOOM! */
+		__xe_driver_flr(xe);
+	}
 }
 
 /**
@@ -835,31 +872,37 @@ void xe_device_td_flush(struct xe_device *xe)
 	if (!IS_DGFX(xe) || GRAPHICS_VER(xe) < 20)
 		return;
 
-	if (XE_WA(xe_root_mmio_gt(xe), 16023588340)) {
+	gt = xe_root_mmio_gt(xe);
+	if (XE_WA(gt, 16023588340)) {
+		/* A transient flush is not sufficient: flush the L2 */
 		xe_device_l2_flush(xe);
-		return;
-	}
+	} else {
+		xe_guc_pc_apply_flush_freq_limit(&gt->uc.guc.pc);
+		
+		/* Execute TDF flush on all graphics GTs */
+		for_each_gt(gt, xe, id) {
+			if (xe_gt_is_media_type(gt))
+				continue;
 
-	for_each_gt(gt, xe, id) {
-		if (xe_gt_is_media_type(gt))
-			continue;
+			if (xe_force_wake_get(gt_to_fw(gt), XE_FW_GT))
+				return;
 
-		if (xe_force_wake_get(gt_to_fw(gt), XE_FW_GT))
-			return;
+			xe_mmio_write32(gt, XE2_TDF_CTRL, TRANSIENT_FLUSH_REQUEST);
+			/*
+			 * FIXME: We can likely do better here with our choice of
+			 * timeout. Currently we just assume the worst case, i.e. 150us,
+			 * which is believed to be sufficient to cover the worst case
+			 * scenario on current platforms if all cache entries are
+			 * transient and need to be flushed..
+			 */
+			if (xe_mmio_wait32(gt, XE2_TDF_CTRL, TRANSIENT_FLUSH_REQUEST, 0,
+					   150, NULL, false))
+				xe_gt_err_once(gt, "TD flush timeout\n");
 
-		xe_mmio_write32(gt, XE2_TDF_CTRL, TRANSIENT_FLUSH_REQUEST);
-		/*
-		 * FIXME: We can likely do better here with our choice of
-		 * timeout. Currently we just assume the worst case, i.e. 150us,
-		 * which is believed to be sufficient to cover the worst case
-		 * scenario on current platforms if all cache entries are
-		 * transient and need to be flushed..
-		 */
-		if (xe_mmio_wait32(gt, XE2_TDF_CTRL, TRANSIENT_FLUSH_REQUEST, 0,
-				   150, NULL, false))
-			xe_gt_err_once(gt, "TD flush timeout\n");
-
-		xe_force_wake_put(gt_to_fw(gt), XE_FW_GT);
+			xe_force_wake_put(gt_to_fw(gt), XE_FW_GT);
+		}
+		
+		xe_guc_pc_remove_flush_freq_limit(&xe_root_mmio_gt(xe)->uc.guc.pc);
 	}
 }
 

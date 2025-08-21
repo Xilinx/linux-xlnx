@@ -985,7 +985,7 @@ timeout:
 		BUILD_BUG_ON(FIELD_MAX(GUC_HXG_MSG_0_TYPE) != GUC_HXG_TYPE_RESPONSE_SUCCESS);
 		BUILD_BUG_ON((GUC_HXG_TYPE_RESPONSE_SUCCESS ^ GUC_HXG_TYPE_RESPONSE_FAILURE) != 1);
 
-		ret = xe_mmio_wait32(gt, reply_reg,  resp_mask, resp_mask,
+		ret = xe_mmio_wait32(gt, reply_reg, resp_mask, resp_mask,
 				     1000000, &header, false);
 
 		if (unlikely(FIELD_GET(GUC_HXG_MSG_0_ORIGIN, header) !=
@@ -1175,7 +1175,7 @@ void xe_guc_print_info(struct xe_guc *guc, struct drm_printer *p)
 
 	xe_force_wake_put(gt_to_fw(gt), XE_FW_GT);
 
-	xe_guc_ct_print(&guc->ct, p, false);
+	xe_guc_ct_print(&guc->ct, p);
 	xe_guc_submit_print(guc, p);
 }
 

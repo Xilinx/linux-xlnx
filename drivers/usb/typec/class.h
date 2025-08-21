@@ -56,6 +56,7 @@ struct typec_port {
 	enum typec_pwr_opmode		pwr_opmode;
 	enum typec_port_type		port_type;
 	struct mutex			port_type_lock;
+	struct mutex			partner_link_lock;
 
 	enum typec_orientation		orientation;
 	struct typec_switch		*sw;

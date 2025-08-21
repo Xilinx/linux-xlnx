@@ -28,6 +28,9 @@ kernel. As of today, modules that make use of symbols exported into namespaces,
 are required to import the namespace. Otherwise the kernel will, depending on
 its configuration, reject loading the module or warn about a missing import.
 
+Additionally, it is possible to put symbols into a module namespace, strictly
+limiting which modules are allowed to use these symbols.
+
 2. How to define Symbol Namespaces
 ==================================
 
@@ -68,7 +71,7 @@ is to define the default namespace in the ``Makefile`` of the subsystem. E.g. to
 export all symbols defined in usb-common into the namespace USB_COMMON, add a
 line like this to drivers/usb/common/Makefile::
 
-	ccflags-y += -DDEFAULT_SYMBOL_NAMESPACE=USB_COMMON
+	ccflags-y += -DDEFAULT_SYMBOL_NAMESPACE='"USB_COMMON"'
 
 That will affect all EXPORT_SYMBOL() and EXPORT_SYMBOL_GPL() statements. A
 symbol exported with EXPORT_SYMBOL_NS() while this definition is present, will
@@ -79,10 +82,26 @@ A second option to define the default namespace is directly in the compilation
 unit as preprocessor statement. The above example would then read::
 
 	#undef  DEFAULT_SYMBOL_NAMESPACE
-	#define DEFAULT_SYMBOL_NAMESPACE USB_COMMON
+	#define DEFAULT_SYMBOL_NAMESPACE "USB_COMMON"
 
 within the corresponding compilation unit before any EXPORT_SYMBOL macro is
 used.
+
+2.3 Using the EXPORT_SYMBOL_GPL_FOR_MODULES() macro
+===================================================
+
+Symbols exported using this macro are put into a module namespace. This
+namespace cannot be imported.
+
+The macro takes a comma separated list of module names, allowing only those
+modules to access this symbol. Simple tail-globs are supported.
+
+For example:
+
+  EXPORT_SYMBOL_GPL_FOR_MODULES(preempt_notifier_inc, "kvm,kvm-*")
+
+will limit usage of this symbol to modules whoes name matches the given
+patterns.
 
 3. How to use Symbols exported in Namespaces
 ============================================
@@ -155,3 +174,6 @@ in-tree modules::
 You can also run nsdeps for external module builds. A typical usage is::
 
 	$ make -C <path_to_kernel_src> M=$PWD nsdeps
+
+Note: it will happily generate an import statement for the module namespace;
+which will not work and generates build and runtime failures.

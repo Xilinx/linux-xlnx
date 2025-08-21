@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2020-2024 Intel Corporation
+ * Copyright (C) 2020-2025 Intel Corporation
  */
 
 #include <linux/firmware.h>
@@ -14,7 +14,7 @@
 #include <drm/drm_ioctl.h>
 #include <drm/drm_prime.h>
 
-#include "vpu_boot_api.h"
+#include "ivpu_coredump.h"
 #include "ivpu_debugfs.h"
 #include "ivpu_drv.h"
 #include "ivpu_fw.h"
@@ -29,13 +29,12 @@
 #include "ivpu_ms.h"
 #include "ivpu_pm.h"
 #include "ivpu_sysfs.h"
+#include "vpu_boot_api.h"
 
 #ifndef DRIVER_VERSION_STR
 #define DRIVER_VERSION_STR __stringify(DRM_IVPU_DRIVER_MAJOR) "." \
 			   __stringify(DRM_IVPU_DRIVER_MINOR) "."
 #endif
-
-static struct lock_class_key submitted_jobs_xa_lock_class_key;
 
 int ivpu_dbg_mask;
 module_param_named(dbg_mask, ivpu_dbg_mask, int, 0644);
@@ -53,9 +52,9 @@ u8 ivpu_pll_max_ratio = U8_MAX;
 module_param_named(pll_max_ratio, ivpu_pll_max_ratio, byte, 0644);
 MODULE_PARM_DESC(pll_max_ratio, "Maximum PLL ratio used to set NPU frequency");
 
-int ivpu_sched_mode;
+int ivpu_sched_mode = IVPU_SCHED_MODE_AUTO;
 module_param_named(sched_mode, ivpu_sched_mode, int, 0444);
-MODULE_PARM_DESC(sched_mode, "Scheduler mode: 0 - Default scheduler, 1 - Force HW scheduler");
+MODULE_PARM_DESC(sched_mode, "Scheduler mode: -1 - Use default scheduler, 0 - Use OS scheduler, 1 - Use HW scheduler");
 
 bool ivpu_disable_mmu_cont_pages;
 module_param_named(disable_mmu_cont_pages, ivpu_disable_mmu_cont_pages, bool, 0444);
@@ -103,6 +102,8 @@ static void file_priv_release(struct kref *ref)
 	pm_runtime_get_sync(vdev->drm.dev);
 	mutex_lock(&vdev->context_list_lock);
 	file_priv_unbind(vdev, file_priv);
+	drm_WARN_ON(&vdev->drm, !xa_empty(&file_priv->cmdq_xa));
+	xa_destroy(&file_priv->cmdq_xa);
 	mutex_unlock(&vdev->context_list_lock);
 	pm_runtime_put_autosuspend(vdev->drm.dev);
 
@@ -164,7 +165,7 @@ static int ivpu_get_param_ioctl(struct drm_device *dev, void *data, struct drm_f
 		args->value = vdev->platform;
 		break;
 	case DRM_IVPU_PARAM_CORE_CLOCK_RATE:
-		args->value = ivpu_hw_ratio_to_freq(vdev, vdev->hw->pll.max_ratio);
+		args->value = ivpu_hw_dpu_max_freq_get(vdev);
 		break;
 	case DRM_IVPU_PARAM_NUM_CONTEXTS:
 		args->value = ivpu_get_context_count(vdev);
@@ -259,6 +260,13 @@ static int ivpu_open(struct drm_device *dev, struct drm_file *file)
 	if (ret)
 		goto err_xa_erase;
 
+	file_priv->job_limit.min = FIELD_PREP(IVPU_JOB_ID_CONTEXT_MASK, (file_priv->ctx.id - 1));
+	file_priv->job_limit.max = file_priv->job_limit.min | IVPU_JOB_ID_JOB_MASK;
+
+	xa_init_flags(&file_priv->cmdq_xa, XA_FLAGS_ALLOC1);
+	file_priv->cmdq_limit.min = IVPU_CMDQ_MIN_ID;
+	file_priv->cmdq_limit.max = IVPU_CMDQ_MAX_ID;
+
 	mutex_unlock(&vdev->context_list_lock);
 	drm_dev_exit(idx);
 
@@ -346,7 +354,7 @@ static int ivpu_hw_sched_init(struct ivpu_device *vdev)
 {
 	int ret = 0;
 
-	if (vdev->hw->sched_mode == VPU_SCHEDULING_MODE_HW) {
+	if (vdev->fw->sched_mode == VPU_SCHEDULING_MODE_HW) {
 		ret = ivpu_jsm_hws_setup_priority_bands(vdev);
 		if (ret) {
 			ivpu_err(vdev, "Failed to enable hw scheduler: %d", ret);
@@ -382,7 +390,7 @@ int ivpu_boot(struct ivpu_device *vdev)
 		ivpu_err(vdev, "Failed to boot the firmware: %d\n", ret);
 		ivpu_hw_diagnose_failure(vdev);
 		ivpu_mmu_evtq_dump(vdev);
-		ivpu_fw_log_dump(vdev);
+		ivpu_dev_coredump(vdev);
 		return ret;
 	}
 
@@ -451,26 +459,6 @@ static const struct drm_driver driver = {
 	.minor = DRM_IVPU_DRIVER_MINOR,
 };
 
-static void ivpu_context_abort_invalid(struct ivpu_device *vdev)
-{
-	struct ivpu_file_priv *file_priv;
-	unsigned long ctx_id;
-
-	mutex_lock(&vdev->context_list_lock);
-
-	xa_for_each(&vdev->context_xa, ctx_id, file_priv) {
-		if (!file_priv->has_mmu_faults || file_priv->aborted)
-			continue;
-
-		mutex_lock(&file_priv->lock);
-		ivpu_context_abort_locked(file_priv);
-		file_priv->aborted = true;
-		mutex_unlock(&file_priv->lock);
-	}
-
-	mutex_unlock(&vdev->context_list_lock);
-}
-
 static irqreturn_t ivpu_irq_thread_handler(int irq, void *arg)
 {
 	struct ivpu_device *vdev = arg;
@@ -483,9 +471,6 @@ static irqreturn_t ivpu_irq_thread_handler(int irq, void *arg)
 		switch (irq_src) {
 		case IVPU_HW_IRQ_SRC_IPC:
 			ivpu_ipc_irq_thread_handler(vdev);
-			break;
-		case IVPU_HW_IRQ_SRC_MMU_EVTQ:
-			ivpu_context_abort_invalid(vdev);
 			break;
 		case IVPU_HW_IRQ_SRC_DCT:
 			ivpu_pm_dct_irq_thread_handler(vdev);
@@ -603,10 +588,18 @@ static int ivpu_dev_init(struct ivpu_device *vdev)
 	xa_init_flags(&vdev->context_xa, XA_FLAGS_ALLOC | XA_FLAGS_LOCK_IRQ);
 	xa_init_flags(&vdev->submitted_jobs_xa, XA_FLAGS_ALLOC1);
 	xa_init_flags(&vdev->db_xa, XA_FLAGS_ALLOC1);
-	lockdep_set_class(&vdev->submitted_jobs_xa.xa_lock, &submitted_jobs_xa_lock_class_key);
 	INIT_LIST_HEAD(&vdev->bo_list);
 
+	vdev->db_limit.min = IVPU_MIN_DB;
+	vdev->db_limit.max = IVPU_MAX_DB;
+
+	INIT_WORK(&vdev->context_abort_work, ivpu_context_abort_thread_handler);
+
 	ret = drmm_mutex_init(&vdev->drm, &vdev->context_list_lock);
+	if (ret)
+		goto err_xa_destroy;
+
+	ret = drmm_mutex_init(&vdev->drm, &vdev->submitted_jobs_lock);
 	if (ret)
 		goto err_xa_destroy;
 
@@ -722,6 +715,7 @@ static struct pci_device_id ivpu_pci_ids[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_MTL) },
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_ARL) },
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_LNL) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_PTL_P) },
 	{ }
 };
 MODULE_DEVICE_TABLE(pci, ivpu_pci_ids);

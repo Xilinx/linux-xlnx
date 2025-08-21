@@ -735,6 +735,8 @@ static inline void vma_adjust_trans_huge(struct vm_area_struct *vma,
 	(void)adjust_next;
 }
 
+static inline void hugetlb_split(struct vm_area_struct *, unsigned long) {}
+
 static inline void vma_iter_free(struct vma_iterator *vmi)
 {
 	mas_destroy(&vmi->mas);

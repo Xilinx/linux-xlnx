@@ -89,12 +89,14 @@ static void timeouts_init(struct ivpu_device *vdev)
 		vdev->timeout.tdr = 2000000;
 		vdev->timeout.autosuspend = -1;
 		vdev->timeout.d0i3_entry_msg = 500;
+		vdev->timeout.state_dump_msg = 10;
 	} else if (ivpu_is_simics(vdev)) {
 		vdev->timeout.boot = 50;
 		vdev->timeout.jsm = 500;
 		vdev->timeout.tdr = 10000;
 		vdev->timeout.autosuspend = -1;
 		vdev->timeout.d0i3_entry_msg = 100;
+		vdev->timeout.state_dump_msg = 10;
 	} else {
 		vdev->timeout.boot = 1000;
 		vdev->timeout.jsm = 500;
@@ -104,7 +106,28 @@ static void timeouts_init(struct ivpu_device *vdev)
 		else
 			vdev->timeout.autosuspend = 100;
 		vdev->timeout.d0i3_entry_msg = 5;
+		vdev->timeout.state_dump_msg = 100;
 	}
+}
+
+static void priority_bands_init(struct ivpu_device *vdev)
+{
+	/* Idle */
+	vdev->hw->hws.grace_period[VPU_JOB_SCHEDULING_PRIORITY_BAND_IDLE] = 0;
+	vdev->hw->hws.process_grace_period[VPU_JOB_SCHEDULING_PRIORITY_BAND_IDLE] = 50000;
+	vdev->hw->hws.process_quantum[VPU_JOB_SCHEDULING_PRIORITY_BAND_IDLE] = 160000;
+	/* Normal */
+	vdev->hw->hws.grace_period[VPU_JOB_SCHEDULING_PRIORITY_BAND_NORMAL] = 50000;
+	vdev->hw->hws.process_grace_period[VPU_JOB_SCHEDULING_PRIORITY_BAND_NORMAL] = 50000;
+	vdev->hw->hws.process_quantum[VPU_JOB_SCHEDULING_PRIORITY_BAND_NORMAL] = 300000;
+	/* Focus */
+	vdev->hw->hws.grace_period[VPU_JOB_SCHEDULING_PRIORITY_BAND_FOCUS] = 50000;
+	vdev->hw->hws.process_grace_period[VPU_JOB_SCHEDULING_PRIORITY_BAND_FOCUS] = 50000;
+	vdev->hw->hws.process_quantum[VPU_JOB_SCHEDULING_PRIORITY_BAND_FOCUS] = 200000;
+	/* Realtime */
+	vdev->hw->hws.grace_period[VPU_JOB_SCHEDULING_PRIORITY_BAND_REALTIME] = 0;
+	vdev->hw->hws.process_grace_period[VPU_JOB_SCHEDULING_PRIORITY_BAND_REALTIME] = 50000;
+	vdev->hw->hws.process_quantum[VPU_JOB_SCHEDULING_PRIORITY_BAND_REALTIME] = 200000;
 }
 
 static void memory_ranges_init(struct ivpu_device *vdev)
@@ -245,6 +268,7 @@ int ivpu_hw_init(struct ivpu_device *vdev)
 {
 	ivpu_hw_btrs_info_init(vdev);
 	ivpu_hw_btrs_freq_ratios_init(vdev);
+	priority_bands_init(vdev);
 	memory_ranges_init(vdev);
 	platform_init(vdev);
 	wa_init(vdev);

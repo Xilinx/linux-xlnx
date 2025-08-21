@@ -3510,12 +3510,6 @@ repeat:
 		}
 
 		/*
-		 * Put the reference grabbed by send_mayday().  @pool won't
-		 * go away while we're still attached to it.
-		 */
-		put_pwq(pwq);
-
-		/*
 		 * Leave this pool. Notify regular workers; otherwise, we end up
 		 * with 0 concurrency and stalling the execution.
 		 */
@@ -3524,6 +3518,12 @@ repeat:
 		raw_spin_unlock_irq(&pool->lock);
 
 		worker_detach_from_pool(rescuer);
+
+		/*
+		 * Put the reference grabbed by send_mayday().  @pool might
+		 * go away any time after it.
+		 */
+		put_pwq_unlocked(pwq);
 
 		raw_spin_lock_irq(&wq_mayday_lock);
 	}
@@ -7731,7 +7731,8 @@ void __init workqueue_init_early(void)
 		restrict_unbound_cpumask("workqueue.unbound_cpus", &wq_cmdline_cpumask);
 
 	cpumask_copy(wq_requested_unbound_cpumask, wq_unbound_cpumask);
-
+	cpumask_andnot(wq_isolated_cpumask, cpu_possible_mask,
+						housekeeping_cpumask(HK_TYPE_DOMAIN));
 	pwq_cache = KMEM_CACHE(pool_workqueue, SLAB_PANIC);
 
 	unbound_wq_update_pwq_attrs_buf = alloc_workqueue_attrs();

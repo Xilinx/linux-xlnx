@@ -783,7 +783,8 @@ static int __rtw_download_firmware(struct rtw_dev *rtwdev,
 	if (!check_firmware_size(data, size))
 		return -EINVAL;
 
-	if (!ltecoex_read_reg(rtwdev, 0x38, &ltecoex_bckp))
+	if (rtwdev->chip->ltecoex_addr &&
+	    !ltecoex_read_reg(rtwdev, 0x38, &ltecoex_bckp))
 		return -EBUSY;
 
 	wlan_cpu_enable(rtwdev, false);
@@ -801,7 +802,8 @@ static int __rtw_download_firmware(struct rtw_dev *rtwdev,
 
 	wlan_cpu_enable(rtwdev, true);
 
-	if (!ltecoex_reg_write(rtwdev, 0x38, ltecoex_bckp)) {
+	if (rtwdev->chip->ltecoex_addr &&
+	    !ltecoex_reg_write(rtwdev, 0x38, ltecoex_bckp)) {
 		ret = -EBUSY;
 		goto dlfw_fail;
 	}
@@ -852,8 +854,8 @@ fwdl_ready:
 	}
 }
 
-static void
-write_firmware_page(struct rtw_dev *rtwdev, u32 page, const u8 *data, u32 size)
+void rtw_write_firmware_page(struct rtw_dev *rtwdev, u32 page,
+			     const u8 *data, u32 size)
 {
 	u32 val32;
 	u32 block_nr;
@@ -883,6 +885,7 @@ write_firmware_page(struct rtw_dev *rtwdev, u32 page, const u8 *data, u32 size)
 		rtw_write32(rtwdev, write_addr, le32_to_cpu(remain_data));
 	}
 }
+EXPORT_SYMBOL(rtw_write_firmware_page);
 
 static int
 download_firmware_legacy(struct rtw_dev *rtwdev, const u8 *data, u32 size)
@@ -900,11 +903,13 @@ download_firmware_legacy(struct rtw_dev *rtwdev, const u8 *data, u32 size)
 	rtw_write8_set(rtwdev, REG_MCUFW_CTRL, BIT_FWDL_CHK_RPT);
 
 	for (page = 0; page < total_page; page++) {
-		write_firmware_page(rtwdev, page, data, DLFW_PAGE_SIZE_LEGACY);
+		rtw_hci_write_firmware_page(rtwdev, page, data,
+					    DLFW_PAGE_SIZE_LEGACY);
 		data += DLFW_PAGE_SIZE_LEGACY;
 	}
 	if (last_page_size)
-		write_firmware_page(rtwdev, page, data, last_page_size);
+		rtw_hci_write_firmware_page(rtwdev, page, data,
+					    last_page_size);
 
 	if (!check_hw_ready(rtwdev, REG_MCUFW_CTRL, BIT_FWDL_CHK_RPT, 1)) {
 		rtw_err(rtwdev, "failed to check download firmware report\n");

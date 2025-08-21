@@ -39,8 +39,10 @@ void ksmbd_conn_free(struct ksmbd_conn *conn)
 	xa_destroy(&conn->sessions);
 	kvfree(conn->request_buf);
 	kfree(conn->preauth_info);
-	if (atomic_dec_and_test(&conn->refcnt))
+	if (atomic_dec_and_test(&conn->refcnt)) {
+		conn->transport->ops->free_transport(conn->transport);
 		kfree(conn);
+	}
 }
 
 /**
@@ -52,7 +54,7 @@ struct ksmbd_conn *ksmbd_conn_alloc(void)
 {
 	struct ksmbd_conn *conn;
 
-	conn = kzalloc(sizeof(struct ksmbd_conn), GFP_KERNEL);
+	conn = kzalloc(sizeof(struct ksmbd_conn), KSMBD_DEFAULT_GFP);
 	if (!conn)
 		return NULL;
 
@@ -369,7 +371,7 @@ recheck:
 		/* 4 for rfc1002 length field */
 		/* 1 for implied bcc[0] */
 		size = pdu_size + 4 + 1;
-		conn->request_buf = kvmalloc(size, GFP_KERNEL);
+		conn->request_buf = kvmalloc(size, KSMBD_DEFAULT_GFP);
 		if (!conn->request_buf)
 			break;
 
@@ -430,6 +432,26 @@ void ksmbd_conn_init_server_callbacks(struct ksmbd_conn_ops *ops)
 {
 	default_conn_ops.process_fn = ops->process_fn;
 	default_conn_ops.terminate_fn = ops->terminate_fn;
+}
+
+void ksmbd_conn_r_count_inc(struct ksmbd_conn *conn)
+{
+	atomic_inc(&conn->r_count);
+}
+
+void ksmbd_conn_r_count_dec(struct ksmbd_conn *conn)
+{
+	/*
+	 * Checking waitqueue to dropping pending requests on
+	 * disconnection. waitqueue_active is safe because it
+	 * uses atomic operation for condition.
+	 */
+	atomic_inc(&conn->refcnt);
+	if (!atomic_dec_return(&conn->r_count) && waitqueue_active(&conn->r_count_q))
+		wake_up(&conn->r_count_q);
+
+	if (atomic_dec_and_test(&conn->refcnt))
+		kfree(conn);
 }
 
 int ksmbd_conn_transport_init(void)

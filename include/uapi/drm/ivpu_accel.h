@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
- * Copyright (C) 2020-2024 Intel Corporation
+ * Copyright (C) 2020-2025 Intel Corporation
  */
 
 #ifndef __UAPI_IVPU_DRM_H__
@@ -131,7 +131,7 @@ struct drm_ivpu_param {
 	 * platform type when executing on a simulator or emulator (read-only)
 	 *
 	 * %DRM_IVPU_PARAM_CORE_CLOCK_RATE:
-	 * Current PLL frequency (read-only)
+	 * Maximum frequency of the NPU data processing unit clock (read-only)
 	 *
 	 * %DRM_IVPU_PARAM_NUM_CONTEXTS:
 	 * Maximum number of simultaneously existing contexts (read-only)
@@ -261,7 +261,7 @@ struct drm_ivpu_bo_info {
 
 /* drm_ivpu_submit engines */
 #define DRM_IVPU_ENGINE_COMPUTE 0
-#define DRM_IVPU_ENGINE_COPY    1
+#define DRM_IVPU_ENGINE_COPY    1 /* Deprecated */
 
 /**
  * struct drm_ivpu_submit - Submit commands to the VPU
@@ -292,10 +292,6 @@ struct drm_ivpu_submit {
 	 * %DRM_IVPU_ENGINE_COMPUTE:
 	 *
 	 * Performs Deep Learning Neural Compute Inference Operations
-	 *
-	 * %DRM_IVPU_ENGINE_COPY:
-	 *
-	 * Performs memory copy operations to/from system memory allocated for VPU
 	 */
 	__u32 engine;
 

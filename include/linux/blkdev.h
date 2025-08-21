@@ -196,10 +196,11 @@ struct gendisk {
 	unsigned int		zone_capacity;
 	unsigned int		last_zone_capacity;
 	unsigned long __rcu	*conv_zones_bitmap;
-	unsigned int            zone_wplugs_hash_bits;
-	spinlock_t              zone_wplugs_lock;
+	unsigned int		zone_wplugs_hash_bits;
+	atomic_t		nr_zone_wplugs;
+	spinlock_t		zone_wplugs_lock;
 	struct mempool_s	*zone_wplugs_pool;
-	struct hlist_head       *zone_wplugs_hash;
+	struct hlist_head	*zone_wplugs_hash;
 	struct workqueue_struct *zone_wplugs_wq;
 #endif /* CONFIG_BLK_DEV_ZONED */
 
@@ -994,6 +995,11 @@ extern void blk_put_queue(struct request_queue *);
 
 void blk_mark_disk_dead(struct gendisk *disk);
 
+struct rq_list {
+	struct request *head;
+	struct request *tail;
+};
+
 #ifdef CONFIG_BLOCK
 /*
  * blk_plug permits building a queue of related requests by holding the I/O
@@ -1007,10 +1013,10 @@ void blk_mark_disk_dead(struct gendisk *disk);
  * blk_flush_plug() is called.
  */
 struct blk_plug {
-	struct request *mq_list; /* blk-mq requests */
+	struct rq_list mq_list; /* blk-mq requests */
 
 	/* if ios_left is > 1, we can batch tag/rq allocations */
-	struct request *cached_rq;
+	struct rq_list cached_rqs;
 	u64 cur_ktime;
 	unsigned short nr_ios;
 
@@ -1659,7 +1665,7 @@ int bdev_thaw(struct block_device *bdev);
 void bdev_fput(struct file *bdev_file);
 
 struct io_comp_batch {
-	struct request *req_list;
+	struct rq_list req_list;
 	bool need_ts;
 	void (*complete)(struct io_comp_batch *);
 };
