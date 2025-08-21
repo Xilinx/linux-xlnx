@@ -188,9 +188,10 @@ properties:
       are as below.
       0 - MMCM
       1 - PLL
+      2 - DPLL
     allOf:
       - $ref: /schemas/types.yaml#/definitions/uint32
-      - enum: [0, 1]
+      - enum: [0, 1, 2]
 
   xlnx,tx-clk-primitive:
     description: |
@@ -198,9 +199,10 @@ properties:
       are as below.
       0 - MMCM
       1 - PLL
+      2 - DPLL
     allOf:
       - $ref: /schemas/types.yaml#/definitions/uint32
-      - enum: [0, 1]
+      - enum: [0, 1, 2]
 
   "#phy-cells":
     const: 0
