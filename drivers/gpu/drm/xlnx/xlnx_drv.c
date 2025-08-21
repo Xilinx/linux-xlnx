@@ -300,6 +300,48 @@ static const struct component_master_ops xlnx_master_ops = {
 	.unbind	= xlnx_unbind,
 };
 
+/*
+ * This is the list of the compatible strings for the PL DRM drivers that still
+ * utilize the xlnx bridge interface. This list needs to be updated with every
+ * additions of the new drivers, compatible string updates and drivers
+ * transitions to the DRM bridge framework. The list should be removed as soon
+ * as the transition of all PL DRM drivers complete.
+ */
+static const char * const xlnx_compatible_components_list[] = {
+	"xlnx,v-mix-5.2",
+	"xlnx,mixer-5.0",
+	"xlnx,mixer-4.0",
+	"xlnx,mixer-3.0",
+	"xlnx,vpss-csc",
+	"xlnx,v-dp-txss-3.0",
+	"xlnx,v-dp-txss-3.1",
+	"xlnx,dsi",
+	"xlnx,v-hdmi-txss1-1.1",
+	"xlnx,v-hdmi-txss1-1.2",
+	"xlnx,pl-disp",
+	"xlnx,vpss-scaler",
+	"xlnx,vpss-scaler-2.2",
+	"xlnx,sdi-tx",
+	"xlnx,bridge-v-tc-6.1",
+};
+
+static bool xlnx_check_compatible_component(struct device_node *node)
+{
+	const char *comp_str = NULL;
+	struct property *comp_prop = of_find_property(node, "compatible", NULL);
+
+	do {
+		int i;
+
+		comp_str = of_prop_next_string(comp_prop, comp_str);
+		for (i = 0; comp_str && i < ARRAY_SIZE(xlnx_compatible_components_list); ++i)
+			if (!strcmp(comp_str, xlnx_compatible_components_list[i]))
+				return true;
+	} while (comp_prop && comp_str);
+
+	return false;
+}
+
 static int xlnx_of_component_probe(struct device *master_dev,
 				   int (*compare_of)(struct device *, void *),
 				   const struct component_master_ops *m_ops)
@@ -330,7 +372,9 @@ static int xlnx_of_component_probe(struct device *master_dev,
 			continue;
 		}
 
-		component_match_add(master_dev, &match, compare_of, parent);
+		if (xlnx_check_compatible_component(parent))
+			component_match_add(master_dev, &match, compare_of, parent);
+
 		of_node_put(parent);
 		of_node_put(port);
 	}
@@ -360,8 +404,10 @@ static int xlnx_of_component_probe(struct device *master_dev,
 				of_node_put(remote);
 				continue;
 			}
-			component_match_add(master_dev, &match, compare_of,
-					    remote);
+
+			if (xlnx_check_compatible_component(remote))
+				component_match_add(master_dev, &match, compare_of, remote);
+
 			of_node_put(remote);
 		}
 		of_node_put(parent);
