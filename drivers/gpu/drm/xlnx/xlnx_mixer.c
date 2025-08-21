@@ -25,6 +25,7 @@
 #include <linux/delay.h>
 #include <linux/component.h>
 #include <linux/dma/xilinx_frmbuf.h>
+#include <linux/media-bus-format.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/gpio/consumer.h>
 #include <linux/of.h>
@@ -386,6 +387,7 @@ struct xlnx_mix_layer_data {
  * @bg_layer_bpc: Bits per component for the background streaming layer
  * @dma_addr_size: dma address size in bits
  * @ppc: Pixels per component
+ * @out_bus_format: Output video media bus format
  * @irq: Interrupt request number assigned
  * @bg_color: Current RGB color value for internal background color generator
  * @three_planes_prop : three planes video formats enabled
@@ -419,6 +421,7 @@ struct xlnx_mix_hw {
 	u32                 bg_layer_bpc;
 	u32		    dma_addr_size;
 	u32                 ppc;
+	u32		    out_bus_format;
 	int		    irq;
 	u64		    bg_color;
 	struct xlnx_mix_layer_data *layer_data;
@@ -2396,6 +2399,30 @@ static int xlnx_mix_dt_dp_bridge(struct device *dev, struct xlnx_mix *mixer)
 	return 0;
 }
 
+enum xlnx_mix_video_fmt {
+	VIDEO_FMT_RGB,
+	VIDEO_FMT_YUV444,
+	VIDEO_FMT_YUV422,
+	VIDEO_FMT_YONLY,
+};
+
+static int xlnx_mix_video_to_media_bus_format(u32 xv_fmt, u32 *mb_fmt)
+{
+	/* TODO: Add Y-only and non 8-bpc formats */
+	static const u32 video_fmt_map[] = {
+		[VIDEO_FMT_RGB]		= MEDIA_BUS_FMT_RGB888_1X24,
+		[VIDEO_FMT_YUV444]	= MEDIA_BUS_FMT_VUY8_1X24,
+		[VIDEO_FMT_YUV422]	= MEDIA_BUS_FMT_UYVY8_1X16,
+	};
+
+	if (xv_fmt >= ARRAY_SIZE(video_fmt_map))
+		return -EINVAL;
+
+	*mb_fmt = video_fmt_map[xv_fmt];
+
+	return 0;
+}
+
 static int xlnx_mix_dt_parse(struct device *dev, struct xlnx_mix *mixer)
 {
 	struct xlnx_mix_plane *planes;
@@ -2404,6 +2431,7 @@ static int xlnx_mix_dt_parse(struct device *dev, struct xlnx_mix *mixer)
 	struct xlnx_mix_layer_data *l_data;
 	struct resource	res;
 	int ret, l_cnt, i;
+	u32 out_format;
 
 	node = dev->of_node;
 	mixer_hw = &mixer->mixer_hw;
@@ -2518,6 +2546,18 @@ static int xlnx_mix_dt_parse(struct device *dev, struct xlnx_mix *mixer)
 	if (mixer_hw->logo_layer_en) {
 		/* read logo data from dts */
 		ret = xlnx_mix_parse_dt_logo_data(node, mixer_hw);
+		return ret;
+	}
+
+	ret = of_property_read_u32(node, "xlnx,video-format", &out_format);
+	if (ret < 0) {
+		dev_err(dev, "'xlnx,video-format' property missing\n");
+		return ret;
+	}
+	ret = xlnx_mix_video_to_media_bus_format(out_format,
+						 &mixer_hw->out_bus_format);
+	if (ret < 0) {
+		dev_err(dev, "invalid output video format\n");
 		return ret;
 	}
 
@@ -2832,6 +2872,12 @@ static void xlnx_mix_crtc_dpms(struct drm_crtc *base_crtc, int dpms)
 		}
 		mixer->pixel_clock_enabled = true;
 
+		ret = xlnx_mix_set_active_area(&mixer->mixer_hw,
+					       adjusted_mode->hdisplay,
+					       adjusted_mode->vdisplay);
+		if (ret < 0)
+			DRM_ERROR("failed to set output dimensions\n");
+
 		if (mixer->vtc_bridge) {
 			drm_display_mode_to_videomode(mode, &vm);
 			xlnx_bridge_set_timing(mixer->vtc_bridge, &vm);
@@ -3025,12 +3071,30 @@ xlnx_mix_crtc_atomic_begin(struct drm_crtc *crtc,
 	}
 }
 
+static u32
+xlnx_mix_crtc_select_output_bus_format(struct drm_crtc *crtc,
+				       struct drm_crtc_state *crtc_state,
+				       const u32 *in_bus_fmts,
+				       unsigned int num_in_bus_fmts)
+{
+	struct xlnx_crtc *xcrtc = to_xlnx_crtc(crtc);
+	struct xlnx_mix *mixer = to_xlnx_mixer(xcrtc);
+	unsigned int i;
+
+	for (i = 0; i < num_in_bus_fmts; ++i)
+		if (in_bus_fmts[i] == mixer->mixer_hw.out_bus_format)
+			return mixer->mixer_hw.out_bus_format;
+
+	return 0;
+}
+
 static struct drm_crtc_helper_funcs xlnx_mix_crtc_helper_funcs = {
 	.atomic_enable	= xlnx_mix_crtc_atomic_enable,
 	.atomic_disable	= xlnx_mix_crtc_atomic_disable,
 	.mode_set_nofb	= xlnx_mix_crtc_mode_set_nofb,
 	.atomic_check	= xlnx_mix_crtc_atomic_check,
 	.atomic_begin	= xlnx_mix_crtc_atomic_begin,
+	.select_output_bus_format = xlnx_mix_crtc_select_output_bus_format,
 };
 
 /**
