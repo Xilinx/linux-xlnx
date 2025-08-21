@@ -25,6 +25,8 @@ Required properties:
  - xlnx,num-layers: Total number of layers (excluding logo)
    Value ranges from 1-9 for compatible string xlnx,mixer-3.0 and
    Value ranges from 1-17 for comptaible string xlnx,mixer-4.0 and above
+ - xlnx,video-format: Mixer output video format
+   Value range is 0..3, corresponding to RGB, YUV444, YUV422 and Y only
  - layer_[x]: node for [x] layer
  - xlnx,layer-id: layer identifier number
  - xlnx,vformat: video format for layer. See list of supported formats below.
@@ -94,6 +96,7 @@ Example:
 		xlnx,bpc = <8>;
 		xlnx,ppc = <2>;
 		xlnx,num-layers = <8>;
+		xlnx,video-format = <2>;
 		xlnx,logo-layer;
 		xlnx,bridge = <&v_tc_0>;
 
