@@ -1063,3 +1063,41 @@ out:
 	return ret;
 }
 EXPORT_SYMBOL(drm_helper_force_disable_all);
+
+/**
+ * drm_helper_crtc_select_output_bus_format - Select output media bus format
+ * @crtc: The CRTC to query
+ * @crtc_state: The new CRTC state
+ * @supported_fmts: List of media bus format options to pick from
+ * @num_supported_fmts: Number of media bus formats in @supported_fmts list
+ *
+ * Encoder drivers may call this helper to give the connected CRTC a chance to
+ * select compatible or preferred media bus format to use over the CRTC encoder
+ * link. Encoders should provide list of supported input MEDIA_BUS_FMT_* for
+ * CRTC to pick from. CRTC driver is expected to select preferred media bus
+ * format from the list and, once enabled, generate the signal accordingly.
+ *
+ * Returns:
+ * Selected preferred media bus format or 0 if CRTC does not support any from
+ * @supported_fmts list.
+ */
+u32 drm_helper_crtc_select_output_bus_format(struct drm_crtc *crtc,
+					     struct drm_crtc_state *crtc_state,
+					     const u32 *supported_fmts,
+					     unsigned int num_supported_fmts)
+{
+	if (!crtc || !crtc_state || !supported_fmts || !num_supported_fmts)
+		return 0;
+
+	if (!crtc->helper_private ||
+	    !crtc->helper_private->select_output_bus_format)
+		crtc_state->output_bus_format = supported_fmts[0];
+	else
+		crtc_state->output_bus_format =
+			crtc->helper_private->select_output_bus_format(crtc,
+							crtc_state,
+							supported_fmts,
+							num_supported_fmts);
+	return crtc_state->output_bus_format;
+}
+EXPORT_SYMBOL(drm_helper_crtc_select_output_bus_format);
