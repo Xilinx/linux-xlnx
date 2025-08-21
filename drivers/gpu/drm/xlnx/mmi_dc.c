@@ -5,6 +5,7 @@
  * Copyright (C) 2025, Advanced Micro Devices, Inc. All rights reserved.
  */
 
+#include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
@@ -13,6 +14,7 @@
 
 #include "mmi_dc.h"
 #include "mmi_dc_plane.h"
+#include "mmi_dc_audio.h"
 
 /* DC DP Stream Registers */
 #define MMI_DC_DP_MAIN_STREAM_HTOTAL	(0x0000)
@@ -429,6 +431,21 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
 	mmi_dc_set_global_alpha(dc, 0, true);
 	mmi_dc_blend_set_bg_color(dc, MMI_BG_CLR_MIN, MMI_BG_CLR_MIN,
 				  MMI_BG_CLR_MAX);
+	/*
+	 * TODO: Audio driver initialization and audio clock to be handled separately
+	 * ensuring that if audio driver fails, video pipeline shouldn't be affected.
+	 */
+
+	/* Set the aud_clk and initialize the audio driver */
+	dc->aud_clk = devm_clk_get(dc->dev, "pl_aud_clk");
+	if (IS_ERR(dc->aud_clk))
+		return PTR_ERR(dc->aud_clk);
+
+	ret = mmi_dc_audio_init(dc);
+	if (ret < 0) {
+		dev_err(dc->dev, "failed to initialize Audio Driver: %d\n", ret);
+		return ret;
+	}
 
 	ret = devm_request_threaded_irq(dc->dev, dc->irq_num, NULL,
 					mmi_dc_irq_handler,
@@ -449,6 +466,7 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
 void mmi_dc_fini(struct mmi_dc *dc)
 {
 	mmi_dc_destroy_planes(dc);
+	mmi_dc_audio_uninit(dc);
 	mmi_dc_reset(dc, true);
 	dc_write_misc(dc, MMI_DC_MISC_WPROTS, 1);
 }
