@@ -313,6 +313,8 @@
 /* GEM specific NCR bitfields. */
 #define GEM_ENABLE_HS_MAC_OFFSET	31
 #define GEM_ENABLE_HS_MAC_SIZE		1
+#define GEM_2PT5_G_OFFSET	29
+#define GEM_2PT5_G_SIZE		1
 
 /* GEM specific NCFGR bitfields. */
 #define GEM_FD_OFFSET		1 /* Full duplex */
