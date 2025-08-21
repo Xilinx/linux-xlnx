@@ -198,9 +198,14 @@ static int xlnx_vtc_set_timing(struct xlnx_bridge *bridge,
 	u32 htotal, hactive, hsync_start, hbackporch_start;
 	u32 vtotal, vactive, vsync_start, vbackporch_start;
 	struct xlnx_vtc *vtc = bridge_to_vtc(bridge);
+	int ret;
 
 	reg = xlnx_vtc_readl(vtc->base, XVTC_CTL);
 	xlnx_vtc_writel(vtc->base, XVTC_CTL, reg & ~XVTC_CTL_RU);
+
+	ret = clk_set_rate(vtc->vid_clk, vm->pixelclock / vtc->ppc);
+	if (ret < 0)
+		dev_err(vtc->dev, "failed to set pixel clock rate: %d\n", ret);
 
 	vm->hactive /= vtc->htiming_div_fact;
 	vm->hfront_porch /= vtc->htiming_div_fact;
