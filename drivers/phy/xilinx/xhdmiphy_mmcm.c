@@ -62,6 +62,20 @@ static const struct gthdmi_chars gtye5hdmi_chars = {
 	.rx_mmcm_fvcomax = XHDMIPHY_HDMI_GTYE5_RX_MMCM_FVCO_MAX,
 };
 
+static const struct gthdmi_chars gtye5hdmi_dpll_chars = {
+	.dru_linerate = XHDMIPHY_HDMI_GTYE5_DRU_LRATE,
+	.pll_scale = XHDMIPHY_HDMI_GTYE5_PLL_SCALE,
+	.qpll0_refclk_min = XHDMIPHY_HDMI_GTYE5_LCPLL_REFCLK_MIN,
+	.qpll1_refclk_min = XHDMIPHY_HDMI_GTYE5_RPLL_REFCLK_MIN,
+	.cpll_refclk_min = 0,
+	.tx_mmcm_scale = XHDMIPHY_HDMI_GTYE5_TX_MMCM_SCALE,
+	.tx_mmcm_fvcomin = XHDMIPHY_HDMI_GTYE5_TX_MMCM_FVCO_MIN_DPLL,
+	.tx_mmcm_fvcomax = XHDMIPHY_HDMI_GTYE5_TX_MMCM_FVCO_MAX_DPLL,
+	.rx_mmcm_scale = XHDMIPHY_HDMI_GTYE5_RX_MMCM_SCALE,
+	.rx_mmcm_fvcomin = XHDMIPHY_HDMI_GTYE5_RX_MMCM_FVCO_MIN_DPLL,
+	.rx_mmcm_fvcomax = XHDMIPHY_HDMI_GTYE5_RX_MMCM_FVCO_MAX_DPLL,
+};
+
 /*
  * Following are the MMCM Parameter values for each rate.
  * Based on the MAX rate config in PHY the MMCM
@@ -86,6 +100,15 @@ static struct xhdmiphy_mmcm gtye5_mmcm[] = {
 	{5, 6, 1, 6, 6, 6} /* 12 G -> (400 * 3/1) / 3 -> 400Mhz */
 };
 
+static struct xhdmiphy_mmcm gtye5_dpll_mmcm[] = {
+	{0, 14, 3, 14, 14, 14}, /* 3x3 G -> 150Mhz */
+	{1, 14, 3, 12, 12, 12}, /* 6x3 G -> 175Mhz */
+	{2, 13, 3, 9, 9, 9}, /* 6x4 G -> 225Mhz */
+	{3, 14, 3, 7, 7, 7}, /* 8 G -> 300Mhz */
+	{4, 45, 8, 6, 6, 6}, /* 10 G -> 375Mhz */
+	{5, 10, 2, 5, 5, 5} /* 12 G -> 400Mhz */
+};
+
 static u16 mmcme4_lockreg1_enc[37] = {0x0, 0x03e8, 0x03e8, 0x03e8, 0x03e8,
 				      0x03e8, 0x03e8, 0x03e8, 0x03e8, 0x03e8,
 				      0x03e8, 0x0384, 0x0339, 0x02ee, 0x02bc,
@@ -107,23 +130,34 @@ static struct xhdmiphy_mmcm *get_mmcm_conf(struct xhdmiphy_dev *inst)
 {
 	if (inst->conf.gt_type != XHDMIPHY_GTYE5 &&
 	    inst->conf.gt_type != XHDMIPHY_GTYP)
-
 		return gthe4_gtye4_mmcm;
+
+	/* Check if DPLL is enabled for GTYE5/GTYP */
+	if (inst->conf.tx_clk_primitive == XHDMIPHY_DPLL ||
+	    inst->conf.rx_clk_primitive == XHDMIPHY_DPLL)
+		return gtye5_dpll_mmcm;
 
 	return gtye5_mmcm;
 }
 
 static const struct gthdmi_chars *get_gthdmi_ptr(struct xhdmiphy_dev *inst)
 {
-	if (inst->conf.gt_type == XHDMIPHY_GTHE4)
+	if (inst->conf.gt_type == XHDMIPHY_GTHE4) {
 		return &gthe4hdmi_chars;
-	else if (inst->conf.gt_type == XHDMIPHY_GTYE4)
+	} else if (inst->conf.gt_type == XHDMIPHY_GTYE4) {
 		return &gtye4hdmi_chars;
-	else if (inst->conf.gt_type == XHDMIPHY_GTYE5 ||
-		 inst->conf.gt_type == XHDMIPHY_GTYP)
-		return &gtye5hdmi_chars;
-
-	return NULL;
+	} else if (inst->conf.gt_type == XHDMIPHY_GTYE5 ||
+			   inst->conf.gt_type == XHDMIPHY_GTYP) {
+		/* Check if DPLL is enabled for TX or RX */
+		if (inst->conf.tx_clk_primitive == XHDMIPHY_DPLL ||
+		    inst->conf.rx_clk_primitive == XHDMIPHY_DPLL) {
+			return &gtye5hdmi_dpll_chars;
+		} else {
+			return &gtye5hdmi_chars;
+		}
+	} else {
+		return NULL;
+	}
 }
 
 /**
@@ -936,42 +970,117 @@ static bool xhdmiphy_wr_mmcm4_params(struct xhdmiphy_dev *inst, enum dir dir)
 	return 0;
 }
 
+/**
+ * xhdmiphy_wr_dpll_params - This function writes the DPLL parameter values
+ * currently stored in the driver's instance structure to hardware.
+ *
+ * @inst:	inst is a pointer to the xhdmiphy core instance
+ * @dir:	dir is an indicator for TX or RX
+ *
+ * @return:	- 0 if the DPLL write was successful
+ *		- 1 otherwise, if the configuration success bit did not go low
+ */
+static bool xhdmiphy_wr_dpll_params(struct xhdmiphy_dev *inst, enum dir dir)
+{
+	struct xhdmiphy_mmcm *mmcm_params;
+	u16 drp_rd_val;
+	u8 chid;
+
+	chid = (dir == XHDMIPHY_DIR_TX) ? XHDMIPHY_CHID_TXMMCM :
+					  XHDMIPHY_CHID_RXMMCM;
+	mmcm_params = &inst->quad.mmcm[dir];
+
+	if (!mmcm_params->divclk_divide && !mmcm_params->clkfbout_mult &&
+	    !mmcm_params->clkout0_div && !mmcm_params->clkout1_div &&
+	    !mmcm_params->clkout2_div)
+		return 1;
+
+	/* Write CLKFBOUT register */
+	xhdmiphy_drprd(inst, chid, XHDMIPHY_DPLL_DRP_CLKFBOUT_1_REG, &drp_rd_val);
+	drp_rd_val &= ~XHDMIPHY_DPLL_MULT_MASK;
+	drp_rd_val |= (mmcm_params->clkfbout_mult << 6) & XHDMIPHY_DPLL_MULT_MASK;
+	xhdmiphy_drpwr(inst, chid, XHDMIPHY_DPLL_DRP_CLKFBOUT_1_REG, drp_rd_val);
+
+	/* Write DIVCLK register */
+	xhdmiphy_drprd(inst, chid, XHDMIPHY_DPLL_DRP_DIVCLK_DIVIDE_REG, &drp_rd_val);
+	drp_rd_val &= ~XHDMIPHY_DPLL_DIVCLKDIV_MASK;
+	drp_rd_val |= mmcm_params->divclk_divide & XHDMIPHY_DPLL_DIVCLKDIV_MASK;
+	xhdmiphy_drpwr(inst, chid, XHDMIPHY_DPLL_DRP_DIVCLK_DIVIDE_REG, drp_rd_val);
+
+	/* Write CLKOUT0 register */
+	xhdmiphy_drprd(inst, chid, XHDMIPHY_DPLL_DRP_CLKOUT0_REG1, &drp_rd_val);
+	drp_rd_val &= ~XHDMIPHY_DPLL_CLKOUT_MASK;
+	drp_rd_val |= mmcm_params->clkout0_div & XHDMIPHY_DPLL_CLKOUT_MASK;
+	xhdmiphy_drpwr(inst, chid, XHDMIPHY_DPLL_DRP_CLKOUT0_REG1, drp_rd_val);
+
+	/* Write CLKOUT1 register */
+	xhdmiphy_drprd(inst, chid, XHDMIPHY_DPLL_DRP_CLKOUT1_REG1, &drp_rd_val);
+	drp_rd_val &= ~XHDMIPHY_DPLL_CLKOUT_MASK;
+	drp_rd_val |= mmcm_params->clkout1_div & XHDMIPHY_DPLL_CLKOUT_MASK;
+	xhdmiphy_drpwr(inst, chid, XHDMIPHY_DPLL_DRP_CLKOUT1_REG1, drp_rd_val);
+
+	return 0;
+}
+
 void xhdmiphy_mmcm_start(struct xhdmiphy_dev *inst, enum dir dir)
 {
 	struct xhdmiphy_mmcm *mmcm_ptr;
+	u64 clkout_div_lo, clkout_div_high;
 
 	if (dir == XHDMIPHY_DIR_RX)
 		mmcm_ptr = &inst->quad.rx_mmcm;
 	else
 		mmcm_ptr = &inst->quad.tx_mmcm;
 
-	/* check values if valid */
+	/* Determine parameter limits based on direction and clock primitive */
 	if (inst->conf.gt_type != XHDMIPHY_GTYE5 &&
 	    inst->conf.gt_type != XHDMIPHY_GTYP) {
-		if (!(mmcm_ptr->clkout0_div > 0 &&
-		      mmcm_ptr->clkout0_div <= 128 &&
-		      mmcm_ptr->clkout1_div > 0 &&
-		      mmcm_ptr->clkout1_div <= 128 &&
-		      mmcm_ptr->clkout2_div > 0 &&
-		      mmcm_ptr->clkout2_div <= 128))
-			return;
+		clkout_div_lo = 0;
+		clkout_div_high = 128;
 	} else {
-		if (!(mmcm_ptr->clkout0_div > 0 &&
-		      mmcm_ptr->clkout0_div <= 512 &&
-		      mmcm_ptr->clkout1_div > 0 &&
-		      mmcm_ptr->clkout1_div <= 512 &&
-		      mmcm_ptr->clkout2_div > 0 &&
-		      mmcm_ptr->clkout2_div <= 512))
-			return;
+		if (dir == XHDMIPHY_DIR_RX) {
+			if (inst->conf.rx_clk_primitive == XHDMIPHY_DPLL) {
+				clkout_div_lo = 1;
+				clkout_div_high = 400;
+			} else {
+				clkout_div_lo = 0;
+				clkout_div_high = 512;
+			}
+		} else {
+			if (inst->conf.tx_clk_primitive == XHDMIPHY_DPLL) {
+				clkout_div_lo = 1;
+				clkout_div_high = 400;
+			} else {
+				clkout_div_lo = 0;
+				clkout_div_high = 512;
+			}
+		}
 	}
+
+	/* Check values if valid */
+	if (!(mmcm_ptr->clkout0_div > clkout_div_lo &&
+	      mmcm_ptr->clkout0_div <= clkout_div_high &&
+	      mmcm_ptr->clkout1_div > clkout_div_lo &&
+	      mmcm_ptr->clkout1_div <= clkout_div_high &&
+	      mmcm_ptr->clkout2_div > clkout_div_lo &&
+	      mmcm_ptr->clkout2_div <= clkout_div_high))
+		return;
 
 	xhdmiphy_mmcm_reset(inst, dir, true);
 
+	/* Configure MMCM/DPLL based on type */
 	if (inst->conf.gt_type != XHDMIPHY_GTYE5 &&
-	    inst->conf.gt_type != XHDMIPHY_GTYP)
+	    inst->conf.gt_type != XHDMIPHY_GTYP) {
 		xhdmiphy_wr_mmcm4_params(inst, dir);
-	else
-		xhdmiphy_wr_mmcm5_params(inst, dir);
+	} else {
+		/* Check if DPLL is enabled */
+		if ((dir == XHDMIPHY_DIR_TX && inst->conf.tx_clk_primitive == XHDMIPHY_DPLL) ||
+		    (dir == XHDMIPHY_DIR_RX && inst->conf.rx_clk_primitive == XHDMIPHY_DPLL)) {
+			xhdmiphy_wr_dpll_params(inst, dir);
+		} else {
+			xhdmiphy_wr_mmcm5_params(inst, dir);
+		}
+	}
 
 	xhdmiphy_mmcm_reset(inst, dir, false);
 	xhdmiphy_mmcm_lock_en(inst, dir, false);
@@ -1087,6 +1196,53 @@ void xhdmiphy_mmcm_param(struct xhdmiphy_dev *inst, enum dir dir)
 		break;
 	default:
 		break;
+	}
+}
+
+static void xhdmiphy_set_clkout1_div(struct xhdmiphy_dev *inst, enum dir dir,
+				     u64 linerate, struct xhdmiphy_mmcm *mmcm_ptr)
+{
+	/* Only do this when the clkout1_div has been set */
+	if (mmcm_ptr->clkout1_div) {
+		if (dir == XHDMIPHY_DIR_RX) {
+			/* Correct divider value if TMDS clock ratio is 1/40 */
+			if (inst->rx_tmdsclock_ratio) {
+				if ((mmcm_ptr->clkout1_div % 4) == 0) {
+					mmcm_ptr->clkout1_div =
+					mmcm_ptr->clkout1_div / 4;
+				} else {
+				/*
+				 * Not divisible by 4: repeat
+				 * loop with a lower multiply
+				 * value
+				 */
+					if (inst->conf.gt_type != XHDMIPHY_GTYE5 &&
+					    inst->conf.gt_type != XHDMIPHY_GTYP)
+						mmcm_ptr->clkout1_div = 255;
+					else
+						mmcm_ptr->clkout1_div = 65535;
+				}
+			}
+		}
+		/* TX */
+		else if ((((linerate / 1000000) >= XHDMIPHY_LRATE_3400) &&
+			  (inst->tx_samplerate == 1)) ||
+			  (((linerate / 1000000) / inst->tx_samplerate) >=
+			    XHDMIPHY_LRATE_3400)) {
+			if ((mmcm_ptr->clkout1_div % 4) == 0) {
+				mmcm_ptr->clkout1_div = mmcm_ptr->clkout1_div / 4;
+			} else {
+			/*
+			 * Not divisible by 4: repeat loop with
+			 * a lower multiply value
+			 */
+				if (inst->conf.gt_type != XHDMIPHY_GTYE5 &&
+				    inst->conf.gt_type != XHDMIPHY_GTYP)
+					mmcm_ptr->clkout1_div = 255;
+				else
+					mmcm_ptr->clkout1_div = 65535;
+			}
+		}
 	}
 }
 
@@ -1272,39 +1428,81 @@ static void xhdmiphy_validate_clock_divs(struct xhdmiphy_dev *inst,
 					 struct xhdmiphy_mmcm *mmcm_ptr,
 					 enum ppc ppc, u8 *valid, u32 *mult)
 {
+	u64 clkout_div_lo, clkout_div_high;
+
+	/* Determine parameter limits dynamically */
 	if (inst->conf.gt_type != XHDMIPHY_GTYE5 &&
 	    inst->conf.gt_type != XHDMIPHY_GTYP) {
-		if (mmcm_ptr->clkout0_div > 0 &&
-		    mmcm_ptr->clkout0_div <= 128 &&
-		    mmcm_ptr->clkout1_div > 0 &&
-		    mmcm_ptr->clkout1_div <= 128 &&
-		    mmcm_ptr->clkout2_div > 0 &&
-		    mmcm_ptr->clkout2_div <= 128) {
-			*valid = true;
-		} else {
-			if (ppc == XVIDC_PPC_4)
-				*mult -= 4;
-			else if (ppc == XVIDC_PPC_2)
-				*mult -= 2;
-			else
-				*mult -= 1;
-		}
+		clkout_div_lo = 0;
+		clkout_div_high = 128;
 	} else {
-		if (mmcm_ptr->clkout0_div > 0 &&
-		    mmcm_ptr->clkout0_div <= 511 &&
-		    mmcm_ptr->clkout1_div > 0 &&
-		    mmcm_ptr->clkout1_div <= 511 &&
-		    mmcm_ptr->clkout2_div > 0 &&
-		    mmcm_ptr->clkout2_div <= 511) {
-			*valid = true;
+		/* For GTYE5/GTYP, check if DPLL is enabled for any direction */
+		if (inst->conf.tx_clk_primitive == XHDMIPHY_DPLL ||
+		    inst->conf.rx_clk_primitive == XHDMIPHY_DPLL) {
+			clkout_div_lo = 1;
+			clkout_div_high = 400;
 		} else {
-			if (ppc == XVIDC_PPC_4)
-				*mult -= 4;
-			else if (ppc == XVIDC_PPC_2)
-				*mult -= 2;
-			else
-				*mult -= 1;
+			clkout_div_lo = 0;
+			clkout_div_high = 511;
 		}
+	}
+
+	if (mmcm_ptr->clkout0_div > clkout_div_lo &&
+	    mmcm_ptr->clkout0_div <= clkout_div_high &&
+	    mmcm_ptr->clkout1_div > clkout_div_lo &&
+	    mmcm_ptr->clkout1_div <= clkout_div_high &&
+	    mmcm_ptr->clkout2_div > clkout_div_lo &&
+	    mmcm_ptr->clkout2_div <= clkout_div_high) {
+		*valid = true;
+	} else {
+		if (ppc == XVIDC_PPC_4)
+			*mult -= 4;
+		else if (ppc == XVIDC_PPC_2)
+			*mult -= 2;
+		else
+			*mult -= 1;
+	}
+}
+
+/**
+ * get_div_limits - This function provides the divider limits based on
+ * clock primitive and GT type for the main calculation loop.
+ *
+ * @inst:	inst is a pointer to the xhdmiphy core instance
+ * @dir:	dir is an indicator for TX or RX
+ * @div_lo:	div_lo is a pointer to store the lower limit
+ * @div_high:	div_high is a pointer to store the upper limit
+ */
+void get_div_limits(struct xhdmiphy_dev *inst, enum dir dir,
+		    u64 *div_lo, u64 *div_high)
+{
+	if (inst->conf.gt_type == XHDMIPHY_GTYE5 || inst->conf.gt_type == XHDMIPHY_GTYP) {
+		if (dir == XHDMIPHY_DIR_RX) {
+			if (inst->conf.rx_clk_primitive == XHDMIPHY_DPLL) {
+				*div_lo = 0;
+				*div_high = 21;
+			} else {
+				*div_lo = 0;
+				*div_high = 124;
+			}
+		} else {
+			if (inst->conf.tx_clk_primitive == XHDMIPHY_DPLL) {
+				*div_lo = 0;
+				*div_high = 21;
+			} else {
+				*div_lo = 0;
+				*div_high = 124;
+			}
+		}
+	} else if (inst->conf.gt_type == XHDMIPHY_GTHE4 ||
+		   inst->conf.gt_type == XHDMIPHY_GTYE4) {
+		/* GTHE4/GTYE4 has div limit of 107 */
+		*div_lo = 0;
+		*div_high = 107;
+	} else {
+		/* Other transceiver types have div limit of 20 */
+		*div_lo = 0;
+		*div_high = 20;
 	}
 }
 
@@ -1337,6 +1535,7 @@ u32 xhdmiphy_cal_mmcm_param(struct xhdmiphy_dev *inst, enum chid chid,
 	u32 refclk, div, mult;
 	u16 mult_div, linerate_mhz;
 	u16 link_clk, vid_clk, tmds_clk;
+	u64 div_lo, div_high;
 	u8 valid;
 
 	pll_type = xhdmiphy_get_pll_type(inst, dir, XHDMIPHY_CHID_CH1);
@@ -1361,6 +1560,9 @@ u32 xhdmiphy_cal_mmcm_param(struct xhdmiphy_dev *inst, enum chid chid,
 		dev_err(inst->dev, "ppc not supported\n");
 		return 1;
 	}
+
+	/* Get divider limits based on direction and clock primitive */
+	get_div_limits(inst, dir, &div_lo, &div_high);
 
 	div = 1;
 	do {
@@ -1395,31 +1597,57 @@ u32 xhdmiphy_cal_mmcm_param(struct xhdmiphy_dev *inst, enum chid chid,
 			mult_div = mult / div;
 			mmcm_ptr->clkfbout_mult = mult;
 			mmcm_ptr->divclk_divide = div;
-			link_clk = xhdmiphy_set_linkclk_outdiv(inst,
-							       linerate_mhz,
-							       dir, mult_div);
-			tmds_clk = mult_div * ((dir == XHDMIPHY_DIR_TX) ?
-						(inst->tx_samplerate) : 1);
-			vid_clk = xhdmiphy_set_videoclk_outdiv(inst, bpc, ppc,
-							       dir, mult_div);
+
+			/* Path selection based on clock primitive configuration */
 			if ((dir == XHDMIPHY_DIR_RX &&
 			     inst->conf.rx_clk_primitive == XHDMIPHY_MMCM) ||
 			    (dir == XHDMIPHY_DIR_TX &&
-			    inst->conf.tx_clk_primitive == XHDMIPHY_MMCM)) {
+			     inst->conf.tx_clk_primitive == XHDMIPHY_MMCM)) {
+				link_clk = xhdmiphy_set_linkclk_outdiv(inst,
+								       linerate_mhz,
+								       dir, mult_div);
+				tmds_clk = mult_div * ((dir == XHDMIPHY_DIR_TX) ?
+							(inst->tx_samplerate) : 1);
+				vid_clk = xhdmiphy_set_videoclk_outdiv(inst, bpc, ppc,
+								       dir, mult_div);
+
 				mmcm_ptr->clkout0_div = link_clk;
 				mmcm_ptr->clkout1_div = tmds_clk;
 				mmcm_ptr->clkout2_div = vid_clk;
+
+				/* Apply TMDS clock ratio corrections */
+				xhdmiphy_set_clkout2_div(inst, dir, linerate, mmcm_ptr);
 			} else {
+				link_clk = xhdmiphy_set_linkclk_outdiv(inst,
+								       linerate_mhz,
+								       dir, mult_div);
+				tmds_clk = mult_div * ((dir == XHDMIPHY_DIR_TX) ?
+							(inst->tx_samplerate) : 1);
+				vid_clk = xhdmiphy_set_videoclk_outdiv(inst, bpc, ppc,
+								       dir, mult_div);
+
 				mmcm_ptr->clkout2_div = link_clk;
 				mmcm_ptr->clkout0_div = tmds_clk;
 				mmcm_ptr->clkout1_div = vid_clk;
+
+				/* Apply TMDS clock ratio corrections */
+				xhdmiphy_set_clkout1_div(inst, dir, linerate, mmcm_ptr);
 			}
-			xhdmiphy_set_clkout2_div(inst, dir, linerate, mmcm_ptr);
+
 			xhdmiphy_validate_clock_divs(inst, mmcm_ptr, ppc,
 						     &valid, &mult);
-			} while (!valid && (mult > 0) && (mult < 129));
+		/* Apply transceiver-specific multiplier bounds */
+		} while (!valid &&
+			((inst->conf.gt_type == XHDMIPHY_GTYE5 ||
+			  inst->conf.gt_type == XHDMIPHY_GTYP) ?
+				(mult > 3 && mult < 432) :
+			 (inst->conf.gt_type == XHDMIPHY_GTHE4 ||
+			  inst->conf.gt_type == XHDMIPHY_GTYE4) ?
+				(mult > 0 && mult < 129) :
+				(mult > 0 && mult < 65)));
 		div++;
-	} while (!valid && (div > 0) && (div < 107));
+
+	} while (!valid && (div > div_lo) && (div < div_high));
 
 	if (valid)
 		return 0;

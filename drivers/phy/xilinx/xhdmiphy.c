@@ -650,7 +650,7 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 		val = XHDMIPHY_MMCM;
 	}
 
-	if (val != XHDMIPHY_MMCM && val != XHDMIPHY_PLL) {
+	if (val != XHDMIPHY_MMCM && val != XHDMIPHY_PLL && val != XHDMIPHY_DPLL) {
 		dev_err(priv->dev, "dt xlnx,rx-clk-primitive %d is invalid\n",
 			val);
 		return -EINVAL;
@@ -664,7 +664,7 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 		val = XHDMIPHY_MMCM;
 	}
 
-	if (val != XHDMIPHY_MMCM && val != XHDMIPHY_PLL) {
+	if (val != XHDMIPHY_MMCM && val != XHDMIPHY_PLL && val != XHDMIPHY_DPLL) {
 		dev_err(priv->dev, "dt xlnx,tx-clk-primitive %d is invalid\n",
 			val);
 		return -EINVAL;
