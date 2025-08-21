@@ -318,6 +318,17 @@ struct drm_crtc_state {
 	enum drm_scaling_filter scaling_filter;
 
 	/**
+	 * @output_bus_format:
+	 *
+	 * CRTC output media bus format of the video signal negotiated between
+	 * CRTC and encoder. This value should be one of MEDIA_BUS_FMT*
+	 * from uapi/linux/media-bus-format.h. It is safe to ignore
+	 * @output_bus_format if CRTC doesn't support multiple output bus format
+	 * options.
+	 */
+	u32 output_bus_format;
+
+	/**
 	 * @event:
 	 *
 	 * Optional pointer to a DRM event to signal upon completion of the
