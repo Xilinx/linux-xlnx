@@ -38,6 +38,7 @@
 struct drm_atomic_state;
 struct drm_connector;
 struct drm_crtc;
+struct drm_crtc_state;
 struct drm_device;
 struct drm_display_mode;
 struct drm_encoder;
@@ -61,5 +62,9 @@ int drm_helper_connector_dpms(struct drm_connector *connector, int mode);
 
 void drm_helper_resume_force_mode(struct drm_device *dev);
 int drm_helper_force_disable_all(struct drm_device *dev);
+u32 drm_helper_crtc_select_output_bus_format(struct drm_crtc *crtc,
+					     struct drm_crtc_state *crtc_state,
+					     const u32 *supported_fmts,
+					     unsigned int num_supported_fmts);
 
 #endif
