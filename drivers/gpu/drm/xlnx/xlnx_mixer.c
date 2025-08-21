@@ -12,12 +12,15 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic_uapi.h>
+#include <drm/drm_bridge.h>
+#include <drm/drm_bridge_connector.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_fb_dma_helper.h>
 #include <drm/drm_fourcc.h>
 #include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_framebuffer.h>
 #include <drm/drm_modeset_helper_vtables.h>
+#include <drm/drm_simple_kms_helper.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/component.h>
@@ -453,6 +456,7 @@ struct xlnx_mix_hw {
  * @event: vblank pending event
  * @vtc_bridge: vtc_bridge structure
  * @disp_bridge: disp_bridge structure
+ * @drm_bridge: external encoder bridge
  *
  * Contains pointers to logical constructions such as the DRM plane manager as
  * well as pointers to distinquish the mixer layer serving as the DRM "primary"
@@ -483,6 +487,7 @@ struct xlnx_mix {
 	struct drm_pending_vblank_event *event;
 	struct xlnx_bridge *vtc_bridge;
 	struct xlnx_bridge *disp_bridge;
+	struct drm_bridge *drm_bridge;
 };
 
 /**
@@ -2362,6 +2367,18 @@ static int xlnx_mix_parse_dt_logo_data(struct device_node *node,
 static int xlnx_mix_dt_dp_bridge(struct device *dev, struct xlnx_mix *mixer)
 {
 	struct device_node *node, *disp_node;
+	struct drm_bridge *bridge;
+
+	/* First check if we have drm bridge connected */
+	bridge = devm_drm_of_get_bridge(dev, dev->of_node, 0, 0);
+	if (IS_ERR(bridge)) {
+		if (PTR_ERR(bridge) == -EPROBE_DEFER)
+			return PTR_ERR(bridge);
+		/* Ignore other errors and fall back to xlnx bridge */
+	} else {
+		mixer->drm_bridge = bridge;
+		return 0;
+	}
 
 	node = dev->of_node;
 	/* Disp Bridge support */
@@ -3119,6 +3136,46 @@ static void xlnx_mix_init(struct xlnx_mix_hw *mixer)
 	xlnx_mix_intrpt_enable_done(mixer);
 }
 
+static int xlnx_mix_connector_init(struct xlnx_mix *mixer)
+{
+	struct drm_encoder *encoder;
+	struct drm_connector *connector;
+	struct device *master_dev = &mixer->master->dev;
+	int ret;
+
+	encoder = devm_kzalloc(master_dev, sizeof(*encoder), GFP_KERNEL);
+	if (IS_ERR(encoder))
+		return PTR_ERR(encoder);
+
+	encoder->possible_crtcs |= drm_crtc_mask(&mixer->crtc.crtc);
+	ret = drm_simple_encoder_init(mixer->drm, encoder,
+				      DRM_MODE_ENCODER_NONE);
+	if (ret < 0)
+		return ret;
+
+	ret = drm_bridge_attach(encoder, mixer->drm_bridge, NULL,
+				DRM_BRIDGE_ATTACH_NO_CONNECTOR);
+	if (ret < 0)
+		goto err_enc_cleanup;
+
+	connector = drm_bridge_connector_init(mixer->drm, encoder);
+	if (IS_ERR(connector)) {
+		ret = PTR_ERR(connector);
+		goto err_enc_cleanup;
+	}
+
+	ret = drm_connector_attach_encoder(connector, encoder);
+	if (ret < 0)
+		goto err_enc_cleanup;
+
+	return 0;
+
+err_enc_cleanup:
+	drm_encoder_cleanup(encoder);
+
+	return ret;
+}
+
 static int xlnx_mix_bind(struct device *dev, struct device *master,
 			 void *data)
 {
@@ -3126,7 +3183,9 @@ static int xlnx_mix_bind(struct device *dev, struct device *master,
 	struct drm_device *drm = data;
 	u32 ret;
 
-	xlnx_mix_dt_dp_bridge(dev, mixer);
+	ret = xlnx_mix_dt_dp_bridge(dev, mixer);
+	if (ret)
+		return ret;
 
 	mixer->drm = drm;
 	ret = xlnx_mix_plane_create(dev, mixer);
@@ -3135,6 +3194,13 @@ static int xlnx_mix_bind(struct device *dev, struct device *master,
 	ret = xlnx_mix_crtc_create(mixer);
 	if (ret)
 		return ret;
+
+	if (mixer->drm_bridge) {
+		ret = xlnx_mix_connector_init(mixer);
+		if (ret < 0)
+			return ret;
+	}
+
 	xlnx_mix_init(&mixer->mixer_hw);
 
 	return ret;
