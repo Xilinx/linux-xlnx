@@ -50,6 +50,7 @@ enum mmi_dc_out_format {
 
 struct mmi_dc_drm;
 struct mmi_dc_plane;
+struct mmi_audio;
 
 /**
  * struct mmi_dc - MMI DC device
@@ -65,6 +66,8 @@ struct mmi_dc_plane;
  * @irq: interrupt control register space
  * @rst: external reset
  * @pixel_clk: pixel clock
+ * @aud_clk: audio clock
+ * @audio: Audio data
  * @is_ps_clk: flag for PS pixel clock source
  * @irq_num: interrupt lane number
  */
@@ -83,6 +86,8 @@ struct mmi_dc {
 	void __iomem		*irq;
 	struct reset_control	*rst;
 	struct clk		*pixel_clk;
+	struct clk		*aud_clk;
+	struct mmi_audio	*audio;
 	bool			is_ps_clk;
 	int			irq_num;
 };
