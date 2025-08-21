@@ -162,6 +162,14 @@
 #define XHDMIPHY_HDMI_GTYE5_DRU_REFCLK2_MAX	400010000LL
 #define XHDMIPHY_HDMI_GTYE5_LCPLL_REFCLK_MIN	120000000LL
 #define XHDMIPHY_HDMI_GTYE5_RPLL_REFCLK_MIN	120000000LL
+
+/* DPLL-specific FVCO ranges */
+#define XHDMIPHY_HDMI_GTYE5_TX_MMCM_FVCO_MIN_DPLL	2000000000U
+#define XHDMIPHY_HDMI_GTYE5_TX_MMCM_FVCO_MAX_DPLL	4000000000U
+#define XHDMIPHY_HDMI_GTYE5_RX_MMCM_FVCO_MIN_DPLL	2000000000U
+#define XHDMIPHY_HDMI_GTYE5_RX_MMCM_FVCO_MAX_DPLL	4000000000U
+
+/* Default MMCM FVCO ranges (non-DPLL) */
 #define XHDMIPHY_HDMI_GTYE5_TX_MMCM_FVCO_MIN	2160000000U
 #define XHDMIPHY_HDMI_GTYE5_TX_MMCM_FVCO_MAX	4320000000U
 #define XHDMIPHY_HDMI_GTYE5_RX_MMCM_FVCO_MIN	2160000000U
@@ -692,6 +700,17 @@
 #define XHDMIPHY_MMCM5_LOCK1_MASK1		0x8000
 #define XHDMIPHY_MMCM5_LOCK1_MASK2		0x7fff
 
+/* DPLL DRP register definitions */
+#define XHDMIPHY_DPLL_DRP_CLKFBOUT_1_REG	0x0E
+#define XHDMIPHY_DPLL_DRP_DIVCLK_DIVIDE_REG	0x19
+#define XHDMIPHY_DPLL_DRP_CLKOUT0_REG1		0x0F
+#define XHDMIPHY_DPLL_DRP_CLKOUT1_REG1		0x11
+#define XHDMIPHY_DPLL_WRITE_VAL			0xFFFF
+#define XHDMIPHY_DPLL_MULT_MASK			0x7FC0
+#define XHDMIPHY_DPLL_CLKOUT_MASK		0x01FF
+#define XHDMIPHY_DPLL_CLKOUTEN_MASK		0x0800
+#define XHDMIPHY_DPLL_DIVCLKDIV_MASK		0x01FF
+#define XHDMIPHY_DPLL_LOCK_MASK			0x0001
 enum color_depth {
 	XVIDC_BPC_6 = 6,
 	XVIDC_BPC_8 = 8,
@@ -851,6 +870,7 @@ enum prbs_pat {
 enum clk_primitive {
 	XHDMIPHY_MMCM = 0,
 	XHDMIPHY_PLL = 1,
+	XHDMIPHY_DPLL = 2,
 };
 
 enum xhdmiphy_mode {
@@ -1167,5 +1187,8 @@ u32 xhdmiphy_txch_reconf(struct xhdmiphy_dev *instinst, enum chid chid);
 
 extern const struct gt_conf gthe4_conf;
 extern const struct gt_conf gtye5_conf;
+
+void get_div_limits(struct xhdmiphy_dev *inst, enum dir dir,
+		    u64 *div_lo, u64 *div_high);
 #endif /* XHDMIPHY_H_ */
 /** @} */
