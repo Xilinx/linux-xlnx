@@ -3,6 +3,7 @@ $(obj)/xilinx_ecdsasig.asn1.o: $(obj)/xilinx_ecdsasig.asn1.c $(obj)/xilinx_ecdsa
 xilinx-ecds-y += xilinx_ecdsasig.asn1.o
 xilinx-ecds-y += xilinx-ecdsa.o
 obj-$(CONFIG_CRYPTO_DEV_XILINX_ECDSA) += xilinx-ecds.o
+obj-$(CONFIG_CRYPTO_DEV_XILINX_TRNG) += xilinx-trng.o
 obj-$(CONFIG_CRYPTO_DEV_ZYNQMP_AES) += zynqmp-aes-gcm.o
 obj-$(CONFIG_CRYPTO_DEV_ZYNQMP_SHA3) += zynqmp-sha.o
 obj-$(CONFIG_CRYPTO_DEV_XILINX_RSA) += zynqmp-rsa.o
