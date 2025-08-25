@@ -139,6 +139,7 @@ static int xscd_chan_get_vid_fmt(u32 media_bus_fmt, bool memory_based)
 		break;
 	case MEDIA_BUS_FMT_VUY8_1X24:
 	case MEDIA_BUS_FMT_VUY10_1X30:
+	case MEDIA_BUS_FMT_VUY12_1X36:
 		vid_fmt = XSCD_VID_FMT_YUV_444;
 		break;
 	case MEDIA_BUS_FMT_RBG888_1X24:
