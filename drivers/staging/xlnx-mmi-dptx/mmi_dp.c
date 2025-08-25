@@ -455,6 +455,35 @@ void mmi_dp_core_init_phy(struct dptx *dptx)
 }
 
 /**
+ * mmi_dp_enable_audio() - Initializes SDP and AUD for audio
+ * @dptx: The dptx struct
+ *
+ * Configure SDP and AUD for 16-bit 8 channel audio.
+ */
+static void mmi_dp_enable_audio(struct dptx *dptx)
+{
+	u32 aud_config, sdp_vert, sdp_hori;
+
+	aud_config = AUD_CONFIG1_DATA_IN_EN_8CH |
+		     AUD_CONFIG1_DATA_WIDTH_16 |
+		     AUD_CONFIG1_NUM_CH_8 |
+		     (AUD_CONFIG1_TIMESTAMP_VER << AUD_CONFIG1_TS_VER_SHIFT) |
+		     (AUD_CONFIG1_AUDCLK_512FS << AUD_CONFIG1_AUDIO_CLK_MULT_FS_SHIFT);
+
+	mmi_dp_write(dptx->base, AUD_CONFIG1, aud_config);
+
+	sdp_vert = SDP_VER_CTRL_EN_TIMESTAMP |
+		   SDP_VER_CTRL_EN_STREAM |
+		   SDP_VER_CTRL_FIXED_PRIO_ARB;
+	mmi_dp_write(dptx->base, SDP_VERTICAL_CTRL, sdp_vert);
+
+	sdp_hori = SDP_HORI_CTRL_EN_TIMESTAMP |
+		   SDP_HORI_CTRL_EN_STREAM |
+		   SDP_HORI_CTRL_FIXED_PRIO_ARB;
+	mmi_dp_write(dptx->base, SDP_HORIZONTAL_CTRL, sdp_hori);
+}
+
+/**
  * mmi_dp_check_dptx_id_n_ver() - Check value of DPTX_ID register
  * @dptx: The dptx struct
  *
@@ -565,6 +594,9 @@ static void mmi_dp_core_init(struct dptx *dptx)
 		     (dptx->mst ? DPTX_CCTL_ENABLE_MST_MODE : 0));
 
 	mmi_dp_core_init_phy(dptx);
+
+	/* Configure SDP and AUD for 8 channel audio */
+	mmi_dp_enable_audio(dptx);
 
 	/* Enable all HPD interrupts */
 	hpd_ien = mmi_dp_read(dptx->base, HPD_INTERRUPT_ENABLE);
