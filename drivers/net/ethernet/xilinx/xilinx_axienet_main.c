@@ -1486,23 +1486,16 @@ static inline int axienet_check_tx_bd_space(struct axienet_dma_q *q,
 	struct axienet_local *lp = q->lp;
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 	struct aximcdma_bd *cur_p;
-
-	if (CIRC_SPACE(q->tx_bd_tail, q->tx_bd_ci, lp->tx_bd_num) < (num_frag + 1))
-		return NETDEV_TX_BUSY;
-
-	cur_p = &q->txq_bd_v[(q->tx_bd_tail + num_frag) % lp->tx_bd_num];
-	if (cur_p->sband_stats & XMCDMA_BD_STS_ALL_MASK)
-		return NETDEV_TX_BUSY;
 #else
 	struct axidma_bd *cur_p;
-
-	if (CIRC_SPACE(q->tx_bd_tail, q->tx_bd_ci, lp->tx_bd_num) < (num_frag + 1))
-		return NETDEV_TX_BUSY;
-
-	cur_p = &q->tx_bd_v[(q->tx_bd_tail + num_frag) % lp->tx_bd_num];
-	if (cur_p->status & XAXIDMA_BD_STS_ALL_MASK)
-		return NETDEV_TX_BUSY;
 #endif
+
+	/* Ensure we see all descriptor updates from device or TX polling */
+	rmb();
+	cur_p = &q->tx_bd_v[(READ_ONCE(q->tx_bd_tail) + num_frag) %
+			     lp->tx_bd_num];
+	if (cur_p->cntrl)
+		return NETDEV_TX_BUSY;
 	return 0;
 }
 
@@ -1951,23 +1944,15 @@ static int axienet_queue_xmit(struct sk_buff *skb,
 	cur_p = &q->tx_bd_v[q->tx_bd_tail];
 #endif
 	spin_lock_irqsave(&q->tx_lock, flags);
-	if (axienet_check_tx_bd_space(q, num_frag)) {
-		if (netif_queue_stopped(ndev)) {
-			spin_unlock_irqrestore(&q->tx_lock, flags);
-			return NETDEV_TX_BUSY;
-		}
+	if (axienet_check_tx_bd_space(q, num_frag + 1)) {
+		/* Should not happen as last start_xmit call should have
+		 * checked for sufficient space and queue should only be
+		 * woken when sufficient space is available.
+		 */
 		netif_stop_queue(ndev);
-
-		/* Matches barrier in axienet_free_tx_chain */
-		smp_mb();
-
-		/* Space might have just been freed - check again */
-		if (axienet_check_tx_bd_space(q, num_frag)) {
-			spin_unlock_irqrestore(&q->tx_lock, flags);
-			return NETDEV_TX_BUSY;
-		}
-
-		netif_wake_queue(ndev);
+		if (net_ratelimit())
+			netdev_warn(ndev, "TX ring unexpectedly full\n");
+		return NETDEV_TX_BUSY;
 	}
 
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
@@ -2101,6 +2086,17 @@ out:
 	if (++q->tx_bd_tail >= lp->tx_bd_num)
 		q->tx_bd_tail = 0;
 
+	/* Stop queue if next transmit may not have space */
+	if (axienet_check_tx_bd_space(q, MAX_SKB_FRAGS + 1)) {
+		netif_stop_queue(ndev);
+
+		/* Matches barrier in axienet_start_xmit_done */
+		smp_mb();
+
+		/* Space might have just been freed - check again */
+		if (!axienet_check_tx_bd_space(q, MAX_SKB_FRAGS + 1))
+			netif_wake_queue(ndev);
+	}
 	spin_unlock_irqrestore(&q->tx_lock, flags);
 	return NETDEV_TX_OK;
 }
