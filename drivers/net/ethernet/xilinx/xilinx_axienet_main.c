@@ -1915,7 +1915,6 @@ static int axienet_queue_xmit(struct sk_buff *skb,
 #else
 	struct axidma_bd *cur_p;
 #endif
-	unsigned long flags;
 	struct axienet_dma_q *q;
 
 	if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
@@ -1943,7 +1942,6 @@ static int axienet_queue_xmit(struct sk_buff *skb,
 #else
 	cur_p = &q->tx_bd_v[q->tx_bd_tail];
 #endif
-	spin_lock_irqsave(&q->tx_lock, flags);
 	if (axienet_check_tx_bd_space(q, num_frag + 1)) {
 		/* Should not happen as last start_xmit call should have
 		 * checked for sufficient space and queue should only be
@@ -1957,7 +1955,6 @@ static int axienet_queue_xmit(struct sk_buff *skb,
 
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 	if (axienet_skb_tstsmp(&skb, q, ndev)) {
-		spin_unlock_irqrestore(&q->tx_lock, flags);
 		return NETDEV_TX_BUSY;
 	}
 #endif
@@ -2012,8 +2009,6 @@ static int axienet_queue_xmit(struct sk_buff *skb,
 #else
 			desc_set_phys_addr(lp, phys, cur_p);
 #endif
-
-			spin_unlock_irqrestore(&q->tx_lock, flags);
 			dev_err(&ndev->dev, "TX buffer map failed\n");
 			return NETDEV_TX_BUSY;
 		}
@@ -2097,7 +2092,6 @@ out:
 		if (!axienet_check_tx_bd_space(q, MAX_SKB_FRAGS + 1))
 			netif_wake_queue(ndev);
 	}
-	spin_unlock_irqrestore(&q->tx_lock, flags);
 	return NETDEV_TX_OK;
 }
 
@@ -4173,7 +4167,6 @@ static int __maybe_unused axienet_dma_probe(struct platform_device *pdev,
 		netif_napi_add(ndev, &q->napi_tx, axienet_tx_poll);
 		netif_napi_add(ndev, &q->napi_rx, xaxienet_rx_poll);
 
-		spin_lock_init(&q->tx_lock);
 	}
 
 	of_node_put(np);
