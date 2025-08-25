@@ -1103,6 +1103,9 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state)
 	case XDPRX_MSA_BPC_10:
 		state->bpc = 10;
 		break;
+	case XDPRX_MSA_BPC_12:
+		state->bpc = 12;
+		break;
 	default:
 		dev_err(state->dev, "Unsupported bit color depth\n");
 
@@ -1113,24 +1116,32 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state)
 	case XDPRX_COLOR_FORMAT_420:
 		if (state->bpc == 10)
 			format->code = MEDIA_BUS_FMT_VYYUYY10_4X20;
+		else if (state->bpc == 12)
+			format->code = MEDIA_BUS_FMT_UYYVYY12_4X24;
 		else
 			format->code = MEDIA_BUS_FMT_VYYUYY8_1X24;
 		break;
 	case XDPRX_COLOR_FORMAT_422:
 		if (state->bpc == 10)
 			format->code = MEDIA_BUS_FMT_UYVY10_1X20;
+		else if (state->bpc == 12)
+			format->code = MEDIA_BUS_FMT_UYVY12_1X24;
 		else
 			format->code = MEDIA_BUS_FMT_UYVY8_1X16;
 		break;
 	case XDPRX_COLOR_FORMAT_444:
 		if (state->bpc == 10)
 			format->code = MEDIA_BUS_FMT_VUY10_1X30;
+		else if (state->bpc == 12)
+			format->code = MEDIA_BUS_FMT_VUY12_1X36;
 		else
 			format->code = MEDIA_BUS_FMT_VUY8_1X24;
 		break;
 	case XDPRX_COLOR_FORMAT_RGB:
 		if (state->bpc == 10)
 			format->code = MEDIA_BUS_FMT_RBG101010_1X30;
+		else if (state->bpc == 12)
+			format->code = MEDIA_BUS_FMT_RBG121212_1X36;
 		else
 			format->code = MEDIA_BUS_FMT_RBG888_1X24;
 		break;
@@ -2401,10 +2412,10 @@ static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
 		}
 	}
 	/*
-	 * TODO : For now driver supports only 8, 10 bpc.
+	 * TODO : For now driver supports only 8, 10 and 12 bpc.
 	 * In future, driver may add with other bpc support
 	 */
-	if (xdprxss->bpc != 8 && xdprxss->bpc != 10) {
+	if (xdprxss->bpc != 8 && xdprxss->bpc != 10 && xdprxss->bpc != 12) {
 		dev_err(xdprxss->dev, "unsupported bpc = %u\n", xdprxss->bpc);
 		return -EINVAL;
 	}
