@@ -736,6 +736,18 @@ config CRYPTO_DEV_XILINX_RSA
 	  generation and verification. This driver is deprecated.
 	  Please migrate to : CRYPTO_DEV_XILINX_RSA_AKCIPHER
 
+config CRYPTO_DEV_XILINX_TRNG
+	tristate "Support for Xilinx True Random Generator"
+	depends on ZYNQMP_FIRMWARE || COMPILE_TEST
+	select CRYPTO_RNG
+	select HW_RANDOM
+	help
+	  Xilinx Versal SoC driver provides kernel-side support for True Random Number
+	  Generator and Pseudo random Number in CTR_DRBG mode as defined in NIST SP800-90A.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called xilinx-trng.
+
 config CRYPTO_DEV_ZYNQMP_AES
 	tristate "Support for Xilinx ZynqMP AES hw accelerator"
 	depends on NET && (ZYNQMP_FIRMWARE || COMPILE_TEST)
