@@ -438,13 +438,14 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
 
 	/* Set the aud_clk and initialize the audio driver */
 	dc->aud_clk = devm_clk_get(dc->dev, "pl_aud_clk");
-	if (IS_ERR(dc->aud_clk))
-		return PTR_ERR(dc->aud_clk);
-
-	ret = mmi_dc_audio_init(dc);
-	if (ret < 0) {
-		dev_err(dc->dev, "failed to initialize Audio Driver: %d\n", ret);
-		return ret;
+	if (IS_ERR(dc->aud_clk)) {
+		dev_warn(dc->dev, "PL audio clock is unavailable\n");
+	} else {
+		ret = mmi_dc_audio_init(dc);
+		if (ret < 0) {
+			dev_err(dc->dev, "failed to initialize Audio Driver: %d\n", ret);
+			return ret;
+		}
 	}
 
 	ret = devm_request_threaded_irq(dc->dev, dc->irq_num, NULL,
