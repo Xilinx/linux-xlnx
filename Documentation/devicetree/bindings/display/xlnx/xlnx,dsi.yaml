@@ -38,6 +38,14 @@ properties:
       - const: dphy_clk_200M
       - const: s_axis_aclk
 
+  xlnx,dphy-linerate:
+    description:
+      The D-PHY linerate in Mbps. This value determines the bit rate at
+      which each data lane operates during the high-speed transmission.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 80
+    maximum: 2800
+
   xlnx,dsi-data-type:
     description: |
       This denotes the CSI Data type selected in hw design.
@@ -146,6 +154,7 @@ examples:
         reg = <0x80000000 0x10000>;
         clocks = <&misc_clk_0>, <&misc_clk_1>;
         clock-names = "dphy_clk_200M", "s_axis_aclk";
+        xlnx,dphy-linerate = <800>;
         xlnx,dsi-num-lanes = <4>;
         xlnx,dsi-data-type = <0>;
         xlnx,vpss = <&v_proc_ss_0>;
