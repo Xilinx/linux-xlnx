@@ -16,10 +16,12 @@
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_panel.h>
 #include <drm/drm_probe_helper.h>
+#include <linux/bits.h>
 #include <linux/clk.h>
 #include <linux/component.h>
 #include <linux/device.h>
 #include <linux/iopoll.h>
+#include <linux/math64.h>
 #include <linux/of_device.h>
 #include <linux/of_graph.h>
 #include <linux/phy/phy.h>
@@ -91,6 +93,27 @@
 /* command timeout in usec */
 #define XDSI_CMD_TIMEOUT_VAL	(3000)
 
+/*
+ * DSI protocol overhead in bytes:
+ * 2 short packets (HSS, HSE) = 2 * 4 bytes
+ * 4 long packets (HSA, HBP, HACT, HFP) = 4 * (4 header + 2 CRC) = 24 bytes
+ * Total = 32 bytes
+ */
+#define XDSI_BLANKING_OVERHEAD		32
+/* Unit conversions */
+#define XDSI_KHZ_TO_MHZ_DIVISOR	1000
+#define XDSI_MHZ_TO_NS_MULTIPLIER	1000
+/* PG238 timing calculation constants */
+#define XDSI_BYTE_CLOCK_ROUND_UP	7 /* For (linerate + 7) / 8 rounding */
+#define XDSI_KHZ_ROUND_NEAREST		500 /* For pixel clock rounding to nearest MHz */
+#define XDSI_PRECISION_MULTIPLIER	1000 /* For higher precision calculations */
+#define XDSI_LINERATE_MIN_MBPS		80 /* Minimum supported linerate */
+#define XDSI_LINERATE_MAX_MBPS		2800 /* Maximum supported linerate */
+/* Horizontal blanking ratio (equal 2:2:2 split) */
+#define XDSI_HBLANK_RATIO_PARTS		3
+/* Vertical blanking ratio (equal 1:1:1 split) */
+#define XDSI_VBLANK_RATIO_PARTS		3
+
 /**
  * struct xlnx_dsi - Core configuration DSI Tx subsystem device structure
  * @encoder: DRM encoder structure
@@ -120,6 +143,7 @@
  * @in_fmt_prop_val: configurable media bus format value
  * @out_fmt_prop_val: configurable media bus format value
  * @lanes: number of active data lanes supported by DSI controller
+ * @linerate: represents the total data rate per lane in Mbps
  * @mode_flags: DSI operation mode related flags
  * @mul_factor: multiplication factor for HACT timing parameter
  * @video_aclk: Video clock
@@ -158,6 +182,7 @@ struct xlnx_dsi {
 	u32 in_fmt_prop_val;
 	u32 out_fmt_prop_val;
 	u32 lanes;
+	u32 linerate;
 	u32 mode_flags;
 	u32 mul_factor;
 	struct clk *video_aclk;
@@ -227,49 +252,142 @@ static void xlnx_dsi_set_config_parameters(struct xlnx_dsi *dsi)
 static void xlnx_dsi_set_display_mode(struct xlnx_dsi *dsi)
 {
 	struct videomode *vm = &dsi->vm;
-	u32 reg, video_mode;
+	u32 reg, hsa, hbp, hfp, vsa, vbp, vfp, hact, vact;
+	u32 video_mode = (xlnx_dsi_readl(dsi->iomem, XDSI_PCR) &
+			  XDSI_PCR_VIDEOMODE_MASK) >> XDSI_PCR_VIDEOMODE_SHIFT;
 
-	reg = xlnx_dsi_readl(dsi->iomem, XDSI_PCR);
-	video_mode = (reg & XDSI_PCR_VIDEOMODE_MASK) >>
-		      XDSI_PCR_VIDEOMODE_SHIFT;
+	if (dsi->linerate > 0) {
+		/*
+		 * Calculate DSI video timing parameters based on PG238.
+		 *
+		 * The calculations follow the MIPI DSI TX PG238 Example Configuration 2.
+		 * - Total horizontal and vertical pixels are derived from active + porch + sync.
+		 * - Pixel and byte clock periods are used to compute total line time
+		 *   and blanking time.
+		 * - Horizontal blanking word count (WC) is split using fixed ratios.
+		 * - Vertical blanking lines are split using a 1:1:1 ratio.
+		 */
+		u32 hdisplay = vm->hactive;
+		u32 htotal = vm->hactive + vm->hfront_porch + vm->hsync_len + vm->hback_porch;
+		u32 vdisplay = vm->vactive;
+		u32 vtotal = vm->vactive + vm->vfront_porch + vm->vsync_len + vm->vback_porch;
+		u32 pixel_clock_khz = vm->pixelclock;
+		u32 lanes = dsi->lanes;
+		u32 linerate_mbps = dsi->linerate;
+		u32 byte_clock_mhz = (linerate_mbps + XDSI_BYTE_CLOCK_ROUND_UP) / BITS_PER_BYTE;
+		u32 pixel_clock_mhz = (pixel_clock_khz + XDSI_KHZ_ROUND_NEAREST) /
+				      XDSI_KHZ_TO_MHZ_DIVISOR;
+		u32 byte_period_ns = (XDSI_MHZ_TO_NS_MULTIPLIER * XDSI_PRECISION_MULTIPLIER) /
+				     byte_clock_mhz;
+		u32 pixel_period_ns = (XDSI_MHZ_TO_NS_MULTIPLIER * XDSI_PRECISION_MULTIPLIER) /
+				      pixel_clock_mhz;
+		u32 total_line_time_ns, hact_duration_ns, blanking_time_ns;
+		u32 blanking_wc, available_wc, vblank, bytes_per_pixel;
+		u64 temp_calc;
 
-	/* configure the HSA value only if non_burst_sync_pluse video mode */
-	if (!video_mode &&
-	    (dsi->mode_flags & MIPI_DSI_MODE_VIDEO_SYNC_PULSE)) {
-		reg = XDSI_TIME1_HSA(vm->hsync_len);
+		switch (dsi->format) {
+		case MIPI_DSI_FMT_RGB888:
+		case MIPI_DSI_FMT_RGB666:
+			bytes_per_pixel = 3;
+			break;
+		case MIPI_DSI_FMT_RGB666_PACKED:
+		case MIPI_DSI_FMT_RGB565:
+			bytes_per_pixel = 2;
+			break;
+		default:
+			dev_err(dsi->dev, "Unsupported pixel format: %u\n", dsi->format);
+			return;
+		}
+
+		total_line_time_ns = (htotal * pixel_period_ns) / XDSI_PRECISION_MULTIPLIER;
+		hact_duration_ns = ((hdisplay * bytes_per_pixel * byte_period_ns) / lanes) /
+				   XDSI_PRECISION_MULTIPLIER;
+		blanking_time_ns = total_line_time_ns - hact_duration_ns;
+		/* Use u64 to prevent overflow in multiplication */
+		temp_calc = (u64)blanking_time_ns * lanes * XDSI_PRECISION_MULTIPLIER;
+		blanking_wc = div_u64(temp_calc, byte_period_ns);
+		available_wc = blanking_wc > XDSI_BLANKING_OVERHEAD ?
+			       blanking_wc - XDSI_BLANKING_OVERHEAD : 0;
+
+		/* Horizontal blanking split using equal ratios */
+		hbp = available_wc / XDSI_HBLANK_RATIO_PARTS;
+		hsa = hbp;
+		hfp = available_wc - hsa - hbp;
+
+		/* Vertical blanking split using 1:1:1 ratio */
+		vblank = vtotal - vdisplay;
+		vbp = vblank / XDSI_VBLANK_RATIO_PARTS;
+		vsa = vbp;
+		vfp = vblank - vsa - vbp;  /* Remainder goes to VFP */
+
+		/* Active region calculations */
+		hact = hdisplay * bytes_per_pixel;
+		vact = vdisplay;
+
+		/* Validate register field widths */
+		if (hsa > GENMASK(15, 0) || hbp > GENMASK(15, 0) || hfp > GENMASK(15, 0)) {
+			dev_err(dsi->dev, "Horizontal timing values exceed register width\n");
+			return;
+		}
+		if (vsa > GENMASK(7, 0) || vbp > GENMASK(7, 0) || vfp > GENMASK(7, 0)) {
+			dev_err(dsi->dev, "Vertical timing values exceed register width\n");
+			return;
+		}
+		if (hact > GENMASK(15, 0) || vact > GENMASK(15, 0)) {
+			dev_err(dsi->dev, "Active region values exceed register width\n");
+			return;
+		}
+	} else {
+		/*
+		 * This maintains the original behavior when linerate is not specified.
+		 */
+		dev_dbg(dsi->dev, "mul factor for parsed datatype is = %d\n",
+			(dsi->mul_factor) / 100);
+
+		/*
+		 * The HACT parameter received from panel timing values should be
+		 * divisible by 4. The reason for this is, the word count given as
+		 * input to DSI controller is HACT * mul_factor. The mul_factor is
+		 * 3, 2.25, 2.25, 2 respectively for RGB888, RGB666_L, RGB666_P and
+		 * RGB565.
+		 * e.g. for RGB666_L color format and 1080p, the word count is
+		 * 1920*2.25 = 4320 which is divisible by 4 and it is a valid input
+		 * to DSI controller. Based on this 2.25 mul factor, we come up with
+		 * the division factor of (XDSI_HACT_MULTIPLIER) as 4 for checking
+		 */
+		if ((vm->hactive & XDSI_HACT_MULTIPLIER) != 0)
+			dev_warn(dsi->dev, "Incorrect HACT will be programmed\n");
+
+		/* Use panel timing values directly */
+		hsa = vm->hsync_len;
+		hbp = vm->hback_porch;
+		hfp = vm->hfront_porch;
+		vsa = vm->vsync_len;
+		vbp = vm->vback_porch;
+		vfp = vm->vfront_porch;
+		hact = (vm->hactive) * (dsi->mul_factor) / 100;
+		vact = vm->vactive;
+	}
+
+	/* Configure the HSA value only if non_burst_sync_pulse video mode */
+	if (!video_mode && (dsi->mode_flags & MIPI_DSI_MODE_VIDEO_SYNC_PULSE)) {
+		reg = XDSI_TIME1_HSA(hsa);
 		xlnx_dsi_writel(dsi->iomem, XDSI_TIME1, reg);
 	}
 
-	reg = XDSI_TIME4_VFP(vm->vfront_porch) |
-	      XDSI_TIME4_VBP(vm->vback_porch) |
-	      XDSI_TIME4_VSA(vm->vsync_len);
+	reg = XDSI_TIME4_VFP(vfp) | XDSI_TIME4_VBP(vbp) |
+	      XDSI_TIME4_VSA(vsa);
 	xlnx_dsi_writel(dsi->iomem, XDSI_TIME4, reg);
 
-	reg = XDSI_TIME3_HFP(vm->hfront_porch) |
-	      XDSI_TIME3_HBP(vm->hback_porch);
+	reg = XDSI_TIME3_HFP(hfp) | XDSI_TIME3_HBP(hbp);
 	xlnx_dsi_writel(dsi->iomem, XDSI_TIME3, reg);
 
-	dev_dbg(dsi->dev, "mul factor for parsed datatype is = %d\n",
-		(dsi->mul_factor) / 100);
-	/*
-	 * The HACT parameter received from panel timing values should be
-	 * divisible by 4. The reason for this is, the word count given as
-	 * input to DSI controller is HACT * mul_factor. The mul_factor is
-	 * 3, 2.25, 2.25, 2 respectively for RGB888, RGB666_L, RGB666_P and
-	 * RGB565.
-	 * e.g. for RGB666_L color format and 1080p, the word count is
-	 * 1920*2.25 = 4320 which is divisible by 4 and it is a valid input
-	 * to DSI controller. Based on this 2.25 mul factor, we come up with
-	 * the division factor of (XDSI_HACT_MULTIPLIER) as 4 for checking
-	 */
-	if ((vm->hactive & XDSI_HACT_MULTIPLIER) != 0)
-		dev_warn(dsi->dev, "Incorrect HACT will be programmed\n");
-
-	reg = XDSI_TIME2_HACT((vm->hactive) * (dsi->mul_factor) / 100) |
-	      XDSI_TIME2_VACT(vm->vactive);
+	reg = XDSI_TIME2_HACT(hact) | XDSI_TIME2_VACT(vact);
 	xlnx_dsi_writel(dsi->iomem, XDSI_TIME2, reg);
 
-	dev_dbg(dsi->dev, "LCD size = %dx%d\n", vm->hactive, vm->vactive);
+	dev_dbg(dsi->dev,
+		"DSI Timings: HACT=%u, VACT=%u, HSA=%u, HBP=%u, HFP=%u, VSA=%u, VBP=%u, VFP=%u\n",
+		hact, vact, hsa, hbp, hfp, vsa, vbp, vfp);
 }
 
 /**
@@ -780,6 +898,7 @@ xlnx_dsi_atomic_mode_set(struct drm_encoder *encoder,
 	vm->hfront_porch = m->hsync_start - m->hdisplay;
 	vm->hback_porch = m->htotal - m->hsync_end;
 	vm->hsync_len = m->hsync_end - m->hsync_start;
+	vm->pixelclock = m->clock;
 	xlnx_dsi_set_display_mode(dsi);
 }
 
@@ -844,7 +963,7 @@ static int xlnx_dsi_parse_dt(struct xlnx_dsi *dsi)
 	 * Data Type - Multiplication factor
 	 * RGB888    - 3
 	 * RGB666_L  - 2.25
--	 * RGB666_P  - 2.25
+	 * RGB666_P  - 2.25
 	 * RGB565    - 2
 	 *
 	 * Since the multiplication factor maybe a floating number,
@@ -872,6 +991,22 @@ static int xlnx_dsi_parse_dt(struct xlnx_dsi *dsi)
 	dsi->mul_factor = xdsi_mul_fact[datatype];
 
 	dsi->cmdmode = of_property_read_bool(node, "xlnx,dsi-cmd-mode");
+	/* Refer PG:238 for DSI timing calculation section */
+	ret = of_property_read_u32(node, "xlnx,dphy-linerate", &dsi->linerate);
+	if (ret < 0) {
+		dsi->linerate = 0;  /* Use legacy timing calculations */
+		dev_dbg(dsi->dev, "xlnx,dphy-linerate not found\n");
+	} else {
+		/* Validate linerate range as per PG238 specifications */
+		if (dsi->linerate < XDSI_LINERATE_MIN_MBPS ||
+		    dsi->linerate > XDSI_LINERATE_MAX_MBPS) {
+			dev_err(dsi->dev, "Invalid linerate %u Mbps, must be between %u-%u Mbps\n",
+				dsi->linerate, XDSI_LINERATE_MIN_MBPS, XDSI_LINERATE_MAX_MBPS);
+			return -EINVAL;
+		}
+		dev_dbg(dsi->dev, "Using PG238 timing calculations with linerate = %u Mbps\n",
+			dsi->linerate);
+	}
 
 	dev_dbg(dsi->dev, "DSI controller num lanes = %d", dsi->lanes);
 	dev_dbg(dsi->dev, "DSI controller datatype = %d\n", datatype);
