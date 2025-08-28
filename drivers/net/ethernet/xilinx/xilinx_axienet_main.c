@@ -1486,9 +1486,12 @@ static inline int axienet_check_tx_bd_space(struct axienet_dma_q *q,
 	struct axienet_local *lp = q->lp;
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 	struct aximcdma_bd *cur_p;
+
+	cur_p = &q->txq_bd_v[(q->tx_bd_tail + num_frag) % lp->tx_bd_num];
+	if (cur_p->sband_stats & XMCDMA_BD_STS_ALL_MASK)
+		return NETDEV_TX_BUSY;
 #else
 	struct axidma_bd *cur_p;
-#endif
 
 	/* Ensure we see all descriptor updates from device or TX polling */
 	rmb();
@@ -1496,6 +1499,7 @@ static inline int axienet_check_tx_bd_space(struct axienet_dma_q *q,
 			     lp->tx_bd_num];
 	if (cur_p->cntrl)
 		return NETDEV_TX_BUSY;
+#endif
 	return 0;
 }
 
