@@ -289,6 +289,35 @@ static int mmi_dp_config_ctrl_video_mode(struct dptx *dptx)
 	return 0;
 }
 
+/**
+ * mmi_dp_enable_audio() - Initializes SDP and AUD for audio
+ * @dptx: The dptx struct
+ *
+ * Configure SDP and AUD for 16-bit 8 channel audio.
+ */
+static void mmi_dp_enable_audio(struct dptx *dptx)
+{
+	u32 aud_config, sdp_vert, sdp_hori;
+
+	aud_config = AUD_CONFIG1_DATA_IN_EN_8CH |
+		     AUD_CONFIG1_DATA_WIDTH_16 |
+		     AUD_CONFIG1_NUM_CH_8 |
+		     (AUD_CONFIG1_TIMESTAMP_VER << AUD_CONFIG1_TS_VER_SHIFT) |
+		     (AUD_CONFIG1_AUDCLK_512FS << AUD_CONFIG1_AUDIO_CLK_MULT_FS_SHIFT);
+
+	mmi_dp_write(dptx->base, AUD_CONFIG1, aud_config);
+
+	sdp_vert = SDP_VER_CTRL_EN_TIMESTAMP |
+		   SDP_VER_CTRL_EN_STREAM |
+		   SDP_VER_CTRL_FIXED_PRIO_ARB;
+	mmi_dp_write(dptx->base, SDP_VERTICAL_CTRL, sdp_vert);
+
+	sdp_hori = SDP_HORI_CTRL_EN_TIMESTAMP |
+		   SDP_HORI_CTRL_EN_STREAM |
+		   SDP_HORI_CTRL_FIXED_PRIO_ARB;
+	mmi_dp_write(dptx->base, SDP_HORIZONTAL_CTRL, sdp_hori);
+}
+
 int mmi_dp_sst_configuration(struct dptx *dptx)
 {
 	struct video_params *vparams;
@@ -299,6 +328,9 @@ int mmi_dp_sst_configuration(struct dptx *dptx)
 
 	/* Configure CTRL for Timing requested */
 	mmi_dp_config_ctrl_video_mode(dptx);
+
+	/* Configure SDP and AUD for 8 channel audio */
+	mmi_dp_enable_audio(dptx);
 
 	/* Enable Video Stream */
 	mmi_dp_set(dptx->base, VSAMPLE_CTRL, VIDEO_STREAM_ENABLE_MASK);
