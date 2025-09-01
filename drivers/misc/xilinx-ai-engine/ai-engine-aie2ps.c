@@ -3378,7 +3378,7 @@ static ssize_t aie2ps_get_tile_sysfs_bd_metadata(struct aie_partition *apart,
 	ttype = aie2ps_get_tile_type(apart->adev, loc);
 	enabled = aie_part_check_clk_enable_loc(apart, loc);
 	for (u32 bd = 0; bd < dma_attr->num_bds; bd++) {
-		u32 bd_data[dma_attr->num_bd_regs];
+		u32 bd_data[AIE_MAX_BD_SIZE];
 		u32 i, index, base_bdoff;
 		u64 value;
 
