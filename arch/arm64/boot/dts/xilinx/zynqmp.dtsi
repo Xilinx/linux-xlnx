@@ -863,6 +863,7 @@
 
 		perf_monitor_ocm: perf-monitor@ffa00000 {
 			compatible = "xlnx,axi-perf-monitor";
+			status = "disabled";
 			reg = <0x0 0xffa00000 0x0 0x10000>;
 			interrupts = <GIC_SPI 25 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-parent = <&gic>;
@@ -881,6 +882,7 @@
 
 		perf_monitor_ddr: perf-monitor@fd0b0000 {
 			compatible = "xlnx,axi-perf-monitor";
+			status = "disabled";
 			reg = <0x0 0xfd0b0000 0x0 0x10000>;
 			interrupts = <GIC_SPI 123 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-parent = <&gic>;
@@ -899,6 +901,7 @@
 
 		perf_monitor_cci: perf-monitor@fd490000 {
 			compatible = "xlnx,axi-perf-monitor";
+			status = "disabled";
 			reg = <0x0 0xfd490000 0x0 0x10000>;
 			interrupts = <GIC_SPI 123 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-parent = <&gic>;
@@ -917,6 +920,7 @@
 
 		perf_monitor_lpd: perf-monitor@ffa10000 {
 			compatible = "xlnx,axi-perf-monitor";
+			status = "disabled";
 			reg = <0x0 0xffa10000 0x0 0x10000>;
 			interrupts = <GIC_SPI 25 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-parent = <&gic>;
