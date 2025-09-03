@@ -33,6 +33,17 @@
 			operating-points-v2 = <&cpu_opp_table>;
 			reg = <0>;
 			cpu-idle-states = <&CPU_SLEEP_0>;
+			d-cache-size = <0x8000>; /* 32kB */
+			d-cache-line-size = <64>;
+			/* 2 ways set associativity */
+			/* cache_size / (line_size / associativity) */
+			d-cache-sets = <256>;
+			i-cache-size = <0xc000>; /* 48kB */
+			i-cache-line-size = <64>;
+			/* 3 ways set associativity */
+			/* cache_size / (line_size / associativity) */
+			i-cache-sets = <256>;
+			next-level-cache = <&l2>;
 		};
 
 		cpu1: cpu@1 {
@@ -42,6 +53,17 @@
 			operating-points-v2 = <&cpu_opp_table>;
 			reg = <1>;
 			cpu-idle-states = <&CPU_SLEEP_0>;
+			d-cache-size = <0x8000>; /* 32kB */
+			d-cache-line-size = <64>;
+			/* 2 ways set associativity */
+			/* cache_size / (line_size / associativity) */
+			d-cache-sets = <256>;
+			i-cache-size = <0xc000>; /* 48kB */
+			i-cache-line-size = <64>;
+			/* 3 ways set associativity */
+			/* cache_size / (line_size / associativity) */
+			i-cache-sets = <256>;
+			next-level-cache = <&l2>;
 		};
 
 		idle-states {
@@ -56,6 +78,17 @@
 				min-residency-us = <10000>;
 			};
 		};
+	};
+
+	l2: l2-cache {
+		compatible = "cache";
+		cache-level = <2>;
+		cache-size = <0x100000>; /* 1 MB */
+		cache-line-size = <64>;
+		/* 4 ways set associativity */
+		/* cache_size / (line_size / associativity) */
+		cache-sets = <4096>;
+		cache-unified;
 	};
 
 	cpu_opp_table: opp-table-cpu {
