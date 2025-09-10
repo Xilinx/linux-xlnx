@@ -3,7 +3,7 @@
  * Xilinx SYSMON for Versal
  *
  * Copyright (C) 2019 - 2022, Xilinx, Inc.
- * Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc.
+ * Copyright (C) 2022 - 2025, Advanced Micro Devices, Inc.
  *
  * Description:
  * This driver is developed for SYSMON on Versal. The driver supports INDIO Mode
@@ -273,7 +273,10 @@ static int sysmon_read_raw(struct iio_dev *indio_dev,
 	case IIO_CHAN_INFO_RAW:
 		switch (chan->type) {
 		case IIO_TEMP:
-			offset = sysmon_temp_offset(chan->address);
+			if (chan->channel != AIE_TEMP_CH)
+				offset = sysmon_temp_offset(chan->address);
+			else
+				offset = chan->address;
 			*val = sysmon->temp_read(sysmon, offset);
 			*val2 = 0;
 			ret = IIO_VAL_INT;
@@ -296,7 +299,10 @@ static int sysmon_read_raw(struct iio_dev *indio_dev,
 		switch (chan->type) {
 		case IIO_TEMP:
 			/* In Deg C */
-			offset = sysmon_temp_offset(chan->address);
+			if (chan->channel != AIE_TEMP_CH)
+				offset = sysmon_temp_offset(chan->address);
+			else
+				offset = chan->address;
 			regval = sysmon->temp_read(sysmon, offset);
 			if (!sysmon->hbm_slr)
 				sysmon_q8p7_to_millicelsius(regval, val, val2);
@@ -1203,8 +1209,10 @@ int sysmon_parse_dt(struct iio_dev *indio_dev, struct device *dev)
 	struct iio_chan_spec *sysmon_channels;
 	struct device_node *child_node = NULL, *np = dev->of_node;
 	int ret, i = 0;
+	int aie_idx = 0;
 	u8 num_supply_chan = 0;
 	u32 reg = 0, num_temp_chan = 0;
+	u32 num_aie_temp_chan = 0;
 	const char *name;
 	u32 chan_size = sizeof(struct iio_chan_spec);
 	u32 temp_chan_size;
@@ -1215,6 +1223,12 @@ int sysmon_parse_dt(struct iio_dev *indio_dev, struct device *dev)
 		return ret;
 
 	sysmon->num_supply_chan = num_supply_chan;
+
+	for_each_child_of_node(np, child_node)
+		if (of_property_present(child_node, "xlnx,aie-temp"))
+			num_aie_temp_chan++;
+
+	sysmon->num_aie_temp_chan = num_aie_temp_chan;
 
 	INIT_LIST_HEAD(&sysmon->region_list);
 
@@ -1235,66 +1249,100 @@ int sysmon_parse_dt(struct iio_dev *indio_dev, struct device *dev)
 
 	sysmon_channels = devm_kzalloc(dev,
 				       (chan_size * num_supply_chan) +
-				       temp_chan_size, GFP_KERNEL);
+				       (chan_size * num_aie_temp_chan) + temp_chan_size,
+				       GFP_KERNEL);
+	if (!sysmon_channels)
+		return -ENOMEM;
 
+	/* Configure the dynamic channels */
 	for_each_child_of_node(np, child_node) {
-		ret = of_property_read_u32(child_node, "reg", &reg);
-		if (ret < 0) {
-			of_node_put(child_node);
-			return ret;
+		if (of_property_present(child_node, "xlnx,aie-temp")) {
+			ret = of_property_read_u32(child_node, "reg", &reg);
+			if (ret < 0) {
+				of_node_put(child_node);
+				return ret;
+			}
+			ret = of_property_read_string(child_node, "xlnx,name", &name);
+			if (ret < 0) {
+				of_node_put(child_node);
+				return ret;
+			}
+			sysmon_channels[num_supply_chan + aie_idx].type = IIO_TEMP;
+			sysmon_channels[num_supply_chan + aie_idx].indexed = 1;
+			sysmon_channels[num_supply_chan + aie_idx].address =
+				SYSMON_NODE_OFFSET + ((reg - 1) * 4);
+			sysmon_channels[num_supply_chan + aie_idx].channel = AIE_TEMP_CH;
+			sysmon_channels[num_supply_chan + aie_idx].info_mask_separate =
+				BIT(IIO_CHAN_INFO_RAW) | BIT(IIO_CHAN_INFO_PROCESSED);
+			sysmon_channels[num_supply_chan + aie_idx].scan_index = aie_idx;
+			sysmon_channels[num_supply_chan + aie_idx].scan_type.realbits = 15;
+			sysmon_channels[num_supply_chan + aie_idx].scan_type.storagebits =
+				16;
+			sysmon_channels[num_supply_chan + aie_idx].scan_type.endianness =
+				IIO_CPU;
+			sysmon_channels[num_supply_chan + aie_idx].scan_type.sign = 's';
+			sysmon_channels[num_supply_chan + aie_idx].extend_name = name;
+			sysmon_channels[num_supply_chan + aie_idx].datasheet_name = name;
+			aie_idx++;
+		} else {
+			ret = of_property_read_u32(child_node, "reg", &reg);
+			if (ret < 0) {
+				of_node_put(child_node);
+				return ret;
+			}
+
+			ret = of_property_read_string(child_node, "xlnx,name", &name);
+			if (ret < 0) {
+				of_node_put(child_node);
+				return ret;
+			}
+
+			sysmon_channels[i].type = IIO_VOLTAGE;
+			sysmon_channels[i].indexed = 1;
+			sysmon_channels[i].address = reg;
+			sysmon_channels[i].channel = reg;
+			sysmon_channels[i].info_mask_separate =
+				BIT(IIO_CHAN_INFO_RAW) | BIT(IIO_CHAN_INFO_PROCESSED);
+			sysmon_channels[i].info_mask_shared_by_type =
+				BIT(IIO_CHAN_INFO_OVERSAMPLING_RATIO);
+			sysmon_channels[i].info_mask_shared_by_type_available =
+				BIT(IIO_CHAN_INFO_OVERSAMPLING_RATIO);
+
+			sysmon_channels[i].event_spec = sysmon_supply_events;
+			sysmon_channels[i].num_event_specs = ARRAY_SIZE(sysmon_supply_events);
+
+			sysmon_channels[i].scan_index = i;
+			sysmon_channels[i].scan_type.realbits = 19;
+			sysmon_channels[i].scan_type.storagebits = 32;
+
+			sysmon_channels[i].scan_type.endianness = IIO_CPU;
+			sysmon_channels[i].extend_name = name;
+
+			if (of_property_read_bool(child_node, "xlnx,bipolar"))
+				sysmon_channels[i].scan_type.sign = 's';
+			else
+				sysmon_channels[i].scan_type.sign = 'u';
+
+			i++;
 		}
-
-		ret = of_property_read_string(child_node, "xlnx,name", &name);
-		if (ret < 0) {
-			of_node_put(child_node);
-			return ret;
-		}
-
-		sysmon_channels[i].type = IIO_VOLTAGE;
-		sysmon_channels[i].indexed = 1;
-		sysmon_channels[i].address = reg;
-		sysmon_channels[i].channel = reg;
-		sysmon_channels[i].info_mask_separate =
-			BIT(IIO_CHAN_INFO_RAW) | BIT(IIO_CHAN_INFO_PROCESSED);
-		sysmon_channels[i].info_mask_shared_by_type =
-			BIT(IIO_CHAN_INFO_OVERSAMPLING_RATIO);
-		sysmon_channels[i].info_mask_shared_by_type_available =
-			BIT(IIO_CHAN_INFO_OVERSAMPLING_RATIO);
-
-		sysmon_channels[i].event_spec = sysmon_supply_events;
-		sysmon_channels[i].num_event_specs = ARRAY_SIZE(sysmon_supply_events);
-
-		sysmon_channels[i].scan_index = i;
-		sysmon_channels[i].scan_type.realbits = 19;
-		sysmon_channels[i].scan_type.storagebits = 32;
-
-		sysmon_channels[i].scan_type.endianness = IIO_CPU;
-		sysmon_channels[i].extend_name = name;
-
-		if (of_property_read_bool(child_node, "xlnx,bipolar"))
-			sysmon_channels[i].scan_type.sign = 's';
-		else
-			sysmon_channels[i].scan_type.sign = 'u';
-
-		i++;
 	}
 
 	/* Append static temperature channels to the channel list */
-	indio_dev->num_channels = num_supply_chan;
+	indio_dev->num_channels = num_supply_chan + num_aie_temp_chan;
 
 	if (sysmon->master_slr) {
-		memcpy(sysmon_channels + num_supply_chan, temp_channels,
-		       sizeof(temp_channels));
+		memcpy(sysmon_channels + num_supply_chan + num_aie_temp_chan,
+		       temp_channels, sizeof(temp_channels));
 		indio_dev->num_channels += ARRAY_SIZE(temp_channels);
 	}
 
 	if (sysmon->hbm_slr) {
-		memcpy(sysmon_channels + num_supply_chan, temp_hbm_channels,
-		       sizeof(temp_hbm_channels));
+		memcpy(sysmon_channels + num_supply_chan + num_aie_temp_chan,
+		       temp_hbm_channels, sizeof(temp_hbm_channels));
 		indio_dev->num_channels += num_temp_chan;
 	} else {
-		memcpy(sysmon_channels + num_supply_chan + num_temp_chan,
-		       temp_events, sizeof(temp_events));
+		memcpy(sysmon_channels + num_supply_chan + num_aie_temp_chan +
+			   num_temp_chan, temp_events, sizeof(temp_events));
 		indio_dev->num_channels += ARRAY_SIZE(temp_events);
 	}
 
