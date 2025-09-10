@@ -648,15 +648,15 @@
 					<0 0 0 3 &pcie_intc_0 2>,
 					<0 0 0 4 &pcie_intc_0 3>;
 			interrupt-map-mask = <0 0 0 7>;
-			interrupt-names = "misc";
 			interrupts = <0 72 4>;
 			bus-range = <0x00 0xff>;
 			ranges = <0x02000000 0x00000000 0xe0010000 0x0 0xe0010000 0x00000000 0x10000000>,
 				 <0x43000000 0x00000080 0x00000000 0x00000080 0x00000000 0x00000000 0x80000000>;
 			msi-map = <0x0 &gic_its 0x0 0x10000>;
 			reg = <0x0 0xfca10000 0x0 0x1000>,
-			      <0x6 0x00000000 0x0 0x1000000>;
-			reg-names = "cpm_slcr", "cfg";
+			      <0x6 0x00000000 0x0 0x1000000>,
+			      <0x0 0xfca00000 0x0 0x10000>;
+			reg-names = "cpm_slcr", "cfg", "cpm_crx";
 			pcie_intc_0: interrupt-controller {
 				#address-cells = <0>;
 				#interrupt-cells = <1>;
@@ -676,7 +676,6 @@
 					<0 0 0 3 &pcie_intc_1 2>,
 					<0 0 0 4 &pcie_intc_1 3>;
 			interrupt-map-mask = <0 0 0 7>;
-			interrupt-names = "misc";
 			interrupts = <0 72 4>;
 			bus-range = <0x00 0xff>;
 			ranges = <0x02000000 0x0 0xe0000000 0x0 0xe0000000 0x0 0x10000000>,
@@ -684,8 +683,9 @@
 			msi-map = <0x0 &gic_its 0x0 0x10000>;
 			reg = <0x00 0xfcdd0000 0x00 0x1000>,
 			      <0x06 0x00000000 0x00 0x1000000>,
-			      <0x00 0xfce20000 0x00 0x1000000>;
-			reg-names = "cpm_slcr", "cfg", "cpm_csr";
+			      <0x00 0xfce20000 0x00 0x10000>,
+			      <0x00 0xfcdc0000 0x00 0x10000>;
+			reg-names = "cpm_slcr", "cfg", "cpm_csr", "cpm_crx";
 			pcie_intc_1: interrupt-controller {
 				#address-cells = <0>;
 				#interrupt-cells = <1>;

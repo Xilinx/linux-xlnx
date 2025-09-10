@@ -106,7 +106,9 @@
 	};
 };
 
-/* PCIe at MIO 38/39/40/50 */
+&cpm5_pcie { /* PCIe at MIO 38/39/40/50 */
+	reset-gpios = <&gpio1 38 GPIO_ACTIVE_LOW>;
+};
 
 &gem0 { /* PMC_MIO_48 - reset, LPD_MIO0-11 , mdio LPD_MIO24/25 */
 	status = "okay";
