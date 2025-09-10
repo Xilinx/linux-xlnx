@@ -90,6 +90,32 @@ patternProperties:
       - xlnx,name
 
     additionalProperties: false
+  "^temp@([1-9]|[1-5][0-9]|6[0-4])$":
+    type: object
+    description:
+      Represents the sysmon temperature satellites.
+
+    properties:
+      reg:
+        minimum: 1
+        maximum: 64
+        description:
+          The sysmon temperature satellite number.
+
+      xlnx,name:
+        $ref: /schemas/types.yaml#/definitions/string
+        description:
+          Name of temperature satellite exposed
+
+      xlnx,aie-temp:
+        $ref: /schemas/types.yaml#/definitions/flag
+        description:
+          If present it indicates the temperature satellite is in
+          close proximity with AI Engine
+
+    required:
+      - reg
+      - xlnx,name
 
 required:
   - compatible
@@ -153,6 +179,54 @@ examples:
             supply@159 {
                     reg = <159>;
                     xlnx,name = "vccint_ir";
+            };
+
+            temp@7 {
+              xlnx,aie-temp;
+              reg = <7>;
+              xlnx,name = "aie-temp-ch0";
+            };
+
+            temp@8 {
+              xlnx,aie-temp;
+              reg = <8>;
+              xlnx,name = "aie-temp-ch1";
+            };
+
+            temp@14 {
+              xlnx,aie-temp;
+              reg = <14>;
+              xlnx,name = "aie-temp-ch2";
+            };
+
+            temp@15 {
+              xlnx,aie-temp;
+              reg = <15>;
+              xlnx,name = "aie-temp-ch3";
+            };
+
+            temp@16 {
+              xlnx,aie-temp;
+              reg = <16>;
+              xlnx,name = "aie-temp-ch4";
+            };
+
+            temp@30 {
+              xlnx,aie-temp;
+              reg = <30>;
+              xlnx,name = "aie-temp-ch5";
+            };
+
+            temp@33 {
+              xlnx,aie-temp;
+              reg = <33>;
+              xlnx,name = "aie-temp-ch6";
+            };
+
+            temp@34 {
+              xlnx,aie-temp;
+              reg = <34>;
+              xlnx,name = "aie-temp-ch7";
             };
         };
     };
