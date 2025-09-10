@@ -1958,9 +1958,8 @@ static int axienet_queue_xmit(struct sk_buff *skb,
 	}
 
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
-	if (axienet_skb_tstsmp(&skb, q, ndev)) {
+	if (axienet_skb_tstsmp(&skb, q, ndev))
 		return NETDEV_TX_BUSY;
-	}
 #endif
 
 	if (skb->ip_summed == CHECKSUM_PARTIAL && !lp->eth_hasnobuf &&
@@ -4184,7 +4183,6 @@ static int __maybe_unused axienet_dma_probe(struct platform_device *pdev,
 		}
 		netif_napi_add(ndev, &q->napi_tx, axienet_tx_poll);
 		netif_napi_add(ndev, &q->napi_rx, xaxienet_rx_poll);
-
 	}
 
 	of_node_put(np);
