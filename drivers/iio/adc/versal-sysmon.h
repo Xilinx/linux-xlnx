@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Xilinx SYSMON for Versal
+ * AMD SYSMON for Versal
  *
  * Copyright (C) 2019 - 2022, Xilinx, Inc.
- * Copyright (C) 2022 - 2024, Advanced Micro Devices, Inc.
+ * Copyright (C) 2022 - 2025, Advanced Micro Devices, Inc.
  *
  * Description:
  * This driver is developed for SYSMON on Versal. The driver supports INDIO Mode
@@ -45,6 +45,7 @@
 #define TEMP_EVENT	164
 #define OT_EVENT	165
 #define TEMP_HBM	166
+#define AIE_TEMP_CH	200
 
 /* Register Unlock Code */
 #define NPI_UNLOCK	0xF9E8D7C6
@@ -248,6 +249,7 @@ struct sysmon {
 	const unsigned int *oversampling_avail;
 	unsigned int oversampling_num;
 	unsigned int num_supply_chan;
+	unsigned int num_aie_temp_chan;
 	struct iio_dev_attr *supply_avg_en_attrs;
 	struct iio_dev_attr *temp_avg_en_attrs;
 	struct attribute **avg_attrs;
