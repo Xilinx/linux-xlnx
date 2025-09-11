@@ -3594,7 +3594,7 @@ static int aie2ps_set_part_clocks(struct aie_partition *apart)
 	struct aie_location loc;
 	struct aie_range prev_range = {};
 	u32 prev_ops = 0;
-	int ret;
+	int ret = -EINVAL;
 
 	for (loc.col = 0; loc.col < range->size.col; loc.col++) {
 		u32 startbit, col_inuse = 0;
