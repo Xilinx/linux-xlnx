@@ -4858,6 +4858,27 @@ static int axienet_eoe_netdev_event(struct notifier_block *this, unsigned long e
 	return NOTIFY_DONE;
 }
 
+static struct gpio_descs *axienet_dcmac_gpio_get_array(struct platform_device *pdev,
+						       const char *new_name,
+						       const char *old_name,
+						       enum gpiod_flags flags)
+{
+	struct gpio_descs *gpio_array;
+
+	gpio_array = devm_gpiod_get_array(&pdev->dev, new_name, flags);
+
+	if (PTR_ERR(gpio_array) == -ENOENT) {
+		/* Fallback for deprecated property */
+		gpio_array = devm_gpiod_get_array(&pdev->dev, old_name, flags);
+
+		if (!IS_ERR(gpio_array))
+			dev_warn(&pdev->dev, "%s is deprecated, please use %s instead\n",
+				 old_name, new_name);
+	}
+
+	return gpio_array;
+}
+
 /**
  * axienet_probe - Axi Ethernet probe function.
  * @pdev:	Pointer to platform device structure.
@@ -5193,9 +5214,8 @@ static int axienet_probe(struct platform_device *pdev)
 		}
 		dev_info(&pdev->dev, "GT lane: %d\n", lp->gt_lane);
 	} else if (lp->axienet_config->mactype == XAXIENET_DCMAC) {
-		lp->gds_gt_ctrl = devm_gpiod_get_array(&pdev->dev,
-						       "gt_ctrl",
-						       GPIOD_OUT_LOW);
+		lp->gds_gt_ctrl = axienet_dcmac_gpio_get_array(pdev, "gt-ctrl", "gt_ctrl",
+							       GPIOD_OUT_LOW);
 		if (IS_ERR(lp->gds_gt_ctrl)) {
 			dev_err(&pdev->dev,
 				"Failed to request GT control GPIO\n");
@@ -5203,9 +5223,9 @@ static int axienet_probe(struct platform_device *pdev)
 			goto cleanup_clk;
 		}
 
-		lp->gds_gt_rx_dpath = devm_gpiod_get_array(&pdev->dev,
-							   "gt_rx_dpath",
-							    GPIOD_OUT_LOW);
+		lp->gds_gt_rx_dpath = axienet_dcmac_gpio_get_array(pdev, "gt-rx-dpath",
+								   "gt_rx_dpath",
+								   GPIOD_OUT_LOW);
 		if (IS_ERR(lp->gds_gt_rx_dpath)) {
 			dev_err(&pdev->dev,
 				"Failed to request GT Rx dpath GPIO\n");
@@ -5213,9 +5233,9 @@ static int axienet_probe(struct platform_device *pdev)
 			goto cleanup_clk;
 		}
 
-		lp->gds_gt_tx_dpath = devm_gpiod_get_array(&pdev->dev,
-							   "gt_tx_dpath",
-							   GPIOD_OUT_LOW);
+		lp->gds_gt_tx_dpath = axienet_dcmac_gpio_get_array(pdev, "gt-tx-dpath",
+								   "gt_tx_dpath",
+								   GPIOD_OUT_LOW);
 		if (IS_ERR(lp->gds_gt_tx_dpath)) {
 			dev_err(&pdev->dev,
 				"Failed to request GT Tx dpath GPIO\n");
@@ -5223,9 +5243,8 @@ static int axienet_probe(struct platform_device *pdev)
 			goto cleanup_clk;
 		}
 
-		lp->gds_gt_rsts = devm_gpiod_get_array(&pdev->dev,
-						       "gt_rsts",
-						       GPIOD_OUT_LOW);
+		lp->gds_gt_rsts = axienet_dcmac_gpio_get_array(pdev, "gt-rsts", "gt_rsts",
+							       GPIOD_OUT_LOW);
 		if (IS_ERR(lp->gds_gt_rsts)) {
 			dev_err(&pdev->dev,
 				"Failed to request GT Resets GPIO\n");
@@ -5233,9 +5252,9 @@ static int axienet_probe(struct platform_device *pdev)
 			goto cleanup_clk;
 		}
 
-		lp->gds_gt_tx_reset_done =  devm_gpiod_get_array(&pdev->dev,
-								 "gt_tx_rst_done",
-								 GPIOD_IN);
+		lp->gds_gt_tx_reset_done = axienet_dcmac_gpio_get_array(pdev, "gt-tx-rst-done",
+									"gt_tx_rst_done",
+									GPIOD_IN);
 		if (IS_ERR(lp->gds_gt_tx_reset_done)) {
 			dev_err(&pdev->dev,
 				"Failed to request GT Tx Reset Done GPIO\n");
@@ -5243,9 +5262,9 @@ static int axienet_probe(struct platform_device *pdev)
 			goto cleanup_clk;
 		}
 
-		lp->gds_gt_rx_reset_done =  devm_gpiod_get_array(&pdev->dev,
-								 "gt_rx_rst_done",
-								 GPIOD_IN);
+		lp->gds_gt_rx_reset_done = axienet_dcmac_gpio_get_array(pdev, "gt-rx-rst-done",
+									"gt_rx_rst_done",
+									GPIOD_IN);
 		if (IS_ERR(lp->gds_gt_rx_reset_done)) {
 			dev_err(&pdev->dev,
 				"Failed to request GT Rx Reset Done GPIO\n");
