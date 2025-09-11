@@ -729,9 +729,12 @@ enum temac_stat {
 
 #define MRMAC_GT_PLL_RST_MASK		0x00030003
 #define MRMAC_GT_PLL_DONE_MASK		0xFF
+#define MRMAC_GT_RST_DONE_MASK		BIT(0)
 #define MRMAC_GT_RST_ALL_MASK		BIT(0)
 #define MRMAC_GT_RST_RX_MASK		BIT(1)
 #define MRMAC_GT_RST_TX_MASK		BIT(2)
+#define MRMAC_GT_RST_TX_RX_MASK		BIT(0)
+#define MRMAC_GT_DEFAULT_MASK		0x00000000
 #define MRMAC_GT_10G_MASK		0x00000001
 #define MRMAC_GT_25G_MASK		0x00000002
 #define MRMAC_GT_100G_MASK		0x00000002
@@ -1009,6 +1012,7 @@ struct skbuf_dma_descriptor {
  * @max_speed: Maximum possible MAC speed.
  * @gt_pll: Common GT PLL mask control register space.
  * @gt_ctrl: GT speed and reset control register space.
+ * @gds_gt_ctrl_rate: GPIO descriptor array for GT control rate.
  * @gds_gt_ctrl:	GPIO descriptor array for GT control.
  * @gds_gt_rx_dpath: GPIO descriptor array for GT Rx datapath reset.
  * @gds_gt_tx_dpath: GPIO descriptor array for GT Tx datapath reset.
@@ -1027,6 +1031,8 @@ struct skbuf_dma_descriptor {
  * @inetaddr_notifier: Notifier callback function for specific event.
  * @rx_fs_list: RX queue filter rule set.
  * @assigned_rx_port: Ports assigned to GRO Queue.
+ * @gt_reset_done: GT Reset Status
+ * @use_gt_gpio: flag to check GT gpio enabled
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -1129,6 +1135,7 @@ struct axienet_local {
 	u32 max_speed;		/* Max MAC speed */
 	void __iomem *gt_pll;	/* Common GT PLL mask control register space */
 	void __iomem *gt_ctrl;	/* GT speed and reset control register space */
+	struct gpio_descs *gds_gt_ctrl_rate;
 	struct gpio_descs *gds_gt_ctrl;
 	struct gpio_descs *gds_gt_rx_dpath;
 	struct gpio_descs *gds_gt_tx_dpath;
@@ -1147,6 +1154,8 @@ struct axienet_local {
 	struct notifier_block inetaddr_notifier;
 	struct ethtool_rx_fs_list rx_fs_list;
 	u16 assigned_rx_port[XAE_MAX_QUEUES];
+	bool gt_reset_done;
+	bool use_gt_gpio;
 };
 
 /**
