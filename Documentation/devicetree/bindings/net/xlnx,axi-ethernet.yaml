@@ -215,11 +215,13 @@ properties:
     $ref: /schemas/types.yaml#/definitions/phandle
     description: Handle to AXI GPIO instance for GT PLL mask control.
       This is required to control the common PLL mask bits.
+    deprecated: true
 
   xlnx,gtctrl:
     $ref: /schemas/types.yaml#/definitions/phandle
     description: Handle to AXI GPIO instance for GT speed and reset
       control for each MRMAC lane.
+    deprecated: true
 
   xlnx,phcindex:
     $ref: /schemas/types.yaml#/definitions/uint32
@@ -282,6 +284,10 @@ properties:
   gt-rsts-gpios:
     description: Phandle and specifier for the GPIO used to
       reset Tx and Rx serdes.
+
+  gt-ctrl-rate-gpios:
+    description: Phandle and specifier for the GPIO used to
+      set GT Control Rate.
 
   xlnx,gt-mode:
     description: Describes GT Quad interface operating mode.
@@ -379,11 +385,32 @@ allOf:
         xlnx,axistream-dwidth:
           enum: [32, 64, 128, 256, 384]
 
+        gt-ctrl-rate-gpios:
+          maxItems: 2
+
+        gt-ctrl-gpios:
+          maxItems: 4
+
+        gt-rx-dpath-gpios:
+          maxItems: 1
+
+        gt-tx-dpath-gpios:
+          maxItems: 1
+
+        gt-rx-rst-done-gpios:
+          maxItems: 4
+
+        gt-tx-rst-done-gpios:
+          maxItems: 4
+
       required:
         - max-speed
         - xlnx,gtlane
-        - xlnx,gtpll
-        - xlnx,gtctrl
+        - gt-ctrl-gpios
+        - gt-rx-dpath-gpios
+        - gt-tx-dpath-gpios
+        - gt-rx-rst-done-gpios
+        - gt-tx-rst-done-gpios
 
   - if:
       properties:
@@ -506,16 +533,6 @@ examples:
 
 # 3) #Example for MRMAC Ethernet subsystem
   - |
-    gt_pll: gpio@a4000000 {
-        reg = <0xa4000000 0x10000>;
-
-      };
-
-    gt_ctrl: gpio@a4010000 {
-        reg = <0xa4010000 0x40000>;
-
-    };
-
     mrmac: ethernet@80000000 {
         axistream-connected = <&dma>;
         compatible = "xlnx,mrmac-ethernet-1.0";
@@ -523,12 +540,18 @@ examples:
         interrupt-parent = <&gic>;
         interrupts = <0 91 4>;
         max-speed = <10000>;
-        xlnx,gtpll = <&gt_pll>;
-        xlnx,gtctrl = <&gt_ctrl>;
         xlnx,gtlane = <0x0>;
         xlnx,rxmem = <0x8000>;
         ptp-hardware-clock = <&ptp_device>;
 
+        gt-ctrl-rate-gpios = <&gpio4 0 0>, <&gpio4 1 0>;
+
+        gt-ctrl-gpios = <&gpio4 32 0>, <&gpio5 32 0>;
+
+        gt-rx-dpath-gpios = <&gpio4 33 0>;
+        gt-tx-dpath-gpios = <&gpio4 34 0>;
+        gt-rx-rst-done-gpios = <&gpio6 32 0>, <&gpio6 33 0>, <&gpio6 34 0>, <&gpio6 35 0>;
+        gt-tx-rst-done-gpios = <&gpio6 36 0>, <&gpio6 37 0>, <&gpio6 38 0>, <&gpio6 39 0>;
     };
 
 # 4) #Example for DCMAC Ethernet subsystem
