@@ -71,12 +71,6 @@ struct platform_fw_data {
 	uint64_t (*prep_pm_cmd_header)(u32 module_id);
 
 	/*
-	 * Indicates whether the word swap required for the memory address
-	 * while loading PDI image based on the platform
-	 */
-	bool load_pdi_word_swap;
-
-	/*
 	 * Family code for platform.
 	 */
 	u32 family_code;
@@ -684,33 +678,6 @@ int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...)
 }
 
 /**
- * zynqmp_pm_load_pdi_word_swap - Perform word swapping on a memory address.
- * @address: Memory address to be word-swapped.
- * @swapped_address: Pointer to store the resulting swapped address.
- *
- * This function checks if the active platform's firmware data specifies that
- * word swapping is required when loading a Programmable Device Image (PDI).
- * If so, it performs the necessary word swapping on the provided memory
- * address. The swapped address is stored in the provided pointer.
- *
- * Return:
- * - 0 on success.
- * - -ENODEV if the active_platform_fw_data is NULL.
- */
-int zynqmp_pm_load_pdi_word_swap(const u64 address, u64 *swapped_address)
-{
-	if (!active_platform_fw_data)
-		return -ENODEV;
-
-	if (active_platform_fw_data->load_pdi_word_swap)
-		*swapped_address = (address << 32) | (address >> 32);
-	else
-		*swapped_address = address;
-
-	return 0;
-}
-
-/**
  * zynqmp_pm_get_sip_svc_version() - Get SiP service call version
  * @version:	Returned version value
  *
@@ -918,8 +885,6 @@ static const struct platform_fw_data platform_fw_data_versal2 = {
 	.do_feature_check = do_feature_check_extended,
 	.zynqmp_pm_fw_call = __zynqmp_pm_fw_call_extended,
 	.prep_pm_cmd_header = prep_pm_hdr_api_features,
-	/* TF-A does only transparent forwarding do word swapping here */
-	.load_pdi_word_swap = true,
 	.family_code = PM_VERSAL2_FAMILY_CODE,
 };
 
@@ -927,8 +892,6 @@ static const struct platform_fw_data platform_fw_data_versal = {
 	.do_feature_check = do_feature_check_basic,
 	.zynqmp_pm_fw_call = __zynqmp_pm_fw_call_basic,
 	.prep_pm_cmd_header = prep_pm_hdr_feature_check,
-	/* the word swapping is done in TF-A */
-	.load_pdi_word_swap = false,
 	.family_code = PM_VERSAL_FAMILY_CODE,
 };
 
@@ -936,8 +899,6 @@ static const struct platform_fw_data platform_fw_data_versal_net = {
 	.do_feature_check = do_feature_check_basic,
 	.zynqmp_pm_fw_call = __zynqmp_pm_fw_call_basic,
 	.prep_pm_cmd_header = prep_pm_hdr_feature_check,
-	/* the word swapping is done in TF-A */
-	.load_pdi_word_swap = false,
 	.family_code = PM_VERSAL_NET_FAMILY_CODE,
 };
 
@@ -945,8 +906,6 @@ static const struct platform_fw_data platform_fw_data_zynqmp = {
 	.do_feature_check = do_feature_check_basic,
 	.zynqmp_pm_fw_call = __zynqmp_pm_fw_call_basic,
 	.prep_pm_cmd_header = prep_pm_hdr_feature_check,
-	/* the word swapping is done in TF-A */
-	.load_pdi_word_swap = false,
 	.family_code = PM_ZYNQMP_FAMILY_CODE,
 };
 
