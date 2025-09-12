@@ -763,6 +763,18 @@ int zynqmp_pm_bootmode_write(u32 ps_mode)
 EXPORT_SYMBOL_GPL(zynqmp_pm_bootmode_write);
 
 /**
+ * zynqmp_pm_clear_tfa_state() - PM call to clear trusted-firmware-a state when
+ * new kernel is being loaded, such as during kexec.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+int zynqmp_pm_clear_tfa_state(void)
+{
+	return zynqmp_pm_invoke_fn(TF_A_CLEAR_PM_STATE, NULL, 0);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_clear_tfa_state);
+
+/**
  * zynqmp_pm_init_finalize() - PM call to inform firmware that the caller
  *			       master has initialized its own power management
  *
