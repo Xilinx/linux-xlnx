@@ -65,13 +65,6 @@ struct platform_fw_data {
 				 u32 num_args, va_list *arg_list);
 
 	/*
-	 * Prepares the PLM command header for the platform.
-	 * The header will either use the PM_API_FEATURES or PM_FEATURE_CHECK,
-	 * depending on the platform.
-	 */
-	uint64_t (*prep_pm_cmd_header)(u32 module_id);
-
-	/*
 	 * Family code for platform.
 	 */
 	u32 family_code;
@@ -226,7 +219,6 @@ static uint64_t prep_pm_hdr_api_features(u32 module_id)
  * Return:
  * - 0 on success
  * - -EOPNOTSUPP if the firmware call fails.
- * - -ENODEV if the active_platform_fw_data is NULL.
  */
 static int do_feature_check_for_tfa_apis(const u32 api_id, u32 *ret_payload)
 {
@@ -234,18 +226,19 @@ static int do_feature_check_for_tfa_apis(const u32 api_id, u32 *ret_payload)
 	u64 smc_arg[2];
 	int ret;
 
-	if (!active_platform_fw_data)
-		return -ENODEV;
-
 	module_id = FIELD_GET(MODULE_ID_MASK, api_id);
 
-	smc_arg[0] = active_platform_fw_data->prep_pm_cmd_header(module_id);
+	smc_arg[0] = prep_pm_hdr_api_features(module_id);
 	smc_arg[1] = api_id;
 
 	ret = do_fw_call(ret_payload, 2, smc_arg[0], smc_arg[1]);
 
-	if (ret)
-		return -EOPNOTSUPP;
+	if (ret) {
+		smc_arg[0] = prep_pm_hdr_feature_check(module_id);
+		ret = do_fw_call(ret_payload, 2, smc_arg[0], smc_arg[1]);
+		if (ret)
+			return -EOPNOTSUPP;
+	}
 
 	return ret_payload[1];
 }
@@ -959,28 +952,24 @@ static void zynqmp_firmware_remove(struct platform_device *pdev)
 static const struct platform_fw_data platform_fw_data_versal2 = {
 	.do_feature_check = do_feature_check_extended,
 	.zynqmp_pm_fw_call = __zynqmp_pm_fw_call_extended,
-	.prep_pm_cmd_header = prep_pm_hdr_api_features,
 	.family_code = PM_VERSAL2_FAMILY_CODE,
 };
 
 static const struct platform_fw_data platform_fw_data_versal = {
 	.do_feature_check = do_feature_check_basic,
 	.zynqmp_pm_fw_call = __zynqmp_pm_fw_call_basic,
-	.prep_pm_cmd_header = prep_pm_hdr_feature_check,
 	.family_code = PM_VERSAL_FAMILY_CODE,
 };
 
 static const struct platform_fw_data platform_fw_data_versal_net = {
 	.do_feature_check = do_feature_check_basic,
 	.zynqmp_pm_fw_call = __zynqmp_pm_fw_call_basic,
-	.prep_pm_cmd_header = prep_pm_hdr_feature_check,
 	.family_code = PM_VERSAL_NET_FAMILY_CODE,
 };
 
 static const struct platform_fw_data platform_fw_data_zynqmp = {
 	.do_feature_check = do_feature_check_basic,
 	.zynqmp_pm_fw_call = __zynqmp_pm_fw_call_basic,
-	.prep_pm_cmd_header = prep_pm_hdr_feature_check,
 	.family_code = PM_ZYNQMP_FAMILY_CODE,
 };
 
