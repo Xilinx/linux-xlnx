@@ -109,6 +109,9 @@
 #define SD_ITAPDLY	0xFF180314
 #define SD_OTAPDLYSEL	0xFF180318
 
+/* Node ID for all peripheral devices */
+#define PM_DEV_ALL_PERIPH	0x18224FFFU
+
 enum pm_module_id {
 	PM_MODULE_ID = 0x0,
 	XPM_MODULE_ID = 0x2,
