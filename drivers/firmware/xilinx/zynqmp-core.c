@@ -762,7 +762,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_family_info);
  * zynqmp_clear_pm_state() - Clear subsystem state.
  * @dev: struct device
  *
- * Clears PM specific data in TF-A.
+ * Clears PM specific data in TF-A and firmware.
  *
  * Return: Returns status, either success or error+reason
  */
@@ -789,6 +789,18 @@ static int zynqmp_clear_pm_state(struct device *dev)
 					"Failed to clear TF-A specific subsystem state: %d\n", ret);
 		} else {
 			dev_warn(dev, "TF_A_CLEAR_PM_STATE is not supported in TF-A: %d\n", ret);
+		}
+
+		/* Check if the firmware supports the PM_DEV_ALL_PERIPH node ID */
+		ret = do_feature_check_call(PM_RELEASE_NODE);
+		if ((ret & FIRMWARE_VERSION_MASK) >= PM_API_VERSION_3) {
+			/* Attempt to release all peripheral devices via firmware */
+			ret = zynqmp_pm_release_node(PM_DEV_ALL_PERIPH);
+			if (ret)
+				dev_err(dev, "Failed to release all peripheral devices: %d\n", ret);
+		} else {
+			dev_warn(dev,
+				 "Bulk device release is not supported by firmware: %d\n", ret);
 			ret = 0;
 		}
 	}
