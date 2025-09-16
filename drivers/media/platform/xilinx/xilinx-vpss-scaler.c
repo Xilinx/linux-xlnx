@@ -1010,7 +1010,7 @@ xv_hscaler_calculate_phases(struct xscaler_device *xscaler,
 			}
 
 			if (((offset >> XHSC_STEP_PRECISION_SHIFT) == 0) &&
-			    (xwrite_pos < width_out)) {
+			    xwrite_pos < width_out) {
 				/* produce a new output sample */
 				offset += pixel_rate;
 				output_write_en = true;
@@ -1260,7 +1260,7 @@ static void xv_hscaler_set_coeff(struct xscaler_device *xscaler)
 			       XSCALER_BITSHIFT_16) |
 			       (xscaler->hscaler_coeff[i][rd_indx] &
 			       XHSC_MASK_LOW_16BITS);
-			 xvip_write(&xscaler->xvip, base_addr +
+			xvip_write(&xscaler->xvip, base_addr +
 				    ((i * ntaps / 2 + j) * 4), val);
 		}
 	}
