@@ -1816,18 +1816,18 @@ xscaler_close(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
 	return 0;
 }
 
-static struct v4l2_subdev_video_ops xscaler_video_ops = {
+static const struct v4l2_subdev_video_ops xscaler_video_ops = {
 	.s_stream = xscaler_s_stream,
 };
 
-static struct v4l2_subdev_pad_ops xscaler_pad_ops = {
+static const struct v4l2_subdev_pad_ops xscaler_pad_ops = {
 	.enum_mbus_code		= xvip_enum_mbus_code,
 	.enum_frame_size	= xscaler_enum_frame_size,
 	.get_fmt		= xscaler_get_format,
 	.set_fmt		= xscaler_set_format,
 };
 
-static struct v4l2_subdev_ops xscaler_ops = {
+static const struct v4l2_subdev_ops xscaler_ops = {
 	.video  = &xscaler_video_ops,
 	.pad    = &xscaler_pad_ops,
 };
@@ -2066,7 +2066,7 @@ static int xscaler_probe(struct platform_device *pdev)
 	} else {
 		ret = xvip_init_resources(&xscaler->xvip);
 		if (ret < 0)
-			return ret;
+			goto res_cleanup;
 	}
 
 	/* Reset the Global IP Reset through a PS GPIO */
