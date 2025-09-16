@@ -1184,7 +1184,6 @@ irqreturn_t aie2ps_interrupt_user_event1(int irq, void *data)
 	int end_col;
 
 	aperture = apart->aperture;
-	mutex_lock(&aperture->mlock);
 	mutex_lock(&apart->mlock);
 	if (!apart->status) {
 		dev_err_ratelimited(&apart->dev, "USER_EVENT1 ISR: apart not active");
@@ -1225,14 +1224,16 @@ irqreturn_t aie2ps_interrupt_user_event1(int irq, void *data)
 		aie_clear_event_status(apart, &loc, AIE_PL_MOD,
 				       event_mod->user_event1);
 	}
+	mutex_unlock(&apart->mlock);
 	if (complete && apart->user_event1_complete)
 		apart->user_event1_complete(apart->partition_id, apart->user_event1_priv);
 	loc.col = apart->range.start.col + 1;
 	loc.row = 0;
 	aie_aperture_enable_l2_ctrl(aperture, &loc, l2_mask);
+
+	return complete ? IRQ_HANDLED : IRQ_NONE;
 out:
 	mutex_unlock(&apart->mlock);
-	mutex_unlock(&aperture->mlock);
 	return complete ? IRQ_HANDLED : IRQ_NONE;
 }
 
