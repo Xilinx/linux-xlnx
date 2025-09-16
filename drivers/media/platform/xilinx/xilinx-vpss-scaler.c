@@ -30,20 +30,6 @@
 #define XSCALER_DEF_OUT_HEIGHT		(1080)
 #define XSCALER_DEF_OUT_WIDTH		(1920)
 
-#define XSCALER_HSF			(0x0100)
-#define XSCALER_VSF			(0x0104)
-#define XSCALER_SF_SHIFT		(20)
-#define XSCALER_SF_MASK			(0xffffff)
-#define XSCALER_SOURCE_SIZE		(0x0108)
-#define XSCALER_SIZE_HORZ_SHIFT		(0)
-#define XSCALER_SIZE_VERT_SHIFT		(16)
-#define XSCALER_SIZE_MASK		(0xfff)
-#define XSCALER_HAPERTURE		(0x010c)
-#define XSCALER_VAPERTURE		(0x0110)
-#define XSCALER_APERTURE_START_SHIFT	(0)
-#define XSCALER_APERTURE_END_SHIFT	(16)
-#define XSCALER_OUTPUT_SIZE		(0x0114)
-#define XSCALER_COEF_DATA_IN		(0x0134)
 #define XSCALER_BITSHIFT_16		(16)
 #define XSCALER_PHDATA_SHIFT		(12)
 #define XSCALER_PHDATA_H_SHIFT		(20)
@@ -57,17 +43,9 @@
 #define XGPIO_CH_RESET_SEL		(1)
 #define XGPIO_RESET_MASK_VIDEO_IN	BIT(0)
 #define XGPIO_RESET_MASK_IP_AXIS	BIT(1)
-#define XGPIO_RESET_MASK_IP_AXIMM	BIT(0)
 #define XGPIO_RESET_MASK_ALL_BLOCKS	(XGPIO_RESET_MASK_VIDEO_IN  | \
 						XGPIO_RESET_MASK_IP_AXIS)
 #define XGPIO_DATA_OFFSET		(0x0)
-#define XGPIO_TRI_OFFSET		(0x4)
-#define XGPIO_DATA2_OFFSET		(0x8)
-#define XGPIO_TRI2_OFFSET		(0xc)
-
-#define XGPIO_GIE_OFFSET		(0x11c)
-#define XGPIO_ISR_OFFSET		(0x120)
-#define XGPIO_IER_OFFSET		(0x128)
 #define XGPIO_CHAN_OFFSET		(8)
 #define STEP_PRECISION			(65536)
 
@@ -106,7 +84,6 @@ enum xscaler_vid_reg_fmts {
 
 /* Mask definitions for Low and high 16 bits in a 32 bit number */
 #define XHSC_MASK_LOW_16BITS		GENMASK(15, 0)
-#define XHSC_MASK_HIGH_16BITS		GENMASK(31, 16)
 #define XHSC_MASK_LOW_32BITS		GENMASK(31, 0)
 #define XHSC_MASK_LOW_20BITS		GENMASK(19, 0)
 #define XHSC_MASK_LOW_12BITS		GENMASK(11, 0)
@@ -120,7 +97,6 @@ enum xscaler_vid_reg_fmts {
 
 /* Mask definitions for Low and high 16 bits in a 32 bit number */
 #define XVSC_MASK_LOW_16BITS            GENMASK(15, 0)
-#define XVSC_MASK_HIGH_16BITS           GENMASK(31, 16)
 
 /* XSCALER POWER MACROS */
 #define XSCALER_RESET_ASSERT	(0x1)
@@ -133,9 +109,6 @@ enum xscaler_vid_reg_fmts {
 
 /* H-scaler registers */
 #define XV_HSCALER_CTRL_ADDR_AP_CTRL				(0x0000)
-#define XV_HSCALER_CTRL_ADDR_GIE				(0x0004)
-#define XV_HSCALER_CTRL_ADDR_IER				(0x0008)
-#define XV_HSCALER_CTRL_ADDR_ISR				(0x000c)
 #define XV_HSCALER_CTRL_ADDR_HWREG_HEIGHT_DATA			(0x0010)
 #define XV_HSCALER_CTRL_ADDR_HWREG_WIDTHIN_DATA			(0x0018)
 #define XV_HSCALER_CTRL_ADDR_HWREG_WIDTHOUT_DATA		(0x0020)
@@ -143,7 +116,6 @@ enum xscaler_vid_reg_fmts {
 #define XV_HSCALER_CTRL_ADDR_HWREG_PIXELRATE_DATA		(0x0030)
 #define XV_HSCALER_CTRL_ADDR_HWREG_COLORMODEOUT_DATA		(0X0038)
 #define XV_HSCALER_CTRL_ADDR_HWREG_HFLTCOEFF_BASE		(0x0800)
-#define XV_HSCALER_CTRL_ADDR_HWREG_HFLTCOEFF_HIGH		(0x0bff)
 
 /* Coefficients for 6, 8, 10 and 12 tap filters */
 
@@ -894,12 +866,7 @@ static const s16 XV_fixedcoeff_taps12_SR4[XV_HSCALER_MAX_H_PHASES][XV_HSCALER_TA
 	{ -22, -19,   1, 155, 499,  889, 1059, 879, 487, 147,  -1,  22, }
 };
 
-#define XV_HSCALER_CTRL_WIDTH_HWREG_HFLTCOEFF			(16)
-#define XV_HSCALER_CTRL_DEPTH_HWREG_HFLTCOEFF			(384)
 #define XV_HSCALER_CTRL_ADDR_HWREG_PHASESH_V_BASE		(0x2000)
-#define XV_HSCALER_CTRL_ADDR_HWREG_PHASESH_V_HIGH		(0x3fff)
-#define XV_HSCALER_CTRL_WIDTH_HWREG_PHASESH_V			(18)
-#define XV_HSCALER_CTRL_DEPTH_HWREG_PHASESH_V			(1920)
 #define XV_HSCALER_CTRL_ADDR_HWREG_PHASEH_FIX			(0x4000)
 
 /* H-scaler masks */
@@ -907,19 +874,12 @@ static const s16 XV_fixedcoeff_taps12_SR4[XV_HSCALER_MAX_H_PHASES][XV_HSCALER_TA
 
 /* V-scaler registers */
 #define XV_VSCALER_CTRL_ADDR_AP_CTRL			(0x000)
-#define XV_VSCALER_CTRL_ADDR_GIE			(0x004)
-#define XV_VSCALER_CTRL_ADDR_IER			(0x008)
-#define XV_VSCALER_CTRL_ADDR_ISR			(0x00c)
 #define XV_VSCALER_CTRL_ADDR_HWREG_HEIGHTIN_DATA	(0x010)
 #define XV_VSCALER_CTRL_ADDR_HWREG_WIDTH_DATA		(0x018)
 #define XV_VSCALER_CTRL_ADDR_HWREG_HEIGHTOUT_DATA	(0x020)
 #define XV_VSCALER_CTRL_ADDR_HWREG_LINERATE_DATA	(0x028)
 #define XV_VSCALER_CTRL_ADDR_HWREG_COLORMODE_DATA	(0x030)
 #define XV_VSCALER_CTRL_ADDR_HWREG_VFLTCOEFF_BASE	(0x800)
-#define XV_VSCALER_CTRL_ADDR_HWREG_VFLTCOEFF_HIGH	(0xbff)
-
-#define XV_VSCALER_CTRL_WIDTH_HWREG_VFLTCOEFF		(16)
-#define XV_VSCALER_CTRL_DEPTH_HWREG_VFLTCOEFF		(384)
 
 /* These bits are for xscaler feature flags */
 #define XSCALER_CLK_PROP	BIT(0)
@@ -2002,7 +1962,7 @@ static int xscaler_parse_of(struct xscaler_device *xscaler)
 	 * number of vertical and horizontal taps must match
 	 */
 	switch (xscaler->num_vert_taps) {
-	case XV_HSCALER_TAPS_2:
+	case XV_VSCALER_TAPS_2:
 	case XV_VSCALER_TAPS_4:
 		if (xscaler->num_vert_taps != xscaler->num_hori_taps) {
 			dev_err(dev,
