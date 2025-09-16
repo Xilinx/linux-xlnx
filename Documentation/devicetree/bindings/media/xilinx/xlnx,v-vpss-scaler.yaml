@@ -16,7 +16,11 @@ description:
 
 properties:
   compatible:
-    const: xlnx,v-vpss-scaler-1.0
+    items:
+      - enum:
+          - xlnx,v-vpss-scaler
+          - xlnx,v-vpss-scaler-1.0
+          - xlnx,v-vpss-scaler-2.2
 
   reg:
     maxItems: 1
