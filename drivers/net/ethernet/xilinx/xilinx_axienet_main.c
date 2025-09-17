@@ -5887,7 +5887,7 @@ static int axienet_probe(struct platform_device *pdev)
 	return 0;
 
 err_unregister_netdev:
-	unregister_netdev(ndev);
+	unregister_netdev(lp->ndev);
 
 cleanup_phylink:
 	phylink_destroy(lp->phylink);
