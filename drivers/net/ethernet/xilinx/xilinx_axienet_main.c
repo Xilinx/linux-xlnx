@@ -5742,12 +5742,11 @@ static int axienet_probe(struct platform_device *pdev)
 			ret = -EINVAL;
 			goto cleanup_mdio;
 		}
-		if (np) {
-			ret = axienet_mdio_setup(lp);
-			if (ret)
-				dev_warn(&pdev->dev,
-					 "error registering MDIO bus: %d\n", ret);
-		}
+
+		ret = axienet_mdio_setup(lp);
+		if (ret)
+			dev_warn(&pdev->dev,
+				 "error registering MDIO bus: %d\n", ret);
 
 		lp->pcs_phy = of_mdio_find_device(np);
 		if (!lp->pcs_phy) {
