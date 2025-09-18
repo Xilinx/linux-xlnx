@@ -701,16 +701,10 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 		return PAGE_KEEP;
 	if (!mapping) {
 		/*
-		 * Some data journaling orphaned folios can have
-		 * folio->mapping == NULL while being dirty with clean buffers.
+		 * Is it still possible to have a dirty folio with
+		 * a NULL mapping? I think not.
 		 */
-		if (folio_test_private(folio)) {
-			if (try_to_free_buffers(folio)) {
-				folio_clear_dirty(folio);
-				pr_info("%s: orphaned folio\n", __func__);
-				return PAGE_CLEAN;
-			}
-		}
+		VM_WARN_ON_FOLIO(true, folio);
 		return PAGE_KEEP;
 	}
 
