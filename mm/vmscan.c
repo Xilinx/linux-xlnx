@@ -701,8 +701,8 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 		return PAGE_KEEP;
 	if (!mapping) {
 		/*
-		 * Is it still possible to have a dirty folio with
-		 * a NULL mapping? I think not.
+		 * We should no longer have dirty folios with clean buffers and
+		 * a NULL mapping. However, let's be careful for now.
 		 */
 		VM_WARN_ON_FOLIO(true, folio);
 		return PAGE_KEEP;
