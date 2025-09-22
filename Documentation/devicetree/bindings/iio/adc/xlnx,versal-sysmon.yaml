@@ -90,6 +90,7 @@ patternProperties:
       - xlnx,name
 
     additionalProperties: false
+
   "^temp@([1-9]|[1-5][0-9]|6[0-4])$":
     type: object
     description:
@@ -116,6 +117,8 @@ patternProperties:
     required:
       - reg
       - xlnx,name
+
+    additionalProperties: false
 
 required:
   - compatible
