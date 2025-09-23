@@ -737,8 +737,8 @@
 
 	sensor0: versal-thermal-sensor {
 		compatible = "xlnx,versal-thermal";
-		#thermal-sensor-cells = <0>;
-		io-channels = <&sysmon0>;
+		#thermal-sensor-cells = <1>;
+		io-channels = <&sysmon0 0>;
 		io-channel-names = "sysmon-temp-channel";
 	};
 
@@ -746,7 +746,7 @@
 		versal_thermal: versal-thermal {
 			polling-delay-passive = <250>; /* milliseconds */
 			polling-delay = <1000>; /* milliseconds */
-			thermal-sensors = <&sensor0>;
+			thermal-sensors = <&sensor0 0>;
 
 			trips {
 				temp_alert: temp-alert {
@@ -756,6 +756,28 @@
 				};
 
 				ot_crit: ot-crit {
+					temperature = <125000>; /* millicelsius */
+					hysteresis = <0>; /* millicelsius */
+					type = "critical";
+				};
+			};
+
+			cooling-maps {
+			};
+		};
+		versal_thermal_aie: versal-aie-thermal {
+			polling-delay-passive = <250>; /* milliseconds */
+			polling-delay = <1000>; /* milliseconds */
+			thermal-sensors = <&sensor0 1>;
+
+			trips {
+				temp_alert_aie: temp-alert-aie {
+					temperature = <70000>; /* millicelsius */
+					hysteresis = <0>; /* millicelsius */
+					type = "passive";
+				};
+
+				ot_crit_aie: ot-crit-aie {
 					temperature = <125000>; /* millicelsius */
 					hysteresis = <0>; /* millicelsius */
 					type = "critical";
@@ -1083,7 +1105,7 @@
 		sysmon0: sysmon@f1270000 {
 			compatible = "xlnx,versal-sysmon";
 			status = "disabled";
-			#io-channel-cells = <0>;
+			#io-channel-cells = <1>;
 			reg = <0x0 0xf1270000 0x0 0x4000>;
 			interrupts = <0 202 4>;
 			xlnx,numchannels = /bits/8 <0>;
