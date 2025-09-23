@@ -1180,15 +1180,14 @@ void axienet_dma_stop(struct axienet_dma_q *dq)
  * axienet_device_reset - Reset and initialize the Axi Ethernet hardware.
  * @ndev:	Pointer to the net_device structure
  *
- * Return: 0 on success, Negative value on errors
- *
  * This function is called to reset and initialize the Axi Ethernet core. This
  * is typically called during initialization. It does a reset of the Axi DMA
  * Rx/Tx channels and initializes the Axi DMA BDs. Since Axi DMA reset lines
  * are connected to Axi Ethernet reset lines, this in turn resets the Axi
  * Ethernet core. No separate hardware reset is done for the Axi Ethernet
  * core.
- * Returns 0 on success or a negative error number otherwise.
+ *
+ * Return: 0 on success or a negative error number otherwise.
  */
 static int axienet_device_reset(struct net_device *ndev)
 {
@@ -1527,7 +1526,8 @@ static void axienet_rx_hwtstamp(struct axienet_local *lp,
  *
  * Would either be called after a successful transmit operation, or after
  * there was an error when setting up the chain.
- * Returns the number of packets handled.
+ *
+ * Return: The number of packets handled.
  */
 
 static int axienet_free_tx_chain(struct axienet_dma_q *q, u32 first_bd,
