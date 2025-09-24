@@ -34,7 +34,8 @@
 #define XHDCP1X_TX_REVOCLIST_MAX_DEVICES	944
 #define XHDCP1X_TX_ENCRYPTION_KEY_SIZE		336
 #define XHDCP1X_PORT_MIN_BYTES 3
-/* These constants specify the offsets for the various fields and/or
+/*
+ * These constants specify the offsets for the various fields and/or
  * attributes within the hdcp port
  */
 #define XDPTX_HDCP1X_DPCD_OFFSET	0x68000
@@ -163,7 +164,7 @@
 #define XHDCP1X_TX_CLKDIV_MHZ			1000000
 #define XHDCP1X_TX_CLKDIV_HZ			1000
 
-/*
+/**
  * struct xhdcp1x_tx_callbacks - This structure contains the callback handlers.
  * @rd_handler: The DP/HDMI read handler call for the aux channels
  * @wr_handler: The DP/HDMI write handler call for the aux channels
@@ -175,6 +176,13 @@ struct xhdcp1x_tx_callbacks {
 	void (*notify_handler)(void *interface_ref, u32 notification);
 };
 
+/**
+ * enum xlnx_hdcp1x_tx_callback_type - Callback types for HDCP1x transmitter
+ * @XHDCP1X_TX_HANDLER_AUX_READ: AUX channel read handler
+ * @XHDCP1X_TX_HANDLER_AUX_WRITE: AUX channel write handler
+ * @XHDCP1X_TX_HANDLER_HDCP_STATUS: HDCP status handler
+ * @XHDCP1X_TX_HANDLER_INVALID: Invalid handler
+ */
 enum xlnx_hdcp1x_tx_callback_type {
 	XHDCP1X_TX_HANDLER_AUX_READ = 0,
 	XHDCP1X_TX_HANDLER_AUX_WRITE = 1,
@@ -182,6 +190,15 @@ enum xlnx_hdcp1x_tx_callback_type {
 	XHDCP1X_TX_HANDLER_INVALID = 3
 };
 
+/**
+ * enum xhdcp1x_tx_authtype - HDCP1x transmitter authentication status
+ * @XHDCP1X_TX_AUTHENTICATED: Authentication successful
+ * @XHDCP1X_TX_UNAUTHENTICATED: Not authenticated
+ * @XHDCP1X_TX_INCOMPATIBLE_RX: Incompatible receiver
+ * @XHDCP1X_TX_AUTHENTICATION_BUSY: Authentication in progress
+ * @XHDCP1X_TX_REAUTHENTICATE_REQUESTED: Re-authentication requested
+ * @XHDCP1X_TX_DEVICE_IS_REVOKED: Device is revoked
+ */
 enum xhdcp1x_tx_authtype {
 	XHDCP1X_TX_AUTHENTICATED = 0,
 	XHDCP1X_TX_UNAUTHENTICATED = 1,
@@ -191,12 +208,17 @@ enum xhdcp1x_tx_authtype {
 	XHDCP1X_TX_DEVICE_IS_REVOKED = 5,
 };
 
+/**
+ * enum xhdcp1x_tx_protocol - HDCP1x transmitter protocol type
+ * @XHDCP1X_TX_DP: DisplayPort protocol
+ * @XHDCP1X_TX_HDMI: HDMI protocol
+ */
 enum xhdcp1x_tx_protocol {
 	XHDCP1X_TX_DP = 0,
 	XHDCP1X_TX_HDMI = 1,
 };
 
-/*
+/**
  * struct hdcp1x_tx_revoclist - This structure contains the HDCP
  * keys revocation list information
  * @rcvid: The array contains the revocation keys list of information
@@ -207,12 +229,12 @@ struct hdcp1x_tx_revoclist {
 	u32 num_of_devices;
 };
 
-/*
+/**
  * struct xhdcp1x_repeater_exchange - This structure contains an instance of the HDCP
  * Repeater values to exchanged between HDCP Tx and HDCP Rx
- * @v[5]: The 20 byte value of SHA1 hash, v'h0,v'h1,v'h2,v'h3,v'h4
+ * @v: The array of 20 byte value of SHA1 hash, v'h0,v'h1,v'h2,v'h3,v'h4
  * read from downstream repeater.
- * @ksvlist[32]: An array of 32 elements each of 64 bits to store the KSVs
+ * @ksvlist: An array of 32 elements each of 64 bits to store the KSVs
  * for the KSV FIFO
  * @depth: depeth of downstream topology
  * @device_count: Number of downstream devices attached to the repeater
@@ -226,16 +248,16 @@ struct xhdcp1x_repeater_exchange {
 	u8 hdcp14_propagatetopo_errupstream;
 };
 
-/*
+/**
  * struct xhdcp1x_tx_status - This structure contains Hdcp1x driver
  * status information fields
+ * @auth_status: Authentication status
  * @auth_failed: Authentication failures count
  * @auth_passed: Authentication passed status/count
  * @reauth_requested: Re-Authentication request if any link failures..etc
  * @read_failure: remote device read failures
  * @link_checkpassed: Link verification that is passed
  * @link_checkfailed: Link verification that is failure
- *
  */
 struct xhdcp1x_tx_status {
 	u32 auth_status;
@@ -247,7 +269,7 @@ struct xhdcp1x_tx_status {
 	u32 link_checkfailed;
 };
 
-/*
+/**
  * struct xhdcp1x_tx_internal_timer - Current state and data used for internal timer
  * @tmr_ctr: hardware timer configuration structure
  * @initial_ticks: Keep track of the start value of the timer.
@@ -261,33 +283,40 @@ struct xhdcp1x_tx_internal_timer {
 	u8 reason_id;
 };
 
-/*
+/**
  * struct xlnx_hdcp1x_config - This structure contains Hdcp1x driver
  * configuration information
  * @dev: device information
  * @handlers: Callback handlers
+ * @xhdcp1x_revoc_list: HDCP revocation list
+ * @xhdcp1x_internal_timer: Internal timer structure
  * @sm_work: state machine worker
  * @curr_state: current authentication state
- * @prev_sate: Previous Authentication State
+ * @prev_state: Previous Authentication State
  * @repeatervalues: The downstream repeater capabilities
  * @stats: authentication status
  * @hdcp1x_keymgmt_base: Key management base address
  * @cipher: Pointer to cipher driver instance
  * @interface_ref: Pointer to interface(DP/HDMI) driver instance
  * @interface_base: Pointer to instance iomem base
- * @pending_events: Evenets that are set by interface driver
+ * @pending_events: Events that are set by interface driver
  * @downstreamready: To check the downstream device status ready or not
+ * @tmr_cnt: Timer count
  * @is_repeater: says whether downstream is repeater or receiver
- * @hdcp1x_key_availble: The KMS block has key exists or not.
+ * @hdcp1x_key_available: The KMS block has key exists or not.
  * @lane_count: number of lanes data to be encrypted
  * @hdcp1x_key: hdcp1x key pointer
  * @auth_status: first stage authentication status
- * @keyinit: Key Management Block with key initiliazed properly or not
- * @is_encryption_en: Encryption enbalemnet is done or not
+ * @keyinit: Key Management Block with key initialized properly or not
+ * @is_encryption_en: Encryption enablement is done or not
+ * @is_enabled: Is HDCP enabled
  * @is_cipher: is cipher init is done or not
+ * @is_hdmi: Is HDMI protocol
+ * @protocol: Protocol type
+ * @is_riupdate: Is Ri update event
  * @state_helper: to store the An value temp basis
  * @encryption_map: To check the encryption progress
- *
+ * @xlnx_hdcp1x_key: Pointer to HDCP1x key
  */
 struct xlnx_hdcp1x_config {
 	struct device *dev;
