@@ -193,9 +193,41 @@ static int mt35xu512aba_post_sfdp_fixup(struct spi_nor *nor)
 	return 0;
 }
 
+static int mt35xu01gcba_late_init(struct spi_nor *nor)
+{
+	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
+
+	params->n_dice = 2;
+	params->die_erase_opcode = SPINOR_OP_MT_DIE_ERASE;
+
+	return spi_nor_set_4byte_addr_mode(nor, true);
+}
+
+static int mt35xu02gcba_late_init(struct spi_nor *nor)
+{
+	struct spi_nor_flash_parameter *params = spi_nor_get_params(nor, 0);
+
+	params->n_dice = 4;
+	params->die_erase_opcode = SPINOR_OP_MT_DIE_ERASE;
+
+	return spi_nor_set_4byte_addr_mode(nor, true);
+}
+
 static const struct spi_nor_fixups mt35xu512aba_fixups = {
 	.default_init = mt35xu512aba_default_init,
 	.post_sfdp = mt35xu512aba_post_sfdp_fixup,
+};
+
+static const struct spi_nor_fixups mt35xu01gcba_fixups = {
+	.default_init = mt35xu512aba_default_init,
+	.post_sfdp = mt35xu512aba_post_sfdp_fixup,
+	.late_init = mt35xu01gcba_late_init,
+};
+
+static const struct spi_nor_fixups mt35xu02gcba_fixups = {
+	.default_init = mt35xu512aba_default_init,
+	.post_sfdp = mt35xu512aba_post_sfdp_fixup,
+	.late_init = mt35xu02gcba_late_init,
 };
 
 static const struct flash_info micron_nor_parts[] = {
@@ -222,7 +254,7 @@ static const struct flash_info micron_nor_parts[] = {
 			SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
 		.mfr_flags = USE_FSR,
 		.fixup_flags = SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE,
-		.fixups = &mt35xu512aba_fixups
+		.fixups = &mt35xu01gcba_fixups
 	}, {
 		.id = SNOR_ID(0x2c, 0x5b, 0x1c),
 		.name = "mt35xu02g",
@@ -234,7 +266,7 @@ static const struct flash_info micron_nor_parts[] = {
 				SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
 		.mfr_flags = USE_FSR,
 		.fixup_flags = SPI_NOR_4B_OPCODES | SPI_NOR_IO_MODE_EN_VOLATILE,
-		.fixups = &mt35xu512aba_fixups
+		.fixups = &mt35xu02gcba_fixups
 	},
 };
 static int mt25qu512a_post_bfpt_fixup(struct spi_nor *nor,
