@@ -245,6 +245,25 @@ static void amd_mdb_pcie_free_irq_domains(struct amd_mdb_pcie *pcie)
 	}
 
 	if (pcie->mdb_domain) {
+		int i, irq;
+
+		for (i = 0; i < ARRAY_SIZE(intr_cause); i++) {
+			if (!intr_cause[i].str)
+				continue;
+			irq = irq_find_mapping(pcie->mdb_domain, i);
+			if (irq) {
+				disable_irq(irq);
+				free_irq(irq,pcie);
+				irq_dispose_mapping(irq);
+			}
+		}
+		irq = irq_find_mapping(pcie->mdb_domain, AMD_MDB_PCIE_INTR_INTX);
+		if (irq) {
+			disable_irq(irq);
+			free_irq(irq, pcie);
+			irq_dispose_mapping(irq);
+		}
+
 		irq_domain_remove(pcie->mdb_domain);
 		pcie->mdb_domain = NULL;
 	}
