@@ -296,6 +296,96 @@ static inline void writeq(u64 value, volatile void __iomem *addr)
 #endif /* CONFIG_64BIT */
 
 /*
+ * {read,write}{w,l,q}_be() access big endian memory and return result
+ * in native endianness.
+ */
+
+#ifndef readw_be
+#define readw_be readw_be
+static inline u16 readw_be(const volatile void __iomem *addr)
+{
+	u16 val;
+
+	log_read_mmio(16, addr, _THIS_IP_, _RET_IP_);
+	__io_br();
+	val = __be16_to_cpu((__be16 __force)__raw_readw(addr));
+	__io_ar(val);
+	log_post_read_mmio(val, 16, addr, _THIS_IP_, _RET_IP_);
+	return val;
+}
+#endif
+
+#ifndef readl_be
+#define readl_be readl_be
+static inline u32 readl_be(const volatile void __iomem *addr)
+{
+	u32 val;
+
+	log_read_mmio(32, addr, _THIS_IP_, _RET_IP_);
+	__io_br();
+	val = __be32_to_cpu((__be32 __force)__raw_readl(addr));
+	__io_ar(val);
+	log_post_read_mmio(val, 32, addr, _THIS_IP_, _RET_IP_);
+	return val;
+}
+#endif
+
+#ifdef CONFIG_64BIT
+#ifndef readq_be
+#define readq_be readq_be
+static inline u64 readq_be(const volatile void __iomem *addr)
+{
+	u64 val;
+
+	log_read_mmio(64, addr, _THIS_IP_, _RET_IP_);
+	__io_br();
+	val = __be64_to_cpu((__be64 __force)__raw_readq(addr));
+	__io_ar(val);
+	log_post_read_mmio(val, 64, addr, _THIS_IP_, _RET_IP_);
+	return val;
+}
+#endif
+#endif /* CONFIG_64BIT */
+
+#ifndef writew_be
+#define writew_be writew_be
+static inline void writew_be(u16 value, volatile void __iomem *addr)
+{
+	log_write_mmio(value, 16, addr, _THIS_IP_, _RET_IP_);
+	__io_bw();
+	__raw_writew((u16 __force)__cpu_to_be16(value), addr);
+	__io_aw();
+	log_post_write_mmio(value, 16, addr, _THIS_IP_, _RET_IP_);
+}
+#endif
+
+#ifndef writel_be
+#define writel_be writel_be
+static inline void writel_be(u32 value, volatile void __iomem *addr)
+{
+	log_write_mmio(value, 32, addr, _THIS_IP_, _RET_IP_);
+	__io_bw();
+	__raw_writel((u32 __force)__cpu_to_be32(value), addr);
+	__io_aw();
+	log_post_write_mmio(value, 32, addr, _THIS_IP_, _RET_IP_);
+}
+#endif
+
+#ifdef CONFIG_64BIT
+#ifndef writeq_be
+#define writeq_be writeq_be
+static inline void writeq_be(u64 value, volatile void __iomem *addr)
+{
+	log_write_mmio(value, 64, addr, _THIS_IP_, _RET_IP_);
+	__io_bw();
+	__raw_writeq((u64 __force)__cpu_to_be64(value), addr);
+	__io_aw();
+	log_post_write_mmio(value, 64, addr, _THIS_IP_, _RET_IP_);
+}
+#endif
+#endif /* CONFIG_64BIT */
+
+/*
  * {read,write}{b,w,l,q}_relaxed() are like the regular version, but
  * are not guaranteed to provide ordering against spinlocks or memory
  * accesses.
@@ -518,6 +608,118 @@ static inline void writesq(volatile void __iomem *addr, const void *buffer,
 
 		do {
 			__raw_writeq(*buf++, addr);
+		} while (--count);
+	}
+}
+#endif
+#endif /* CONFIG_64BIT */
+
+/*
+ * {read,write}s{w,l,q}_be() repeatedly access the same memory address
+ * in big endianness in 16-, 32- or 64-bit chunks (@count times) and
+ * return result in native endianness.
+ */
+
+#ifndef readsw_be
+#define readsw_be readsw_be
+static inline void readsw_be(const volatile void __iomem *addr,
+			     void *buffer,
+			     unsigned int count)
+{
+	if (count) {
+		u16 *buf = buffer;
+
+		do {
+			u16 x = __be16_to_cpu((__be16 __force)__raw_readw(addr));
+			*buf++ = x;
+		} while (--count);
+	}
+}
+#endif
+
+#ifndef readsl_be
+#define readsl_be readsl_be
+static inline void readsl_be(const volatile void __iomem *addr,
+			     void *buffer,
+			     unsigned int count)
+{
+	if (count) {
+		u32 *buf = buffer;
+
+		do {
+			u32 x = __be32_to_cpu((__be32 __force)__raw_readl(addr));
+			*buf++ = x;
+		} while (--count);
+	}
+}
+#endif
+
+#ifdef CONFIG_64BIT
+#ifndef readsq_be
+#define readsq_be readsq_be
+static inline void readsq_be(const volatile void __iomem *addr,
+			     void *buffer,
+			     unsigned int count)
+{
+	if (count) {
+		u64 *buf = buffer;
+
+		do {
+			u64 x = __be64_to_cpu((__be64 __force)__raw_readq(addr));
+			*buf++ = x;
+		} while (--count);
+	}
+}
+#endif
+#endif /* CONFIG_64BIT */
+
+#ifndef writesw_be
+#define writesw_be writesw_be
+static inline void writesw_be(volatile void __iomem *addr,
+			      const void *buffer,
+			      unsigned int count)
+{
+	if (count) {
+		const u16 *buf = buffer;
+
+		do {
+			__raw_writew((u16 __force)__cpu_to_be16(*buf), addr);
+			buf++;
+		} while (--count);
+	}
+}
+#endif
+
+#ifndef writesl_be
+#define writesl_be writesl_be
+static inline void writesl_be(volatile void __iomem *addr,
+			      const void *buffer,
+			      unsigned int count)
+{
+	if (count) {
+		const u32 *buf = buffer;
+
+		do {
+			__raw_writel((u32 __force)__cpu_to_be32(*buf), addr);
+			buf++;
+		} while (--count);
+	}
+}
+#endif
+
+#ifdef CONFIG_64BIT
+#ifndef writesq_be
+#define writesq_be writesq_be
+static inline void writesq_be(volatile void __iomem *addr,
+			      const void *buffer,
+			      unsigned int count)
+{
+	if (count) {
+		const u64 *buf = buffer;
+
+		do {
+			__raw_writeq((u64 __force)__cpu_to_be64(*buf), addr);
+			buf++;
 		} while (--count);
 	}
 }
