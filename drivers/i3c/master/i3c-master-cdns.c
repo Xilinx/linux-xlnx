@@ -429,13 +429,15 @@ to_cdns_i3c_master(struct i3c_master_controller *master)
 static void cdns_i3c_master_wr_to_tx_fifo(struct cdns_i3c_master *master,
 					  const u8 *bytes, int nbytes)
 {
-	i3c_writel_fifo(master->regs + TX_FIFO, bytes, nbytes);
+	i3c_writel_fifo(master->regs + TX_FIFO, bytes, nbytes,
+			I3C_FIFO_LITTLE_ENDIAN);
 }
 
 static void cdns_i3c_master_rd_from_rx_fifo(struct cdns_i3c_master *master,
 					    u8 *bytes, int nbytes)
 {
-	i3c_readl_fifo(master->regs + RX_FIFO, bytes, nbytes);
+	i3c_readl_fifo(master->regs + RX_FIFO, bytes, nbytes,
+		       I3C_FIFO_LITTLE_ENDIAN);
 }
 
 static bool cdns_i3c_master_supports_ccc_cmd(struct i3c_master_controller *m,
@@ -1321,7 +1323,8 @@ static void cdns_i3c_master_handle_ibi(struct cdns_i3c_master *master,
 	buf = slot->data;
 
 	nbytes = IBIR_XFER_BYTES(ibir);
-	i3c_readl_fifo(master->regs + IBI_DATA_FIFO, buf, nbytes);
+	i3c_readl_fifo(master->regs + IBI_DATA_FIFO, buf, nbytes,
+		       I3C_FIFO_LITTLE_ENDIAN);
 
 	slot->len = min_t(unsigned int, IBIR_XFER_BYTES(ibir),
 			  dev->ibi->max_payload_len);

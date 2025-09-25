@@ -337,19 +337,22 @@ static int dw_i3c_master_get_free_pos(struct dw_i3c_master *master)
 static void dw_i3c_master_wr_tx_fifo(struct dw_i3c_master *master,
 				     const u8 *bytes, int nbytes)
 {
-	i3c_writel_fifo(master->regs + RX_TX_DATA_PORT, bytes, nbytes);
+	i3c_writel_fifo(master->regs + RX_TX_DATA_PORT, bytes, nbytes,
+			I3C_FIFO_LITTLE_ENDIAN);
 }
 
 static void dw_i3c_master_read_rx_fifo(struct dw_i3c_master *master,
 				       u8 *bytes, int nbytes)
 {
-	i3c_readl_fifo(master->regs + RX_TX_DATA_PORT, bytes, nbytes);
+	i3c_readl_fifo(master->regs + RX_TX_DATA_PORT, bytes, nbytes,
+		       I3C_FIFO_LITTLE_ENDIAN);
 }
 
 static void dw_i3c_master_read_ibi_fifo(struct dw_i3c_master *master,
 					u8 *bytes, int nbytes)
 {
-	i3c_readl_fifo(master->regs + IBI_QUEUE_STATUS, bytes, nbytes);
+	i3c_readl_fifo(master->regs + IBI_QUEUE_STATUS, bytes, nbytes,
+		       I3C_FIFO_LITTLE_ENDIAN);
 }
 
 static struct dw_i3c_xfer *
