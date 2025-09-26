@@ -55,6 +55,7 @@ allOf:
           contains:
             enum:
               - xlnx,versal-clk
+              - xlnx,versal2-clk
 
     then:
       properties:
