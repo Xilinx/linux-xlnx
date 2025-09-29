@@ -1745,6 +1745,13 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/media/i2c/onnn,ar0521.yaml
 F:	drivers/media/i2c/ar0521.c
 
+AP1302 ON SEMICONDUCTOR CAMERA ISP
+M:	Anil Kumar Mamidala <anil.mamidala@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/i2c/onnn,ap1302.yaml
+F:	drivers/media/i2c/ap1302.c
+
 ARASAN NAND CONTROLLER DRIVER
 M:	Miquel Raynal <miquel.raynal@bootlin.com>
 R:	Michal Simek <michal.simek@amd.com>
