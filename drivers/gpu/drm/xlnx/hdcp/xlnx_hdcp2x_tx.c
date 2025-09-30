@@ -607,18 +607,22 @@ int xlnx_hdcp2x_tx_read_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx, u8 msg_id)
 
 static int xlnx_hdmi_hdcp2x_tx_write_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx)
 {
-	struct xhdcp2x_tx_msg tx_msg;
+	struct xhdcp2x_tx_msg *tx_msg;
 	int message_size = 0;
 	int status = -EINVAL;
 
-	memcpy(&tx_msg, xhdcp2x_tx->msg_buffer, sizeof(struct xhdcp2x_tx_msg));
+	tx_msg = kzalloc(sizeof(*tx_msg), GFP_KERNEL);
+	if (!tx_msg)
+		return -ENOMEM;
 
-	switch (tx_msg.msg_type.msg_id) {
+	memcpy(tx_msg, xhdcp2x_tx->msg_buffer, sizeof(struct xhdcp2x_tx_msg));
+
+	switch (tx_msg->msg_type.msg_id) {
 	case HDCP_2_2_AKE_INIT:
 		message_size =
 			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
 							HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
-							(u8 *)&tx_msg,
+							(u8 *)tx_msg,
 							sizeof(struct hdcp2x_tx_ake_init) + 1);
 		if (message_size == sizeof(struct hdcp2x_tx_ake_init) + 1)
 			status = 0;
@@ -627,7 +631,7 @@ static int xlnx_hdmi_hdcp2x_tx_write_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx)
 		message_size =
 			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
 							HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
-							(u8 *)&tx_msg,
+							(u8 *)tx_msg,
 							sizeof(struct hdcp2x_tx_ake_no_stored_km)
 							+ 1);
 
@@ -638,7 +642,7 @@ static int xlnx_hdmi_hdcp2x_tx_write_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx)
 		message_size =
 			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
 							HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
-							(u8 *)&tx_msg,
+							(u8 *)tx_msg,
 							sizeof(struct hdcp2x_tx_ake_stored_km)
 							+ 1);
 
@@ -649,7 +653,7 @@ static int xlnx_hdmi_hdcp2x_tx_write_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx)
 		message_size =
 			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
 							HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
-							(u8 *)&tx_msg,
+							(u8 *)tx_msg,
 							sizeof(struct hdcp2x_tx_lc_init) + 1);
 
 		if (message_size == (sizeof(struct hdcp2x_tx_lc_init) + 1))
@@ -659,7 +663,7 @@ static int xlnx_hdmi_hdcp2x_tx_write_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx)
 		message_size =
 			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
 							HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
-							(u8 *)&tx_msg,
+							(u8 *)tx_msg,
 							sizeof(struct hdcp2x_tx_ske_send_eks)
 							+ 1);
 
@@ -680,7 +684,7 @@ static int xlnx_hdmi_hdcp2x_tx_write_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx)
 		message_size =
 			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
 							HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
-							(u8 *)&tx_msg,
+							(u8 *)tx_msg,
 							sizeof(struct hdcp2x_tx_rpt_auth_send_ack)
 							+ 1);
 
@@ -691,7 +695,7 @@ static int xlnx_hdmi_hdcp2x_tx_write_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx)
 		message_size =
 			xhdcp2x_tx->handlers.wr_handler(xhdcp2x_tx->interface_ref,
 						HDCP_2_2_HDMI_REG_WR_MSG_OFFSET,
-						(u8 *)&tx_msg,
+						(u8 *)tx_msg,
 						sizeof(struct hdcp2x_tx_rpt_auth_stream_manage)
 						+ 1);
 
@@ -702,6 +706,8 @@ static int xlnx_hdmi_hdcp2x_tx_write_msg(struct xlnx_hdcp2x_config *xhdcp2x_tx)
 		status = -EINVAL;
 		break;
 	}
+
+	kfree(tx_msg);
 	return status;
 }
 
