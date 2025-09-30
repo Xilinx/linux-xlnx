@@ -550,6 +550,7 @@ enum temac_stat {
 #define USXGMII_RATE_10G	0x06000300
 #define USXGMII_FD		BIT(28)
 #define USXGMII_LINK_STS	BIT(31)
+#define USXGMII_RESET		(BIT(0) | BIT(29) | BIT(30) | BIT(31))
 
 /* USXGMII AN STS register mask definitions */
 #define USXGMII_AN_STS_COMP_MASK	BIT(16)

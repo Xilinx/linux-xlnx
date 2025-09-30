@@ -2976,6 +2976,12 @@ static int axienet_open(struct net_device *ndev)
 	}
 
 	if (lp->phy_mode == PHY_INTERFACE_MODE_USXGMII) {
+		/* Reset before configuring AN */
+		reg = axienet_ior(lp, XXVS_RESET_OFFSET);
+		axienet_iow(lp, XXVS_RESET_OFFSET, reg | USXGMII_RESET);
+		mdelay(DELAY_1MS);
+		axienet_iow(lp, XXVS_RESET_OFFSET, reg);
+
 		netdev_dbg(ndev, "RX reg: 0x%x\n",
 			   axienet_ior(lp, XXV_RCW1_OFFSET));
 		/* USXGMII setup at selected speed */
@@ -3091,6 +3097,7 @@ static int axienet_open(struct net_device *ndev)
 
 	/* If Runtime speed switching supported */
 	if (lp->axienet_config->mactype == XAXIENET_10G_25G &&
+	    lp->phy_mode != PHY_INTERFACE_MODE_USXGMII &&
 	    (axienet_ior(lp, XXV_STAT_CORE_SPEED_OFFSET) &
 	     XXV_STAT_CORE_SPEED_RTSW_MASK)) {
 		axienet_iow(lp, XXVS_AN_ABILITY_OFFSET,
@@ -4919,6 +4926,7 @@ static const struct axienet_config axienet_usxgmii_config = {
 	.setoptions = xxvenet_setoptions,
 	.clk_init = xxvenet_clk_init,
 	.tx_ptplen = 0,
+	.gt_reset = xxv_gt_reset,
 };
 
 static const struct axienet_config axienet_mrmac_config = {
@@ -5757,7 +5765,8 @@ static int axienet_probe(struct platform_device *pdev)
 		of_node_put(np);
 	}
 
-	if (lp->axienet_config->mactype != XAXIENET_MRMAC) {
+	if (lp->axienet_config->mactype != XAXIENET_MRMAC &&
+	    lp->phy_mode != PHY_INTERFACE_MODE_USXGMII) {
 		lp->pcs.ops = &axienet_pcs_ops;
 		lp->pcs.neg_mode = true;
 		lp->pcs.poll = true;
@@ -5853,7 +5862,8 @@ static int axienet_probe(struct platform_device *pdev)
 
 	__set_bit(lp->phy_mode, lp->phylink_config.supported_interfaces);
 
-	if (lp->axienet_config->mactype != XAXIENET_MRMAC)
+	if (lp->axienet_config->mactype != XAXIENET_MRMAC &&
+	    lp->phy_mode != PHY_INTERFACE_MODE_USXGMII)
 		lp->phylink = phylink_create(&lp->phylink_config, pdev->dev.fwnode,
 					     lp->phy_mode,
 					     &axienet_phylink_ops);
