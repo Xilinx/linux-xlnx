@@ -19,12 +19,31 @@
 #include <crypto/sha2.h>
 #include <linux/xlnx/xlnx_hdcp_common.h>
 #include "xlnx_hdcp2x_tx.h"
+#include <linux/slab.h>
 
 #define BD_MAX_MOD_SIZE  (HDCP2X_TX_CERT_RSA_PARAMETER_SIZE / sizeof(u32))
 
 #define XHDCP2X_TX_SHA256_SIZE		(256 / 8)
 #define XHDCP2X_TX_INNER_PADDING_BYTE	0x36
 #define XHDCP2X_TX_OUTER_PADDING_BYTE	0x5C
+
+/**
+ * xlnx_hdcp2x_tx_secure_free - Securely free memory by zeroing before release
+ * @ptr: Pointer to the memory buffer to be freed
+ * @size: Size of the memory buffer in bytes
+ *
+ * This function securely frees dynamically allocated memory by first
+ * zeroing the memory contents using memzero_explicit() to prevent
+ * potential information leakage, then releases the memory using kfree().
+ * The function safely handles NULL pointers.
+ */
+static inline void xlnx_hdcp2x_tx_secure_free(void *ptr, size_t size)
+{
+	if (ptr) {
+		memzero_explicit(ptr, size);
+		kfree(ptr);
+	}
+}
 
 /*
  * DER encoding T of the Digestinfo value is equal to this hash values
@@ -309,49 +328,72 @@ static int xlnx_hdcp2x_cmn_hmac_sha256_hash(const u8 *data, int data_size, const
 	return 0;
 }
 
-void xlnx_hdcp2x_tx_compute_hprime(const u8 *r_rx, const u8 *rxcaps,
+int xlnx_hdcp2x_tx_compute_hprime(const u8 *r_rx, const u8 *rxcaps,
 				   const u8 *r_tx, const u8 *txcaps,
 				   const u8 *km, u8 *hprime)
 {
-	u8 kd[HDCP2X_TX_DKEY_SIZE * HDCP2X_TX_AES128_SIZE] = {0};
-	u8 aes_iv[HDCP2X_TX_AES128_SIZE] = {0};
-	u8 aes_key[HDCP2X_TX_AES128_SIZE] = {0};
-	u8 hash_input[HDCP_2_2_RTX_LEN + HDCP_2_2_RXCAPS_LEN +
-				HDCP2X_TX_TXCAPS_SIZE] = {0};
+	size_t kd_len = HDCP2X_TX_DKEY_SIZE * HDCP2X_TX_AES128_SIZE;
+	size_t hash_input_len = HDCP_2_2_RTX_LEN + HDCP_2_2_RXCAPS_LEN + HDCP2X_TX_TXCAPS_SIZE;
+	u8 *kd_hash = kzalloc(kd_len + hash_input_len, GFP_KERNEL);
+	u8 *aes_iv = kzalloc(HDCP2X_TX_AES128_SIZE, GFP_KERNEL);
+	u8 *aes_key = kzalloc(HDCP2X_TX_AES128_SIZE, GFP_KERNEL);
+	u8 *kd, *hash_input;
 	int idx = 0;
 
+	if (!kd_hash || !aes_iv || !aes_key) {
+		kfree(kd_hash);
+		kfree(aes_iv);
+		kfree(aes_key);
+		return -ENOMEM;
+	}
+
+	kd = kd_hash;
+	hash_input = kd_hash + kd_len;
+
 	memcpy(aes_key, km, HDCP2X_TX_KM_SIZE);
+	/* Add m = Rtx || Rrx. */
 	memcpy(aes_iv, r_tx, HDCP_2_2_RTX_LEN);
 	memcpy(&aes_iv[HDCP_2_2_RTX_LEN], r_rx, HDCP_2_2_RRX_LEN);
 
+	/* Determine Dkey0. */
 	xlnx_hdcp2x_tx_aes128_encrypt(aes_iv, aes_key, kd);
 
-	/* Determine dkey1, counter is 1: Rrx | 0x01. */
-
+	/* Determine Dkey1, counter is 1: Rrx | 0x01. */
 	/*
 	 * Reference: Section 2.7.1: Key derivation
 	 * https://www.digital-cp.com/sites/default/files/HDCP%20on%20DisplayPort%20Specification%20Rev2_3.pdf
 	 */
 	aes_iv[HDCP2X_TX_DKEY] ^= HDCP2X_TX_DKEY_CTR1;
-
 	xlnx_hdcp2x_tx_aes128_encrypt(aes_iv, aes_key, &kd[HDCP2X_TX_KM_SIZE]);
+
 	memcpy(hash_input, r_tx, HDCP_2_2_RTX_LEN);
 	idx += HDCP_2_2_RTX_LEN;
 	memcpy(&hash_input[idx], rxcaps, HDCP_2_2_RXCAPS_LEN);
 	idx += HDCP_2_2_RXCAPS_LEN;
 	memcpy(&hash_input[idx], txcaps, HDCP2X_TX_TXCAPS_SIZE);
 
-	xlnx_hdcp2x_cmn_hmac_sha256_hash(hash_input, sizeof(hash_input), kd,
-					 sizeof(kd), hprime);
+	xlnx_hdcp2x_cmn_hmac_sha256_hash(hash_input, hash_input_len, kd, kd_len, hprime);
+
+	xlnx_hdcp2x_tx_secure_free(kd_hash, kd_len + hash_input_len);
+	xlnx_hdcp2x_tx_secure_free(aes_iv, HDCP2X_TX_AES128_SIZE);
+	xlnx_hdcp2x_tx_secure_free(aes_key, HDCP2X_TX_AES128_SIZE);
+
+	return 0;
 }
 
 void xlnx_hdcp2x_tx_compute_edkey_ks(const u8 *rn, const u8 *km, const u8 *ks,
 				     const u8 *r_rx, const u8 *r_tx,
 				     u8 *encrypted_ks)
 {
-	u8 aes_iv[HDCP2X_TX_AES128_SIZE] = {0};
-	u8 aes_key[HDCP2X_TX_AES128_SIZE] = {0};
+	u8 *aes_iv = kzalloc(HDCP2X_TX_AES128_SIZE, GFP_KERNEL);
+	u8 *aes_key = kzalloc(HDCP2X_TX_AES128_SIZE, GFP_KERNEL);
 	u8 dkey2[HDCP2X_TX_AES128_SIZE] = {0};
+
+	if (!aes_iv || !aes_key) {
+		kfree(aes_iv);
+		kfree(aes_key);
+		return;
+	}
 
 	memcpy(&aes_key[HDCP_2_2_RN_LEN], rn, HDCP_2_2_RN_LEN);
 
@@ -375,59 +417,89 @@ void xlnx_hdcp2x_tx_compute_edkey_ks(const u8 *rn, const u8 *km, const u8 *ks,
 
 	xlnx_hdcp2x_tx_memxor(encrypted_ks, encrypted_ks, dkey2, HDCP2X_TX_AES128_SIZE);
 	xlnx_hdcp2x_tx_memxor(encrypted_ks, encrypted_ks, ks, HDCP2X_TX_KS_SIZE);
+
+	xlnx_hdcp2x_tx_secure_free(aes_iv, HDCP2X_TX_AES128_SIZE);
+	xlnx_hdcp2x_tx_secure_free(aes_key, HDCP2X_TX_AES128_SIZE);
 }
 
-void xlnx_hdcp2x_tx_compute_lprime(const u8 *rn, const u8 *km,
+int xlnx_hdcp2x_tx_compute_lprime(const u8 *rn, const u8 *km,
 				   const u8 *r_rx, const u8 *r_tx,
 				   u8 *lprime)
 {
-	u8 hash_key[HDCP2X_TX_SHA256_HASH_SIZE] = {0};
-	u8 aes_iv[HDCP2X_TX_AES128_SIZE] = {0};
-	u8 aes_key[HDCP2X_TX_AES128_SIZE] = {0};
-	u8 kd[HDCP2X_TX_DKEY_SIZE * HDCP2X_TX_AES128_SIZE] = {0};
+	u8 *hash_key = kzalloc(HDCP2X_TX_SHA256_HASH_SIZE, GFP_KERNEL);
+	u8 *aes_iv = kzalloc(HDCP2X_TX_AES128_SIZE, GFP_KERNEL);
+	u8 *aes_key = kzalloc(HDCP2X_TX_AES128_SIZE, GFP_KERNEL);
+	size_t kd_len = HDCP2X_TX_DKEY_SIZE * HDCP2X_TX_AES128_SIZE;
+	u8 *kd = kzalloc(kd_len, GFP_KERNEL);
+
+	if (!kd || !aes_iv || !aes_key || !hash_key) {
+		kfree(kd);
+		kfree(aes_iv);
+		kfree(aes_key);
+		kfree(hash_key);
+		return -ENOMEM;
+	}
 
 	memcpy(aes_key, km, HDCP2X_TX_KM_SIZE);
+	/* Add m = Rtx || Rrx. */
 	memcpy(aes_iv, r_tx, HDCP_2_2_RTX_LEN);
 	memcpy(&aes_iv[HDCP_2_2_RTX_LEN], r_rx, HDCP_2_2_RRX_LEN);
 
 	/* Compute Dkey0. */
-	/* Add m = Rtx || Rrx. */
 	xlnx_hdcp2x_tx_aes128_encrypt(aes_iv, aes_key, kd);
 
-	/* Compute Dkey , counter is 1: Rrx | 0x01. */
+	/* Compute Dkey1, counter is 1: Rrx | 0x01. */
 	aes_iv[HDCP2X_TX_DKEY] ^= HDCP2X_TX_DKEY_CTR1;
 	xlnx_hdcp2x_tx_aes128_encrypt(aes_iv, aes_key, &kd[HDCP2X_TX_KM_SIZE]);
 
 	/* Create hash with HMAC-SHA256. */
-	/* Key:	Kd XOR Rrx (least sign. 64 bits). */
+	/* Key: Kd XOR Rrx (least sign. 64 bits). */
 	memcpy(&hash_key[HDCP2X_TX_SHA256_HASH_SIZE - HDCP_2_2_RRX_LEN], r_rx,
 	       HDCP_2_2_RRX_LEN);
-
 	xlnx_hdcp2x_tx_memxor(hash_key, hash_key, kd, HDCP2X_TX_SHA256_HASH_SIZE);
+
 	xlnx_hdcp2x_cmn_hmac_sha256_hash(rn, HDCP_2_2_RN_LEN, hash_key,
 					 HDCP2X_TX_SHA256_HASH_SIZE, lprime);
+
+	xlnx_hdcp2x_tx_secure_free(kd, kd_len);
+	xlnx_hdcp2x_tx_secure_free(aes_iv, HDCP2X_TX_AES128_SIZE);
+	xlnx_hdcp2x_tx_secure_free(aes_key, HDCP2X_TX_AES128_SIZE);
+	xlnx_hdcp2x_tx_secure_free(hash_key, HDCP2X_TX_SHA256_HASH_SIZE);
+
+	return 0;
 }
 
-void xlnx_hdcp2x_tx_compute_v(const u8 *rn, const u8 *r_rx, const u8 *rx_info,
+int xlnx_hdcp2x_tx_compute_v(const u8 *rn, const u8 *r_rx, const u8 *rx_info,
 			      const u8 *r_tx, const u8 *rcvid_list, const u8 rcvid_count,
 			      const u8 *seq_num_v, const u8 *km, u8 *hash_v)
 {
-	u8 kd[HDCP2X_TX_DKEY_SIZE * HDCP2X_TX_AES128_SIZE] = {0};
-	u8 aes_iv[HDCP2X_TX_AES128_SIZE] = {0};
-	u8 aes_key[HDCP2X_TX_AES128_SIZE] = {0};
-	u8 hash_input[(HDCP_2_2_MAX_DEVICE_COUNT * HDCP_2_2_RECEIVER_ID_LEN) +
-				  HDCP_2_2_RXINFO_LEN + HDCP_2_2_SEQ_NUM_LEN];
+	size_t kd_len = HDCP2X_TX_DKEY_SIZE * HDCP2X_TX_AES128_SIZE;
+	size_t hash_input_len = (rcvid_count * HDCP_2_2_RECEIVER_ID_LEN) +
+				HDCP_2_2_RXINFO_LEN + HDCP_2_2_SEQ_NUM_LEN;
+	u8 *buf = kzalloc(kd_len + hash_input_len, GFP_KERNEL);
+	u8 *aes_iv = kzalloc(HDCP2X_TX_AES128_SIZE, GFP_KERNEL);
+	u8 *aes_key = kzalloc(HDCP2X_TX_AES128_SIZE, GFP_KERNEL);
+	u8 *kd, *hash_input;
 	int idx = 0;
 
-	memcpy(aes_key, km, HDCP2X_TX_KM_SIZE);
+	if (!buf || !aes_iv || !aes_key) {
+		kfree(buf);
+		kfree(aes_iv);
+		kfree(aes_key);
+		return -ENOMEM;
+	}
 
-	/* Determine Dkey. */
-	/* Add m = Rtx || Rrx. */
+	kd = buf;
+	hash_input = buf + kd_len;
+
+	memcpy(aes_key, km, HDCP2X_TX_KM_SIZE);
 	memcpy(aes_iv, r_tx, HDCP_2_2_RTX_LEN);
 	memcpy(&aes_iv[HDCP_2_2_RTX_LEN], r_rx, HDCP_2_2_RRX_LEN);
 
-	xlnx_hdcp2x_tx_aes128_encrypt(aes_iv, aes_key, kd);
-
+	/* Determine Dkey. */
+	/* Add m = Rtx || Rrx. */
+	xlnx_hdcp2x_tx_aes128_encrypt(aes_iv, aes_key, kd); /* Dkey0 */
+	/* Determine Dkey1 (counter = 1). */
 	aes_iv[HDCP2X_TX_DKEY] ^= HDCP2X_TX_DKEY_CTR1;
 	xlnx_hdcp2x_tx_aes128_encrypt(aes_iv, aes_key, &kd[HDCP2X_TX_KM_SIZE]);
 
@@ -440,48 +512,76 @@ void xlnx_hdcp2x_tx_compute_v(const u8 *rn, const u8 *r_rx, const u8 *rx_info,
 	memcpy(&hash_input[idx], seq_num_v, HDCP_2_2_SEQ_NUM_LEN);
 	idx += HDCP_2_2_SEQ_NUM_LEN;
 
-	xlnx_hdcp2x_cmn_hmac_sha256_hash(hash_input, idx, kd, sizeof(kd), hash_v);
+	xlnx_hdcp2x_cmn_hmac_sha256_hash(hash_input, idx, kd, kd_len, hash_v);
+
+	xlnx_hdcp2x_tx_secure_free(buf, kd_len + hash_input_len);
+	xlnx_hdcp2x_tx_secure_free(aes_iv, HDCP2X_TX_AES128_SIZE);
+	xlnx_hdcp2x_tx_secure_free(aes_key, HDCP2X_TX_AES128_SIZE);
+
+	return 0;
 }
 
-void xlnx_hdcp2x_tx_compute_m(const u8 *rn, const u8 *r_rx, const u8 *r_tx,
+int xlnx_hdcp2x_tx_compute_m(const u8 *rn, const u8 *r_rx, const u8 *r_tx,
 			      const u8 *stream_id_type, const u8 *k,
 			      const u8 *seq_num_m, const u8 *km, u8 *m_hash)
 {
-	u8 aes_iv[HDCP2X_TX_AES128_SIZE];
-	u8 aes_key[HDCP2X_TX_AES128_SIZE];
-	u8 kd[HDCP2X_TX_DKEY_SIZE * HDCP2X_TX_AES128_SIZE];
-	u8 sha256_kd[HDCP2X_TX_SHA256_HASH_SIZE];
-	u8 hash_input[(HDCP_2_2_MAX_DEVICE_COUNT * HDCP_2_2_RECEIVER_ID_LEN) +
-				  HDCP_2_2_RXINFO_LEN + HDCP_2_2_SEQ_NUM_LEN];
+	u8 *aes_iv = kzalloc(HDCP2X_TX_AES128_SIZE, GFP_KERNEL);
+	u8 *aes_key = kzalloc(HDCP2X_TX_AES128_SIZE, GFP_KERNEL);
+	size_t kd_len = HDCP2X_TX_DKEY_SIZE * HDCP2X_TX_AES128_SIZE;
+	u8 *kd_block;
+	u8 *sha256_kd;
+	u8 *hash_input;
 	u16 stream_id_count;
+	size_t hash_input_len;
+	size_t total_alloc;
 	int idx = 0;
 
 	stream_id_count  = k[0] << BITS_PER_BYTE;
 	stream_id_count |= k[1];
 
+	hash_input_len = (stream_id_count * HDCP2X_TX_STREAMID_TYPE_SIZE) + HDCP_2_2_SEQ_NUM_LEN;
+	total_alloc = kd_len + HDCP2X_TX_SHA256_HASH_SIZE + hash_input_len;
+
+	kd_block = kzalloc(total_alloc, GFP_KERNEL);
+	if (!kd_block || !aes_iv || !aes_key) {
+		kfree(kd_block);
+		kfree(aes_iv);
+		kfree(aes_key);
+		return -ENOMEM;
+	}
+
+	sha256_kd = kd_block + kd_len;
+	hash_input = sha256_kd + HDCP2X_TX_SHA256_HASH_SIZE;
+
 	memcpy(aes_key, km, HDCP2X_TX_KM_SIZE);
 	memcpy(aes_iv, r_tx, HDCP_2_2_RTX_LEN);
 	memcpy(&aes_iv[HDCP_2_2_RTX_LEN], r_rx, HDCP_2_2_RRX_LEN);
 
-	xlnx_hdcp2x_tx_aes128_encrypt(aes_iv, aes_key, kd);
-
 	/* Determine Dkey0. */
 	/* Add m = Rtx || Rrx. */
+	xlnx_hdcp2x_tx_aes128_encrypt(aes_iv, aes_key, kd_block);
+
+	/* Determine Dkey1 (counter = 1). */
 	aes_iv[HDCP2X_TX_DKEY] ^= HDCP2X_TX_DKEY_CTR1;
+	xlnx_hdcp2x_tx_aes128_encrypt(aes_iv, aes_key, &kd_block[HDCP2X_TX_KM_SIZE]);
 
-	xlnx_hdcp2x_tx_aes128_encrypt(aes_iv, aes_key, &kd[HDCP2X_TX_KM_SIZE]);
+	/* HashKey: SHA256(Kd) */
+	sha256(kd_block, kd_len, sha256_kd);
 
-	sha256(kd, sizeof(kd), sha256_kd);
-
-	/* Create hash with HMAC-SHA256. */
-	/* Input: StreamID_Type list || seq_num_M. */
-	memcpy(hash_input, stream_id_type, (stream_id_count * HDCP2X_TX_STREAMID_TYPE_SIZE));
+	memcpy(hash_input, stream_id_type,
+	       (stream_id_count * HDCP2X_TX_STREAMID_TYPE_SIZE));
 	idx += (stream_id_count * HDCP2X_TX_STREAMID_TYPE_SIZE);
 	memcpy(&hash_input[idx], seq_num_m, HDCP_2_2_SEQ_NUM_LEN);
 	idx += HDCP_2_2_SEQ_NUM_LEN;
 
-	/* HashKey:	SHA256(Kd) */
-	xlnx_hdcp2x_cmn_hmac_sha256_hash(hash_input, idx, sha256_kd, sizeof(sha256_kd), m_hash);
+	xlnx_hdcp2x_cmn_hmac_sha256_hash(hash_input, idx, sha256_kd,
+					 HDCP2X_TX_SHA256_HASH_SIZE, m_hash);
+
+	xlnx_hdcp2x_tx_secure_free(kd_block, total_alloc);
+	xlnx_hdcp2x_tx_secure_free(aes_iv, HDCP2X_TX_AES128_SIZE);
+	xlnx_hdcp2x_tx_secure_free(aes_key, HDCP2X_TX_AES128_SIZE);
+
+	return 0;
 }
 
 int xlnx_hdcp2x_tx_encryptedkm(const struct hdcp2x_tx_cert_rx *rx_certificate,
