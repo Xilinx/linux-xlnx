@@ -271,15 +271,15 @@ void xlnx_hdcp2x_tx_process_cp_irq(struct xlnx_hdcp2x_config *xhdcp2x_tx);
 void xlnx_hdcp2x_tx_timer_handler(void *callbackref, u8 tmr_cnt_number);
 void xlnx_hdcp2x_tx_compute_edkey_ks(const u8 *rn, const u8 *km, const u8 *ks, const u8 *r_rx,
 				     const u8 *r_tx, u8 *encrypted_ks);
-void xlnx_hdcp2x_tx_compute_lprime(const u8 *rn, const u8 *km, const u8 *r_rx, const u8 *r_tx,
+int xlnx_hdcp2x_tx_compute_lprime(const u8 *rn, const u8 *km, const u8 *r_rx, const u8 *r_tx,
 				   u8 *lprime);
-void xlnx_hdcp2x_tx_compute_v(const u8 *rn, const u8 *r_rx, const u8 *rx_info,
+int xlnx_hdcp2x_tx_compute_v(const u8 *rn, const u8 *r_rx, const u8 *rx_info,
 			      const u8 *r_tx, const u8 *rcvid_list, const u8 rcvid_count,
 			      const u8 *seq_num_v, const u8 *km, u8 *hash_v);
-void xlnx_hdcp2x_tx_compute_m(const u8 *rn, const u8 *r_rx, const u8 *r_tx,
+int xlnx_hdcp2x_tx_compute_m(const u8 *rn, const u8 *r_rx, const u8 *r_tx,
 			      const u8 *stream_id_type, const u8 *k,
 			      const u8 *seq_num_m, const u8 *km, u8 *m_hash);
-void xlnx_hdcp2x_tx_compute_hprime(const u8 *r_rx, const u8 *rxcaps,
+int xlnx_hdcp2x_tx_compute_hprime(const u8 *r_rx, const u8 *rxcaps,
 				   const u8 *r_tx, const u8 *txcaps,
 				   const u8 *km, u8 *hprime);
 void xlnx_hdcp2x_tx_disable_encryption(struct xlnx_hdcp2x_config *xhdcp2x_tx);
