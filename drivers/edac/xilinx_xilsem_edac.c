@@ -15,6 +15,7 @@
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/firmware/xlnx-versal-error-events.h>
 #include <linux/firmware/xlnx-versal-net-error-events.h>
+#include <linux/firmware/amd-versal2-error-events.h>
 #include <linux/firmware/xlnx-event-manager.h>
 
 #include "edac_module.h"
@@ -838,7 +839,7 @@ static ssize_t xsem_read_ssit_status_show(struct edac_device_ctl_info *dci, char
 
 	for (id = 0; id < MAX_NPI_ERR_INFO_CNT; id++)
 		offset += sprintf(data + offset, "NPI error info %x :[0x%x]\n\r", id,
-				  priv->slr_info->slvskpcnt[id]);
+				  priv->slr_info->err_info[id]);
 
 	offset += sprintf(data + offset, "CRAM status:[0x%x]\n\r", priv->slr_info->cram_status);
 
@@ -1244,7 +1245,12 @@ static int xsem_edac_probe(struct platform_device *pdev)
 		goto free_edac_dev;
 	}
 
-	if (family_code == PM_VERSAL_NET_FAMILY_CODE) {
+	if (family_code == PM_VERSAL2_FAMILY_CODE) {
+		priv->sw_event_node_id = VERSAL2_EVENT_ERROR_SW_ERR;
+		priv->cram_ce_mask = XPM_VERSAL2_EVENT_ERROR_MASK_XSEM_CRAM_CE;
+		priv->cram_ue_mask = XPM_VERSAL2_EVENT_ERROR_MASK_XSEM_CRAM_UE;
+		priv->npi_ue_mask = XPM_VERSAL2_EVENT_ERROR_MASK_XSEM_NPI_UE;
+	} else if (family_code == PM_VERSAL_NET_FAMILY_CODE) {
 		priv->sw_event_node_id = VERSAL_NET_EVENT_ERROR_SW_ERR;
 		priv->cram_ce_mask = XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_CRAM_CE;
 		priv->cram_ue_mask = XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_CRAM_UE;
