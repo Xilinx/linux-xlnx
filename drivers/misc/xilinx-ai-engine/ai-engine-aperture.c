@@ -215,6 +215,7 @@ aie_aperture_request_part_from_id(struct aie_aperture *aperture,
 	if (IS_ERR(apart)) {
 		dev_err(&aperture->dev, "failed to create partition %u.\n",
 			partition_id);
+		aie_resource_put_region(&aperture->cols_res, start_col, num_cols);
 		mutex_unlock(&aperture->mlock);
 		return apart;
 	}
