@@ -66,6 +66,15 @@ struct aie_tile_info {
 	u16 padding;
 };
 
+/* Data structure to capture the device Information */
+struct aie_device_info {
+	u16 cols;
+	u16 rows;
+	u16 core_rows;
+	u16 mem_rows;
+	u16 shim_rows;
+};
+
 /* Data structure to capture the dma status */
 struct aie_dma_status {
 	u32 s2mm_sts;
@@ -150,6 +159,7 @@ int aie_part_rscmgr_set_static_range(struct device *dev,
 
 int aie_get_status_dump(struct device *dev, struct aie_col_status *status);
 int aie_get_tile_info(struct device *dev, struct aie_tile_info *tile_info);
+int aie_get_device_info(struct aie_device_info *device_info);
 int aie_partition_read(struct device *dev, struct aie_location loc,
 		       size_t offset, size_t len, void *data);
 int aie_partition_write(struct device *dev, struct aie_location loc,
