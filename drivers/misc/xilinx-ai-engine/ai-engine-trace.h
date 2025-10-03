@@ -656,6 +656,30 @@ TRACE_EVENT(aie_partition_request,
 		  __entry->uid, __entry->meta_data, __entry->flag)
 );
 
+TRACE_EVENT(aie_partition_request_done,
+	TP_PROTO(struct aie_partition_req *req),
+	TP_ARGS(req),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u32, start_col)
+		__field(__u32, num_cols)
+		__field(__u32, uid)
+		__field(__u64, meta_data)
+		__field(__u32, flag)
+	),
+	TP_fast_assign(
+		__entry->partition_id = req->partition_id;
+		__entry->start_col = aie_part_id_get_start_col(req->partition_id);
+		__entry->num_cols = aie_part_id_get_num_cols(req->partition_id);
+		__entry->uid = req->uid;
+		__entry->meta_data = req->meta_data;
+		__entry->flag = req->flag;
+	),
+	TP_printk("id: %d start_col: %d num_cols: %d uid: %d meta_data: 0x%llx flag: 0x%x",
+		  __entry->partition_id, __entry->start_col, __entry->num_cols,
+		  __entry->uid, __entry->meta_data, __entry->flag)
+);
+
 TRACE_EVENT(aie_partition_is_available,
 	TP_PROTO(struct aie_partition_req *req),
 	TP_ARGS(req),
