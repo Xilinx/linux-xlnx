@@ -823,6 +823,46 @@ struct device *aie_partition_request(struct aie_partition_req *req)
 EXPORT_SYMBOL_GPL(aie_partition_request);
 
 /**
+ * aie_get_device_info() - exports AI engine device information
+ * @device_info: Pointer to Structure which stores Device information
+ * @return: 0 for success, negative value for failure
+ */
+int aie_get_device_info(struct aie_device_info *device_info)
+{
+	struct device *dev;
+	struct class_dev_iter iter;
+
+	if (!device_info)
+		return -ENOMEM;
+
+	class_dev_iter_init(&iter, aie_class, NULL, NULL);
+	while ((dev = class_dev_iter_next(&iter))) {
+		struct aie_aperture *aperture;
+
+		if (strncmp(dev_name(dev), "aieaperture",
+			    strlen("aieaperture")))
+			continue;
+
+		aperture = dev_get_drvdata(dev);
+		if (!aperture)
+			continue;
+
+		device_info->cols = aperture->range.size.col;
+		device_info->rows = aperture->range.size.row;
+		device_info->core_rows = aperture->adev->ttype_attr[AIE_TILE_TYPE_TILE].num_rows;
+		device_info->mem_rows = aperture->adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows;
+		device_info->shim_rows = aperture->adev->ttype_attr[AIE_TILE_TYPE_SHIMPL].num_rows;
+
+		class_dev_iter_exit(&iter);
+		return 0;
+	}
+	class_dev_iter_exit(&iter);
+
+	return -ENODEV;
+}
+EXPORT_SYMBOL_GPL(aie_get_device_info);
+
+/**
  * aie_partition_get_fd() - get AI engine partition file descriptor
  * @dev: AI engine partition device pointer
  * @return: file descriptor for the AI engine partition for success, and
