@@ -722,6 +722,7 @@ bool aie_partition_is_available(struct aie_partition_req *req)
 	if (!req)
 		return false;
 
+	trace_aie_partition_is_available(req);
 	class_dev_iter_init(&iter, aie_class, NULL, NULL);
 	while ((dev = class_dev_iter_next(&iter))) {
 		struct aie_aperture *aperture;
@@ -770,6 +771,7 @@ struct device *aie_partition_request(struct aie_partition_req *req)
 	if (!req)
 		return ERR_PTR(-EINVAL);
 
+	trace_aie_partition_request(req);
 	class_dev_iter_init(&iter, aie_class, NULL, NULL);
 	while ((dev = class_dev_iter_next(&iter))) {
 		struct aie_aperture *aperture;
@@ -839,7 +841,7 @@ int aie_partition_get_fd(struct device *dev)
 		return -EINVAL;
 
 	apart = dev_to_aiepart(dev);
-
+	trace_aie_partition_get_fd(apart);
 	ret = aie_partition_fd(apart);
 	if (ret < 0)
 		return ret;
@@ -865,7 +867,9 @@ void aie_partition_release(struct device *dev)
 		return;
 
 	apart = dev_to_aiepart(dev);
+	trace_aie_partition_release(apart);
 	__fput_sync(apart->filep);
+	trace_aie_partition_release_done(apart);
 }
 EXPORT_SYMBOL_GPL(aie_partition_release);
 
@@ -882,6 +886,7 @@ int aie_partition_reset(struct device *dev)
 		return -EINVAL;
 
 	apart = dev_to_aiepart(dev);
+	trace_aie_partition_reset(apart);
 	if (apart->adev->ops->part_reset)
 		return apart->adev->ops->part_reset(apart);
 
@@ -906,6 +911,7 @@ int aie_partition_post_reinit(struct device *dev)
 		return -EINVAL;
 
 	apart = dev_to_aiepart(dev);
+	trace_aie_partition_post_reinit(apart);
 	return aie_part_post_reinit(apart);
 }
 EXPORT_SYMBOL_GPL(aie_partition_post_reinit);

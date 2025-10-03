@@ -660,6 +660,7 @@ static int aie_part_release(struct inode *inode, struct file *filp)
 	if (ret)
 		return ret;
 
+	trace_aie_part_release(apart);
 	ret = mutex_lock_interruptible(&apart->mlock);
 	if (ret)
 		return ret;
