@@ -653,17 +653,12 @@ static void aie_part_release_event_bitmap(struct aie_partition *apart)
 static int aie_part_release(struct inode *inode, struct file *filp)
 {
 	struct aie_partition *apart = filp->private_data;
-	int ret;
 
 	/* some reset bits in NPI are global, we need to lock adev */
-	ret = mutex_lock_interruptible(&apart->adev->mlock);
-	if (ret)
-		return ret;
+	mutex_lock(&apart->adev->mlock);
 
 	trace_aie_part_release(apart);
-	ret = mutex_lock_interruptible(&apart->mlock);
-	if (ret)
-		return ret;
+	mutex_lock(&apart->mlock);
 
 	aie_part_release_dmabufs(apart);
 	/* aie_part_clean() will do hardware reset */
@@ -1006,14 +1001,9 @@ static void aie_part_release_device(struct device *dev)
 {
 	struct aie_partition *apart = dev_to_aiepart(dev);
 	struct aie_aperture *aperture = apart->aperture;
-	int ret;
 
 	trace_aie_part_release_device(apart);
-	ret = mutex_lock_interruptible(&aperture->mlock);
-	if (ret) {
-		dev_warn(&apart->dev,
-			 "getting adev->mlock is interrupted by signal\n");
-	}
+	mutex_lock(&aperture->mlock);
 
 	aie_resource_put_region(&aperture->cols_res, apart->range.start.col,
 				apart->range.size.col);

@@ -809,9 +809,7 @@ struct device *aie_partition_request(struct aie_partition_req *req)
 
 	ret = aie_partition_get(apart, req);
 	if (ret) {
-		if (mutex_lock_interruptible(&apart->aperture->mlock))
-			return ERR_PTR(ret);
-
+		mutex_lock(&apart->aperture->mlock);
 		list_del(&apart->node);
 		aie_part_remove(apart);
 		mutex_unlock(&apart->aperture->mlock);
