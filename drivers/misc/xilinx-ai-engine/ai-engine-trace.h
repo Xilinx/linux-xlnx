@@ -632,6 +632,156 @@ TRACE_EVENT(aie_l2_status,
 		  __get_str(devname), __entry->col, __entry->status)
 );
 
+TRACE_EVENT(aie_partition_request,
+	TP_PROTO(struct aie_partition_req *req),
+	TP_ARGS(req),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u32, start_col)
+		__field(__u32, num_cols)
+		__field(__u32, uid)
+		__field(__u64, meta_data)
+		__field(__u32, flag)
+	),
+	TP_fast_assign(
+		__entry->partition_id = req->partition_id;
+		__entry->start_col = aie_part_id_get_start_col(req->partition_id);
+		__entry->num_cols = aie_part_id_get_num_cols(req->partition_id);
+		__entry->uid = req->uid;
+		__entry->meta_data = req->meta_data;
+		__entry->flag = req->flag;
+	),
+	TP_printk("id: %d start_col: %d num_cols: %d uid: %d meta_data: 0x%llx flag: 0x%x",
+		  __entry->partition_id, __entry->start_col, __entry->num_cols,
+		  __entry->uid, __entry->meta_data, __entry->flag)
+);
+
+TRACE_EVENT(aie_partition_is_available,
+	TP_PROTO(struct aie_partition_req *req),
+	TP_ARGS(req),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u32, start_col)
+		__field(__u32, num_cols)
+		__field(__u32, uid)
+		__field(__u64, meta_data)
+		__field(__u32, flag)
+	),
+	TP_fast_assign(
+		__entry->partition_id = req->partition_id;
+		__entry->start_col = aie_part_id_get_start_col(req->partition_id);
+		__entry->num_cols = aie_part_id_get_num_cols(req->partition_id);
+		__entry->uid = req->uid;
+		__entry->meta_data = req->meta_data;
+		__entry->flag = req->flag;
+	),
+	TP_printk("id: %d start_col: %d num_cols: %d uid: %d meta_data: 0x%llx flag: 0x%x",
+		  __entry->partition_id, __entry->start_col, __entry->num_cols,
+		  __entry->uid, __entry->meta_data, __entry->flag)
+);
+
+TRACE_EVENT(aie_part_release,
+	TP_PROTO(struct aie_partition *apart),
+	TP_ARGS(apart),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u32, start_col)
+		__field(__u32, num_cols)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->start_col = aie_part_id_get_start_col(apart->partition_id);
+		__entry->num_cols = aie_part_id_get_num_cols(apart->partition_id);
+	),
+	TP_printk("id: %d start_col: %d num_cols: %d",
+		  __entry->partition_id, __entry->start_col, __entry->num_cols)
+);
+
+TRACE_EVENT(aie_partition_release,
+	TP_PROTO(struct aie_partition *apart),
+	TP_ARGS(apart),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u32, start_col)
+		__field(__u32, num_cols)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->start_col = aie_part_id_get_start_col(apart->partition_id);
+		__entry->num_cols = aie_part_id_get_num_cols(apart->partition_id);
+	),
+	TP_printk("id: %d start_col: %d num_cols: %d",
+		  __entry->partition_id, __entry->start_col, __entry->num_cols)
+);
+
+TRACE_EVENT(aie_partition_release_done,
+	TP_PROTO(struct aie_partition *apart),
+	TP_ARGS(apart),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u32, start_col)
+		__field(__u32, num_cols)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->start_col = aie_part_id_get_start_col(apart->partition_id);
+		__entry->num_cols = aie_part_id_get_num_cols(apart->partition_id);
+	),
+	TP_printk("id: %d start_col: %d num_cols: %d",
+		  __entry->partition_id, __entry->start_col, __entry->num_cols)
+);
+
+TRACE_EVENT(aie_partition_reset,
+	TP_PROTO(struct aie_partition *apart),
+	TP_ARGS(apart),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u32, start_col)
+		__field(__u32, num_cols)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->start_col = aie_part_id_get_start_col(apart->partition_id);
+		__entry->num_cols = aie_part_id_get_num_cols(apart->partition_id);
+	),
+	TP_printk("id: %d start_col: %d num_cols: %d",
+		  __entry->partition_id, __entry->start_col, __entry->num_cols)
+);
+
+TRACE_EVENT(aie_partition_post_reinit,
+	TP_PROTO(struct aie_partition *apart),
+	TP_ARGS(apart),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u32, start_col)
+		__field(__u32, num_cols)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->start_col = aie_part_id_get_start_col(apart->partition_id);
+		__entry->num_cols = aie_part_id_get_num_cols(apart->partition_id);
+	),
+	TP_printk("id: %d start_col: %d num_cols: %d",
+		  __entry->partition_id, __entry->start_col, __entry->num_cols)
+);
+
+TRACE_EVENT(aie_partition_get_fd,
+	TP_PROTO(struct aie_partition *apart),
+	TP_ARGS(apart),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u32, start_col)
+		__field(__u32, num_cols)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->start_col = aie_part_id_get_start_col(apart->partition_id);
+		__entry->num_cols = aie_part_id_get_num_cols(apart->partition_id);
+	),
+	TP_printk("id: %d start_col: %d num_cols: %d",
+		  __entry->partition_id, __entry->start_col, __entry->num_cols)
+);
+
 #endif /* _AI_ENGINE_TRACE_H_ */
 
 #undef TRACE_INCLUDE_PATH
