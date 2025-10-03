@@ -1008,6 +1008,7 @@ static void aie_part_release_device(struct device *dev)
 	struct aie_aperture *aperture = apart->aperture;
 	int ret;
 
+	trace_aie_part_release_device(apart);
 	ret = mutex_lock_interruptible(&aperture->mlock);
 	if (ret) {
 		dev_warn(&apart->dev,
@@ -1024,6 +1025,7 @@ static void aie_part_release_device(struct device *dev)
 	aie_part_rscmgr_finish(apart);
 	/* Check and set frequency requirement for aperture */
 	aie_part_set_freq(apart, 0);
+	trace_aie_part_release_device_done(apart);
 }
 
 /**
