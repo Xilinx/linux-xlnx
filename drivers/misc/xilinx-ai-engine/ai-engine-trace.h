@@ -714,6 +714,40 @@ TRACE_EVENT(aie_partition_release,
 		  __entry->partition_id, __entry->start_col, __entry->num_cols)
 );
 
+TRACE_EVENT(aie_part_release_device,
+	TP_PROTO(struct aie_partition *apart),
+	TP_ARGS(apart),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u32, start_col)
+		__field(__u32, num_cols)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->start_col = aie_part_id_get_start_col(apart->partition_id);
+		__entry->num_cols = aie_part_id_get_num_cols(apart->partition_id);
+	),
+	TP_printk("id: %d start_col: %d num_cols: %d",
+		  __entry->partition_id, __entry->start_col, __entry->num_cols)
+);
+
+TRACE_EVENT(aie_part_release_device_done,
+	TP_PROTO(struct aie_partition *apart),
+	TP_ARGS(apart),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u32, start_col)
+		__field(__u32, num_cols)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->start_col = aie_part_id_get_start_col(apart->partition_id);
+		__entry->num_cols = aie_part_id_get_num_cols(apart->partition_id);
+	),
+	TP_printk("id: %d start_col: %d num_cols: %d",
+		  __entry->partition_id, __entry->start_col, __entry->num_cols)
+);
+
 TRACE_EVENT(aie_partition_release_done,
 	TP_PROTO(struct aie_partition *apart),
 	TP_ARGS(apart),
