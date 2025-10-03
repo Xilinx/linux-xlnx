@@ -305,6 +305,7 @@ int aie2ps_part_clean(struct aie_partition *apart)
 	if (apart->cntrflag & XAIE_PART_NOT_RST_ON_RELEASE)
 		return 0;
 
+	trace_aie_part_clean(apart);
 	ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_DIS_COLCLK_BUFF, apart->range, 1);
 	if (ret)
 		goto out;
@@ -356,6 +357,7 @@ int aie_part_clean(struct aie_partition *apart)
 	if (apart->cntrflag & XAIE_PART_NOT_RST_ON_RELEASE)
 		return 0;
 
+	trace_aie_part_clean(apart);
 	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
 				      apart->range.size.col,
 				      XILINX_AIE_OPS_DIS_COL_CLK_BUFF);
