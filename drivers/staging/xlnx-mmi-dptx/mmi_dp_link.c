@@ -1163,8 +1163,6 @@ int mmi_dp_full_link_training(struct dptx *dptx)
 		dptx_info(dptx, "Successful Link Training - Rate: %d Lanes: %d",
 			  dptx->link.rate, dptx->link.lanes);
 		dptx->multipixel = DPTX_MP_SINGLE_PIXEL;
-		dptx->max_rate = DPTX_MAX_LINK_RATE;
-		dptx->max_lanes = DPTX_MAX_LINK_LANES;
 		mmi_dp_set_video_dynamic_range(dptx, 1);
 		mmi_dp_set_video_colorimetry(dptx, 1); /* for 601 */
 

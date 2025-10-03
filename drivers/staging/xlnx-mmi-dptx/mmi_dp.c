@@ -1117,7 +1117,7 @@ static int mmi_dp_probe(struct platform_device *pdev)
 	atomic_set(&dptx->shutdown, 0);
 	atomic_set(&dptx->c_connect, 0);
 
-	dptx->max_rate = DPTX_DEFAULT_LINK_RATE;
+	dptx->max_rate = DPTX_MAX_LINK_RATE;
 
 	platform_set_drvdata(pdev, dptx);
 

@@ -25,13 +25,8 @@
 
 struct dptx;
 
-/* The max rate and lanes supported by the core */
+/* The max rate supported by the core */
 #define DPTX_MAX_LINK_RATE		DPTX_PHYIF_CTRL_RATE_HBR3
-#define DPTX_MAX_LINK_LANES		2
-
-/* The default rate and lanes to use for link training */
-#define DPTX_DEFAULT_LINK_RATE		DPTX_MAX_LINK_RATE
-#define DPTX_DEFAULT_LINK_LANES		DPTX_MAX_LINK_LANES
 
 /* The max number of streams supported */
 #define DPTX_MAX_STREAM_NUMBER		4
