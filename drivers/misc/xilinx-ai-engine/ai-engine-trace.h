@@ -132,6 +132,23 @@ TRACE_EVENT(aie_part_clean,
 		  __entry->partition_id, __entry->start_col, __entry->num_cols)
 );
 
+TRACE_EVENT(aie_part_clean_done,
+	TP_PROTO(struct aie_partition *apart),
+	TP_ARGS(apart),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u32, start_col)
+		__field(__u32, num_cols)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->start_col = apart->range.start.col;
+		__entry->num_cols = apart->range.size.col;
+	),
+	TP_printk("id: %d  start_col: %u num_cols: %u",
+		  __entry->partition_id, __entry->start_col, __entry->num_cols)
+);
+
 TRACE_EVENT(aie_part_set_column_clock_from_user,
 	TP_PROTO(struct aie_partition *apart, struct aie_column_args *args),
 	TP_ARGS(apart, args),
