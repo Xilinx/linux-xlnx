@@ -1133,6 +1133,7 @@ int aie2ps_part_teardown(struct aie_partition *apart)
 	u16 data;
 	int ret;
 
+	trace_aie_part_teardown(apart);
 	ret = mutex_lock_interruptible(&apart->mlock);
 	if (ret)
 		return ret;
@@ -1202,6 +1203,7 @@ int aie_part_teardown(struct aie_partition *apart)
 	u32 node_id = apart->aperture->node_id;
 	int ret;
 
+	trace_aie_part_teardown(apart);
 	ret = mutex_lock_interruptible(&apart->mlock);
 	if (ret)
 		return ret;
