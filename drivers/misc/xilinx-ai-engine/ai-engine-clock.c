@@ -437,11 +437,8 @@ static unsigned long aie_aperture_get_freq_req(struct aie_aperture *aperture)
 {
 	struct aie_partition *apart;
 	unsigned long freq_req = 0;
-	int ret;
 
-	ret = mutex_lock_interruptible(&aperture->mlock);
-	if (ret)
-		return freq_req;
+	mutex_lock(&aperture->mlock);
 
 	list_for_each_entry(apart, &aperture->partitions, node) {
 		if (apart->freq_req > freq_req)

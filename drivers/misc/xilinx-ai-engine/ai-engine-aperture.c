@@ -296,14 +296,10 @@ static void aie_aperture_release_device(struct device *dev)
 int aie_aperture_remove(struct aie_aperture *aperture)
 {
 	struct list_head *node, *pos, tmp;
-	int ret;
 
 	INIT_LIST_HEAD(&tmp);
 
-	ret = mutex_lock_interruptible(&aperture->mlock);
-	if (ret)
-		return ret;
-
+	mutex_lock(&aperture->mlock);
 	list_for_each_safe(pos, node, &aperture->partitions) {
 		struct aie_partition *apart;
 
@@ -320,10 +316,7 @@ int aie_aperture_remove(struct aie_aperture *aperture)
 		aie_part_remove(apart);
 	}
 
-	ret = mutex_lock_interruptible(&aperture->mlock);
-	if (ret)
-		return ret;
-
+	mutex_lock(&aperture->mlock);
 	if (aperture->adev->device_name == AIE_DEV_GEN_S100 ||
 	    aperture->adev->device_name == AIE_DEV_GEN_S200) {
 		xlnx_unregister_event(PM_NOTIFY_CB, VERSAL_EVENT_ERROR_PMC_ERR1,

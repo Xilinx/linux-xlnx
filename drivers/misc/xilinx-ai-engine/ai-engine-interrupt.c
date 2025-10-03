@@ -733,10 +733,10 @@ static void aie_l2_backtrack(struct aie_partition *apart)
 	struct aie_location loc;
 	u32 l2_mask_index = 0;
 	u32 n, ttype, num_nocs;
-	int ret;
+	int ret = 0;
 
 	trace_aie_l2_backtrack(apart);
-	ret = mutex_lock_interruptible(&apart->mlock);
+	mutex_lock(&apart->mlock);
 	if (ret) {
 		dev_err_ratelimited(&apart->dev,
 				    "Failed to acquire lock. Process was interrupted by fatal signals\n");
@@ -965,15 +965,9 @@ static void aie2ps_partition_backtrack(struct aie_partition *apart)
 	int l2_mask_count = aperture->l2_mask.count;
 	u32 l2_mask_index = 0;
 	u32 col;
-	int ret;
 
 	trace_aie_l2_backtrack(apart);
-	ret = mutex_lock_interruptible(&apart->mlock);
-	if (ret) {
-		dev_err_ratelimited(&apart->dev,
-				    "Failed to acquire lock. Process was interrupted by fatal signals\n");
-		return;
-	}
+	mutex_lock(&apart->mlock);
 
 	/*
 	 * If partition isn't requested yet, then only record the
@@ -1039,17 +1033,11 @@ void aie_aperture_backtrack(struct work_struct *work)
 {
 	struct aie_aperture *aperture;
 	struct aie_partition *apart;
-	int ret;
 
 	aperture = container_of(work, struct aie_aperture, backtrack);
 	trace_aie_aperture_backtrack(aperture->adev);
 
-	ret = mutex_lock_interruptible(&aperture->mlock);
-	if (ret) {
-		dev_err_ratelimited(&aperture->dev,
-				    "Failed to acquire lock. Process was interrupted by fatal signals\n");
-		return;
-	}
+	mutex_lock(&aperture->mlock);
 
 	list_for_each_entry(apart, &aperture->partitions, node) {
 		/*
@@ -1788,19 +1776,13 @@ EXPORT_SYMBOL_GPL(aie_register_error_notification);
 int aie_unregister_error_notification(struct device *dev)
 {
 	struct aie_partition *apart;
-	int ret;
 
 	if (!dev)
 		return -EINVAL;
 
 	apart = container_of(dev, struct aie_partition, dev);
 
-	ret = mutex_lock_interruptible(&apart->mlock);
-	if (ret) {
-		dev_err(&apart->dev,
-			"Failed to acquire lock. Process was interrupted by fatal signals\n");
-		return ret;
-	}
+	mutex_lock(&apart->mlock);
 
 	apart->error_cb.cb = NULL;
 	apart->error_cb.priv = NULL;
