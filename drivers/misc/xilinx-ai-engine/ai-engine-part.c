@@ -680,6 +680,12 @@ static int aie_part_release(struct inode *inode, struct file *filp)
 	aie_part_rscmgr_reset(apart);
 
 	mutex_unlock(&apart->mlock);
+	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIE2PS) {
+		struct aie_aperture *aperture = apart->aperture;
+		int npi_irq = (apart->partition_id % AIE_USER_EVENT1_NUM_IRQ) + 1;
+
+		devm_free_irq(&apart->dev, aperture->npi_irq[npi_irq], apart);
+	}
 	aie_part_remove(apart);
 
 	return 0;
