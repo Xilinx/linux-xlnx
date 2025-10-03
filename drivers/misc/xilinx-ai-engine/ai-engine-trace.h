@@ -925,6 +925,20 @@ TRACE_EVENT(aie_partition_get_fd,
 		  __entry->partition_id, __entry->start_col, __entry->num_cols)
 );
 
+TRACE_EVENT(aie_hw_err,
+	TP_PROTO(int col, int err),
+	TP_ARGS(col, err),
+	TP_STRUCT__entry(
+		__field(int, col)
+		__field(int, err)
+	),
+	TP_fast_assign(
+		__entry->col = col;
+		__entry->err = err;
+	),
+	TP_printk("Received Hw error: err: 0x%x on col: %d", __entry->err, __entry->col)
+);
+
 #endif /* _AI_ENGINE_TRACE_H_ */
 
 #undef TRACE_INCLUDE_PATH

@@ -1127,6 +1127,7 @@ static irqreturn_t aie2ps_hw_err(struct aie_aperture *aperture)
 		status = aie_aperture_get_hw_err_status(aperture, &loc);
 		if (status) {
 			handled = IRQ_HANDLED;
+			trace_aie_hw_err(loc.col, status);
 			dev_err(&aperture->dev, "Received Hw err: 0x%x on col: %d",
 				status, loc.col);
 			ret = aie_aperture_clr_hw_err(aperture, &loc, (u16)status);
@@ -1176,10 +1177,8 @@ irqreturn_t aie2ps_interrupt_user_event1(int irq, void *data)
 	trace_aie2ps_interrupt_user_event1(apart);
 	aperture = apart->aperture;
 	mutex_lock(&apart->mlock);
-	if (!apart->status) {
-		dev_err_ratelimited(&apart->dev, "USER_EVENT1 ISR: apart not active");
+	if (!apart->status)
 		goto out;
-	}
 	if (apart->range.size.col < 2) {
 		dev_err_ratelimited(&apart->adev->dev, "Cannot have partition with less than 2 cols.");
 		goto out;
