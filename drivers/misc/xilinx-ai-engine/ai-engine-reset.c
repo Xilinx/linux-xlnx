@@ -329,6 +329,7 @@ int aie2ps_part_clean(struct aie_partition *apart)
 	aie_resource_clear_all(&apart->cores_clk_state);
 
 out:
+	trace_aie_part_clean_done(apart);
 	return ret;
 }
 
