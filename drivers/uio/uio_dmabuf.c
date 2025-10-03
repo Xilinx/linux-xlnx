@@ -160,12 +160,13 @@ long uio_dmabuf_unmap(struct uio_device *dev, struct list_head *dbufs,
 			break;
 	}
 
-	if (dbuf_mem->dbuf_fd != args.dbuf_fd) {
+	if (list_entry_is_head(dbuf_mem, dbufs, list)) {
 		dev_err(dev->dev.parent, "failed to find the dmabuf (%d)\n",
 			args.dbuf_fd);
 		ret = -EINVAL;
 		goto err_unlock;
 	}
+
 	list_del(&dbuf_mem->list);
 	mutex_unlock(dbufs_lock);
 
