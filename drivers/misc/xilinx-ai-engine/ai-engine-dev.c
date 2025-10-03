@@ -818,6 +818,7 @@ struct device *aie_partition_request(struct aie_partition_req *req)
 	}
 	apart->user_event1_complete = req->user_event1_complete;
 	apart->user_event1_priv = req->user_event1_priv;
+	trace_aie_partition_request_done(req);
 
 	return &apart->dev;
 }
