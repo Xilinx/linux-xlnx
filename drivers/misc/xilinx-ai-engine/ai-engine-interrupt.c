@@ -926,6 +926,7 @@ static void _aie2ps_interrupt_user_event1(struct aie_partition *apart)
 		return;
 	}
 
+	trace_aie2ps_interrupt_user_event1(apart);
 	loc.col = apart->range.start.col + 1;
 	loc.row = 0;
 	event_mod = apart->adev->pl_events;
@@ -941,12 +942,13 @@ static void _aie2ps_interrupt_user_event1(struct aie_partition *apart)
 		    BIT(event_mod->user_event1 % 32))) {
 			continue;
 		}
+		trace_aie_tile_eevent(apart, &loc, AIE_PL_MOD, event_mod->user_event1);
 		complete = true;
 		aie_clear_event_status(apart, &loc, AIE_PL_MOD, event_mod->user_event1);
-		dev_err(&apart->dev, "USER_EVENT1 on col: %d", loc.col);
 	}
 	if (complete && apart->user_event1_complete)
 		apart->user_event1_complete(apart->partition_id, apart->user_event1_priv);
+	trace_aie2ps_interrupt_user_event1_done(apart);
 }
 
 /**
@@ -1183,6 +1185,7 @@ irqreturn_t aie2ps_interrupt_user_event1(int irq, void *data)
 	bool complete = false;
 	int end_col;
 
+	trace_aie2ps_interrupt_user_event1(apart);
 	aperture = apart->aperture;
 	mutex_lock(&apart->mlock);
 	if (!apart->status) {
@@ -1200,11 +1203,13 @@ irqreturn_t aie2ps_interrupt_user_event1(int irq, void *data)
 	end_col = apart->range.start.col + apart->range.size.col;
 
 	l2_mask = aie_aperture_get_l2_mask(aperture, &loc);
+	trace_aie_l2_mask(aperture->adev, loc.col, l2_mask);
 	if (!l2_mask)
 		goto out;
 
 	aie_aperture_disable_l2_ctrl(aperture, &loc, l2_mask);
 	l2_status = aie_aperture_get_l2_status(aperture, &loc);
+	trace_aie_l2_status(aperture->adev, loc.col, l2_status);
 	if (!l2_status) {
 		aie_aperture_enable_l2_ctrl(aperture, &loc, l2_mask);
 		goto out;
@@ -1221,6 +1226,7 @@ irqreturn_t aie2ps_interrupt_user_event1(int irq, void *data)
 		    BIT(event_mod->user_event1 % 32)))
 			continue;
 		complete = true;
+		trace_aie_tile_eevent(apart, &loc, AIE_PL_MOD, event_mod->user_event1);
 		aie_clear_event_status(apart, &loc, AIE_PL_MOD,
 				       event_mod->user_event1);
 	}
@@ -1231,9 +1237,11 @@ irqreturn_t aie2ps_interrupt_user_event1(int irq, void *data)
 	loc.row = 0;
 	aie_aperture_enable_l2_ctrl(aperture, &loc, l2_mask);
 
+	trace_aie2ps_interrupt_user_event1_done(apart);
 	return complete ? IRQ_HANDLED : IRQ_NONE;
 out:
 	mutex_unlock(&apart->mlock);
+	trace_aie2ps_interrupt_user_event1_done(apart);
 	return complete ? IRQ_HANDLED : IRQ_NONE;
 }
 

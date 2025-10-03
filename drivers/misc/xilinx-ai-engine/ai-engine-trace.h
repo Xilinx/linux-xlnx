@@ -409,6 +409,40 @@ TRACE_EVENT(xilinx_ai_engine_ioctl,
 		  __get_str(devname), __entry->cmd, _IOC_NR(__entry->cmd))
 );
 
+TRACE_EVENT(aie2ps_interrupt_user_event1,
+	TP_PROTO(struct aie_partition *apart),
+	TP_ARGS(apart),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u32, start_col)
+		__field(__u32, num_cols)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->start_col = aie_part_id_get_start_col(apart->partition_id);
+		__entry->num_cols = aie_part_id_get_num_cols(apart->partition_id);
+	),
+	TP_printk("id: %d  start_col: %u num_cols: %u",
+		  __entry->partition_id, __entry->start_col, __entry->num_cols)
+);
+
+TRACE_EVENT(aie2ps_interrupt_user_event1_done,
+	TP_PROTO(struct aie_partition *apart),
+	TP_ARGS(apart),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u32, start_col)
+		__field(__u32, num_cols)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->start_col = aie_part_id_get_start_col(apart->partition_id);
+		__entry->num_cols = aie_part_id_get_num_cols(apart->partition_id);
+	),
+	TP_printk("id: %d  start_col: %u num_cols: %u",
+		  __entry->partition_id, __entry->start_col, __entry->num_cols)
+);
+
 TRACE_EVENT(aie_interrupt,
 	TP_PROTO(struct aie_device *adev),
 	TP_ARGS(adev),
