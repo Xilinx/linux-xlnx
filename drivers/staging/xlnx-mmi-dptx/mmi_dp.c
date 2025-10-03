@@ -1064,6 +1064,7 @@ static int mmi_dp_probe(struct platform_device *pdev)
 	struct resource *res;
 	struct device *dev;
 	struct dptx *dptx;
+	u32 max_lanes;
 	int retval;
 
 	dev = &pdev->dev;
@@ -1096,6 +1097,14 @@ static int mmi_dp_probe(struct platform_device *pdev)
 
 	dev_info(dev, "IRQ number %d.\n", dptx->irq);
 
+	retval = of_property_read_u32(dev->of_node, "xlnx,dp-lanes", &max_lanes);
+	if (retval < 0 || (max_lanes != 1 && max_lanes != 2 && max_lanes != 4)) {
+		max_lanes = 1;
+		dev_warn(dev, "no lanes/invalid lane count, defaulting to 1 lane\n");
+	}
+
+	dptx->max_lanes = max_lanes;
+
 	dptx->cr_fail = false;
 	dptx->mst = false; /* Should be disabled for HDCP. */
 	dptx->ssc_en = false;
@@ -1109,7 +1118,6 @@ static int mmi_dp_probe(struct platform_device *pdev)
 	atomic_set(&dptx->c_connect, 0);
 
 	dptx->max_rate = DPTX_DEFAULT_LINK_RATE;
-	dptx->max_lanes = DPTX_DEFAULT_LINK_LANES;
 
 	platform_set_drvdata(pdev, dptx);
 
