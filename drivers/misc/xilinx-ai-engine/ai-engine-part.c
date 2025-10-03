@@ -1172,8 +1172,7 @@ struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
 	ret = device_register(dev);
 	if (ret) {
 		dev_err(dev, "device_add failed: %d\n", ret);
-		put_device(dev);
-		return ERR_PTR(ret);
+		goto put_dev;
 	}
 
 	/* Set up the DMA mask */
@@ -1189,8 +1188,7 @@ struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
 	ret = aie_create_tiles(apart);
 	if (ret) {
 		dev_err(dev, "Failed to create tile devices.\n");
-		put_device(dev);
-		return ERR_PTR(ret);
+		goto err;
 	}
 
 	/*
@@ -1199,14 +1197,12 @@ struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
 	 */
 	ret = aie_part_create_mems_info(apart);
 	if (ret) {
-		put_device(dev);
-		return ERR_PTR(ret);
+		goto err;
 	}
 
 	ret = apart->adev->ops->init_part_clk_state(apart);
 	if (ret) {
-		put_device(dev);
-		return ERR_PTR(ret);
+		goto err;
 	}
 
 	/*
@@ -1216,30 +1212,26 @@ struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
 	ret = aie_part_create_event_bitmap(apart);
 	if (ret < 0) {
 		dev_err(&apart->dev, "Failed to allocate event bitmap.\n");
-		put_device(dev);
-		return ERR_PTR(ret);
+		goto err;
 	}
 
 	ret = aie_part_rscmgr_init(apart);
 	if (ret < 0) {
 		dev_err(&apart->dev,
 			"Failed to initialize resources bitmaps.\n");
-		put_device(dev);
-		return ERR_PTR(ret);
+		goto err;
 	}
 
 	ret = aie_part_sysfs_create_entries(apart);
 	if (ret) {
 		dev_err(&apart->dev, "Failed to create partition sysfs.\n");
-		put_device(dev);
-		return ERR_PTR(ret);
+		goto err;
 	}
 
 	ret = aie_part_pm_ops_create(apart);
 	if (ret) {
 		dev_err(&apart->dev, "Failed to create pm ops pkt.");
-		put_device(dev);
-		return ERR_PTR(ret);
+		goto err;
 	}
 	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIE2PS) {
 		ret = devm_request_threaded_irq(&apart->dev, aperture->npi_irq[npi_irq], NULL,
@@ -1247,14 +1239,19 @@ struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
 						IRQF_SHARED | IRQF_ONESHOT, dev_name(dev), apart);
 		if (ret) {
 			dev_err(dev, "Failed to register user event1 interrupt: %d", ret);
-			put_device(dev);
-			return ERR_PTR(ret);
+			goto err;
 		}
 	}
 
 	dev_dbg(dev, "created AIE partition device.\n");
 
 	return apart;
+err:
+	device_del(dev);
+put_dev:
+	put_device(dev);
+
+	return ERR_PTR(ret);
 }
 
 /**
