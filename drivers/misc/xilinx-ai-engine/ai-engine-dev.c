@@ -865,8 +865,7 @@ void aie_partition_release(struct device *dev)
 		return;
 
 	apart = dev_to_aiepart(dev);
-	fput(apart->filep);
-	flush_delayed_fput();
+	__fput_sync(apart->filep);
 }
 EXPORT_SYMBOL_GPL(aie_partition_release);
 
