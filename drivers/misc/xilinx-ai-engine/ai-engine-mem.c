@@ -310,7 +310,6 @@ int aie_dma_mem_free(int fd)
 	struct aie_dma_mem *dma_mem;
 	struct aie_part_mem *pmem;
 	struct dma_buf *dmabuf;
-	int ret;
 
 	dmabuf = dma_buf_get(fd);
 	if (IS_ERR(dmabuf))
@@ -329,12 +328,8 @@ int aie_dma_mem_free(int fd)
 	dma_free_coherent(&apart->dev, pmem->mem.size,
 			  (void *)pmem->mem.offset, dma_mem->dma_addr);
 
-	ret = mutex_lock_interruptible(&apart->mlock);
-	if (ret)
-		return ret;
-
+	mutex_lock(&apart->mlock);
 	list_del(&dma_mem->node);
-
 	mutex_unlock(&apart->mlock);
 	/*
 	 * dma_buf_put reduces the reference count increased during allocation.

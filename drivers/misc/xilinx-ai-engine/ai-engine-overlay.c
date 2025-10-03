@@ -34,9 +34,7 @@ static int of_aie_notify_pre_remove(struct aie_device *adev,
 		if (!of_node_test_and_set_flag(nc, OF_POPULATED))
 			continue;
 
-		ret = mutex_lock_interruptible(&adev->mlock);
-		if (ret)
-			return ret;
+		mutex_lock(&adev->mlock);
 
 		list_for_each_safe(pos, node, &adev->apertures) {
 			struct aie_aperture *aperture;

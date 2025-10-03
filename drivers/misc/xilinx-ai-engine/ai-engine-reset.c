@@ -408,8 +408,11 @@ int aie2ps_part_reset(struct aie_partition *apart)
 	int ret;
 
 	ret = mutex_lock_interruptible(&apart->mlock);
-	if (ret)
+	if (ret) {
+		dev_err_ratelimited(&apart->dev, "failed to acquire apart lock, ret: %d\n",
+				    ret);
 		return ret;
+	}
 
 	/*
 	 * Check if any AI engine memories or registers in the
@@ -477,8 +480,11 @@ int aie_part_reset(struct aie_partition *apart)
 	int ret;
 
 	ret = mutex_lock_interruptible(&apart->mlock);
-	if (ret)
+	if (ret) {
+		dev_err_ratelimited(&apart->dev, "failed to acquire apart lock, ret: %d\n",
+				    ret);
 		return ret;
+	}
 
 	/*
 	 * Check if any AI engine memories or registers in the
@@ -816,8 +822,10 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 	int i;
 
 	ret = mutex_lock_interruptible(&apart->mlock);
-	if (ret)
+	if (ret) {
+		dev_err(&apart->dev, "failed to get partition lock: %d\n", ret);
 		return ret;
+	}
 	trace_aie_part_initialize(apart, args->init_opts, args->num_tiles);
 
 	/* Clear resources */
@@ -1134,13 +1142,7 @@ int aie2ps_part_teardown(struct aie_partition *apart)
 	int ret;
 
 	trace_aie_part_teardown(apart);
-	ret = mutex_lock_interruptible(&apart->mlock);
-	if (ret)
-		return ret;
-
-	ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_ENB_NOC_DMA_PAUSE, apart->range, 0);
-	if (ret)
-		goto out;
+	mutex_lock(&apart->mlock);
 	ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_ENB_UC_DMA_PAUSE, apart->range, 1);
 	if (ret)
 		goto out;
@@ -1204,9 +1206,7 @@ int aie_part_teardown(struct aie_partition *apart)
 	int ret;
 
 	trace_aie_part_teardown(apart);
-	ret = mutex_lock_interruptible(&apart->mlock);
-	if (ret)
-		return ret;
+	mutex_lock(&apart->mlock);
 
 	/* This operation will do first 4 steps of sequence */
 	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
