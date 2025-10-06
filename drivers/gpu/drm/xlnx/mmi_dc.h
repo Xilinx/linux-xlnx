@@ -15,6 +15,14 @@
 #define MMI_DC_NUM_CC			(3)
 #define MMI_DC_CURSOR_WIDTH		(128)
 #define MMI_DC_CURSOR_HEIGHT		(128)
+#define MMI_DC_STC_CLK_RATE		(27000000U)
+/*
+ * The MMI PLL clock range is 187 MHz to 3 GHz.
+ * But only multiples of 27 MHz matter for AV Sync.
+ * So the range becomes 189 MHz (27 * 7) to 2.997 GHz (27 * 111).
+ */
+#define MMI_PLL_MIN_CLK_RATE		(MMI_DC_STC_CLK_RATE * 7)
+#define MMI_PLL_MAX_CLK_RATE		(MMI_DC_STC_CLK_RATE * 111)
 
 #define MMI_DC_AV_BUF_OUTPUT_AUDIO_VIDEO_SELECT		(0x0070)
 
@@ -67,6 +75,8 @@ struct mmi_audio;
  * @rst: external reset
  * @pl_pixel_clk: PL pixel clock pl_dc2x or pl_dc1x
  * @ps_pixel_clk: PS pixel clock mmi_aux0_ref_clk
+ * @mmi_pll_clk: parent to pixel clock
+ * @stc_ref_clk: 27Mhz DC reference clock for AV sync
  * @aud_clk: audio clock
  * @audio: Audio data
  * @irq_num: interrupt lane number
@@ -87,6 +97,8 @@ struct mmi_dc {
 	struct reset_control	*rst;
 	struct clk		*pl_pixel_clk;
 	struct clk		*ps_pixel_clk;
+	struct clk		*mmi_pll_clk;
+	struct clk		*stc_ref_clk;
 	struct clk		*aud_clk;
 	struct mmi_audio	*audio;
 	int			irq_num;
