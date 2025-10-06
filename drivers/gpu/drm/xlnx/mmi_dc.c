@@ -356,6 +356,48 @@ static irqreturn_t mmi_dc_irq_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+int mmi_dc_set_vid_clk_src(struct mmi_dc *dc, enum mmi_dc_vid_clk_src vidclksrc)
+{
+	u32 val = 0;
+
+	if (vidclksrc == MMIDC_AUX0_REF_CLK)
+		val = MMI_DC_MISC_VID_CLK_PS;
+	else if (vidclksrc == MMIDC_PL_CLK)
+		val = MMI_DC_MISC_VID_CLK_PL;
+
+	dc_write_misc(dc, MMI_DC_MISC_VID_CLK, val);
+
+	return 0;
+}
+
+enum mmi_dc_vid_clk_src mmi_dc_get_vid_clk_src(struct mmi_dc *dc)
+{
+	u32 val;
+	enum mmi_dc_vid_clk_src ret = MMIDC_AUX0_REF_CLK;
+
+	val = dc_read_misc(dc, MMI_DC_MISC_VID_CLK);
+
+	if (val == MMI_DC_MISC_VID_CLK_PL)
+		ret = MMIDC_PL_CLK;
+	if (val == MMI_DC_MISC_VID_CLK_PS)
+		ret = MMIDC_AUX0_REF_CLK;
+
+	return ret;
+}
+
+static struct clk *mmi_dc_init_clk(struct mmi_dc *dc, const char *clk_name)
+{
+	struct clk *dc_clk = devm_clk_get(dc->dev, clk_name);
+
+	if (IS_ERR(dc_clk)) {
+		dev_dbg(dc->dev, "failed to get %s %ld\n",
+			clk_name, PTR_ERR(dc_clk));
+		dc_clk = NULL;
+	}
+
+	return dc_clk;
+}
+
 /**
  * mmi_dc_init - Initialize MMI DC hardware
  * @dc: MMI DC device
@@ -393,6 +435,15 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
 		return dev_err_probe(dc->dev, PTR_ERR(dc->rst),
 				     "failed to get reset control\n");
 
+	/* Get all the video clocks */
+	dc->pl_pixel_clk = mmi_dc_init_clk(dc, "pl_vid_func_clk");
+	dc->ps_pixel_clk = mmi_dc_init_clk(dc, "ps_vid_clk");
+
+	if (!dc->ps_pixel_clk && !dc->pl_pixel_clk) {
+		dev_err(dc->dev, "at least one pixel clock is needed!\n");
+		return -EINVAL;
+	}
+
 	mmi_dc_reset_hw(dc);
 
 	dc_write_misc(dc, MMI_DC_MISC_WPROTS, 0);
@@ -412,10 +463,10 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
 	mmi_dc_set_dma_align(dc);
 
 	/* Set video clock source */
-	if (dc->is_ps_clk)
-		dc_write_misc(dc, MMI_DC_MISC_VID_CLK, MMI_DC_MISC_VID_CLK_PS);
-	else
+	if (dc->pl_pixel_clk)
 		dc_write_misc(dc, MMI_DC_MISC_VID_CLK, MMI_DC_MISC_VID_CLK_PL);
+	else
+		dc_write_misc(dc, MMI_DC_MISC_VID_CLK, MMI_DC_MISC_VID_CLK_PS);
 
 	mmi_dc_reset(dc, true);
 	msleep(MMI_DC_MSLEEP_50MS);

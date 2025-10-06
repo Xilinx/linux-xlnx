@@ -65,10 +65,10 @@ struct mmi_audio;
  * @misc: misc control register space
  * @irq: interrupt control register space
  * @rst: external reset
- * @pixel_clk: pixel clock
+ * @pl_pixel_clk: PL pixel clock pl_dc2x or pl_dc1x
+ * @ps_pixel_clk: PS pixel clock mmi_aux0_ref_clk
  * @aud_clk: audio clock
  * @audio: Audio data
- * @is_ps_clk: flag for PS pixel clock source
  * @irq_num: interrupt lane number
  */
 struct mmi_dc {
@@ -85,10 +85,10 @@ struct mmi_dc {
 	void __iomem		*misc;
 	void __iomem		*irq;
 	struct reset_control	*rst;
-	struct clk		*pixel_clk;
+	struct clk		*pl_pixel_clk;
+	struct clk		*ps_pixel_clk;
 	struct clk		*aud_clk;
 	struct mmi_audio	*audio;
-	bool			is_ps_clk;
 	int			irq_num;
 };
 
@@ -110,6 +110,20 @@ DEFINE_REGISTER_OPS(avbuf);
 DEFINE_REGISTER_OPS(misc);
 DEFINE_REGISTER_OPS(irq);
 
+/**
+ * enum mmi_dc_vid_clk_src: Source of video clock for the MMI DC
+ *
+ * @MMIDC_AUX0_REF_CLK : PS pixel clock source
+ * @MMIDC_PL_CLK : PL pixel clock source
+ * @MMIDC_VID_CLK_SRC_COUNT : Count of video clock source enums
+ */
+
+enum mmi_dc_vid_clk_src {
+	MMIDC_AUX0_REF_CLK,
+	MMIDC_PL_CLK,
+	MMIDC_VID_CLK_SRC_COUNT
+};
+
 void mmi_dc_set_global_alpha(struct mmi_dc *dc, u8 alpha, bool enable);
 void mmi_dc_enable_vblank(struct mmi_dc *dc);
 void mmi_dc_disable_vblank(struct mmi_dc *dc);
@@ -119,5 +133,7 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm);
 void mmi_dc_fini(struct mmi_dc *dc);
 void mmi_dc_reset_hw(struct mmi_dc *dc);
 void mmi_dc_drm_handle_vblank(struct mmi_dc_drm *drm);
+int mmi_dc_set_vid_clk_src(struct mmi_dc *dc, enum mmi_dc_vid_clk_src vidclksrc);
+enum mmi_dc_vid_clk_src mmi_dc_get_vid_clk_src(struct mmi_dc *dc);
 
 #endif /* __MMI_DC_H__ */
