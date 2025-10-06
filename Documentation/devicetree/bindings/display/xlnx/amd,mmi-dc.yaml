@@ -92,6 +92,7 @@ properties:
       - description: PL Audio clock from pl_mmi_i2s_s0_clk
       - description: APB Clock
       - description: 27 MHz clock for System Timestamp Counter
+      - description: MMI PLL parent clock to aux0 and aux1 clocks
 
   clock-names:
     minItems: 1
@@ -103,6 +104,7 @@ properties:
       - const: pl_aud_clk
       - const: apb_clk
       - const: stc_ref_clk
+      - const: mmi_pll
 
   xlnx,dc-operating-mode:
     description: Blending of 2 streams happens in functional mode.
@@ -287,9 +289,9 @@ examples:
             interrupts = <0 179 4>;
             resets = <&versal2_reset 0xc104119>;
             clocks = <&mmi_aux0_ref_clk>, <&mmi_aux1_ref_clk>, <&pl_mmi_dc_2x_clk>,
-                     <&pl_mmi_dc_1x_clk>, <&pl_mmi_i2s_s0_clk>, <&mmi_dc_apb_clk>, <&stc_clk>;
+                     <&pl_mmi_dc_1x_clk>, <&pl_mmi_i2s_s0_clk>, <&mmi_dc_apb_clk>, <&stc_clk>, <&mmi_pll>;
             clock-names = "ps_vid_clk", "ps_aud_clk", "pl_vid_func_clk",
-                          "pl_vid_bypass_clk", "pl_aud_clk", "apb_clk", "stc_ref_clk";
+                          "pl_vid_bypass_clk", "pl_aud_clk", "apb_clk", "stc_ref_clk", "mmi_pll";
             dma-names = "vid.0.0", "vid.0.1", "vid.0.2", "vid.1.0", "vid.1.1", "vid.1.2", "aud", "cur";
             dmas = <&mmi_dcdma 0>, <&mmi_dcdma 1>, <&mmi_dcdma 2>, <&mmi_dcdma 3>, <&mmi_dcdma 4>,
                    <&mmi_dcdma 5>, <&mmi_dcdma 6>, <&mmi_dcdma 7>;
