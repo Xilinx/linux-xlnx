@@ -123,6 +123,31 @@ static inline struct mmi_dc *crtc_to_dc(struct drm_crtc *crtc)
 }
 
 /**
+ * mmi_dc_cal_mmi_pll_rate - Find mmi pll clock rate in supported range
+ * @mode_clk: Video mode clock rate
+ *
+ * Return: Best MMI PLL rate within supported range
+ */
+static u32 mmi_dc_cal_mmi_pll_rate(u32 mode_clk)
+{
+	u32 lcm_val = 0;
+	u32 deviation = mode_clk;
+	u32 i, divisor, possible_mode_clk, diff;
+
+	for (i = MMI_PLL_MAX_CLK_RATE; i >= MMI_PLL_MIN_CLK_RATE && i >= mode_clk;
+	     i -= MMI_DC_STC_CLK_RATE) {
+		divisor = DIV_ROUND_CLOSEST(i, mode_clk);
+		possible_mode_clk = i / divisor;
+		diff = abs(mode_clk - possible_mode_clk);
+		if (diff < deviation) {
+			deviation = diff;
+			lcm_val = i;
+		}
+	}
+	return lcm_val;
+}
+
+/**
  * mmi_dc_drm_handle_vblank - Handle VBLANK notification
  * @drm: pointer to MMI DC DRM
  *
@@ -164,9 +189,29 @@ static void mmi_dc_crtc_atomic_enable(struct drm_crtc *crtc,
 	struct mmi_dc *dc = crtc_to_dc(crtc);
 	struct drm_display_mode *adjusted_mode = &crtc->state->adjusted_mode;
 	unsigned long mode_clock = adjusted_mode->clock * 1000;
+	unsigned long mmi_pll_clock;
 	int vrefresh, ret = 0;
 
 	pm_runtime_get_sync(dc->dev);
+
+	if (dc->mmi_pll_clk) {
+		mmi_pll_clock = mmi_dc_cal_mmi_pll_rate(mode_clock);
+		if (!mmi_pll_clock) {
+			dev_err(dc->dev, "failed to get optimal MMI PLL clock rate\n");
+			return;
+		}
+		if (mmi_dc_set_clk(dc, dc->mmi_pll_clk, mmi_pll_clock)) {
+			dev_err(dc->dev, "failed to set MMI PLL clock!\n");
+			return;
+		}
+	}
+
+	if (dc->stc_ref_clk) {
+		if (mmi_dc_set_clk(dc, dc->stc_ref_clk, MMI_DC_STC_CLK_RATE)) {
+			dev_err(dc->dev, "failed to set STC REF clock!\n");
+			return;
+		}
+	}
 
 	if (dc->pl_pixel_clk)
 		ret |= mmi_dc_set_clk(dc, dc->pl_pixel_clk, mode_clock);
@@ -205,6 +250,10 @@ static void mmi_dc_crtc_atomic_disable(struct drm_crtc *crtc,
 		clk_disable_unprepare(dc->pl_pixel_clk);
 	if (dc->ps_pixel_clk)
 		clk_disable_unprepare(dc->ps_pixel_clk);
+	if (dc->stc_ref_clk)
+		clk_disable_unprepare(dc->stc_ref_clk);
+	if (dc->mmi_pll_clk)
+		clk_disable_unprepare(dc->mmi_pll_clk);
 
 	pm_runtime_put_sync(dc->dev);
 }

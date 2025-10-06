@@ -444,6 +444,9 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
 		return -EINVAL;
 	}
 
+	dc->mmi_pll_clk = mmi_dc_init_clk(dc, "mmi_pll");
+	dc->stc_ref_clk = mmi_dc_init_clk(dc, "stc_ref_clk");
+
 	mmi_dc_reset_hw(dc);
 
 	dc_write_misc(dc, MMI_DC_MISC_WPROTS, 0);
