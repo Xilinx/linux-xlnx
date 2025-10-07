@@ -1446,14 +1446,22 @@ static inline bool gem_has_ptp(struct macb *bp)
 /* ENST Helper functions */
 static inline u64 enst_ns_to_hw_units(size_t ns, u32 speed_mbps)
 {
+	if (likely(speed_mbps >= 1000))
+		return DIV_ROUND_UP(ns, ENST_TIME_GRANULARITY_NS);
+
 	return DIV_ROUND_UP((ns) * (speed_mbps),
 			    (ENST_TIME_GRANULARITY_NS * 1000));
 }
 
 static inline u64 enst_max_hw_interval(u32 speed_mbps)
 {
-	return DIV_ROUND_UP(GENMASK(GEM_ON_TIME_SIZE - 1, 0) *
-			    ENST_TIME_GRANULARITY_NS * 1000, (speed_mbps));
+	size_t base = (size_t)GENMASK(GEM_ON_TIME_SIZE - 1, 0) *
+			      ENST_TIME_GRANULARITY_NS;
+
+	if (likely(speed_mbps >= 1000))
+		return base;
+
+	return DIV_ROUND_UP(base * 1000, speed_mbps);
 }
 
 /**
