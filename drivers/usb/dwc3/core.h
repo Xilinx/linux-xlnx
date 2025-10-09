@@ -1063,6 +1063,7 @@ struct dwc3_scratchpad_array {
  * @hsphy_mode: UTMI phy mode, one of following:
  *		- USBPHY_INTERFACE_MODE_UTMI
  *		- USBPHY_INTERFACE_MODE_UTMIW
+ * @dwc3_pmu: acquire and control power management unit(PMU) regulator
  * @role_sw: usb_role_switch handle
  * @role_switch_default_mode: default operation mode of controller while
  *			usb role is USB_ROLE_NONE.
@@ -1192,7 +1193,7 @@ struct dwc3_scratchpad_array {
  * @irq_wakeup: wakeup IRQ number, triggered when host asks to wakeup from
  *              hibernation
  * @force_hiber_wake: flag set when the gadget driver is forcefully triggering
-		a hibernation wakeup event
+ *		a hibernation wakeup event
  */
 struct dwc3 {
 	struct work_struct	drd_work;
