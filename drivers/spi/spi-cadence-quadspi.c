@@ -52,6 +52,8 @@ static_assert(CQSPI_MAX_CHIPSELECT <= SPI_CS_CNT_MAX);
 /* Capabilities */
 #define CQSPI_SUPPORTS_OCTAL		BIT(0)
 
+#define CQSPI_SDR_MAX_FREQ		50000000 /* max supported freq. in SDR-NON-PHY mode */
+
 #define CQSPI_OP_WIDTH(part) ((part).nbytes ? ilog2((part).buswidth) : 0)
 
 enum {
@@ -1865,9 +1867,14 @@ static int cqspi_mem_process(struct spi_mem *mem, const struct spi_mem_op *op)
 {
 	struct cqspi_st *cqspi = spi_controller_get_devdata(mem->spi->controller);
 	struct cqspi_flash_pdata *f_pdata;
+	u32 speed_hz = mem->spi->max_speed_hz;
 
 	f_pdata = &cqspi->f_pdata[spi_get_chipselect(mem->spi, 0)];
-	cqspi_configure(f_pdata, mem->spi->max_speed_hz);
+
+	if (!f_pdata->cqspi->clk_tuned && mem->spi->max_speed_hz > CQSPI_SDR_MAX_FREQ)
+		speed_hz = CQSPI_SDR_MAX_FREQ;
+
+	cqspi_configure(f_pdata, speed_hz);
 
 	if (op->data.dir == SPI_MEM_DATA_IN && op->data.buf.in) {
 	/*
@@ -1915,7 +1922,8 @@ static int cqspi_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)
 		ret = cqspi_setup_edgemode(mem, op);
 		if (ret)
 			return ret;
-	} else if (mem->spi->controller->flags & SPI_CONTROLLER_SDR_PHY) {
+	} else if ((mem->spi->controller->flags & SPI_CONTROLLER_SDR_PHY) &&
+			(mem->spi->max_speed_hz >= CQSPI_SDR_MAX_FREQ)) {
 		ret = cqspi_setup_phymode(mem, op);
 		if (ret) {
 			f_pdata->dtr = false;
