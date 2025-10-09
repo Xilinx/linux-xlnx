@@ -631,11 +631,6 @@ static inline bool unmap_huge_pmd_locked(struct vm_area_struct *vma,
 	return false;
 }
 
-static inline void map_anon_folio_pmd_nopf(struct folio *folio, pmd_t *pmd,
-		struct vm_area_struct *vma, unsigned long haddr)
-{
-}
-
 #define split_huge_pud(__vma, __pmd, __address)	\
 	do { } while (0)
 
