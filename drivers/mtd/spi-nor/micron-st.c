@@ -59,9 +59,6 @@ static int micron_st_nor_phy_enable(struct spi_nor *nor)
 	if (ret)
 		goto ret;
 
-	if ((nor->flags & SNOR_F_HAS_STACKED) && nor->spimem->spi->cs_index_mask == 1)
-		return 0;
-
 	nor->spimem->spi->controller->flags |= SPI_CONTROLLER_SDR_PHY;
 	/* Read flash ID to make sure the switch was successful. */
 	ret = spi_nor_read_id(nor, 0, 0, buf, SNOR_PROTO_1_1_1);
