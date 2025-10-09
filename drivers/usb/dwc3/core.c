@@ -747,6 +747,15 @@ static void dwc3_config_soc_bus(struct dwc3 *dwc)
 		reg |= DWC3_GSBUSCFG0_REQINFO(dwc->gsbuscfg0_reqinfo);
 		dwc3_writel(dwc->regs, DWC3_GSBUSCFG0, reg);
 	}
+
+	if (dwc->csr_tx_deemph_field_1 != DWC3_LCSR_TX_DEEMPH_UNSPECIFIED) {
+		u32 reg;
+
+		reg = dwc3_readl(dwc->regs, DWC3_LCSR_TX_DEEMPH);
+		reg &= ~DWC3_LCSR_TX_DEEMPH_MASK(~0);
+		reg |= DWC3_LCSR_TX_DEEMPH_MASK(dwc->csr_tx_deemph_field_1);
+		dwc3_writel(dwc->regs, DWC3_LCSR_TX_DEEMPH, reg);
+	}
 }
 
 static int dwc3_core_ulpi_init(struct dwc3 *dwc)
@@ -1793,11 +1802,13 @@ static void dwc3_core_exit_mode(struct dwc3 *dwc)
 
 static void dwc3_get_software_properties(struct dwc3 *dwc)
 {
+	u32 csr_tx_deemph_field_1;
 	struct device *tmpdev;
 	u16 gsbuscfg0_reqinfo;
 	int ret;
 
 	dwc->gsbuscfg0_reqinfo = DWC3_GSBUSCFG0_REQINFO_UNSPECIFIED;
+	dwc->csr_tx_deemph_field_1 = DWC3_LCSR_TX_DEEMPH_UNSPECIFIED;
 
 	/*
 	 * Iterate over all parent nodes for finding swnode properties
@@ -1809,6 +1820,12 @@ static void dwc3_get_software_properties(struct dwc3 *dwc)
 					       &gsbuscfg0_reqinfo);
 		if (!ret)
 			dwc->gsbuscfg0_reqinfo = gsbuscfg0_reqinfo;
+
+		ret = device_property_read_u32(tmpdev,
+					       "snps,lcsr_tx_deemph",
+					       &csr_tx_deemph_field_1);
+		if (!ret)
+			dwc->csr_tx_deemph_field_1 = csr_tx_deemph_field_1;
 	}
 }
 

@@ -182,6 +182,7 @@
 
 #define DWC3_LLUCTL		0xd024
 
+#define DWC3_LCSR_TX_DEEMPH	0xd060
 /* Bit fields */
 
 /* Global Status Register */
@@ -201,6 +202,10 @@
 /* Global SoC Bus Configuration Register: AHB-prot/AXI-cache/OCP-ReqInfo */
 #define DWC3_GSBUSCFG0_REQINFO(n)	(((n) & 0xffff) << 16)
 #define DWC3_GSBUSCFG0_REQINFO_UNSPECIFIED	0xffffffff
+
+/* LCSR_TX_DEEMPH Register:  setting TX deemphasis used in normal operation in gen2 */
+#define DWC3_LCSR_TX_DEEMPH_MASK(n)		((n) & 0x3ffff)
+#define DWC3_LCSR_TX_DEEMPH_UNSPECIFIED		0xffffffff
 
 /* Global Debug LSP MUX Select */
 #define DWC3_GDBGLSPMUX_ENDBC		BIT(15)	/* Host only */
@@ -1186,6 +1191,7 @@ struct dwc3_scratchpad_array {
  * @gsbuscfg0_reqinfo: store GSBUSCFG0.DATRDREQINFO, DESRDREQINFO,
  *		       DATWRREQINFO, and DESWRREQINFO value passed from
  *		       glue driver.
+ * @csr_tx_deemph_field_1: stores TX deemphasis used in Gen2 operation.
  * @is_d3: set if the controller is in d3 state
  * @saved_regs: registers to be saved/restored during hibernation/wakeup events
  * @irq_wakeup: wakeup IRQ number, triggered when host asks to wakeup from
@@ -1434,6 +1440,7 @@ struct dwc3 {
 	int			num_ep_resized;
 	struct dentry		*debug_root;
 	u32			gsbuscfg0_reqinfo;
+	u32			csr_tx_deemph_field_1;
 	bool			is_d3;
 	u32			*saved_regs;
 	u32			irq_wakeup;
