@@ -1425,7 +1425,6 @@ struct dwc3 {
 	unsigned		is_hibernated:1;
 
 	unsigned		dis_metastability_quirk:1;
-	unsigned		mask_phy_rst:1;
 
 	unsigned		dis_split_quirk:1;
 	unsigned		async_callbacks:1;
