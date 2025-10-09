@@ -295,6 +295,14 @@ static int sysmon_resume(struct platform_device *pdev)
 	return 0;
 }
 
+static void sysmon_shutdown(struct platform_device *pdev)
+{
+	struct iio_dev *indio_dev = platform_get_drvdata(pdev);
+	struct sysmon *sysmon = iio_priv(indio_dev);
+
+	sysmon_write_reg(sysmon, SYSMON_IDR, 0xffffffff);
+}
+
 static const struct of_device_id sysmon_of_match_table[] = {
 	{ .compatible = "xlnx,versal-sysmon" },
 	{}
@@ -305,6 +313,7 @@ static struct platform_driver sysmon_driver = {
 	.probe = sysmon_probe,
 	.remove = sysmon_remove,
 	.resume = sysmon_resume,
+	.shutdown = sysmon_shutdown,
 	.driver = {
 		.name = "sysmon",
 		.of_match_table = sysmon_of_match_table,
