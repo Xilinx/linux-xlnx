@@ -40,6 +40,7 @@
 #define PIPE_CLK_SELECT				0
 #define XLNX_USB_FPD_POWER_PRSNT		0x80
 #define FPD_POWER_PRSNT_OPTION			BIT(0)
+#define XLNX_MMI_USB_TX_DEEMPH_DEF		0x8c45
 
 struct dwc3_xlnx {
 	int				num_clocks;
@@ -320,6 +321,10 @@ static int dwc3_set_swnode(struct device *dev)
 	if (of_dma_is_coherent(dwc3_np))
 		props[prop_idx++] = PROPERTY_ENTRY_U16("snps,gsbuscfg0-reqinfo",
 						       0xffff);
+	if (of_device_is_compatible(np, "xlnx,versal2-mmi-dwc3"))
+		props[prop_idx++] = PROPERTY_ENTRY_U32("snps,lcsr_tx_deemph",
+						       XLNX_MMI_USB_TX_DEEMPH_DEF);
+
 	of_node_put(dwc3_np);
 
 	if (prop_idx)
