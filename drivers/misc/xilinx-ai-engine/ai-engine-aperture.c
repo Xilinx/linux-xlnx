@@ -282,7 +282,6 @@ static void aie_aperture_release_device(struct device *dev)
 	flush_work(&aperture->backtrack);
 	aie_resource_uninitialize(&aperture->cols_res);
 	kfree(aperture->l2_mask.val);
-	zynqmp_pm_release_node(aperture->node_id);
 	kfree(aperture);
 }
 
@@ -559,14 +558,6 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 		} else {
 			aperture->npi_irq[2] = ret;
 		}
-	}
-
-	ret = zynqmp_pm_request_node(aperture->node_id,
-				     ZYNQMP_PM_CAPABILITY_ACCESS, 0,
-				     ZYNQMP_PM_REQUEST_ACK_BLOCKING);
-	if (ret < 0) {
-		dev_err(dev, "Unable to request node %d\n", aperture->node_id);
-		goto put_aperture_dev;
 	}
 
 	ret = aie_aperture_sysfs_create_entries(aperture);
