@@ -3,7 +3,7 @@
  * Xilinx Versal NET Error Event Node IDs and Error Event Mask.
  * Use with Xilinx Event Management Driver
  *
- * Copyright (C) 2023, Advanced Micro Devices, Inc.
+ * Copyright (C) 2023-2025, Advanced Micro Devices, Inc.
  *
  * Jay Buddhabhatti <jay.buddhabhatti@amd.com>
  */
@@ -1117,5 +1117,25 @@
  * register which is reported by Soft Error Mitigation (XilSEM).
  */
 #define XPM_VERSAL_NET_EVENT_ERROR_MASK_XSEM_NPI_UE		BIT(9)
+
+/**
+ * XPM_VERSAL_NET_EVENT_ERROR_MASK_HB_MON_4: Health Boot Monitoring Errors.
+ */
+#define XPM_VERSAL_NET_EVENT_ERROR_MASK_HB_MON_4				BIT(10)
+
+/**
+ * XPM_VERSAL_NET_EVENT_ERROR_MASK_HB_MON_5: Health Boot Monitoring Errors.
+ */
+#define XPM_VERSAL_NET_EVENT_ERROR_MASK_HB_MON_5				BIT(11)
+
+/**
+ * XPM_VERSAL_NET_EVENT_ERROR_MASK_HB_MON_6: Health Boot Monitoring Errors.
+ */
+#define XPM_VERSAL_NET_EVENT_ERROR_MASK_HB_MON_6				BIT(12)
+
+/**
+ * XPM_VERSAL_NET_EVENT_ERROR_MASK_HB_MON_7: Health Boot Monitoring Errors.
+ */
+#define XPM_VERSAL_NET_EVENT_ERROR_MASK_HB_MON_7				BIT(13)
 
 #endif /* _FIRMWARE_XLNX_VERSAL_NET_ERROR_EVENTS_H_ */

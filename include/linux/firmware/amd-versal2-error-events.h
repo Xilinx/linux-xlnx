@@ -1467,4 +1467,24 @@
  */
 #define XPM_VERSAL2_EVENT_ERROR_MASK_XSEM_NPI_UE			BIT(9)
 
+/**
+ * XPM_VERSAL2_EVENT_ERROR_MASK_HB_MON_4: Health Boot Monitoring Errors.
+ */
+#define XPM_VERSAL2_EVENT_ERROR_MASK_HB_MON_4				BIT(10)
+
+/**
+ * XPM_VERSAL2_EVENT_ERROR_MASK_HB_MON_5: Health Boot Monitoring Errors.
+ */
+#define XPM_VERSAL2_EVENT_ERROR_MASK_HB_MON_5				BIT(11)
+
+/**
+ * XPM_VERSAL2_EVENT_ERROR_MASK_HB_MON_6: Health Boot Monitoring Errors.
+ */
+#define XPM_VERSAL2_EVENT_ERROR_MASK_HB_MON_6				BIT(12)
+
+/**
+ * XPM_VERSAL2_EVENT_ERROR_MASK_HB_MON_7: Health Boot Monitoring Errors.
+ */
+#define XPM_VERSAL2_EVENT_ERROR_MASK_HB_MON_7				BIT(13)
+
 #endif /* _FIRMWARE_AMD_VERSAL2_ERROR_EVENTS_H_ */
