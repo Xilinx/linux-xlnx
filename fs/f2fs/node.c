@@ -1550,10 +1550,8 @@ out_err:
 		ntype, nid, nid_of_node(folio), ino_of_node(folio),
 		ofs_of_node(folio), cpver_of_node(folio),
 		next_blkaddr_of_node(folio));
-	if (in_irq)
-		f2fs_handle_error_async(sbi, ERROR_INCONSISTENT_FOOTER);
-	else
-		f2fs_handle_error(sbi, ERROR_INCONSISTENT_FOOTER);
+
+	f2fs_handle_error(sbi, ERROR_INCONSISTENT_FOOTER);
 	return -EFSCORRUPTED;
 }
 
