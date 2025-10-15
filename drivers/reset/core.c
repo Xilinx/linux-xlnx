@@ -1028,9 +1028,6 @@ __of_reset_control_get(struct device_node *node, const char *id, int index,
 	if (ret == -EINVAL)
 		return ERR_PTR(ret);
 	if (ret) {
-		if (!IS_ENABLED(CONFIG_RESET_GPIO))
-			return optional ? NULL : ERR_PTR(ret);
-
 		/*
 		 * There can be only one reset-gpio for regular devices, so
 		 * don't bother with the "reset-gpios" phandle index.
@@ -1039,6 +1036,11 @@ __of_reset_control_get(struct device_node *node, const char *id, int index,
 						 0, &args);
 		if (ret)
 			return optional ? NULL : ERR_PTR(ret);
+
+		if (!IS_ENABLED(CONFIG_RESET_GPIO)) {
+			pr_err("%s(): RESET_GPIO driver not enabled, cannot fall back\n", __func__);
+			return ERR_PTR(-ENOEXEC);
+		}
 
 		gpio_fallback = true;
 
