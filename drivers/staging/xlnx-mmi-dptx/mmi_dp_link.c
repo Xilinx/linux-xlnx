@@ -267,7 +267,8 @@ static int mmi_dp_config_ctrl_video_mode(struct dptx *dptx)
 				  vparams->pix_enc, mdtd->pixel_clock);
 	mmi_dp_write_mask(dptx, VIDEO_CONFIG5, AVERAGE_BYTES_PER_TU_MASK,
 			  vparams->aver_bytes_per_tu);
-
+	/* TODO : Fix this workaround to get 4kp60 working */
+	msleep(150);
 	if (!dptx->mst)
 		mmi_dp_write_mask(dptx, VIDEO_CONFIG5, AVERAGE_BYTES_PER_TU_FRAC_MASK,
 				  vparams->aver_bytes_per_tu_frac << 2);

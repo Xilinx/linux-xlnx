@@ -965,6 +965,23 @@ static int mmi_dp_configure_video(struct dptx *dptx,
 	s64 fixp;
 	int retval;
 
+	/*
+	 * See sec 5.1.5 of DP 1.4 spec for guidance on downstream device
+	 * power management by source device.
+	 */
+	mmi_dp_write_dpcd(dptx, DP_SET_POWER, 2);
+	mdelay(10);
+	mmi_dp_write_dpcd(dptx, DP_SET_POWER, 1);
+	mdelay(30);
+	mmi_dp_write_dpcd(dptx, DP_SET_POWER, 1);
+	mdelay(10);
+
+	dptx->link.rate = dptx->max_rate;
+	dptx->link.lanes = dptx->max_lanes;
+	retval = mmi_dp_full_link_training(dptx);
+	if (retval)
+		return -EINVAL;
+
 	vparams = &dptx->vparams[0];
 
 	/* Reset the dtd structure and fill it */
