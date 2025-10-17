@@ -26,6 +26,7 @@
 #include <linux/component.h>
 #include <linux/dma/xilinx_frmbuf.h>
 #include <linux/media-bus-format.h>
+#include <linux/moduleparam.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/gpio/consumer.h>
 #include <linux/of.h>
@@ -256,6 +257,11 @@ static const u32 color_table[] = {
 static bool xlnx_mixer_primary_enable = true;
 module_param_named(mixer_primary_enable, xlnx_mixer_primary_enable, bool, 0600);
 MODULE_PARM_DESC(mixer_primary_enable, "Enable mixer primary plane (default: 1)");
+
+/* TODO: remove this when all PL encoder drivers converted to DRM bridges */
+static bool connect_drm_bridge;
+module_param(connect_drm_bridge, bool, 0600);
+MODULE_PARM_DESC(connect_drm_bridge, "Use DRM bridge interface");
 
 /*********************** Inline Functions/Macros *****************************/
 #define to_mixer_hw(p) (&((p)->mixer->mixer_hw))
@@ -2373,14 +2379,16 @@ static int xlnx_mix_dt_dp_bridge(struct device *dev, struct xlnx_mix *mixer)
 	struct drm_bridge *bridge;
 
 	/* First check if we have drm bridge connected */
-	bridge = devm_drm_of_get_bridge(dev, dev->of_node, 0, 0);
-	if (IS_ERR(bridge)) {
-		if (PTR_ERR(bridge) == -EPROBE_DEFER)
-			return PTR_ERR(bridge);
-		/* Ignore other errors and fall back to xlnx bridge */
-	} else {
-		mixer->drm_bridge = bridge;
-		return 0;
+	if (connect_drm_bridge) {
+		bridge = devm_drm_of_get_bridge(dev, dev->of_node, 0, 0);
+		if (IS_ERR(bridge)) {
+			if (PTR_ERR(bridge) == -EPROBE_DEFER)
+				return PTR_ERR(bridge);
+			/* Ignore other errors and fall back to xlnx bridge */
+		} else {
+			mixer->drm_bridge = bridge;
+			return 0;
+		}
 	}
 
 	node = dev->of_node;
