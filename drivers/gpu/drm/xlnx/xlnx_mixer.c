@@ -3248,7 +3248,7 @@ static int xlnx_mix_bind(struct device *dev, struct device *master,
 	u32 ret;
 
 	ret = xlnx_mix_dt_dp_bridge(dev, mixer);
-	if (ret)
+	if (ret == -EPROBE_DEFER)
 		return ret;
 
 	mixer->drm = drm;
