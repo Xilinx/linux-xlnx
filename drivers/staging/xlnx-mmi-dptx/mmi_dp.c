@@ -906,10 +906,10 @@ mmi_dp_bridge_mode_valid(struct drm_bridge *bridge,
 	dptx->bpp = mmi_dp_get_color_depth_bpp(dptx->vparams[0].bpc,
 					       dptx->vparams[0].pix_enc);
 
-	link_rate = mmi_dp_get_link_rate(dptx->max_rate);
+	link_rate = mmi_dp_get_link_rate(dptx->link.rate);
 	link_rate *= 1000;
 
-	max_pxl_clk = mmi_dp_max_rate(link_rate, dptx->max_lanes, dptx->bpp);
+	max_pxl_clk = mmi_dp_max_rate(link_rate, dptx->link.lanes, dptx->bpp);
 
 	dptx_dbg(dptx, "%s Bpp %d, link_rate %d pixel clock set %d\n", __func__,
 		 dptx->bpp, link_rate, max_pxl_clk);
