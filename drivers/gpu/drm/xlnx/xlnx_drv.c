@@ -309,6 +309,7 @@ static const struct component_master_ops xlnx_master_ops = {
  */
 static const char * const xlnx_compatible_components_list[] = {
 	"xlnx,v-mix-5.2",
+	"xlnx,v-mix-5.3",
 	"xlnx,mixer-5.0",
 	"xlnx,mixer-4.0",
 	"xlnx,mixer-3.0",
@@ -318,6 +319,7 @@ static const char * const xlnx_compatible_components_list[] = {
 	"xlnx,dsi",
 	"xlnx,v-hdmi-txss1-1.1",
 	"xlnx,v-hdmi-txss1-1.2",
+	"xlnx,v-hdmi-tx-ss-3.1",
 	"xlnx,pl-disp",
 	"xlnx,vpss-scaler",
 	"xlnx,vpss-scaler-2.2",
