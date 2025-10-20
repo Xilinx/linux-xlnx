@@ -852,7 +852,7 @@ __xvip_dma_try_format(struct xvip_dma *dma,
 	unsigned int padding_factor_nume, padding_factor_deno;
 	unsigned int bpl_nume, bpl_deno;
 	unsigned char tile_size;
-	struct v4l2_subdev_format fmt;
+	struct v4l2_subdev_format fmt = { 0 };
 	struct v4l2_subdev *subdev;
 	int ret;
 
@@ -1086,6 +1086,9 @@ xvip_dma_set_format(struct file *file, void *fh, struct v4l2_format *format)
 	const struct xvip_video_format *info = NULL;
 
 	__xvip_dma_try_format(dma, format, &info);
+
+	if (!info)
+		return -EINVAL;
 
 	if (vb2_is_busy(&dma->queue))
 		return -EBUSY;
