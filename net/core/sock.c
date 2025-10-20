@@ -1046,9 +1046,13 @@ static int sock_reserve_memory(struct sock *sk, int bytes)
 	if (!charged)
 		return -ENOMEM;
 
+	if (sk->sk_bypass_prot_mem)
+		goto success;
+
 	/* pre-charge to forward_alloc */
 	sk_memory_allocated_add(sk, pages);
 	allocated = sk_memory_allocated(sk);
+
 	/* If the system goes into memory pressure with this
 	 * precharge, give up and return error.
 	 */
@@ -1057,6 +1061,8 @@ static int sock_reserve_memory(struct sock *sk, int bytes)
 		mem_cgroup_sk_uncharge(sk, pages);
 		return -ENOMEM;
 	}
+
+success:
 	sk_forward_alloc_add(sk, pages << PAGE_SHIFT);
 
 	WRITE_ONCE(sk->sk_reserved_mem,
@@ -2300,8 +2306,13 @@ struct sock *sk_alloc(struct net *net, int family, gfp_t priority,
 		 * why we need sk_prot_creator -acme
 		 */
 		sk->sk_prot = sk->sk_prot_creator = prot;
+
+		if (READ_ONCE(net->core.sysctl_bypass_prot_mem))
+			sk->sk_bypass_prot_mem = 1;
+
 		sk->sk_kern_sock = kern;
 		sock_lock_init(sk);
+
 		sk->sk_net_refcnt = kern ? 0 : 1;
 		if (likely(sk->sk_net_refcnt)) {
 			get_net_track(net, &sk->ns_tracker, priority);
@@ -2313,7 +2324,7 @@ struct sock *sk_alloc(struct net *net, int family, gfp_t priority,
 		}
 
 		sock_net_set(sk, net);
-		refcount_set(&sk->sk_wmem_alloc, 1);
+		refcount_set(&sk->sk_wmem_alloc, SK_WMEM_ALLOC_BIAS);
 
 		mem_cgroup_sk_alloc(sk);
 		cgroup_sk_alloc(&sk->sk_cgrp_data);
@@ -2494,8 +2505,7 @@ struct sock *sk_clone_lock(const struct sock *sk, const gfp_t priority)
 
 	atomic_set(&newsk->sk_rmem_alloc, 0);
 
-	/* sk_wmem_alloc set to one (see sk_free() and sock_wfree()) */
-	refcount_set(&newsk->sk_wmem_alloc, 1);
+	refcount_set(&newsk->sk_wmem_alloc, SK_WMEM_ALLOC_BIAS);
 
 	atomic_set(&newsk->sk_omem_alloc, 0);
 	sk_init_common(newsk);
@@ -2695,6 +2705,8 @@ void __sock_wfree(struct sk_buff *skb)
 
 void skb_set_owner_w(struct sk_buff *skb, struct sock *sk)
 {
+	int old_wmem;
+
 	skb_orphan(skb);
 #ifdef CONFIG_INET
 	if (unlikely(!sk_fullsock(sk)))
@@ -2708,7 +2720,15 @@ void skb_set_owner_w(struct sk_buff *skb, struct sock *sk)
 	 * is enough to guarantee sk_free() won't free this sock until
 	 * all in-flight packets are completed
 	 */
-	refcount_add(skb->truesize, &sk->sk_wmem_alloc);
+	__refcount_add(skb->truesize, &sk->sk_wmem_alloc, &old_wmem);
+
+	/* (old_wmem == SK_WMEM_ALLOC_BIAS) if no other TX packet for this socket
+	 * is in a host queue (qdisc, NIC queue).
+	 * Set skb->ooo_okay so that netdev_pick_tx() can choose a TX queue
+	 * based on XPS for better performance.
+	 * Otherwise clear ooo_okay to not risk Out Of Order delivery.
+	 */
+	skb->ooo_okay = (old_wmem == SK_WMEM_ALLOC_BIAS);
 }
 EXPORT_SYMBOL(skb_set_owner_w);
 
@@ -3136,8 +3156,11 @@ bool sk_page_frag_refill(struct sock *sk, struct page_frag *pfrag)
 	if (likely(skb_page_frag_refill(32U, pfrag, sk->sk_allocation)))
 		return true;
 
-	sk_enter_memory_pressure(sk);
+	if (!sk->sk_bypass_prot_mem)
+		sk_enter_memory_pressure(sk);
+
 	sk_stream_moderate_sndbuf(sk);
+
 	return false;
 }
 EXPORT_SYMBOL(sk_page_frag_refill);
@@ -3254,10 +3277,12 @@ int __sk_mem_raise_allocated(struct sock *sk, int size, int amt, int kind)
 {
 	bool memcg_enabled = false, charged = false;
 	struct proto *prot = sk->sk_prot;
-	long allocated;
+	long allocated = 0;
 
-	sk_memory_allocated_add(sk, amt);
-	allocated = sk_memory_allocated(sk);
+	if (!sk->sk_bypass_prot_mem) {
+		sk_memory_allocated_add(sk, amt);
+		allocated = sk_memory_allocated(sk);
+	}
 
 	if (mem_cgroup_sk_enabled(sk)) {
 		memcg_enabled = true;
@@ -3265,6 +3290,9 @@ int __sk_mem_raise_allocated(struct sock *sk, int size, int amt, int kind)
 		if (!charged)
 			goto suppress_allocation;
 	}
+
+	if (!allocated)
+		return 1;
 
 	/* Under limit. */
 	if (allocated <= sk_prot_mem_limits(sk, 0)) {
@@ -3344,7 +3372,8 @@ suppress_allocation:
 
 	trace_sock_exceed_buf_limit(sk, prot, allocated, kind);
 
-	sk_memory_allocated_sub(sk, amt);
+	if (allocated)
+		sk_memory_allocated_sub(sk, amt);
 
 	if (charged)
 		mem_cgroup_sk_uncharge(sk, amt);
@@ -3383,10 +3412,13 @@ EXPORT_SYMBOL(__sk_mem_schedule);
  */
 void __sk_mem_reduce_allocated(struct sock *sk, int amount)
 {
-	sk_memory_allocated_sub(sk, amount);
-
 	if (mem_cgroup_sk_enabled(sk))
 		mem_cgroup_sk_uncharge(sk, amount);
+
+	if (sk->sk_bypass_prot_mem)
+		return;
+
+	sk_memory_allocated_sub(sk, amount);
 
 	if (sk_under_global_memory_pressure(sk) &&
 	    (sk_memory_allocated(sk) < sk_prot_mem_limits(sk, 0)))

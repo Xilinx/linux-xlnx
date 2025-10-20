@@ -303,6 +303,9 @@ static inline bool tcp_under_memory_pressure(const struct sock *sk)
 	    mem_cgroup_sk_under_memory_pressure(sk))
 		return true;
 
+	if (sk->sk_bypass_prot_mem)
+		return false;
+
 	return READ_ONCE(tcp_memory_pressure);
 }
 /*
@@ -461,6 +464,8 @@ enum skb_drop_reason tcp_child_process(struct sock *parent, struct sock *child,
 void tcp_enter_loss(struct sock *sk);
 void tcp_cwnd_reduction(struct sock *sk, int newly_acked_sacked, int newly_lost, int flag);
 void tcp_clear_retrans(struct tcp_sock *tp);
+void tcp_update_pacing_rate(struct sock *sk);
+void tcp_set_rto(struct sock *sk);
 void tcp_update_metrics(struct sock *sk);
 void tcp_init_metrics(struct sock *sk);
 void tcp_metrics_init(void);
