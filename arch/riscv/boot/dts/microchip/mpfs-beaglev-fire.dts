@@ -5,7 +5,6 @@
 
 #include <dt-bindings/gpio/gpio.h>
 #include "mpfs.dtsi"
-#include "mpfs-beaglev-fire-fabric.dtsi"
 
 /* Clock frequency (in Hz) of MTIMER */
 #define MTIMER_FREQ		1000000
@@ -181,10 +180,6 @@
 
 &refclk {
 	clock-frequency = <125000000>;
-};
-
-&refclk_ccc {
-	clock-frequency = <50000000>;
 };
 
 &rtc {
