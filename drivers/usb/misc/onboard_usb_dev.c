@@ -42,6 +42,9 @@
 #define USB5744_CREG_RUNTIMEFLAGS2		0x411D
 #define USB5744_CREG_BYPASS_UDC_SUSPEND		BIT(3)
 
+#define USB5744_I2C_RETRY_TIMES	600
+#define USB5744_I2C_RETRY_DELAY	100 /* ms */
+
 static void onboard_dev_attach_usb_driver(struct work_struct *work);
 
 static struct usb_device_driver onboard_dev_usbdev_driver;
@@ -362,12 +365,43 @@ static int onboard_dev_5744_i2c_write_byte(struct i2c_client *client, u16 addr, 
 	return 0;
 }
 
+static int onboard_dev_5744_i2c_test(struct i2c_client *client)
+{
+	struct device *dev = &client->dev;
+	int ret, attempt;
+	u8 reg;
+
+	for (attempt = 0; attempt < USB5744_I2C_RETRY_TIMES; attempt++) {
+		ret = onboard_dev_5744_i2c_read_byte(client,
+						     USB5744_CREG_RUNTIMEFLAGS2,
+						     &reg);
+		if (!ret)
+			return 0;   /* success */
+
+		if (ret == -ENXIO) {
+			dev_warn(dev, "Hub not ready (attempt %d), retrying...\n", attempt + 1);
+			/* Hub not ready yet, retry */
+			msleep(USB5744_I2C_RETRY_DELAY);
+			continue;
+		}
+
+		/* Other errors: don’t retry */
+		return ret;
+	}
+
+	return -ENXIO;
+}
+
 static int onboard_dev_5744_i2c_init(struct i2c_client *client)
 {
 #if IS_ENABLED(CONFIG_I2C)
 	struct device *dev = &client->dev;
 	int ret;
 	u8 reg;
+
+	ret = onboard_dev_5744_i2c_test(client);
+	if (ret)
+		return dev_err_probe(dev, ret, "usb5744 i2c test failed\n");
 
 	/*
 	 * Set BYPASS_UDC_SUSPEND bit to ensure MCU is always enabled
