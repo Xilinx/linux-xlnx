@@ -43,6 +43,7 @@ extern const u32 csc_rgb_to_sdtv_offsets[MMI_DC_CSC_NUM_OFFSETS];
 extern const u32 csc_sdtv_to_rgb_offsets[MMI_DC_CSC_NUM_OFFSETS];
 
 extern const u32 csc_scaling_factors_888[MMI_DC_NUM_CC];
+extern const u32 csc_scaling_factors_121212[MMI_DC_NUM_CC];
 
 /**
  * enum mmi_dc_out_format - MMI DC output formats

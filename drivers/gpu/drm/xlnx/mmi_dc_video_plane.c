@@ -33,6 +33,10 @@
 #define MMI_DC_AV_CHBUF(channel)			(0x0010 + 4 * (channel))
 #define MMI_DC_AV_BUF_PLANE_CC_SCALE_FACTOR(layer, cc)	(0x0200 + 0x0c * \
 							 MMI_DC_SWAP(layer) + 4 * (cc))
+#define MMI_DC_AV_BUF_LIVE_COMP_SF(layer, cc)		(0x0218 + 0x10 * \
+							 (layer) + 4 * (cc))
+#define MMI_DC_AV_BUF_LIVE_VID_CONFIG(layer)		(0x0224 + 0x10 * \
+							 (layer))
 
 #define MMI_DC_AV_CHBUF_BURST				(0x000f << 2)
 #define MMI_DC_AV_CHBUF_FLUSH				BIT(1)
@@ -50,7 +54,9 @@
 #define MMI_DC_AV_BUF_FMT_MASK(layer)			(0xff << \
 							 MMI_DC_AV_BUF_FMT_SHIFT(layer))
 #define MMI_DC_AV_BUF_VID_STREAM_SEL_MASK(layer)	(0x0003 << 2 * (layer))
+#define MMI_DC_AV_BUF_VID_STREAM_SEL_LIVE(layer)	(0x0000 << 2 * (layer))
 #define MMI_DC_AV_BUF_VID_STREAM_SEL_MEM(layer)		(0x0001 << 2 * (layer))
+#define MMI_DC_AV_BUF_VID_STREAM_SEL_PG(layer)		(0x0002 << 2 * (layer))
 #define MMI_DC_AV_BUF_VID_STREAM_SEL_NONE(layer)	(0x0003 << 2 * (layer))
 
 /* Crop & Position (Partial Blend) Registers */
@@ -215,19 +221,29 @@ static void mmi_dc_avbuf_plane_enable(struct mmi_dc_plane *plane,
 	struct mmi_dc *dc = plane->dc;
 	u32 reg, val, i;
 
-	val = dc_read_avbuf(dc, MMI_DC_AV_BUF_FORMAT);
-	val &= ~MMI_DC_AV_BUF_FMT_MASK(plane->id);
-	val |= format->buf_format << MMI_DC_AV_BUF_FMT_SHIFT(plane->id);
-	dc_write_avbuf(dc, MMI_DC_AV_BUF_FORMAT, val);
+	if (format->format_flags & MMI_DC_FMT_LIVE) {
+		dc_write_avbuf(dc, MMI_DC_AV_BUF_LIVE_VID_CONFIG(plane->id),
+			       format->buf_format);
+	} else {
+		val = dc_read_avbuf(dc, MMI_DC_AV_BUF_FORMAT);
+		val &= ~MMI_DC_AV_BUF_FMT_MASK(plane->id);
+		val |= format->buf_format <<
+			MMI_DC_AV_BUF_FMT_SHIFT(plane->id);
+		dc_write_avbuf(dc, MMI_DC_AV_BUF_FORMAT, val);
+	}
 
 	for (i = 0; i < MMI_DC_NUM_CC; ++i) {
-		reg = MMI_DC_AV_BUF_PLANE_CC_SCALE_FACTOR(plane->id, i);
+		reg = format->format_flags & MMI_DC_FMT_LIVE ?
+			MMI_DC_AV_BUF_LIVE_COMP_SF(plane->id, i) :
+			MMI_DC_AV_BUF_PLANE_CC_SCALE_FACTOR(plane->id, i);
 		dc_write_avbuf(dc, reg, format->csc_scaling_factors[i]);
 	}
 
 	val = dc_read_avbuf(dc, MMI_DC_AV_BUF_OUTPUT_AUDIO_VIDEO_SELECT);
 	val &= ~MMI_DC_AV_BUF_VID_STREAM_SEL_MASK(plane->id);
-	val |= MMI_DC_AV_BUF_VID_STREAM_SEL_MEM(plane->id);
+	val |= format->format_flags & MMI_DC_FMT_LIVE ?
+		MMI_DC_AV_BUF_VID_STREAM_SEL_LIVE(plane->id) :
+		MMI_DC_AV_BUF_VID_STREAM_SEL_MEM(plane->id);
 	dc_write_avbuf(dc, MMI_DC_AV_BUF_OUTPUT_AUDIO_VIDEO_SELECT, val);
 }
 
