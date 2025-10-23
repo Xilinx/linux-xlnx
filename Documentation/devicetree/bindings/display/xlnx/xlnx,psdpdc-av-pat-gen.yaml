@@ -1,0 +1,100 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/display/xlnx/xlnx,psdpdc-av-pat-gen.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: AMD Versal Gen2 Audio / Video Pattern Generator
+
+maintainers:
+  - Anatoliy Klymenko <anatoliy.klymenko@amd.com>
+
+description:
+  AMD Versal Gen2 Audio / Video Pattern Generator is Logicore IP designed to
+  generate AXI4-Stream video and audio test signals. Test video signal can be
+  encoded in RGB or YCbCr422 format with 6, 8, 10, 12, or 16 bits per color
+  component. IP can generate 1, 2 or 4 pixels per clock. Multiple test patterns
+  are supported. This IP can be used as a minimalistic live video / audio signal
+  source test harness.
+
+properties:
+  compatible:
+    const: xlnx,psdpdc-av-pat-gen-2.0
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    description: List of clock specifiers
+    items:
+      - description: Audio clock
+      - description: Audio output AXI4-Stream clock
+      - description: AXI bus clock
+      - description: Video output AXI4-Stream clock
+
+  clock-names:
+    items:
+      - const: aud_clk
+      - const: aud_out_axi4s_aclk
+      - const: av_axi_aclk
+      - const: vid_out_axi4s_aclk
+
+  clk-enable-gpios:
+    description: IP sub-blocks clocks control GPIO
+    minItems: 2
+
+  xlnx,bridge:
+    description: phandle to VTC (video timing controller) node
+    $ref: /schemas/types.yaml#/definitions/phandle
+
+  xlnx,ppc:
+    description: Output pixels per clock
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [1, 2, 4]
+
+  xlnx,bpc:
+    description: Bits per color component
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [6, 8, 10, 12, 16]
+
+  xlnx,video-format:
+    description: Pixel color format (0 = RGB, 1 = YCbCr422)
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [0, 1]
+
+  port:
+    description: Video output connection port
+    $ref: /schemas/graph.yaml#/properties/port
+
+required:
+  - compatible
+  - reg
+  - clocks
+  - clock-names
+  - clk-enable-gpios
+  - xlnx,bridge
+  - xlnx,ppc
+  - xlnx,bpc
+  - xlnx,video-format
+  - port
+
+additionalProperties: false
+
+examples:
+  - |
+        avpg@B0010000 {
+            compatible = "xlnx,psdpdc-av-pat-gen-2.0";
+            reg = <0x80030000 0x10000>;
+            clocks = <&misc_clk_0>, <&misc_clk_1>, <&misc_clk_2>, <&misc_clk_3>;
+            clock-names = "aud_clk", "aud_out_axi4s_aclk", "av_axi_aclk", "vid_out_axi4s_aclk";
+            clk-enable-gpios = <&axi_gpio_3 0 0>, <&axi_gpio_3 1 0>;
+            xlnx,bridge = <&v_tc_0>;
+            xlnx,ppc = <2>;
+            xlnx,bpc = <12>;
+            xlnx,video-format = <0>;
+            port {
+                avpg_out: endpoint {
+                    remote-endpoint = <&dc_live_in>;
+                };
+            };
+        };
