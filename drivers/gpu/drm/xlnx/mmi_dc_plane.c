@@ -8,6 +8,8 @@
 #include "mmi_dc.h"
 #include "mmi_dc_plane.h"
 
+#include <linux/of.h>
+
 /**
  * drm_to_dc_plane - Convert DRM plane to DC plane
  * @plane: generic DRM plane
@@ -128,7 +130,23 @@ int mmi_dc_create_planes(struct mmi_dc *dc, struct drm_device *drm)
 		[MMI_DC_PLANE1] = mmi_dc_create_overlay_plane,
 		[MMI_DC_CURSOR] = mmi_dc_create_cursor_plane,
 	};
+	const char *live_prop = "xlnx,dc-live-video-select";
+	struct device_node *node = dc->dev->of_node;
 	unsigned int i;
+
+	if (dc->pl_pixel_clk && of_property_present(node, live_prop)) {
+		if (!of_property_match_string(node, live_prop, "Both")) {
+			factory[MMI_DC_PLANE0] = mmi_dc_create_planector;
+			factory[MMI_DC_PLANE1] = mmi_dc_create_planector;
+		} else if (!of_property_match_string(node, live_prop, "V01")) {
+			factory[MMI_DC_PLANE0] = mmi_dc_create_planector;
+		} else if (!of_property_match_string(node, live_prop, "V02")) {
+			factory[MMI_DC_PLANE1] = mmi_dc_create_planector;
+		} else {
+			dev_err(dc->dev, "malformed %s property\n", live_prop);
+			return -EINVAL;
+		}
+	}
 
 	for (i = 0; i < ARRAY_SIZE(dc->planes); ++i) {
 		struct mmi_dc_plane *plane = factory[i](dc, drm, i);

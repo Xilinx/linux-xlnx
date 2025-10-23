@@ -118,6 +118,10 @@ struct mmi_dc_plane *mmi_dc_create_cursor_plane(struct mmi_dc *dc,
 						struct drm_device *drm,
 						enum mmi_dc_plane_id id);
 
+struct mmi_dc_plane *mmi_dc_create_planector(struct mmi_dc *dc,
+					     struct drm_device *drm,
+					     enum mmi_dc_plane_id id);
+
 /* ----------------------------------------------------------------------------
  * DC Plane to CRTC Interface
  */
