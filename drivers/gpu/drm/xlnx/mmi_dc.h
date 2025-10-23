@@ -42,6 +42,8 @@ extern const u32 csc_zero_offsets[MMI_DC_CSC_NUM_OFFSETS];
 extern const u32 csc_rgb_to_sdtv_offsets[MMI_DC_CSC_NUM_OFFSETS];
 extern const u32 csc_sdtv_to_rgb_offsets[MMI_DC_CSC_NUM_OFFSETS];
 
+extern const u32 csc_scaling_factors_888[MMI_DC_NUM_CC];
+
 /**
  * enum mmi_dc_out_format - MMI DC output formats
  * @MMI_DC_FORMAT_RGB: RGB output
@@ -54,6 +56,16 @@ enum mmi_dc_out_format {
 	MMI_DC_FORMAT_YCBCR444,
 	MMI_DC_FORMAT_YCBCR422,
 	MMI_DC_FORMAT_YONLY,
+};
+
+/**
+ * enum mmi_dc_video_timing - MMI DC video timing source
+ * @MMI_DC_VT_INTERNAL: Internally generated video timing
+ * @MMI_DC_VT_EXTERNAL: External video timing signals (e.g. from PL)
+ */
+enum mmi_dc_video_timing {
+	MMI_DC_VT_INTERNAL,
+	MMI_DC_VT_EXTERNAL,
 };
 
 struct mmi_dc_drm;
@@ -144,6 +156,8 @@ void mmi_dc_disable(struct mmi_dc *dc);
 int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm);
 void mmi_dc_fini(struct mmi_dc *dc);
 void mmi_dc_reset_hw(struct mmi_dc *dc);
+void mmi_dc_set_video_timing_source(struct mmi_dc *dc,
+				    enum mmi_dc_video_timing vt_source);
 void mmi_dc_drm_handle_vblank(struct mmi_dc_drm *drm);
 int mmi_dc_set_vid_clk_src(struct mmi_dc *dc, enum mmi_dc_vid_clk_src vidclksrc);
 enum mmi_dc_vid_clk_src mmi_dc_get_vid_clk_src(struct mmi_dc *dc);
