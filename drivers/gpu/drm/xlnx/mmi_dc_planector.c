@@ -14,14 +14,40 @@
 #include <drm/drm_connector.h>
 #include <drm/drm_edid.h>
 #include <drm/drm_fourcc.h>
+#include <linux/media-bus-format.h>
 
+#define MMI_DC_LIVE_VID_BPC8		(0x0001)
+#define MMI_DC_LIVE_VID_BPC10		(0x0002)
+#define MMI_DC_LIVE_VID_BPC12		(0x0003)
+#define MMI_DC_LIVE_VID_FORMAT_SHIFT	(4)
+#define MMI_DC_LIVE_VID_FORMAT_CB_FIRST	(0x0100)
+
+/**
+ * struct mmi_dc_planector - MMI DC planector
+ * @base: generic MMI DC plane
+ * @bridge: DRM bridge
+ * @connector_status: current connector status
+ * @display_mode: current display mode
+ */
 struct mmi_dc_planector {
 	struct mmi_dc_plane		base;
 	struct drm_bridge		bridge;
 	enum drm_connector_status	connector_status;
-	int				hdisplay;
-	int				vdisplay;
-	int				vrefresh;
+	struct drm_display_mode		display_mode;
+};
+
+/* TODO: more formats */
+static const struct mmi_dc_format live_video_formats[] = {
+	{
+		.mbus_format		= MEDIA_BUS_FMT_RGB121212_1X36,
+		.buf_format		= MMI_DC_LIVE_VID_BPC12 |
+					  MMI_DC_FORMAT_RGB <<
+					  MMI_DC_LIVE_VID_FORMAT_SHIFT,
+		.format_flags		= MMI_DC_FMT_LIVE,
+		.csc_matrix		= csc_identity_matrix,
+		.csc_offsets		= csc_zero_offsets,
+		.csc_scaling_factors	= csc_scaling_factors_121212,
+	},
 };
 
 /**
@@ -46,6 +72,41 @@ static inline struct mmi_dc_planector *
 bridge_to_planector(struct drm_bridge *bridge)
 {
 	return container_of(bridge, struct mmi_dc_planector, bridge);
+}
+
+static const struct mmi_dc_format *mmi_dc_find_live_format(u32 mbus_format)
+{
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(live_video_formats); ++i) {
+		if (live_video_formats[i].mbus_format == mbus_format)
+			return &live_video_formats[i];
+	}
+
+	return NULL;
+}
+
+/**
+ * mmi_dc_copy_display_mode - Copy essential display mode info (timing & flags)
+ * @dst: display mode to copy to
+ * @src: display mode to copy from
+ */
+static void mmi_dc_copy_display_mode(struct drm_display_mode *dst,
+				     const struct drm_display_mode *src)
+{
+	dst->hdisplay = src->hdisplay;
+	dst->hsync_start = src->hsync_start;
+	dst->hsync_end = src->hsync_end;
+	dst->htotal = src->htotal;
+
+	dst->vdisplay = src->vdisplay;
+	dst->vsync_start = src->vsync_start;
+	dst->vsync_end = src->vsync_end;
+	dst->vtotal = src->vtotal;
+
+	dst->clock = src->clock;
+
+	dst->flags = src->flags;
 }
 
 /* ----------------------------------------------------------------------------
@@ -75,16 +136,31 @@ static int mmi_dc_planector_bridge_attach(struct drm_bridge *bridge,
 
 static void
 mmi_dc_planector_bridge_enable(struct drm_bridge *bridge,
-			       struct drm_bridge_state *old_bridge_state)
+			       struct drm_bridge_state *old_state)
 {
-	/* TODO: config blender and avbuf */
+	struct mmi_dc_planector *planector = bridge_to_planector(bridge);
+	struct drm_bridge_state *new_state =
+		drm_atomic_get_new_bridge_state(old_state->base.state, bridge);
+	const struct mmi_dc_format *format =
+		mmi_dc_find_live_format(new_state->input_bus_cfg.format);
+
+	if (WARN_ON(!format))
+		return;
+
+	mmi_dc_compositor_enable(&planector->base, format);
+	/* TODO: enable external timing source here */
+	mmi_dc_set_video_timing_source(planector->base.dc, MMI_DC_VT_INTERNAL);
 }
 
 static void
 mmi_dc_planector_bridge_disable(struct drm_bridge *bridge,
-				struct drm_bridge_state *old_bridge_state)
+				struct drm_bridge_state *old_state)
 {
-	/* TODO: disable blender and avbuf */
+	struct mmi_dc_planector *planector = bridge_to_planector(bridge);
+
+	mmi_dc_compositor_disable(&planector->base);
+	/* TODO: this should be ref counted for 2 live video case */
+	mmi_dc_set_video_timing_source(planector->base.dc, MMI_DC_VT_INTERNAL);
 }
 
 static enum drm_connector_status
@@ -100,32 +176,53 @@ static int mmi_dc_planector_bridge_get_modes(struct drm_bridge *bridge,
 {
 	struct mmi_dc_planector *planector = bridge_to_planector(bridge);
 	struct mmi_dc *dc = planector->base.dc;
-	/* For now we support only progressive, regular blanking video modes */
-	struct drm_display_mode *mode = drm_cvt_mode(bridge->dev,
-						     planector->hdisplay,
-						     planector->vdisplay,
-						     planector->vrefresh,
-						     false, false, false);
+	struct drm_display_mode *mode = drm_mode_create(bridge->dev);
 
 	if (mode) {
+		mmi_dc_copy_display_mode(mode, &planector->display_mode);
+		drm_mode_set_name(mode);
 		drm_mode_probed_add(connector, mode);
 		return 1;
 	}
 
-	dev_err(dc->dev, "failed to create %dx%d-%d mode\n",
-		planector->hdisplay, planector->vdisplay, planector->vrefresh);
+	dev_err(dc->dev, "failed to create %dx%d display mode\n",
+		planector->display_mode.hdisplay,
+		planector->display_mode.vdisplay);
 
 	return 0;
 }
 
-static const struct drm_bridge_funcs mmi_dc_planector_bridge_funcs = {
-	.attach			= mmi_dc_planector_bridge_attach,
-	.atomic_enable		= mmi_dc_planector_bridge_enable,
-	.atomic_disable		= mmi_dc_planector_bridge_disable,
-	.detect			= mmi_dc_planector_bridge_detect,
-	.get_modes		= mmi_dc_planector_bridge_get_modes,
+static u32 *
+mmi_dc_planector_get_input_bus_fmts(struct drm_bridge *bridge,
+				    struct drm_bridge_state *bridge_state,
+				    struct drm_crtc_state *crtc_state,
+				    struct drm_connector_state *conn_state,
+				    u32 output_fmt,
+				    unsigned int *num_input_fmts)
+{
+	u32 *input_fmts = kcalloc(ARRAY_SIZE(live_video_formats), sizeof(u32),
+				  GFP_KERNEL);
+	unsigned int i;
 
-	/* TODO: input bus formats handling */
+	if (!input_fmts) {
+		*num_input_fmts = 0;
+		return input_fmts;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(live_video_formats); ++i)
+		input_fmts[i] = live_video_formats[i].mbus_format;
+	*num_input_fmts = ARRAY_SIZE(live_video_formats);
+
+	return input_fmts;
+}
+
+static const struct drm_bridge_funcs mmi_dc_planector_bridge_funcs = {
+	.attach				= mmi_dc_planector_bridge_attach,
+	.atomic_enable			= mmi_dc_planector_bridge_enable,
+	.atomic_disable			= mmi_dc_planector_bridge_disable,
+	.detect				= mmi_dc_planector_bridge_detect,
+	.get_modes			= mmi_dc_planector_bridge_get_modes,
+	.atomic_get_input_bus_fmts	= mmi_dc_planector_get_input_bus_fmts,
 
 	.atomic_duplicate_state	= drm_atomic_helper_bridge_duplicate_state,
 	.atomic_destroy_state	= drm_atomic_helper_bridge_destroy_state,
@@ -148,7 +245,7 @@ static void mmi_dc_planector_bridge_init(struct mmi_dc_planector *planector)
 
 	planector->connector_status = connector_status_disconnected;
 
-	drm_bridge_add(bridge);
+	devm_drm_bridge_add(planector->base.dc->dev, bridge);
 }
 
 /* ----------------------------------------------------------------------------
@@ -188,10 +285,9 @@ static void mmi_dc_planector_update(struct mmi_dc_plane *plane,
 						      plane_state->crtc);
 
 		planector->connector_status = connector_status_connected;
-		planector->hdisplay = crtc_state->adjusted_mode.hdisplay;
-		planector->vdisplay = crtc_state->adjusted_mode.vdisplay;
-		planector->vrefresh =
-			drm_mode_vrefresh(&crtc_state->adjusted_mode);
+		mmi_dc_copy_display_mode(&planector->display_mode,
+					 &crtc_state->adjusted_mode);
+
 		drm_bridge_hpd_notify(&planector->bridge,
 				      planector->connector_status);
 	}
