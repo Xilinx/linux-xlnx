@@ -104,16 +104,19 @@ struct mmi_dc_plane {
  * @MMI_DC_FMT_SWAP: color components should be swapped (e.g. RGB => BGR)
  * @MMI_DC_FMT_YUV: YUV colorspace
  * @MMI_DC_FMT_HSUB: format uses horizontal subsampling
+ * @MMI_DC_FMT_LIVE: format represents live video
  */
 enum mmi_dc_format_flags {
 	MMI_DC_FMT_SWAP	= BIT(0),
 	MMI_DC_FMT_YUV	= BIT(1),
 	MMI_DC_FMT_HSUB	= BIT(2),
+	MMI_DC_FMT_LIVE	= BIT(3),
 };
 
 /**
  * struct mmi_dc_format - DC HW config format data
  * @drm_format: DRM fourcc format
+ * @mbus_format: media bus format
  * @buf_format: internal DC pixel format
  * @format_flags: pixel format flags (combination of mmi_dc_format_flags)
  * @csc_matrix: CSC multiplication matrix
@@ -121,7 +124,10 @@ enum mmi_dc_format_flags {
  * @csc_scaling_factors: CSC scaling factors (4,5,6,8, 10 or 12 bpc to 16 bpc)
  */
 struct mmi_dc_format {
-	u32		drm_format;
+	union {
+		u32	drm_format;
+		u32	mbus_format;
+	};
 	u32		buf_format;
 	u32		format_flags;
 	const u16	*csc_matrix;
