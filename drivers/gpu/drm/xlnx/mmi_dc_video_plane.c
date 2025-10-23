@@ -52,7 +52,6 @@
 #define MMI_DC_AV_BUF_VID_STREAM_SEL_MASK(layer)	(0x0003 << 2 * (layer))
 #define MMI_DC_AV_BUF_VID_STREAM_SEL_MEM(layer)		(0x0001 << 2 * (layer))
 #define MMI_DC_AV_BUF_VID_STREAM_SEL_NONE(layer)	(0x0003 << 2 * (layer))
-#define MMI_DC_AV_BUF_8BIT_SF				(0x00010101)
 
 /* Crop & Position (Partial Blend) Registers */
 #define MMI_DC_PB_CONTROL				(0x0c3c)
@@ -78,20 +77,6 @@
  */
 
 /**
- * struct mmi_dc_format - DC HW config format data
- * @drm_format: DRM fourcc format
- * @buf_format: internal DC pixel format
- * @swap: swap color (U/V or R/B) channels
- * @sf: CSC scaling factors (4,5,6,8 or 10 bpc to 12 bpc)
- */
-struct mmi_dc_format {
-	u32		drm_format;
-	u32		buf_format;
-	bool		swap;
-	const u32	*sf;
-};
-
-/**
  * struct mmi_dc_format_info - Cached DRM format info / HW format pair
  * @drm: DRM format info
  * @hw: DC format info
@@ -113,50 +98,58 @@ struct mmi_dc_video_plane {
 	struct mmi_dc_dma_chan		*dmas[MMI_DC_MAX_NUM_SUB_PLANES];
 };
 
-/* TODO: more scaling factors */
-static const u32 scaling_factors_888[] = {
-	MMI_DC_AV_BUF_8BIT_SF,
-	MMI_DC_AV_BUF_8BIT_SF,
-	MMI_DC_AV_BUF_8BIT_SF,
-};
-
 /* TODO: more formats */
 static const struct mmi_dc_format video_plane_formats[] = {
 	{
-		.drm_format	= DRM_FORMAT_VYUY,
-		.buf_format	= MMI_DC_AV_BUF_FMT_CR_Y0_CB_Y1,
-		.swap		= true,
-		.sf		= scaling_factors_888,
+		.drm_format		= DRM_FORMAT_VYUY,
+		.buf_format		= MMI_DC_AV_BUF_FMT_CR_Y0_CB_Y1,
+		.format_flags		= MMI_DC_FMT_SWAP |
+					  MMI_DC_FMT_YUV,
+		.csc_matrix		= csc_sdtv_to_rgb_matrix,
+		.csc_offsets		= csc_sdtv_to_rgb_offsets,
+		.csc_scaling_factors	= csc_scaling_factors_888,
 	},
 	{
-		.drm_format	= DRM_FORMAT_YUYV,
-		.buf_format	= MMI_DC_AV_BUF_FMT_Y0_CB_Y1_CR,
-		.swap		= true,
-		.sf		= scaling_factors_888,
+		.drm_format		= DRM_FORMAT_YUYV,
+		.buf_format		= MMI_DC_AV_BUF_FMT_Y0_CB_Y1_CR,
+		.format_flags		= MMI_DC_FMT_SWAP |
+					  MMI_DC_FMT_YUV,
+		.csc_matrix		= csc_sdtv_to_rgb_matrix,
+		.csc_offsets		= csc_sdtv_to_rgb_offsets,
+		.csc_scaling_factors	= csc_scaling_factors_888,
 	},
 	{
-		.drm_format	= DRM_FORMAT_YUV444,
-		.buf_format	= MMI_DC_AV_BUF_FMT_YV24,
-		.swap		= false,
-		.sf		= scaling_factors_888,
+		.drm_format		= DRM_FORMAT_YUV444,
+		.buf_format		= MMI_DC_AV_BUF_FMT_YV24,
+		.format_flags		= MMI_DC_FMT_YUV,
+		.csc_matrix		= csc_sdtv_to_rgb_matrix,
+		.csc_offsets		= csc_sdtv_to_rgb_offsets,
+		.csc_scaling_factors	= csc_scaling_factors_888,
 	},
 	{
-		.drm_format	= DRM_FORMAT_XRGB8888,
-		.buf_format	= MMI_DC_AV_BUF_FMT_RGBA8888,
-		.swap		= true,
-		.sf		= scaling_factors_888,
+		.drm_format		= DRM_FORMAT_XRGB8888,
+		.buf_format		= MMI_DC_AV_BUF_FMT_RGBA8888,
+		.format_flags		= MMI_DC_FMT_SWAP,
+		.csc_matrix		= csc_identity_matrix,
+		.csc_offsets		= csc_zero_offsets,
+		.csc_scaling_factors	= csc_scaling_factors_888,
 	},
 	{
-		.drm_format	= DRM_FORMAT_RGB888,
-		.buf_format	= MMI_DC_AV_BUF_FMT_RGB888,
-		.swap		= true,
-		.sf		= scaling_factors_888,
+		.drm_format		= DRM_FORMAT_RGB888,
+		.buf_format		= MMI_DC_AV_BUF_FMT_RGB888,
+		.format_flags		= MMI_DC_FMT_SWAP,
+		.csc_matrix		= csc_identity_matrix,
+		.csc_offsets		= csc_zero_offsets,
+		.csc_scaling_factors	= csc_scaling_factors_888,
 	},
 	{
-		.drm_format	= DRM_FORMAT_NV12,
-		.buf_format	= MMI_DC_AV_BUF_FMT_YV16CI_420,
-		.swap		= false,
-		.sf		= scaling_factors_888,
+		.drm_format		= DRM_FORMAT_NV12,
+		.buf_format		= MMI_DC_AV_BUF_FMT_YV16CI_420,
+		.format_flags		= MMI_DC_FMT_YUV |
+					  MMI_DC_FMT_HSUB,
+		.csc_matrix		= csc_sdtv_to_rgb_matrix,
+		.csc_offsets		= csc_sdtv_to_rgb_offsets,
+		.csc_scaling_factors	= csc_scaling_factors_888,
 	},
 };
 
@@ -166,20 +159,19 @@ static const struct mmi_dc_format video_plane_formats[] = {
 
 /**
  * mmi_dc_blend_plane_set_csc - Set input CSC
- * @plane: DC video plane
- * @coeffs: CSC matrix coefficients
- * @offsets: CSC color offsets
+ * @plane: The plane
+ * @format: MMI DC plane format
  *
  * Setup input color space converter.
  */
-static void mmi_dc_blend_plane_set_csc(struct mmi_dc_video_plane *plane,
-				       const u16 *coeffs, const u32 *offsets)
+static void mmi_dc_blend_plane_set_csc(struct mmi_dc_plane *plane,
+				       const struct mmi_dc_format *format)
 {
-	struct mmi_dc *dc = plane->base.dc;
-	unsigned int i, reg, swap[] = { 0, 1, 2 };
+	struct mmi_dc *dc = plane->dc;
+	u32 i, reg, swap[] = { 0, 1, 2 }, flags = format->format_flags;
 
-	if (plane->format.hw && plane->format.hw->swap) {
-		if (plane->format.drm->is_yuv) {
+	if (flags & MMI_DC_FMT_SWAP) {
+		if (flags & MMI_DC_FMT_YUV) {
 			/* swap U and V */
 			swap[1] = 2;
 			swap[2] = 1;
@@ -191,53 +183,19 @@ static void mmi_dc_blend_plane_set_csc(struct mmi_dc_video_plane *plane,
 	}
 
 	for (i = 0; i < MMI_DC_CSC_NUM_COEFFS; ++i) {
-		reg = MMI_DC_V_BLEND_INCSC_COEFF(plane->base.id, i);
-		dc_write_blend(dc, reg, coeffs[i - i % 3 + swap[i % 3]]);
+		reg = MMI_DC_V_BLEND_INCSC_COEFF(plane->id, i);
+		dc_write_blend(dc, reg,
+			       format->csc_matrix[i - i % 3 + swap[i % 3]]);
 	}
 
 	for (i = 0; i < MMI_DC_CSC_NUM_OFFSETS; ++i) {
-		reg = MMI_DC_V_BLEND_CC_INCSC_OFFSET(plane->base.id, i);
-		dc_write_blend(dc, reg, offsets[i]);
-	}
-}
-
-/**
- * mmi_dc_blend_plane_enable - Enable blender input for given DC plane
- * @plane: DC video plane
- */
-static void mmi_dc_blend_plane_enable(struct mmi_dc_video_plane *plane)
-{
-	struct mmi_dc *dc = plane->base.dc;
-	const u16 *coeffs;
-	const u32 *offsets;
-	u32 val;
-
-	val = (plane->format.drm->is_yuv ? 0 : MMI_DC_V_BLEND_RGB_MODE) |
-	      (plane->format.drm->hsub > 1 ? MMI_DC_V_BLEND_EN_US : 0);
-
-	dc_write_blend(dc, MMI_DC_V_BLEND_LAYER_CONTROL(plane->base.id), val);
-
-	if (plane->format.drm->is_yuv) {
-		coeffs = csc_sdtv_to_rgb_matrix;
-		offsets = csc_sdtv_to_rgb_offsets;
-	} else {
-		coeffs = csc_identity_matrix;
-		offsets = csc_zero_offsets;
+		reg = MMI_DC_V_BLEND_CC_INCSC_OFFSET(plane->id, i);
+		dc_write_blend(dc, reg, format->csc_offsets[i]);
 	}
 
-	mmi_dc_blend_plane_set_csc(plane, coeffs, offsets);
-}
-
-/**
- * mmi_dc_blend_plane_disable - Disable blender input for given DC plane
- * @plane: DC video plane
- */
-static void mmi_dc_blend_plane_disable(struct mmi_dc_video_plane *plane)
-{
-	struct mmi_dc *dc = plane->base.dc;
-
-	dc_write_blend(dc, MMI_DC_V_BLEND_LAYER_CONTROL(plane->base.id), 0);
-	mmi_dc_blend_plane_set_csc(plane, csc_zero_matrix, csc_zero_offsets);
+	dc_write_blend(dc, MMI_DC_V_BLEND_LAYER_CONTROL(plane->id),
+		       (flags & MMI_DC_FMT_YUV ? 0 : MMI_DC_V_BLEND_RGB_MODE) |
+		       (flags & MMI_DC_FMT_HSUB ? MMI_DC_V_BLEND_EN_US : 0));
 }
 
 /* ----------------------------------------------------------------------------
@@ -245,68 +203,100 @@ static void mmi_dc_blend_plane_disable(struct mmi_dc_video_plane *plane)
  */
 
 /**
- * mmi_dc_avbuf_plane_set_format - Set AVBUF format
- * @plane: DC video plane
+ * mmi_dc_avbuf_plane_enable - Set AVBUF format and enable the plane
+ * @plane: The plane
+ * @format: MMI DC plane format
  *
  * Configure the audio/video buffer manager according to the given pixel format
  */
-static void mmi_dc_avbuf_plane_set_format(struct mmi_dc_video_plane *plane)
+static void mmi_dc_avbuf_plane_enable(struct mmi_dc_plane *plane,
+				      const struct mmi_dc_format *format)
 {
-	struct mmi_dc *dc = plane->base.dc;
-	u32 val, i;
+	struct mmi_dc *dc = plane->dc;
+	u32 reg, val, i;
 
 	val = dc_read_avbuf(dc, MMI_DC_AV_BUF_FORMAT);
-	val &= ~MMI_DC_AV_BUF_FMT_MASK(plane->base.id);
-	val |= plane->format.hw->buf_format <<
-		MMI_DC_AV_BUF_FMT_SHIFT(plane->base.id);
+	val &= ~MMI_DC_AV_BUF_FMT_MASK(plane->id);
+	val |= format->buf_format << MMI_DC_AV_BUF_FMT_SHIFT(plane->id);
 	dc_write_avbuf(dc, MMI_DC_AV_BUF_FORMAT, val);
 
 	for (i = 0; i < MMI_DC_NUM_CC; ++i) {
-		u32 reg = MMI_DC_AV_BUF_PLANE_CC_SCALE_FACTOR(plane->base.id,
-							      i);
-
-		dc_write_avbuf(dc, reg, plane->format.hw->sf[i]);
+		reg = MMI_DC_AV_BUF_PLANE_CC_SCALE_FACTOR(plane->id, i);
+		dc_write_avbuf(dc, reg, format->csc_scaling_factors[i]);
 	}
-}
-
-/**
- * mmi_dc_avbuf_plane_enable - Enable AV buffer input for the given plane
- * @plane: DC video plane
- */
-static void mmi_dc_avbuf_plane_enable(struct mmi_dc_video_plane *plane)
-{
-	struct mmi_dc *dc = plane->base.dc;
-	u32 val;
-	int ch;
-
-	for (ch = 0; ch < plane->format.drm->num_planes; ++ch)
-		dc_write_avbuf(dc, MMI_DC_AV_CHBUF(plane->base.id * 3 + ch),
-			       MMI_DC_AV_CHBUF_EN | MMI_DC_AV_CHBUF_BURST);
 
 	val = dc_read_avbuf(dc, MMI_DC_AV_BUF_OUTPUT_AUDIO_VIDEO_SELECT);
-	val &= ~MMI_DC_AV_BUF_VID_STREAM_SEL_MASK(plane->base.id);
-	val |= MMI_DC_AV_BUF_VID_STREAM_SEL_MEM(plane->base.id);
+	val &= ~MMI_DC_AV_BUF_VID_STREAM_SEL_MASK(plane->id);
+	val |= MMI_DC_AV_BUF_VID_STREAM_SEL_MEM(plane->id);
 	dc_write_avbuf(dc, MMI_DC_AV_BUF_OUTPUT_AUDIO_VIDEO_SELECT, val);
 }
 
 /**
  * mmi_dc_avbuf_plane_disable - Disable AV buffer input for the given plane
- * @plane: DC video plane
+ * @plane: The plane
  */
-static void mmi_dc_avbuf_plane_disable(struct mmi_dc_video_plane *plane)
+static void mmi_dc_avbuf_plane_disable(struct mmi_dc_plane *plane)
 {
-	struct mmi_dc *dc = plane->base.dc;
+	struct mmi_dc *dc = plane->dc;
 	u32 val;
-	int ch;
 
 	val = dc_read_avbuf(dc, MMI_DC_AV_BUF_OUTPUT_AUDIO_VIDEO_SELECT);
-	val &= ~MMI_DC_AV_BUF_VID_STREAM_SEL_MASK(plane->base.id);
-	val |= MMI_DC_AV_BUF_VID_STREAM_SEL_NONE(plane->base.id);
+	val &= ~MMI_DC_AV_BUF_VID_STREAM_SEL_MASK(plane->id);
+	val |= MMI_DC_AV_BUF_VID_STREAM_SEL_NONE(plane->id);
 	dc_write_avbuf(dc, MMI_DC_AV_BUF_OUTPUT_AUDIO_VIDEO_SELECT, val);
+}
+
+/**
+ * mmi_dc_avbuf_dma_enable - Enable dma buffers
+ * @plane: MMI DC video plane
+ */
+static void mmi_dc_avbuf_dma_enable(struct mmi_dc_video_plane *plane)
+{
+	struct mmi_dc *dc = plane->base.dc;
+	int ch;
+
+	for (ch = 0; ch < plane->format.drm->num_planes; ++ch)
+		dc_write_avbuf(dc, MMI_DC_AV_CHBUF(plane->base.id * 3 + ch),
+			       MMI_DC_AV_CHBUF_EN | MMI_DC_AV_CHBUF_BURST);
+}
+
+/**
+ * mmi_dc_avbuf_dma_disable - Disable and flush dma buffers
+ * @plane: MMI DC video plane
+ */
+static void mmi_dc_avbuf_dma_disable(struct mmi_dc_video_plane *plane)
+{
+	struct mmi_dc *dc = plane->base.dc;
+	int ch;
 
 	for (ch = 0; ch < plane->format.drm->num_planes; ++ch)
 		dc_write_avbuf(dc, MMI_DC_AV_CHBUF(plane->base.id * 3 + ch),
 			       MMI_DC_AV_CHBUF_FLUSH);
+}
+
+/* ----------------------------------------------------------------------------
+ * DC Compositor Interface
+ */
+
+/**
+ * mmi_dc_compositor_enable - Enable and configure compositor for given plane
+ * @plane: MMI DC plane
+ * @format: MMI DC format to configure
+ */
+void mmi_dc_compositor_enable(struct mmi_dc_plane *plane,
+			      const struct mmi_dc_format *format)
+{
+	mmi_dc_blend_plane_set_csc(plane, format);
+	mmi_dc_avbuf_plane_enable(plane, format);
+}
+
+/**
+ * mmi_dc_compositor_disable - Disable the plane on hw compositor
+ * @plane: MMI DC plane
+ */
+void mmi_dc_compositor_disable(struct mmi_dc_plane *plane)
+{
+	mmi_dc_avbuf_plane_disable(plane);
 }
 
 /* ----------------------------------------------------------------------------
@@ -524,7 +514,7 @@ static void mmi_dc_video_plane_set_format(struct mmi_dc_video_plane *plane,
 	if (WARN_ON(!plane->format.hw))
 		return;
 
-	mmi_dc_avbuf_plane_set_format(plane);
+	mmi_dc_compositor_enable(&plane->base, plane->format.hw);
 
 	for (i = 0; i < info->num_planes; ++i)
 		mmi_dc_dma_config_channel(plane->dmas[i], 0, true);
@@ -644,8 +634,7 @@ static void mmi_dc_video_plane_update(struct mmi_dc_plane *plane,
 	if (!video_plane->format.hw || new_state->fb != old_state->fb) {
 		mmi_dc_video_plane_set_format(video_plane,
 					      new_state->fb->format);
-		mmi_dc_avbuf_plane_enable(video_plane);
-		mmi_dc_blend_plane_enable(video_plane);
+		mmi_dc_avbuf_dma_enable(video_plane);
 		mmi_dc_video_plane_submit_dma(video_plane, new_state);
 	}
 }
@@ -658,8 +647,8 @@ static void mmi_dc_video_plane_disable(struct mmi_dc_plane *plane)
 	for (i = 0; i < video_plane->format.drm->num_planes; ++i)
 		mmi_dc_dma_stop_transfer(video_plane->dmas[i]);
 
-	mmi_dc_avbuf_plane_disable(video_plane);
-	mmi_dc_blend_plane_disable(video_plane);
+	mmi_dc_avbuf_dma_disable(video_plane);
+	mmi_dc_compositor_disable(plane);
 }
 
 static void mmi_dc_video_plane_reset(struct mmi_dc_plane *plane)

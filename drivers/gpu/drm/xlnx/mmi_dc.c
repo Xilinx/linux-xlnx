@@ -52,6 +52,8 @@
 #define MMI_DC_AV_BUF_AUD_VID_CLK_SOURCE	(0x0120)
 #define MMI_DC_AV_BUF_AUD_VID_TIMING_SRC_INT	BIT(2)
 
+#define MMI_DC_AV_BUF_8BIT_SF			(0x00010101)
+
 /* Misc Registers */
 #define MMI_DC_MISC_VID_CLK			(0x0c5c)
 #define MMI_DC_MISC_WPROTS			(0x0c70)
@@ -120,6 +122,13 @@ const u32 csc_rgb_to_sdtv_offsets[MMI_DC_CSC_NUM_OFFSETS] = {
 
 const u32 csc_sdtv_to_rgb_offsets[MMI_DC_CSC_NUM_OFFSETS] = {
 	0x00000000, 0x00001800, 0x00001800,
+};
+
+/* TODO: more scaling factors */
+const u32 csc_scaling_factors_888[] = {
+	MMI_DC_AV_BUF_8BIT_SF,
+	MMI_DC_AV_BUF_8BIT_SF,
+	MMI_DC_AV_BUF_8BIT_SF,
 };
 
 /**
@@ -250,6 +259,22 @@ void mmi_dc_reset_hw(struct mmi_dc *dc)
 	reset_control_assert(dc->rst);
 	reset_control_deassert(dc->rst);
 	mmi_dc_reset_planes(dc);
+}
+
+void mmi_dc_set_video_timing_source(struct mmi_dc *dc,
+				    enum mmi_dc_video_timing vt_source)
+{
+	enum mmi_dc_video_timing old_vt_source;
+
+	old_vt_source = dc_read_avbuf(dc, MMI_DC_AV_BUF_AUD_VID_CLK_SOURCE) &
+			MMI_DC_AV_BUF_AUD_VID_TIMING_SRC_INT ?
+			MMI_DC_VT_INTERNAL : MMI_DC_VT_EXTERNAL;
+
+	if (old_vt_source != vt_source) {
+		u32 vt_reg = vt_source == MMI_DC_VT_INTERNAL ?
+				MMI_DC_AV_BUF_AUD_VID_TIMING_SRC_INT : 0;
+		dc_write_avbuf(dc, MMI_DC_AV_BUF_AUD_VID_CLK_SOURCE, vt_reg);
+	}
 }
 
 /**
@@ -471,15 +496,15 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
 	else
 		dc_write_misc(dc, MMI_DC_MISC_VID_CLK, MMI_DC_MISC_VID_CLK_PS);
 
+	mmi_dc_set_video_timing_source(dc, MMI_DC_VT_INTERNAL);
+
 	mmi_dc_reset(dc, true);
 	msleep(MMI_DC_MSLEEP_50MS);
 	mmi_dc_reset(dc, false);
 
-	/* Set another video clock source */
-	dc_write_avbuf(dc, MMI_DC_AV_BUF_AUD_VID_CLK_SOURCE, MMI_DC_AV_BUF_AUD_VID_TIMING_SRC_INT);
-
 	/* Set non live video latency */
-	dc_write_avbuf(dc, MMI_DC_AV_BUF_NON_LIVE_LATENCY, MMI_DC_AV_BUF_NON_LIVE_LATENCY_VAL);
+	dc_write_avbuf(dc, MMI_DC_AV_BUF_NON_LIVE_LATENCY,
+		       MMI_DC_AV_BUF_NON_LIVE_LATENCY_VAL);
 
 	/* Set blender background and alpha */
 	mmi_dc_set_global_alpha(dc, 0, true);
