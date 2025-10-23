@@ -56,6 +56,18 @@ config DRM_XLNX
 	  provides the kernel mode setting functionalities
 	  for Xilinx display drivers.
 
+config DRM_XLNX_AVPG
+	tristate "Xilinx DRM AVPG Driver"
+	depends on DRM && OF
+	select DRM_XLNX_BRIDGE_VTC
+	select VIDEOMODE_HELPERS
+	select DRM_GEM_SHMEM_HELPER
+	help
+	 CRTC driver based on AMD/Xilinx Audio Video Pattern Generator IP.
+	 Choose this driver to enable Audio Video Pattern Generator CRTC. This
+	 driver implements simplistic CRTC with the single plane and is
+	 perfect for testing PL to PS and PL to PL display output pipelines.
+
 config DRM_XLNX_BRIDGE
 	tristate "Xilinx DRM KMS bridge"
 	depends on DRM_XLNX

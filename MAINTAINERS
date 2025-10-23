@@ -971,6 +971,13 @@ L:	linux-edac@vger.kernel.org
 S:	Supported
 F:	drivers/ras/amd/atl/*
 
+AMD AVPG DRIVER
+M:	Anatoliy Klymenko <anatoliy.klymenko@amd.com>
+L:	dri-devel@lists.freedesktop.org
+S:	Supported
+F:	Documentation/devicetree/bindings/display/xlnx/xlnx,psdpdc-av-pat-gen.yaml
+F:	drivers/gpu/drm/xlnx/xlnx_avpg.c
+
 AMD AXI W1 DRIVER
 M:	Kris Chaplin <kris.chaplin@amd.com>
 R:	Thomas Delev <thomas.delev@amd.com>
