@@ -99,6 +99,36 @@ struct mmi_dc_plane {
 	struct mmi_dc_plane_funcs	funcs;
 };
 
+/**
+ * enum mmi_dc_format_flags - MMI DC pixel format flags
+ * @MMI_DC_FMT_SWAP: color components should be swapped (e.g. RGB => BGR)
+ * @MMI_DC_FMT_YUV: YUV colorspace
+ * @MMI_DC_FMT_HSUB: format uses horizontal subsampling
+ */
+enum mmi_dc_format_flags {
+	MMI_DC_FMT_SWAP	= BIT(0),
+	MMI_DC_FMT_YUV	= BIT(1),
+	MMI_DC_FMT_HSUB	= BIT(2),
+};
+
+/**
+ * struct mmi_dc_format - DC HW config format data
+ * @drm_format: DRM fourcc format
+ * @buf_format: internal DC pixel format
+ * @format_flags: pixel format flags (combination of mmi_dc_format_flags)
+ * @csc_matrix: CSC multiplication matrix
+ * @csc_offsets: CSC offsets
+ * @csc_scaling_factors: CSC scaling factors (4,5,6,8, 10 or 12 bpc to 16 bpc)
+ */
+struct mmi_dc_format {
+	u32		drm_format;
+	u32		buf_format;
+	u32		format_flags;
+	const u16	*csc_matrix;
+	const u32	*csc_offsets;
+	const u32	*csc_scaling_factors;
+};
+
 /* ----------------------------------------------------------------------------
  * DC Plane Factory
  */
@@ -136,5 +166,13 @@ void mmi_dc_reconfig_planes(struct mmi_dc *dc, struct drm_atomic_state *state);
 void mmi_dc_reset_planes(struct mmi_dc *dc);
 bool mmi_dc_has_visible_planes(struct mmi_dc *dc,
 			       struct drm_atomic_state *state);
+
+/* ----------------------------------------------------------------------------
+ * DC Compositor Interface
+ */
+
+void mmi_dc_compositor_enable(struct mmi_dc_plane *plane,
+			      const struct mmi_dc_format *format);
+void mmi_dc_compositor_disable(struct mmi_dc_plane *plane);
 
 #endif /* __MMI_DC_PLANE_H__ */
