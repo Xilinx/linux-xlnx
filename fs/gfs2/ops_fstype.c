@@ -1138,7 +1138,6 @@ static int gfs2_fill_super(struct super_block *sb, struct fs_context *fc)
 	sb->s_magic = GFS2_MAGIC;
 	sb->s_op = &gfs2_super_ops;
 
-	set_default_d_op(sb, &gfs2_dops);
 	sb->s_export_op = &gfs2_export_ops;
 	sb->s_qcop = &gfs2_quotactl_ops;
 	sb->s_quota_types = QTYPE_MASK_USR | QTYPE_MASK_GRP;
@@ -1207,6 +1206,11 @@ static int gfs2_fill_super(struct super_block *sb, struct fs_context *fc)
 	error = gfs2_lm_mount(sdp, silent);
 	if (error)
 		goto fail_debug;
+	if (sdp->sd_lockstruct.ls_ops->lm_mount == NULL)
+		set_default_d_op(sb, &gfs2_nolock_dops);
+	else
+		set_default_d_op(sb, &gfs2_dops);
+
 
 	INIT_WORK(&sdp->sd_withdraw_work, gfs2_withdraw_func);
 
