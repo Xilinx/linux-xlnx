@@ -451,6 +451,40 @@ static unsigned long aie_aperture_get_freq_req(struct aie_aperture *aperture)
 }
 
 /**
+ * aie_init_freq() - set frequency requirement of an AI engine
+ *
+ * @aperture: AI engine aperture
+ * @return: 0 for success, negative value for failure
+ *
+ * This sets the frequency to the boot time frequency.
+ * as PM drivers resets it during the power on sequence.
+ */
+int aie_init_freq(struct aie_aperture *aperture)
+{
+	u32 boot_qos, current_qos;
+	int ret;
+
+	ret = zynqmp_pm_get_qos(aperture->node_id, &boot_qos, &current_qos);
+	if (ret < 0) {
+		dev_err(&aperture->dev, "Failed to get clock divider value.\n");
+		return -EINVAL;
+	}
+
+	dev_err(&aperture->dev, "current_freq_divider[%x] boot_freq_divider[%x]\n",
+		current_qos, boot_qos);
+
+	ret = zynqmp_pm_set_requirement(aperture->node_id,
+					ZYNQMP_PM_CAPABILITY_ACCESS, boot_qos,
+					ZYNQMP_PM_REQUEST_ACK_BLOCKING);
+	if (ret < 0) {
+		dev_err(&aperture->dev, "Failed to set frequency requirement.\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+/**
  * aie_part_set_freq() - set frequency requirement of an AI engine partition
  *
  * @apart: AI engine partition
