@@ -1710,6 +1710,7 @@ bool aie_part_check_clk_enable_loc(struct aie_partition *apart,
 				   struct aie_location *loc);
 int aie_part_set_freq(struct aie_partition *apart, u64 freq);
 int aie_part_get_freq(struct aie_partition *apart, u64 *freq);
+int aie_init_freq(struct aie_aperture *aperture);
 
 int aie_part_request_tiles(struct aie_partition *apart, int num_tiles,
 			   struct aie_location *locs);

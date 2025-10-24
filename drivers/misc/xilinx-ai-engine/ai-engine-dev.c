@@ -481,6 +481,8 @@ void of_xilinx_ai_engine_aperture_probe(struct aie_device *adev)
 		}
 		list_add_tail(&aperture->node, &adev->apertures);
 
+		aie_init_freq(aperture);
+
 		mutex_unlock(&adev->mlock);
 	}
 }
