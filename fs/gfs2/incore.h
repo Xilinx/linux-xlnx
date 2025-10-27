@@ -698,6 +698,7 @@ struct gfs2_sbd {
 
 	struct gfs2_args sd_args;	/* Mount arguments */
 	struct gfs2_tune sd_tune;	/* Filesystem tuning structure */
+	atomic64_t sd_unique;
 
 	/* Lock Stuff */
 

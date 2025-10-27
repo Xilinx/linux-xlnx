@@ -358,6 +358,7 @@ out:
 static void inode_go_inval(struct gfs2_glock *gl, int flags)
 {
 	struct gfs2_inode *ip = gfs2_glock2inode(gl);
+	struct inode *inode = &ip->i_inode;
 
 	gfs2_assert_withdraw(gl->gl_name.ln_sbd, !atomic_read(&gl->gl_ail_count));
 
@@ -378,8 +379,12 @@ static void inode_go_inval(struct gfs2_glock *gl, int flags)
 			       GFS2_LFC_INODE_GO_INVAL);
 		gl->gl_name.ln_sbd->sd_rindex_uptodate = 0;
 	}
-	if (ip && S_ISREG(ip->i_inode.i_mode))
-		truncate_inode_pages(ip->i_inode.i_mapping, 0);
+	if (ip) {
+		if (S_ISREG(ip->i_inode.i_mode))
+			truncate_inode_pages(ip->i_inode.i_mapping, 0);
+		else if (S_ISDIR(inode->i_mode))
+			atomic64_set(&inode->i_version, 0);
+	}
 
 	gfs2_clear_glop_pending(ip);
 }
@@ -498,6 +503,7 @@ static int gfs2_inode_refresh(struct gfs2_inode *ip)
 static int inode_go_instantiate(struct gfs2_glock *gl)
 {
 	struct gfs2_inode *ip = gl->gl_object;
+	struct inode *inode = &ip->i_inode;
 	struct gfs2_glock *io_gl;
 	int error;
 
@@ -509,6 +515,11 @@ static int inode_go_instantiate(struct gfs2_glock *gl)
 		return error;
 	io_gl = ip->i_iopen_gh.gh_gl;
 	io_gl->gl_no_formal_ino = ip->i_no_formal_ino;
+	if (S_ISDIR(inode->i_mode)) {
+		struct gfs2_sbd *sdp = gl->gl_name.ln_sbd;
+		atomic64_set(&inode->i_version,
+			     atomic64_inc_return(&sdp->sd_unique));
+	}
 	return 0;
 }
 
