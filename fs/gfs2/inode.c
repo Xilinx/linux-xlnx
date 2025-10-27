@@ -1970,14 +1970,14 @@ int gfs2_permission(struct mnt_idmap *idmap, struct inode *inode,
 	gfs2_holder_mark_uninitialized(&i_gh);
 	ip = GFS2_I(inode);
 	gl = rcu_dereference_check(ip->i_gl, !may_not_block);
-	if (unlikely(!gl)) {
-		/* inode is getting torn down, must be RCU mode */
-		WARN_ON_ONCE(!may_not_block);
-		return -ECHILD;
-        }
-	if (gfs2_glock_is_locked_by_me(gl) == NULL) {
-		if (may_not_block)
+	if (may_not_block) {
+		/* Is the inode getting torn down? */
+		if (unlikely(!gl))
 			return -ECHILD;
+		if (gl->gl_state == LM_ST_UNLOCKED ||
+		    test_bit(GLF_INSTANTIATE_NEEDED, &gl->gl_flags))
+			return -ECHILD;
+	} else if (gfs2_glock_is_locked_by_me(gl) == NULL) {
 		error = gfs2_glock_nq_init(gl, LM_ST_SHARED, LM_FLAG_ANY, &i_gh);
 		if (error)
 			return error;
