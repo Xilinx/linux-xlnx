@@ -29,6 +29,7 @@ int netdev_debug_event(struct notifier_block *nb, unsigned long event,
 	case NETDEV_DOWN:
 	case NETDEV_REBOOT:
 	case NETDEV_UNREGISTER:
+	case NETDEV_DEBUG_UNREGISTER:
 	case NETDEV_CHANGEMTU:
 	case NETDEV_CHANGEADDR:
 	case NETDEV_PRE_CHANGEADDR:
