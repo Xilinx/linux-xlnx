@@ -1043,8 +1043,7 @@ static void mmi_dp_bridge_atomic_enable(struct drm_bridge *bridge,
 		dptx_err(dptx, "Failed to configure video mode\n");
 		return;
 	}
-	mmi_dp_intr_en(dptx, DPTX_IEN_VIDEO_FIFO_UNDERFLOW |
-		       DPTX_IEN_VIDEO_FIFO_OVERFLOW |
+	mmi_dp_intr_en(dptx, DPTX_IEN_VIDEO_FIFO_OVERFLOW |
 		       DPTX_IEN_AUDIO_FIFO_OVERFLOW);
 }
 
