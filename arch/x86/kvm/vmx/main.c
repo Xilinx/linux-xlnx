@@ -608,6 +608,17 @@ static void vt_load_mmu_pgd(struct kvm_vcpu *vcpu, hpa_t root_hpa,
 	vmx_load_mmu_pgd(vcpu, root_hpa, pgd_level);
 }
 
+static void vt_handle_exit_irqoff(struct kvm_vcpu *vcpu)
+{
+	if (unlikely((u16)vmx_get_exit_reason(vcpu).basic == EXIT_REASON_MCE_DURING_VMENTRY))
+		kvm_machine_check();
+
+	if (is_td_vcpu(vcpu))
+		return;
+
+	return vmx_handle_exit_irqoff(vcpu);
+}
+
 static void vt_set_interrupt_shadow(struct kvm_vcpu *vcpu, int mask)
 {
 	if (is_td_vcpu(vcpu))
@@ -969,7 +980,7 @@ struct kvm_x86_ops vt_x86_ops __initdata = {
 	.load_mmu_pgd = vt_op(load_mmu_pgd),
 
 	.check_intercept = vmx_check_intercept,
-	.handle_exit_irqoff = vmx_handle_exit_irqoff,
+	.handle_exit_irqoff = vt_op(handle_exit_irqoff),
 
 	.update_cpu_dirty_logging = vt_op(update_cpu_dirty_logging),
 
