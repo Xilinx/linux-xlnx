@@ -166,7 +166,7 @@ static const struct mmi_dc_format video_plane_formats[] = {
 /**
  * mmi_dc_blend_plane_set_csc - Set input CSC
  * @plane: The plane
- * @format: MMI DC plane format
+ * @format: MMI DC plane format or NULL to reset CSC configuration
  *
  * Setup input color space converter.
  */
@@ -174,7 +174,8 @@ static void mmi_dc_blend_plane_set_csc(struct mmi_dc_plane *plane,
 				       const struct mmi_dc_format *format)
 {
 	struct mmi_dc *dc = plane->dc;
-	u32 i, reg, swap[] = { 0, 1, 2 }, flags = format->format_flags;
+	u32 i, reg, swap[] = { 0, 1, 2 };
+	u32 flags = format ? format->format_flags : 0;
 
 	if (flags & MMI_DC_FMT_SWAP) {
 		if (flags & MMI_DC_FMT_YUV) {
@@ -190,13 +191,13 @@ static void mmi_dc_blend_plane_set_csc(struct mmi_dc_plane *plane,
 
 	for (i = 0; i < MMI_DC_CSC_NUM_COEFFS; ++i) {
 		reg = MMI_DC_V_BLEND_INCSC_COEFF(plane->id, i);
-		dc_write_blend(dc, reg,
-			       format->csc_matrix[i - i % 3 + swap[i % 3]]);
+		dc_write_blend(dc, reg, format ?
+			       format->csc_matrix[i - i % 3 + swap[i % 3]] : 0);
 	}
 
 	for (i = 0; i < MMI_DC_CSC_NUM_OFFSETS; ++i) {
 		reg = MMI_DC_V_BLEND_CC_INCSC_OFFSET(plane->id, i);
-		dc_write_blend(dc, reg, format->csc_offsets[i]);
+		dc_write_blend(dc, reg, format ? format->csc_offsets[i] : 0);
 	}
 
 	dc_write_blend(dc, MMI_DC_V_BLEND_LAYER_CONTROL(plane->id),
@@ -313,6 +314,7 @@ void mmi_dc_compositor_enable(struct mmi_dc_plane *plane,
 void mmi_dc_compositor_disable(struct mmi_dc_plane *plane)
 {
 	mmi_dc_avbuf_plane_disable(plane);
+	mmi_dc_blend_plane_set_csc(plane, NULL);
 }
 
 /* ----------------------------------------------------------------------------
