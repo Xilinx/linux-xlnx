@@ -43,7 +43,7 @@ unsigned long sys_info_parse_param(char *str)
 
 #ifdef CONFIG_SYSCTL
 
-static int sys_info_write_handler(struct ctl_table *table,
+static int sys_info_write_handler(const struct ctl_table *table,
 				  void *buffer, size_t *lenp, loff_t *ppos,
 				  unsigned long *si_bits_global)
 {
@@ -62,7 +62,7 @@ static int sys_info_write_handler(struct ctl_table *table,
 	return 0;
 }
 
-static int sys_info_read_handler(struct ctl_table *table,
+static int sys_info_read_handler(const struct ctl_table *table,
 				 void *buffer, size_t *lenp, loff_t *ppos,
 				 unsigned long *si_bits_global)
 {
