@@ -3512,7 +3512,7 @@ static void __split_folio_to_order(struct folio *folio, int old_order,
  *    uniform_split is true.
  * 2. buddy allocator like (non-uniform) split: the given @folio is split into
  *    half and one of the half (containing the given page) is split into half
- *    until the given @page's order becomes @new_order. This is done when
+ *    until the given @folio's order becomes @new_order. This is done when
  *    uniform_split is false.
  *
  * The high level flow for these two methods are:
@@ -3521,14 +3521,14 @@ static void __split_folio_to_order(struct folio *folio, int old_order,
  *    along with stats update.
  * 2. non-uniform split: folio_order - @new_order calls to
  *    __split_folio_to_order() are expected to be made in a for loop to split
- *    the @folio to one lower order at a time. The folio containing @page is
- *    split in each iteration. @xas is split into half in each iteration and
+ *    the @folio to one lower order at a time. The folio containing @split_at
+ *    is split in each iteration. @xas is split into half in each iteration and
  *    can fail. A failed @xas split leaves split folios as is without merging
  *    them back.
  *
  * After splitting, the caller's folio reference will be transferred to the
- * folio containing @page. The caller needs to unlock and/or free after-split
- * folios if necessary.
+ * folio containing @split_at. The caller needs to unlock and/or free
+ * after-split folios if necessary.
  *
  * Return: 0 - successful, <0 - failed (if -ENOMEM is returned, @folio might be
  * split but not to @new_order, the caller needs to check)
