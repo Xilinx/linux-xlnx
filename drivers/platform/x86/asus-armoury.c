@@ -48,6 +48,36 @@
 #define ASUS_MINI_LED_2024_STRONG 0x01
 #define ASUS_MINI_LED_2024_OFF    0x02
 
+#define ASUS_POWER_CORE_MASK	GENMASK(15, 8)
+#define ASUS_PERF_CORE_MASK	GENMASK(7, 0)
+
+enum cpu_core_type {
+	CPU_CORE_PERF = 0,
+	CPU_CORE_POWER,
+};
+
+enum cpu_core_value {
+	CPU_CORE_DEFAULT = 0,
+	CPU_CORE_MIN,
+	CPU_CORE_MAX,
+	CPU_CORE_CURRENT,
+};
+
+/* Minimum number of performance cores (P-cores) */
+#define CPU_PERF_CORE_COUNT_MIN 4
+/* Minimum number of efficiency cores (E-cores) */
+#define CPU_POWR_CORE_COUNT_MIN 0
+
+/* Tunables provided by ASUS for gaming laptops */
+struct cpu_cores {
+	u32 cur_perf_cores;
+	u32 min_perf_cores;
+	u32 max_perf_cores;
+	u32 cur_power_cores;
+	u32 min_power_cores;
+	u32 max_power_cores;
+};
+
 struct asus_armoury_priv {
 	struct device *fw_attr_dev;
 	struct kset *fw_attr_kset;
@@ -60,12 +90,22 @@ struct asus_armoury_priv {
 	 */
 	struct mutex egpu_mutex;
 
+	/*
+	 * Mutex to prevent big/little core count changes writing to same
+	 * endpoint at the same time. Must lock during attr store.
+	 */
+	struct mutex cpu_core_mutex;
+	struct cpu_cores *cpu_cores;
+	bool cpu_cores_changeable;
+
 	u32 mini_led_dev_id;
 	u32 gpu_mux_dev_id;
 };
 
 static struct asus_armoury_priv asus_armoury = {
 	.egpu_mutex = __MUTEX_INITIALIZER(asus_armoury.egpu_mutex),
+
+	.cpu_core_mutex = __MUTEX_INITIALIZER(asus_armoury.cpu_core_mutex),
 };
 
 struct fw_attrs_group {
@@ -97,6 +137,8 @@ static struct kobj_attribute pending_reboot = __ATTR_RO(pending_reboot);
 static bool asus_bios_requires_reboot(struct kobj_attribute *attr)
 {
 	return !strcmp(attr->attr.name, "gpu_mux_mode") ||
+	       !strcmp(attr->attr.name, "cores_performance") ||
+	       !strcmp(attr->attr.name, "cores_efficiency") ||
 	       !strcmp(attr->attr.name, "panel_hd_mode");
 }
 
@@ -200,6 +242,18 @@ static int armoury_set_devstate(struct kobj_attribute *attr,
 			return -EINVAL;
 		}
 		break;
+	case ASUS_WMI_DEVID_CORES:
+		/*
+		 * Prevent risk disabling cores essential for booting the system
+		 * up to a point where system settings can be reset:
+		 * this has already caused unrecoverable bricks in the past.
+		 */
+		if ((FIELD_GET(ASUS_POWER_CORE_MASK, value) < CPU_POWR_CORE_COUNT_MIN) ||
+		    (FIELD_GET(ASUS_PERF_CORE_MASK, value) < CPU_PERF_CORE_COUNT_MIN)) {
+			pr_err("Refusing to set CPU cores to unsafe value: 0x%x\n", value);
+			return -EINVAL;
+		}
+		break;
 	default:
 		/* No known problems are known for this dev_id */
 		break;
@@ -288,6 +342,12 @@ static ssize_t enum_type_show(struct kobject *kobj, struct kobj_attribute *attr,
 			      char *buf)
 {
 	return sysfs_emit(buf, "enumeration\n");
+}
+
+static ssize_t int_type_show(struct kobject *kobj, struct kobj_attribute *attr,
+			     char *buf)
+{
+	return sysfs_emit(buf, "integer\n");
 }
 
 /* Mini-LED mode **************************************************************/
@@ -696,6 +756,217 @@ static ssize_t apu_mem_possible_values_show(struct kobject *kobj, struct kobj_at
 }
 ASUS_ATTR_GROUP_ENUM(apu_mem, "apu_mem", "Set available system RAM (in GB) for the APU to use");
 
+static struct cpu_cores *init_cpu_cores_ctrl(void)
+{
+	u32 cores;
+	int err;
+	struct cpu_cores *cores_p __free(kfree) = NULL;
+
+	cores_p = kzalloc(sizeof(struct cpu_cores), GFP_KERNEL);
+	if (!cores_p)
+		return ERR_PTR(-ENOMEM);
+
+	err = armoury_get_devstate(NULL, &cores, ASUS_WMI_DEVID_CORES_MAX);
+	if (err) {
+		pr_err("ACPI does not support CPU core count control\n");
+		return ERR_PTR(-ENODEV);
+	}
+
+	cores_p->max_power_cores = FIELD_GET(ASUS_POWER_CORE_MASK, cores);
+	cores_p->max_perf_cores = FIELD_GET(ASUS_PERF_CORE_MASK, cores);
+
+	err = armoury_get_devstate(NULL, &cores, ASUS_WMI_DEVID_CORES);
+	if (err) {
+		pr_err("Could not get CPU core count: error %d\n", err);
+		return ERR_PTR(-EIO);
+	}
+
+	cores_p->cur_power_cores = FIELD_GET(ASUS_POWER_CORE_MASK, cores);
+	cores_p->cur_perf_cores = FIELD_GET(ASUS_PERF_CORE_MASK, cores);
+
+	cores_p->min_power_cores = CPU_POWR_CORE_COUNT_MIN;
+	cores_p->min_perf_cores = CPU_PERF_CORE_COUNT_MIN;
+
+	if ((cores_p->min_perf_cores > cores_p->max_perf_cores) ||
+	    (cores_p->min_power_cores > cores_p->max_power_cores)
+	) {
+		pr_err("Invalid CPU cores count detected: interface is not safe to be used.\n");
+		return ERR_PTR(-EINVAL);
+	}
+
+	if ((cores_p->cur_perf_cores > cores_p->max_perf_cores) ||
+		(cores_p->cur_power_cores > cores_p->max_power_cores) ||
+		(cores_p->cur_perf_cores < cores_p->min_perf_cores) ||
+		(cores_p->cur_power_cores < cores_p->min_power_cores)
+	) {
+		pr_warn("Current CPU cores count are outside safe limits.\n");
+	}
+
+	return no_free_ptr(cores_p);
+}
+
+static ssize_t cores_value_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf,
+				enum cpu_core_type core_type, enum cpu_core_value core_value)
+{
+	u32 cpu_core_value;
+
+	switch (core_value) {
+	case CPU_CORE_DEFAULT:
+	case CPU_CORE_MAX:
+		cpu_core_value = (core_type == CPU_CORE_PERF) ?
+			asus_armoury.cpu_cores->max_perf_cores :
+			asus_armoury.cpu_cores->max_power_cores;
+		break;
+	case CPU_CORE_MIN:
+		cpu_core_value = (core_type == CPU_CORE_PERF) ?
+			asus_armoury.cpu_cores->min_perf_cores :
+			asus_armoury.cpu_cores->min_power_cores;
+		break;
+	case CPU_CORE_CURRENT:
+		cpu_core_value = (core_type == CPU_CORE_PERF) ?
+			asus_armoury.cpu_cores->cur_perf_cores :
+			asus_armoury.cpu_cores->cur_power_cores;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return sysfs_emit(buf, "%u\n", cpu_core_value);
+}
+
+static ssize_t cores_current_value_store(struct kobject *kobj, struct kobj_attribute *attr,
+					 const char *buf, enum cpu_core_type core_type)
+{
+	u32 new_cores, perf_cores, power_cores, out_val, min, max, result;
+	int err;
+
+	result = kstrtou32(buf, 10, &new_cores);
+	if (result)
+		return result;
+
+	scoped_guard(mutex, &asus_armoury.cpu_core_mutex) {
+		if (!asus_armoury.cpu_cores_changeable) {
+			pr_warn("CPU core count change not allowed until reboot\n");
+			return -EBUSY;
+		}
+
+		if (core_type == CPU_CORE_PERF) {
+			perf_cores = new_cores;
+			power_cores = asus_armoury.cpu_cores->cur_power_cores;
+			min = asus_armoury.cpu_cores->min_perf_cores;
+			max = asus_armoury.cpu_cores->max_perf_cores;
+		} else {
+			perf_cores = asus_armoury.cpu_cores->cur_perf_cores;
+			power_cores = new_cores;
+			min = asus_armoury.cpu_cores->min_power_cores;
+			max = asus_armoury.cpu_cores->max_power_cores;
+		}
+
+		if (new_cores < min || new_cores > max)
+			return -EINVAL;
+
+		out_val = FIELD_PREP(ASUS_PERF_CORE_MASK, perf_cores) |
+			FIELD_PREP(ASUS_POWER_CORE_MASK, power_cores);
+
+		asus_armoury.cpu_cores_changeable = false;
+		err = armoury_set_devstate(attr, out_val, &result, ASUS_WMI_DEVID_CORES);
+		if (err) {
+			pr_warn("Failed to set CPU core count: %d\n", err);
+			return err;
+		}
+
+		if (result > 1) {
+			pr_warn("Failed to set CPU core count (result): 0x%x\n", result);
+			return -EIO;
+		}
+	}
+
+	pr_info("CPU core count changed, reboot required\n");
+
+	sysfs_notify(kobj, NULL, attr->attr.name);
+	asus_set_reboot_and_signal_event();
+
+	return 0;
+}
+
+static ssize_t cores_performance_min_value_show(struct kobject *kobj,
+						struct kobj_attribute *attr, char *buf)
+{
+	return cores_value_show(kobj, attr, buf, CPU_CORE_PERF, CPU_CORE_MIN);
+}
+
+static ssize_t cores_performance_max_value_show(struct kobject *kobj,
+						struct kobj_attribute *attr, char *buf)
+{
+	return cores_value_show(kobj, attr, buf, CPU_CORE_PERF, CPU_CORE_MAX);
+}
+
+static ssize_t cores_performance_default_value_show(struct kobject *kobj,
+						    struct kobj_attribute *attr, char *buf)
+{
+	return cores_value_show(kobj, attr, buf, CPU_CORE_PERF, CPU_CORE_DEFAULT);
+}
+
+static ssize_t cores_performance_current_value_show(struct kobject *kobj,
+						    struct kobj_attribute *attr, char *buf)
+{
+	return cores_value_show(kobj, attr, buf, CPU_CORE_PERF, CPU_CORE_CURRENT);
+}
+
+static ssize_t cores_performance_current_value_store(struct kobject *kobj,
+						     struct kobj_attribute *attr,
+						     const char *buf, size_t count)
+{
+	int err;
+
+	err = cores_current_value_store(kobj, attr, buf, CPU_CORE_PERF);
+	if (err)
+		return err;
+
+	return count;
+}
+ASUS_ATTR_GROUP_CORES_RW(cores_performance, "cores_performance",
+			 "Set the max available performance cores");
+
+static ssize_t cores_efficiency_min_value_show(struct kobject *kobj, struct kobj_attribute *attr,
+					       char *buf)
+{
+	return cores_value_show(kobj, attr, buf, CPU_CORE_POWER, CPU_CORE_MIN);
+}
+
+static ssize_t cores_efficiency_max_value_show(struct kobject *kobj, struct kobj_attribute *attr,
+					       char *buf)
+{
+	return cores_value_show(kobj, attr, buf, CPU_CORE_POWER, CPU_CORE_MAX);
+}
+
+static ssize_t cores_efficiency_default_value_show(struct kobject *kobj,
+						   struct kobj_attribute *attr, char *buf)
+{
+	return cores_value_show(kobj, attr, buf, CPU_CORE_POWER, CPU_CORE_DEFAULT);
+}
+
+static ssize_t cores_efficiency_current_value_show(struct kobject *kobj,
+						   struct kobj_attribute *attr, char *buf)
+{
+	return cores_value_show(kobj, attr, buf, CPU_CORE_POWER, CPU_CORE_CURRENT);
+}
+
+static ssize_t cores_efficiency_current_value_store(struct kobject *kobj,
+						    struct kobj_attribute *attr, const char *buf,
+						    size_t count)
+{
+	int err;
+
+	err = cores_current_value_store(kobj, attr, buf, CPU_CORE_POWER);
+	if (err)
+		return err;
+
+	return count;
+}
+ASUS_ATTR_GROUP_CORES_RW(cores_efficiency, "cores_efficiency",
+		    "Set the max available efficiency cores");
+
 /* Simple attribute creation */
 ASUS_ATTR_GROUP_ENUM_INT_RO(charge_mode, "charge_mode", ASUS_WMI_DEVID_CHARGE_MODE, "0;1;2\n",
 			    "Show the current mode of charging");
@@ -716,6 +987,8 @@ static const struct asus_attr_group armoury_attr_groups[] = {
 	{ &egpu_enable_attr_group, ASUS_WMI_DEVID_EGPU },
 	{ &dgpu_disable_attr_group, ASUS_WMI_DEVID_DGPU },
 	{ &apu_mem_attr_group, ASUS_WMI_DEVID_APU_MEM },
+	{ &cores_efficiency_attr_group, ASUS_WMI_DEVID_CORES_MAX },
+	{ &cores_performance_attr_group, ASUS_WMI_DEVID_CORES_MAX },
 
 	{ &charge_mode_attr_group, ASUS_WMI_DEVID_CHARGE_MODE },
 	{ &boot_sound_attr_group, ASUS_WMI_DEVID_BOOT_SOUND },
@@ -819,6 +1092,8 @@ fail_class_get:
 static int __init asus_fw_init(void)
 {
 	char *wmi_uid;
+	struct cpu_cores *cpu_cores_ctrl;
+	int err;
 
 	wmi_uid = wmi_get_acpi_device_uid(ASUS_WMI_MGMT_GUID);
 	if (!wmi_uid)
@@ -830,6 +1105,19 @@ static int __init asus_fw_init(void)
 	 */
 	if (!strcmp(wmi_uid, ASUS_ACPI_UID_ASUSWMI))
 		return -ENODEV;
+
+	asus_armoury.cpu_cores_changeable = false;
+	if (armoury_has_devstate(ASUS_WMI_DEVID_CORES_MAX)) {
+		cpu_cores_ctrl = init_cpu_cores_ctrl();
+		if (IS_ERR(cpu_cores_ctrl)) {
+			err = PTR_ERR(cpu_cores_ctrl);
+			pr_err("Could not initialise CPU core control: %d\n", err);
+			return err;
+		}
+
+		asus_armoury.cpu_cores = cpu_cores_ctrl;
+		asus_armoury.cpu_cores_changeable = true;
+	}
 
 	return asus_fw_attr_add();
 }
