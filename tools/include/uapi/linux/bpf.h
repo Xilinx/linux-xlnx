@@ -1430,6 +1430,9 @@ enum {
 
 /* Do not translate kernel bpf_arena pointers to user pointers */
 	BPF_F_NO_USER_CONV	= (1U << 18),
+
+/* Enable BPF ringbuf overwrite mode */
+	BPF_F_RB_OVERWRITE	= (1U << 19),
 };
 
 /* Flags for BPF_PROG_QUERY. */
@@ -5618,7 +5621,7 @@ union bpf_attr {
  *	Return
  *		*sk* if casting is valid, or **NULL** otherwise.
  *
- * long bpf_dynptr_from_mem(void *data, u32 size, u64 flags, struct bpf_dynptr *ptr)
+ * long bpf_dynptr_from_mem(void *data, u64 size, u64 flags, struct bpf_dynptr *ptr)
  *	Description
  *		Get a dynptr to local memory *data*.
  *
@@ -5661,7 +5664,7 @@ union bpf_attr {
  *	Return
  *		Nothing. Always succeeds.
  *
- * long bpf_dynptr_read(void *dst, u32 len, const struct bpf_dynptr *src, u32 offset, u64 flags)
+ * long bpf_dynptr_read(void *dst, u64 len, const struct bpf_dynptr *src, u64 offset, u64 flags)
  *	Description
  *		Read *len* bytes from *src* into *dst*, starting from *offset*
  *		into *src*.
@@ -5671,7 +5674,7 @@ union bpf_attr {
  *		of *src*'s data, -EINVAL if *src* is an invalid dynptr or if
  *		*flags* is not 0.
  *
- * long bpf_dynptr_write(const struct bpf_dynptr *dst, u32 offset, void *src, u32 len, u64 flags)
+ * long bpf_dynptr_write(const struct bpf_dynptr *dst, u64 offset, void *src, u64 len, u64 flags)
  *	Description
  *		Write *len* bytes from *src* into *dst*, starting from *offset*
  *		into *dst*.
@@ -5692,7 +5695,7 @@ union bpf_attr {
  *		is a read-only dynptr or if *flags* is not correct. For skb-type dynptrs,
  *		other errors correspond to errors returned by **bpf_skb_store_bytes**\ ().
  *
- * void *bpf_dynptr_data(const struct bpf_dynptr *ptr, u32 offset, u32 len)
+ * void *bpf_dynptr_data(const struct bpf_dynptr *ptr, u64 offset, u64 len)
  *	Description
  *		Get a pointer to the underlying dynptr data.
  *
@@ -6231,6 +6234,7 @@ enum {
 	BPF_RB_RING_SIZE = 1,
 	BPF_RB_CONS_POS = 2,
 	BPF_RB_PROD_POS = 3,
+	BPF_RB_OVERWRITE_POS = 4,
 };
 
 /* BPF ring buffer constants */
