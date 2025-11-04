@@ -2483,7 +2483,7 @@ static int __init prepare_kho_fdt(void)
 	fdt_page = alloc_page(GFP_KERNEL);
 	if (!fdt_page) {
 		err = -ENOMEM;
-		goto err_no_fdt_page;
+		goto err_report;
 	}
 
 	fdt = page_to_virt(fdt_page);
@@ -2527,7 +2527,7 @@ err_unpreserve_fdt:
 	kho_unpreserve_pages(fdt_page, 1);
 err_free_fdt:
 	put_page(fdt_page);
-err_no_fdt_page:
+err_report:
 	pr_err("failed to prepare memblock FDT for KHO: %d\n", err);
 
 	return err;
