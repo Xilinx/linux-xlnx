@@ -317,6 +317,17 @@ config IPQ_GCC_9574
 	  i2c, USB, SD/eMMC, etc. Select this for the root clock
 	  of ipq9574.
 
+config IPQ_NSSCC_5424
+	tristate "IPQ5424 NSS Clock Controller"
+	depends on ARM64 || COMPILE_TEST
+	depends on IPQ_GCC_5424
+	help
+	  Support for NSS clock controller on ipq5424 devices.
+	  NSSCC receives the clock sources from GCC, CMN PLL and UNIPHY (PCS).
+	  It in turn supplies the clocks and resets to the networking hardware.
+	  Say Y or M if you want to enable networking function on the
+	  IPQ5424 devices.
+
 config IPQ_NSSCC_9574
         tristate "IPQ9574 NSS Clock Controller"
         depends on ARM64 || COMPILE_TEST
@@ -531,6 +542,7 @@ config QCM_DISPCC_2290
 
 config QCS_DISPCC_615
 	tristate "QCS615 Display Clock Controller"
+	depends on ARM64 || COMPILE_TEST
 	select QCS_GCC_615
 	help
 	  Support for the display clock controller on Qualcomm Technologies, Inc
@@ -586,6 +598,7 @@ config QCS_GCC_615
 
 config QCS_GPUCC_615
 	tristate "QCS615 Graphics clock controller"
+	depends on ARM64 || COMPILE_TEST
 	select QCS_GCC_615
 	help
 	  Support for the graphics clock controller on QCS615 devices.
@@ -594,6 +607,7 @@ config QCS_GPUCC_615
 
 config QCS_VIDEOCC_615
 	tristate "QCS615 Video Clock Controller"
+	depends on ARM64 || COMPILE_TEST
 	select QCS_GCC_615
 	help
 	  Support for the video clock controller on QCS615 devices.
@@ -1448,6 +1462,7 @@ config SA_VIDEOCC_8775P
 
 config SM_VIDEOCC_6350
 	tristate "SM6350 Video Clock Controller"
+	depends on ARM64 || COMPILE_TEST
 	select SM_GCC_6350
 	select QCOM_GDSC
 	help
