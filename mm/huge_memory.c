@@ -3516,6 +3516,7 @@ static void __split_folio_to_order(struct folio *folio, int old_order,
  *    uniform_split is false.
  *
  * The high level flow for these two methods are:
+ *
  * 1. uniform split: @xas is split with no expectation of failure and a single
  *    __split_folio_to_order() is called to split the @folio into @new_order
  *    along with stats update.
