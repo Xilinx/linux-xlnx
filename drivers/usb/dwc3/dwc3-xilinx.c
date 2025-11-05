@@ -692,7 +692,7 @@ MODULE_DEVICE_TABLE(of, dwc3_xlnx_of_match);
 static int dwc3_set_swnode(struct device *dev)
 {
 	struct device_node *np = dev->of_node, *dwc3_np;
-	struct property_entry props[2];
+	struct property_entry props[4];
 	int prop_idx = 0, ret = 0;
 
 	dwc3_np = of_get_compatible_child(np, "snps,dwc3");
@@ -706,9 +706,19 @@ static int dwc3_set_swnode(struct device *dev)
 	if (of_dma_is_coherent(dwc3_np))
 		props[prop_idx++] = PROPERTY_ENTRY_U16("snps,gsbuscfg0-reqinfo",
 						       0xffff);
-	if (of_device_is_compatible(np, "xlnx,versal2-mmi-dwc3"))
+
+	if (of_device_is_compatible(np, "xlnx,versal2-mmi-dwc3")) {
+		/* Override Global bus config reg cache settings for MMI USB */
+		prop_idx = 0;
+		if (of_dma_is_coherent(dwc3_np))
+			props[prop_idx++] = PROPERTY_ENTRY_U16("snps,gsbuscfg0-reqinfo",
+							       0xf0f0);
+
 		props[prop_idx++] = PROPERTY_ENTRY_U32("snps,lcsr_tx_deemph",
 						       XLNX_MMI_USB_TX_DEEMPH_DEF);
+
+		props[prop_idx++] = PROPERTY_ENTRY_BOOL("snps,dis_axi_storder_en");
+	}
 
 	of_node_put(dwc3_np);
 
