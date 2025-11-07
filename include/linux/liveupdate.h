@@ -13,6 +13,8 @@
 
 #ifdef CONFIG_LIVEUPDATE
 
+void __init liveupdate_init(void);
+
 /* Return true if live update orchestrator is enabled */
 bool liveupdate_enabled(void);
 
@@ -20,6 +22,10 @@ bool liveupdate_enabled(void);
 int liveupdate_reboot(void);
 
 #else /* CONFIG_LIVEUPDATE */
+
+static inline void liveupdate_init(void)
+{
+}
 
 static inline bool liveupdate_enabled(void)
 {
