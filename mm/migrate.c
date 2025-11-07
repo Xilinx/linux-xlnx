@@ -2165,7 +2165,7 @@ struct folio *alloc_migration_target(struct folio *src, unsigned long private)
 	gfp_t gfp_mask;
 	unsigned int order = 0;
 	int nid;
-	int zidx;
+	enum zone_type zidx;
 
 	mtc = (struct migration_target_control *)private;
 	gfp_mask = mtc->gfp_mask;
