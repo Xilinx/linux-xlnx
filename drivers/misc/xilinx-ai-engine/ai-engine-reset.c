@@ -14,6 +14,9 @@
 
 #include "ai-engine-trace.h"
 
+static int aie_part_maskpoll_noc_outstanding_aximm_txn(struct aie_partition *apart);
+static int aie_part_maskpoll_uc_outstanding_aximm_txn(struct aie_partition *apart);
+
 static void aie_part_core_regs_clr_iowrite(struct aie_partition *apart,
 					   u32 addr, u32 width)
 {
@@ -831,6 +834,19 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 	}
 	trace_aie_part_initialize(apart, args->init_opts, args->num_tiles);
 
+	opts = AIE_PART_INIT_OPT_ENB_UC_DMA_PAUSE | AIE_PART_INIT_OPT_ENB_NOC_DMA_PAUSE;
+	ret = aie_part_pm_ops(apart, NULL, opts, apart->range, 1);
+	if (ret)
+		goto out;
+
+	ret = aie_part_maskpoll_noc_outstanding_aximm_txn(apart);
+	if (ret)
+		goto out;
+
+	ret = aie_part_maskpoll_uc_outstanding_aximm_txn(apart);
+	if (ret)
+		goto out;
+
 	/* Clear resources */
 	aie_part_clear_cached_events(apart);
 	aie_part_rscmgr_reset(apart);
@@ -1146,7 +1162,9 @@ int aie2ps_part_teardown(struct aie_partition *apart)
 
 	trace_aie_part_teardown(apart);
 	mutex_lock(&apart->mlock);
-	ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_ENB_UC_DMA_PAUSE, apart->range, 1);
+
+	opts = AIE_PART_INIT_OPT_ENB_UC_DMA_PAUSE | AIE_PART_INIT_OPT_ENB_NOC_DMA_PAUSE;
+	ret = aie_part_pm_ops(apart, NULL, opts, apart->range, 1);
 	if (ret)
 		goto out;
 
