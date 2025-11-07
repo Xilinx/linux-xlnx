@@ -281,6 +281,10 @@ int luo_preserve_file(struct luo_session *session, u64 token, int fd)
 	if (err)
 		goto exit_err;
 
+	err = luo_flb_file_preserve(fh);
+	if (err)
+		goto exit_err;
+
 	luo_file = kzalloc(sizeof(*luo_file), GFP_KERNEL);
 	if (!luo_file) {
 		err = -ENOMEM;
@@ -300,6 +304,7 @@ int luo_preserve_file(struct luo_session *session, u64 token, int fd)
 	if (err) {
 		mutex_destroy(&luo_file->mutex);
 		kfree(luo_file);
+		luo_flb_file_unpreserve(fh);
 		goto exit_err;
 	} else {
 		luo_file->serialized_data = args.serialized_data;
@@ -351,6 +356,7 @@ void luo_file_unpreserve_files(struct luo_session *session)
 		args.file = luo_file->file;
 		args.serialized_data = luo_file->serialized_data;
 		luo_file->fh->ops->unpreserve(&args);
+		luo_flb_file_unpreserve(luo_file->fh);
 
 		list_del(&luo_file->list);
 		session->count--;
@@ -623,6 +629,7 @@ static void luo_file_finish_one(struct luo_session *session,
 	args.file = luo_file->file;
 	args.serialized_data = luo_file->serialized_data;
 	args.retrieved = luo_file->retrieved;
+	luo_flb_file_finish(luo_file->fh);
 
 	luo_file->fh->ops->finish(&args);
 }
@@ -811,6 +818,7 @@ int liveupdate_register_file_handler(struct liveupdate_file_handler *fh)
 		return -EAGAIN;
 
 	INIT_LIST_HEAD(&fh->list);
+	INIT_LIST_HEAD(&fh->flb_list);
 	list_add_tail(&fh->list, &luo_file_handler_list);
 
 	return 0;
