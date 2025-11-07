@@ -65,6 +65,11 @@
  *     Metadata for a single session, including its name and a physical pointer
  *     to another preserved memory block containing an array of
  *     `struct luo_file_ser` for all files in that session.
+ *
+ *   - struct luo_file_ser:
+ *     Metadata for a single preserved file. Contains the `compatible` string to
+ *     find the correct handler in the new kernel, a user-provided `token` for
+ *     identification, and an opaque `data` handle for the handler to use.
  */
 
 #ifndef _LINUX_LIVEUPDATE_ABI_LUO_H
@@ -130,6 +135,23 @@ struct luo_session_ser {
 	u64 files;
 	u64 pgcnt;
 	u64 count;
+} __packed;
+
+/* The max size is set so it can be reliably used during in serialization */
+#define LIVEUPDATE_HNDL_COMPAT_LENGTH	48
+
+/**
+ * struct luo_file_ser - Represents the serialized preserves files.
+ * @compatible:  File handler compatabile string.
+ * @data:        Private data
+ * @token:       User provided token for this file
+ *
+ * If this structure is modified, LUO_SESSION_COMPATIBLE must be updated.
+ */
+struct luo_file_ser {
+	char compatible[LIVEUPDATE_HNDL_COMPAT_LENGTH];
+	u64 data;
+	u64 token;
 } __packed;
 
 #endif /* _LINUX_LIVEUPDATE_ABI_LUO_H */
