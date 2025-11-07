@@ -1106,7 +1106,8 @@ static int aie_part_maskpoll_uc_outstanding_aximm_txn(struct aie_partition *apar
 		regoff = aie_aperture_cal_regoff(apart->aperture, loc,
 						 adev->uc_outstanding_aximm->regoff);
 		ret = aie_part_maskpoll_register(apart, regoff, 0x0,
-						 adev->uc_outstanding_aximm->mask, 10000);
+						 adev->uc_outstanding_aximm->mask,
+						 2000000 /* 2 seconds */);
 		if (ret < 0) {
 			dev_err(&apart->dev, "failed due to outstanding UC AXIMM transactions!\n");
 			return -EINVAL;
@@ -1130,7 +1131,8 @@ static int aie_part_maskpoll_noc_outstanding_aximm_txn(struct aie_partition *apa
 		regoff = aie_aperture_cal_regoff(apart->aperture, loc,
 						 adev->noc_outstanding_aximm->regoff);
 		ret = aie_part_maskpoll_register(apart, regoff, 0x0,
-						 adev->noc_outstanding_aximm->mask, 10000);
+						 adev->noc_outstanding_aximm->mask,
+						 2000000 /* 2 seconds */);
 		if (ret < 0) {
 			dev_err(&apart->dev, "failed due to outstanding NoC AXIMM transactions!\n");
 			return -EINVAL;
