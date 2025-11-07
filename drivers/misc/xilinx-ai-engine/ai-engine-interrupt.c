@@ -1194,13 +1194,10 @@ irqreturn_t aie2ps_interrupt_user_event1(int irq, void *data)
 	if (!l2_mask)
 		goto out;
 
-	aie_aperture_disable_l2_ctrl(aperture, &loc, l2_mask);
 	l2_status = aie_aperture_get_l2_status(aperture, &loc);
 	trace_aie_l2_status(aperture->adev, loc.col, l2_status);
-	if (!l2_status) {
-		aie_aperture_enable_l2_ctrl(aperture, &loc, l2_mask);
+	if (!l2_status)
 		goto out;
-	}
 	aie_aperture_clear_l2_intr(aperture, &loc, l2_status);
 
 	aie_clear_l1_intr(apart, &loc, AIE_SHIM_SWITCH_A, AIE_SHIM_USER_EVENT1_BC_ID);
@@ -1222,7 +1219,6 @@ irqreturn_t aie2ps_interrupt_user_event1(int irq, void *data)
 		apart->user_event1_complete(apart->partition_id, apart->user_event1_priv);
 	loc.col = apart->range.start.col + 1;
 	loc.row = 0;
-	aie_aperture_enable_l2_ctrl(aperture, &loc, l2_mask);
 
 	trace_aie2ps_interrupt_user_event1_done(apart);
 	return complete ? IRQ_HANDLED : IRQ_NONE;
