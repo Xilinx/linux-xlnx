@@ -1805,9 +1805,8 @@ static void retract_page_tables(struct address_space *mapping, pgoff_t pgoff)
 		 * userfaultfd_wp() vmas.  But since the mmap_lock is not held,
 		 * it is still possible for a racing userfaultfd_ioctl() or
 		 * madvise() to have inserted ptes or markers.  Now that we hold
-		 * ptlock, repeating the anon_vma check protects from one
-		 * category, and repeating the userfaultfd_wp() check from
-		 * another.
+		* ptlock, repeating the retractable checks protects us from
+		* races against the prior checks.
 		 */
 		if (likely(file_backed_vma_is_retractable(vma))) {
 			pgt_pmd = pmdp_collapse_flush(vma, addr, pmd);
