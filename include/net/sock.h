@@ -859,6 +859,19 @@ static inline bool sk_nulls_del_node_init_rcu(struct sock *sk)
 	return rc;
 }
 
+static inline bool sk_nulls_replace_node_init_rcu(struct sock *old,
+						  struct sock *new)
+{
+	if (sk_hashed(old)) {
+		hlist_nulls_replace_init_rcu(&old->sk_nulls_node,
+					     &new->sk_nulls_node);
+		__sock_put(old);
+		return true;
+	}
+
+	return false;
+}
+
 static inline void __sk_add_node(struct sock *sk, struct hlist_head *list)
 {
 	hlist_add_head(&sk->sk_node, list);
@@ -1261,10 +1274,10 @@ struct proto {
 	void			(*close)(struct sock *sk,
 					long timeout);
 	int			(*pre_connect)(struct sock *sk,
-					struct sockaddr *uaddr,
+					struct sockaddr_unsized *uaddr,
 					int addr_len);
 	int			(*connect)(struct sock *sk,
-					struct sockaddr *uaddr,
+					struct sockaddr_unsized *uaddr,
 					int addr_len);
 	int			(*disconnect)(struct sock *sk, int flags);
 
@@ -1293,9 +1306,9 @@ struct proto {
 					   size_t len, int flags, int *addr_len);
 	void			(*splice_eof)(struct socket *sock);
 	int			(*bind)(struct sock *sk,
-					struct sockaddr *addr, int addr_len);
+					struct sockaddr_unsized *addr, int addr_len);
 	int			(*bind_add)(struct sock *sk,
-					struct sockaddr *addr, int addr_len);
+					struct sockaddr_unsized *addr, int addr_len);
 
 	int			(*backlog_rcv) (struct sock *sk,
 						struct sk_buff *skb);
@@ -1809,7 +1822,12 @@ struct sock *sk_alloc(struct net *net, int family, gfp_t priority,
 void sk_free(struct sock *sk);
 void sk_net_refcnt_upgrade(struct sock *sk);
 void sk_destruct(struct sock *sk);
-struct sock *sk_clone_lock(const struct sock *sk, const gfp_t priority);
+struct sock *sk_clone(const struct sock *sk, const gfp_t priority, bool lock);
+
+static inline struct sock *sk_clone_lock(const struct sock *sk, const gfp_t priority)
+{
+	return sk_clone(sk, priority, true);
+}
 
 struct sk_buff *sock_wmalloc(struct sock *sk, unsigned long size, int force,
 			     gfp_t priority);
@@ -1902,8 +1920,8 @@ int sock_cmsg_send(struct sock *sk, struct msghdr *msg,
  * Functions to fill in entries in struct proto_ops when a protocol
  * does not implement a particular function.
  */
-int sock_no_bind(struct socket *, struct sockaddr *, int);
-int sock_no_connect(struct socket *, struct sockaddr *, int, int);
+int sock_no_bind(struct socket *sock, struct sockaddr_unsized *saddr, int len);
+int sock_no_connect(struct socket *sock, struct sockaddr_unsized *saddr, int len, int flags);
 int sock_no_socketpair(struct socket *, struct socket *);
 int sock_no_accept(struct socket *, struct socket *, struct proto_accept_arg *);
 int sock_no_getname(struct socket *, struct sockaddr *, int);
@@ -2594,12 +2612,16 @@ static inline struct page_frag *sk_page_frag(struct sock *sk)
 
 bool sk_page_frag_refill(struct sock *sk, struct page_frag *pfrag);
 
+static inline bool __sock_writeable(const struct sock *sk, int wmem_alloc)
+{
+	return wmem_alloc < (READ_ONCE(sk->sk_sndbuf) >> 1);
+}
 /*
  *	Default write policy as shown to user space via poll/select/SIGIO
  */
 static inline bool sock_writeable(const struct sock *sk)
 {
-	return refcount_read(&sk->sk_wmem_alloc) < (READ_ONCE(sk->sk_sndbuf) >> 1);
+	return __sock_writeable(sk, refcount_read(&sk->sk_wmem_alloc));
 }
 
 static inline gfp_t gfp_any(void)
@@ -3083,7 +3105,7 @@ void sock_set_reuseaddr(struct sock *sk);
 void sock_set_reuseport(struct sock *sk);
 void sock_set_sndtimeo(struct sock *sk, s64 secs);
 
-int sock_bind_add(struct sock *sk, struct sockaddr *addr, int addr_len);
+int sock_bind_add(struct sock *sk, struct sockaddr_unsized *addr, int addr_len);
 
 int sock_get_timeout(long timeo, void *optval, bool old_timeval);
 int sock_copy_user_timeval(struct __kernel_sock_timeval *tv,

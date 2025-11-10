@@ -3300,6 +3300,7 @@ F:	drivers/*/*/*rockchip*
 F:	drivers/*/*rockchip*
 F:	drivers/clk/rockchip/
 F:	drivers/i2c/busses/i2c-rk3x.c
+F:	drivers/net/ethernet/stmicro/stmmac/dwmac-rk.c
 F:	sound/soc/rockchip/
 N:	rockchip
 
@@ -4819,6 +4820,7 @@ F:	drivers/net/dsa/b53/*
 F:	drivers/net/dsa/bcm_sf2*
 F:	include/linux/dsa/brcm.h
 F:	include/linux/platform_data/b53.h
+F:	net/dsa/tag_brcm.c
 
 BROADCOM BCM2711/BCM2835 ARM ARCHITECTURE
 M:	Florian Fainelli <florian.fainelli@broadcom.com>
@@ -12521,6 +12523,7 @@ F:	include/linux/avf/virtchnl.h
 F:	include/linux/net/intel/*/
 
 INTEL ETHERNET PROTOCOL DRIVER FOR RDMA
+M:	Krzysztof Czurylo <krzysztof.czurylo@intel.com>
 M:	Tatyana Nikolova <tatyana.e.nikolova@intel.com>
 L:	linux-rdma@vger.kernel.org
 S:	Supported
@@ -12861,7 +12864,8 @@ F:	tools/testing/selftests/sgx/*
 K:	\bSGX_
 
 INTEL SKYLAKE INT3472 ACPI DEVICE DRIVER
-M:	Daniel Scally <djrscally@gmail.com>
+M:	Daniel Scally <dan.scally@ideasonboard.com>
+M:	Sakari Ailus <sakari.ailus@linux.intel.com>
 S:	Maintained
 F:	drivers/platform/x86/intel/int3472/
 F:	include/linux/platform_data/x86/int3472.h
@@ -14050,7 +14054,7 @@ F:	tools/testing/selftests/landlock/
 K:	landlock
 K:	LANDLOCK
 
-LANTIQ / INTEL Ethernet drivers
+LANTIQ / MAXLINEAR / INTEL Ethernet DSA drivers
 M:	Hauke Mehrtens <hauke@hauke-m.de>
 L:	netdev@vger.kernel.org
 S:	Maintained
@@ -14058,6 +14062,7 @@ F:	Documentation/devicetree/bindings/net/dsa/lantiq,gswip.yaml
 F:	drivers/net/dsa/lantiq/*
 F:	drivers/net/ethernet/lantiq_xrx200.c
 F:	net/dsa/tag_gswip.c
+F:	net/dsa/tag_mxl-gsw1xx.c
 
 LANTIQ MIPS ARCHITECTURE
 M:	John Crispin <john@phrozen.org>
@@ -17450,6 +17455,14 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/net/motorcomm,yt8xxx.yaml
 F:	drivers/net/phy/motorcomm.c
 
+MOTORCOMM YT921X ETHERNET SWITCH DRIVER
+M:	David Yang <mmyangfl@gmail.com>
+L:	netdev@vger.kernel.org
+S:	Maintained
+F:	Documentation/devicetree/bindings/net/dsa/motorcomm,yt921x.yaml
+F:	drivers/net/dsa/yt921x.*
+F:	net/dsa/tag_yt921x.c
+
 MOXA SMARTIO/INDUSTIO/INTELLIO SERIAL CARD
 M:	Jiri Slaby <jirislaby@kernel.org>
 S:	Maintained
@@ -17604,6 +17617,14 @@ S:	Maintained
 T:	git git://linuxtv.org/media.git
 F:	Documentation/devicetree/bindings/media/i2c/aptina,mt9v111.yaml
 F:	drivers/media/i2c/mt9v111.c
+
+MUCSE ETHERNET DRIVER
+M:	Yibo Dong <dong100@mucse.com>
+L:	netdev@vger.kernel.org
+S:	Maintained
+W:	https://www.mucse.com/en/
+F:	Documentation/networking/device_drivers/ethernet/mucse/
+F:	drivers/net/ethernet/mucse/
 
 MULTIFUNCTION DEVICES (MFD)
 M:	Lee Jones <lee@kernel.org>

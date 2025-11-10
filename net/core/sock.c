@@ -155,7 +155,7 @@
 static DEFINE_MUTEX(proto_list_mutex);
 static LIST_HEAD(proto_list);
 
-static void sock_def_write_space_wfree(struct sock *sk);
+static void sock_def_write_space_wfree(struct sock *sk, int wmem_alloc);
 static void sock_def_write_space(struct sock *sk);
 
 /**
@@ -2462,13 +2462,16 @@ static void sk_init_common(struct sock *sk)
 }
 
 /**
- *	sk_clone_lock - clone a socket, and lock its clone
- *	@sk: the socket to clone
- *	@priority: for allocation (%GFP_KERNEL, %GFP_ATOMIC, etc)
+ * sk_clone - clone a socket
+ * @sk: the socket to clone
+ * @priority: for allocation (%GFP_KERNEL, %GFP_ATOMIC, etc)
+ * @lock: if true, lock the cloned sk
  *
- *	Caller must unlock socket even in error path (bh_unlock_sock(newsk))
+ * If @lock is true, the clone is locked by bh_lock_sock(), and
+ * caller must unlock socket even in error path by bh_unlock_sock().
  */
-struct sock *sk_clone_lock(const struct sock *sk, const gfp_t priority)
+struct sock *sk_clone(const struct sock *sk, const gfp_t priority,
+		      bool lock)
 {
 	struct proto *prot = READ_ONCE(sk->sk_prot);
 	struct sk_filter *filter;
@@ -2497,9 +2500,13 @@ struct sock *sk_clone_lock(const struct sock *sk, const gfp_t priority)
 		__netns_tracker_alloc(sock_net(newsk), &newsk->ns_tracker,
 				      false, priority);
 	}
+
 	sk_node_init(&newsk->sk_node);
 	sock_lock_init(newsk);
-	bh_lock_sock(newsk);
+
+	if (lock)
+		bh_lock_sock(newsk);
+
 	newsk->sk_backlog.head	= newsk->sk_backlog.tail = NULL;
 	newsk->sk_backlog.len = 0;
 
@@ -2590,12 +2597,13 @@ free:
 	 * destructor and make plain sk_free()
 	 */
 	newsk->sk_destruct = NULL;
-	bh_unlock_sock(newsk);
+	if (lock)
+		bh_unlock_sock(newsk);
 	sk_free(newsk);
 	newsk = NULL;
 	goto out;
 }
-EXPORT_SYMBOL_GPL(sk_clone_lock);
+EXPORT_SYMBOL_GPL(sk_clone);
 
 static u32 sk_dst_gso_max_size(struct sock *sk, const struct net_device *dev)
 {
@@ -2659,16 +2667,18 @@ EXPORT_SYMBOL_GPL(sk_setup_caps);
  */
 void sock_wfree(struct sk_buff *skb)
 {
-	struct sock *sk = skb->sk;
 	unsigned int len = skb->truesize;
+	struct sock *sk = skb->sk;
 	bool free;
+	int old;
 
 	if (!sock_flag(sk, SOCK_USE_WRITE_QUEUE)) {
 		if (sock_flag(sk, SOCK_RCU_FREE) &&
 		    sk->sk_write_space == sock_def_write_space) {
 			rcu_read_lock();
-			free = refcount_sub_and_test(len, &sk->sk_wmem_alloc);
-			sock_def_write_space_wfree(sk);
+			free = __refcount_sub_and_test(len, &sk->sk_wmem_alloc,
+						       &old);
+			sock_def_write_space_wfree(sk, old - len);
 			rcu_read_unlock();
 			if (unlikely(free))
 				__sk_free(sk);
@@ -3452,13 +3462,13 @@ EXPORT_SYMBOL_GPL(sk_set_peek_off);
  * function, some default processing is provided.
  */
 
-int sock_no_bind(struct socket *sock, struct sockaddr *saddr, int len)
+int sock_no_bind(struct socket *sock, struct sockaddr_unsized *saddr, int len)
 {
 	return -EOPNOTSUPP;
 }
 EXPORT_SYMBOL(sock_no_bind);
 
-int sock_no_connect(struct socket *sock, struct sockaddr *saddr,
+int sock_no_connect(struct socket *sock, struct sockaddr_unsized *saddr,
 		    int len, int flags)
 {
 	return -EOPNOTSUPP;
@@ -3612,12 +3622,12 @@ static void sock_def_write_space(struct sock *sk)
  * for SOCK_RCU_FREE sockets under RCU read section and after putting
  * ->sk_wmem_alloc.
  */
-static void sock_def_write_space_wfree(struct sock *sk)
+static void sock_def_write_space_wfree(struct sock *sk, int wmem_alloc)
 {
 	/* Do not wake up a writer until he can make "significant"
 	 * progress.  --DaveM
 	 */
-	if (sock_writeable(sk)) {
+	if (__sock_writeable(sk, wmem_alloc)) {
 		struct socket_wq *wq = rcu_dereference(sk->sk_wq);
 
 		/* rely on refcount_sub from sock_wfree() */
@@ -4385,7 +4395,7 @@ bool sk_busy_loop_end(void *p, unsigned long start_time)
 EXPORT_SYMBOL(sk_busy_loop_end);
 #endif /* CONFIG_NET_RX_BUSY_POLL */
 
-int sock_bind_add(struct sock *sk, struct sockaddr *addr, int addr_len)
+int sock_bind_add(struct sock *sk, struct sockaddr_unsized *addr, int addr_len)
 {
 	if (!sk->sk_prot->bind_add)
 		return -EOPNOTSUPP;

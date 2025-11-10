@@ -52,6 +52,7 @@
 #include <linux/of_net.h>
 #include <linux/phy.h>
 #include <linux/pinctrl/consumer.h>
+#include <linux/phy_fixed.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/prefetch.h>
@@ -2231,7 +2232,6 @@ static int fec_enet_mdio_read_c22(struct mii_bus *bus, int mii_id, int regnum)
 	ret = FEC_MMFR_DATA(readl(fep->hwp + FEC_MII_DATA));
 
 out:
-	pm_runtime_mark_last_busy(dev);
 	pm_runtime_put_autosuspend(dev);
 
 	return ret;
@@ -2280,7 +2280,6 @@ static int fec_enet_mdio_read_c45(struct mii_bus *bus, int mii_id,
 	ret = FEC_MMFR_DATA(readl(fep->hwp + FEC_MII_DATA));
 
 out:
-	pm_runtime_mark_last_busy(dev);
 	pm_runtime_put_autosuspend(dev);
 
 	return ret;
@@ -2312,7 +2311,6 @@ static int fec_enet_mdio_write_c22(struct mii_bus *bus, int mii_id, int regnum,
 	if (ret)
 		netdev_err(fep->netdev, "MDIO write timeout\n");
 
-	pm_runtime_mark_last_busy(dev);
 	pm_runtime_put_autosuspend(dev);
 
 	return ret;
@@ -2356,7 +2354,6 @@ static int fec_enet_mdio_write_c45(struct mii_bus *bus, int mii_id,
 		netdev_err(fep->netdev, "MDIO write timeout\n");
 
 out:
-	pm_runtime_mark_last_busy(dev);
 	pm_runtime_put_autosuspend(dev);
 
 	return ret;
@@ -2476,11 +2473,8 @@ static int fec_enet_parse_rgmii_delay(struct fec_enet_private *fep,
 static int fec_enet_mii_probe(struct net_device *ndev)
 {
 	struct fec_enet_private *fep = netdev_priv(ndev);
-	struct phy_device *phy_dev = NULL;
-	char mdio_bus_id[MII_BUS_ID_SIZE];
-	char phy_name[MII_BUS_ID_SIZE + 3];
-	int phy_id;
-	int dev_id = fep->dev_id;
+	struct phy_device *phy_dev;
+	int ret;
 
 	if (fep->phy_node) {
 		phy_dev = of_phy_connect(ndev, fep->phy_node,
@@ -2492,30 +2486,28 @@ static int fec_enet_mii_probe(struct net_device *ndev)
 		}
 	} else {
 		/* check for attached phy */
-		for (phy_id = 0; (phy_id < PHY_MAX_ADDR); phy_id++) {
-			if (!mdiobus_is_registered_device(fep->mii_bus, phy_id))
-				continue;
-			if (dev_id--)
-				continue;
-			strscpy(mdio_bus_id, fep->mii_bus->id, MII_BUS_ID_SIZE);
-			break;
-		}
+		phy_dev = phy_find_first(fep->mii_bus);
+		if (fep->dev_id && phy_dev)
+			phy_dev = phy_find_next(fep->mii_bus, phy_dev);
 
-		if (phy_id >= PHY_MAX_ADDR) {
+		if (!phy_dev) {
 			netdev_info(ndev, "no PHY, assuming direct connection to switch\n");
-			strscpy(mdio_bus_id, "fixed-0", MII_BUS_ID_SIZE);
-			phy_id = 0;
+			phy_dev = fixed_phy_register_100fd();
+			if (IS_ERR(phy_dev)) {
+				netdev_err(ndev, "could not register fixed PHY\n");
+				return PTR_ERR(phy_dev);
+			}
 		}
 
-		snprintf(phy_name, sizeof(phy_name),
-			 PHY_ID_FMT, mdio_bus_id, phy_id);
-		phy_dev = phy_connect(ndev, phy_name, &fec_enet_adjust_link,
-				      fep->phy_interface);
-	}
+		ret = phy_connect_direct(ndev, phy_dev, &fec_enet_adjust_link,
+					 fep->phy_interface);
+		if (ret) {
+			if (phy_is_pseudo_fixed_link(phy_dev))
+				fixed_phy_unregister(phy_dev);
+			netdev_err(ndev, "could not attach to PHY\n");
+			return ret;
+		}
 
-	if (IS_ERR(phy_dev)) {
-		netdev_err(ndev, "could not attach to PHY\n");
-		return PTR_ERR(phy_dev);
 	}
 
 	/* mask with MAC supported features */
@@ -2552,7 +2544,6 @@ static int fec_enet_mii_init(struct platform_device *pdev)
 	int err = -ENXIO;
 	u32 mii_speed, holdtime;
 	u32 bus_freq;
-	int addr;
 
 	/*
 	 * The i.MX28 dual fec interfaces are not equal.
@@ -2667,11 +2658,8 @@ static int fec_enet_mii_init(struct platform_device *pdev)
 	of_node_put(node);
 
 	/* find all the PHY devices on the bus and set mac_managed_pm to true */
-	for (addr = 0; addr < PHY_MAX_ADDR; addr++) {
-		phydev = mdiobus_get_phy(fep->mii_bus, addr);
-		if (phydev)
-			phydev->mac_managed_pm = true;
-	}
+	mdiobus_for_each_phy(fep->mii_bus, phydev)
+		phydev->mac_managed_pm = true;
 
 	mii_cnt++;
 
@@ -2839,7 +2827,6 @@ static void fec_enet_get_regs(struct net_device *ndev,
 		buf[off] = readl(&theregs[off]);
 	}
 
-	pm_runtime_mark_last_busy(dev);
 	pm_runtime_put_autosuspend(dev);
 }
 
@@ -3616,7 +3603,6 @@ err_enet_mii_probe:
 err_enet_alloc:
 	fec_enet_clk_enable(ndev, false);
 clk_enable:
-	pm_runtime_mark_last_busy(&fep->pdev->dev);
 	pm_runtime_put_autosuspend(&fep->pdev->dev);
 	pinctrl_pm_select_sleep_state(&fep->pdev->dev);
 	return ret;
@@ -3626,8 +3612,9 @@ static int
 fec_enet_close(struct net_device *ndev)
 {
 	struct fec_enet_private *fep = netdev_priv(ndev);
+	struct phy_device *phy_dev = ndev->phydev;
 
-	phy_stop(ndev->phydev);
+	phy_stop(phy_dev);
 
 	if (netif_device_present(ndev)) {
 		napi_disable(&fep->napi);
@@ -3635,7 +3622,10 @@ fec_enet_close(struct net_device *ndev)
 		fec_stop(ndev);
 	}
 
-	phy_disconnect(ndev->phydev);
+	phy_disconnect(phy_dev);
+
+	if (!fep->phy_node && phy_is_pseudo_fixed_link(phy_dev))
+		fixed_phy_unregister(phy_dev);
 
 	if (fep->quirks & FEC_QUIRK_ERR006687)
 		imx6q_cpuidle_fec_irqs_unused();
@@ -3647,7 +3637,6 @@ fec_enet_close(struct net_device *ndev)
 		cpu_latency_qos_remove_request(&fep->pm_qos_req);
 
 	pinctrl_pm_select_sleep_state(&fep->pdev->dev);
-	pm_runtime_mark_last_busy(&fep->pdev->dev);
 	pm_runtime_put_autosuspend(&fep->pdev->dev);
 
 	fec_enet_free_buffers(ndev);
@@ -4616,7 +4605,6 @@ fec_probe(struct platform_device *pdev)
 
 	INIT_WORK(&fep->tx_timeout_work, fec_enet_timeout_work);
 
-	pm_runtime_mark_last_busy(&pdev->dev);
 	pm_runtime_put_autosuspend(&pdev->dev);
 
 	return 0;

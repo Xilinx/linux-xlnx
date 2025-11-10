@@ -5793,6 +5793,7 @@ static int mac80211_hwsim_new_radio(struct genl_info *info,
 		ieee80211_hw_set(hw, NO_AUTO_VIF);
 
 	wiphy_ext_feature_set(hw->wiphy, NL80211_EXT_FEATURE_CQM_RSSI_LIST);
+	wiphy_ext_feature_set(hw->wiphy, NL80211_EXT_FEATURE_PUNCT);
 
 	for (i = 0; i < ARRAY_SIZE(data->link_data); i++) {
 		hrtimer_setup(&data->link_data[i].beacon_timer, mac80211_hwsim_beacon,
@@ -6698,14 +6699,15 @@ static struct genl_family hwsim_genl_family __ro_after_init = {
 	.n_mcgrps = ARRAY_SIZE(hwsim_mcgrps),
 };
 
-static void remove_user_radios(u32 portid)
+static void remove_user_radios(u32 portid, int netgroup)
 {
 	struct mac80211_hwsim_data *entry, *tmp;
 	LIST_HEAD(list);
 
 	spin_lock_bh(&hwsim_radio_lock);
 	list_for_each_entry_safe(entry, tmp, &hwsim_radios, list) {
-		if (entry->destroy_on_close && entry->portid == portid) {
+		if (entry->destroy_on_close && entry->portid == portid &&
+		    entry->netgroup == netgroup) {
 			list_move(&entry->list, &list);
 			rhashtable_remove_fast(&hwsim_radios_rht, &entry->rht,
 					       hwsim_rht_params);
@@ -6730,7 +6732,7 @@ static int mac80211_hwsim_netlink_notify(struct notifier_block *nb,
 	if (state != NETLINK_URELEASE)
 		return NOTIFY_DONE;
 
-	remove_user_radios(notify->portid);
+	remove_user_radios(notify->portid, hwsim_net_get_netgroup(notify->net));
 
 	if (notify->portid == hwsim_net_get_wmediumd(notify->net)) {
 		printk(KERN_INFO "mac80211_hwsim: wmediumd released netlink"

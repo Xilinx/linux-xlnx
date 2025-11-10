@@ -135,6 +135,7 @@ struct netns_ipv4 {
 	u8 sysctl_icmp_echo_ignore_broadcasts;
 	u8 sysctl_icmp_ignore_bogus_error_responses;
 	u8 sysctl_icmp_errors_use_inbound_ifaddr;
+	u8 sysctl_icmp_errors_extension_mask;
 	int sysctl_icmp_ratelimit;
 	int sysctl_icmp_ratemask;
 	int sysctl_icmp_msgs_per_sec;
@@ -220,6 +221,7 @@ struct netns_ipv4 {
 	int sysctl_tcp_pacing_ss_ratio;
 	int sysctl_tcp_pacing_ca_ratio;
 	unsigned int sysctl_tcp_child_ehash_entries;
+	int sysctl_tcp_comp_sack_rtt_percent;
 	unsigned long sysctl_tcp_comp_sack_delay_ns;
 	unsigned long sysctl_tcp_comp_sack_slack_ns;
 	int sysctl_max_syn_backlog;

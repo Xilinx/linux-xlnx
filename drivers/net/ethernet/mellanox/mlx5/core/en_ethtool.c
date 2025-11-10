@@ -2125,14 +2125,12 @@ static int mlx5e_get_module_eeprom_by_page(struct net_device *netdev,
 		if (!size_read)
 			return i;
 
-		if (size_read == -EINVAL)
-			return -EINVAL;
 		if (size_read < 0) {
 			NL_SET_ERR_MSG_FMT_MOD(
 				extack,
 				"Query module eeprom by page failed, read %u bytes, err %d",
 				i, size_read);
-			return i;
+			return size_read;
 		}
 
 		i += size_read;
@@ -2273,7 +2271,7 @@ static int set_pflag_rx_cqe_compress(struct net_device *netdev,
 	if (!MLX5_CAP_GEN(mdev, cqe_compression))
 		return -EOPNOTSUPP;
 
-	rx_filter = priv->tstamp.rx_filter != HWTSTAMP_FILTER_NONE;
+	rx_filter = priv->hwtstamp_config.rx_filter != HWTSTAMP_FILTER_NONE;
 	err = mlx5e_modify_rx_cqe_compression_locked(priv, enable, rx_filter);
 	if (err)
 		return err;

@@ -34,6 +34,9 @@
 /* name for sysfs, %d is appended */
 #define PHY_NAME "phy"
 
+/* maximum length of radio debugfs directory name */
+#define RADIO_DEBUGFSDIR_MAX_LEN	8
+
 MODULE_AUTHOR("Johannes Berg");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("wireless configuration support");
@@ -1042,6 +1045,18 @@ int wiphy_register(struct wiphy *wiphy)
 	/* add to debugfs */
 	rdev->wiphy.debugfsdir = debugfs_create_dir(wiphy_name(&rdev->wiphy),
 						    ieee80211_debugfs_dir);
+	if (wiphy->n_radio > 0) {
+		int idx;
+		char radio_name[RADIO_DEBUGFSDIR_MAX_LEN];
+
+		for (idx = 0; idx < wiphy->n_radio; idx++) {
+			scnprintf(radio_name, sizeof(radio_name), "radio%d",
+				  idx);
+			wiphy->radio_cfg[idx].radio_debugfsdir =
+				debugfs_create_dir(radio_name,
+						   rdev->wiphy.debugfsdir);
+		}
+	}
 
 	cfg80211_debugfs_rdev_add(rdev);
 	nl80211_notify_wiphy(rdev, NL80211_CMD_NEW_WIPHY);
@@ -1786,6 +1801,62 @@ bool wiphy_delayed_work_pending(struct wiphy *wiphy,
 	return timer_pending(&dwork->timer);
 }
 EXPORT_SYMBOL_GPL(wiphy_delayed_work_pending);
+
+enum hrtimer_restart wiphy_hrtimer_work_timer(struct hrtimer *t)
+{
+	struct wiphy_hrtimer_work *hrwork =
+		container_of(t, struct wiphy_hrtimer_work, timer);
+
+	wiphy_work_queue(hrwork->wiphy, &hrwork->work);
+
+	return HRTIMER_NORESTART;
+}
+EXPORT_SYMBOL_GPL(wiphy_hrtimer_work_timer);
+
+void wiphy_hrtimer_work_queue(struct wiphy *wiphy,
+			      struct wiphy_hrtimer_work *hrwork,
+			      ktime_t delay)
+{
+	trace_wiphy_hrtimer_work_queue(wiphy, &hrwork->work, delay);
+
+	if (!delay) {
+		hrtimer_cancel(&hrwork->timer);
+		wiphy_work_queue(wiphy, &hrwork->work);
+		return;
+	}
+
+	hrwork->wiphy = wiphy;
+	hrtimer_start_range_ns(&hrwork->timer, delay,
+			       1000 * NSEC_PER_USEC, HRTIMER_MODE_REL);
+}
+EXPORT_SYMBOL_GPL(wiphy_hrtimer_work_queue);
+
+void wiphy_hrtimer_work_cancel(struct wiphy *wiphy,
+			       struct wiphy_hrtimer_work *hrwork)
+{
+	lockdep_assert_held(&wiphy->mtx);
+
+	hrtimer_cancel(&hrwork->timer);
+	wiphy_work_cancel(wiphy, &hrwork->work);
+}
+EXPORT_SYMBOL_GPL(wiphy_hrtimer_work_cancel);
+
+void wiphy_hrtimer_work_flush(struct wiphy *wiphy,
+			      struct wiphy_hrtimer_work *hrwork)
+{
+	lockdep_assert_held(&wiphy->mtx);
+
+	hrtimer_cancel(&hrwork->timer);
+	wiphy_work_flush(wiphy, &hrwork->work);
+}
+EXPORT_SYMBOL_GPL(wiphy_hrtimer_work_flush);
+
+bool wiphy_hrtimer_work_pending(struct wiphy *wiphy,
+				struct wiphy_hrtimer_work *hrwork)
+{
+	return hrtimer_is_queued(&hrwork->timer);
+}
+EXPORT_SYMBOL_GPL(wiphy_hrtimer_work_pending);
 
 static int __init cfg80211_init(void)
 {
