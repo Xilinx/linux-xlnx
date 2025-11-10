@@ -886,7 +886,7 @@ static inline void vma_flag_set_atomic(struct vm_area_struct *vma, int bit)
 		vma_assert_locked(vma);
 
 	if (__vma_flag_atomic_valid(vma, bit))
-		set_bit(bit, &vma->__vm_flags);
+		set_bit(bit, &ACCESS_PRIVATE(vma, __vm_flags));
 }
 
 /*
@@ -899,7 +899,9 @@ static inline void vma_flag_set_atomic(struct vm_area_struct *vma, int bit)
 static inline bool vma_flag_test_atomic(struct vm_area_struct *vma, int bit)
 {
 	if (__vma_flag_atomic_valid(vma, bit))
-		return test_bit(bit, &vma->__vm_flags);
+		return test_bit(bit, &vma->vm_flags);
+
+	return false;
 }
 
 static inline void vma_set_anonymous(struct vm_area_struct *vma)
