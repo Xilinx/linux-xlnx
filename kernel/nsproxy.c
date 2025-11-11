@@ -60,6 +60,27 @@ static inline struct nsproxy *create_nsproxy(void)
 	return nsproxy;
 }
 
+static inline void nsproxy_free(struct nsproxy *ns)
+{
+	put_mnt_ns(ns->mnt_ns);
+	put_uts_ns(ns->uts_ns);
+	put_ipc_ns(ns->ipc_ns);
+	put_pid_ns(ns->pid_ns_for_children);
+	put_time_ns(ns->time_ns);
+	put_time_ns(ns->time_ns_for_children);
+	put_cgroup_ns(ns->cgroup_ns);
+	put_net(ns->net_ns);
+	kmem_cache_free(nsproxy_cachep, ns);
+}
+
+DEFINE_FREE(nsproxy_free, struct nsproxy *, if (_T) nsproxy_free(_T))
+
+void free_nsproxy(struct nsproxy *ns)
+{
+	nsproxy_ns_active_put(ns);
+	nsproxy_free(ns);
+}
+
 /*
  * Create new nsproxy and all of its the associated namespaces.
  * Return the newly created nsproxy.  Do not attach this to the task,
@@ -69,76 +90,45 @@ static struct nsproxy *create_new_namespaces(u64 flags,
 	struct task_struct *tsk, struct user_namespace *user_ns,
 	struct fs_struct *new_fs)
 {
-	struct nsproxy *new_nsp;
-	int err;
+	struct nsproxy *new_nsp __free(nsproxy_free) = NULL;
 
 	new_nsp = create_nsproxy();
 	if (!new_nsp)
 		return ERR_PTR(-ENOMEM);
 
 	new_nsp->mnt_ns = copy_mnt_ns(flags, tsk->nsproxy->mnt_ns, user_ns, new_fs);
-	if (IS_ERR(new_nsp->mnt_ns)) {
-		err = PTR_ERR(new_nsp->mnt_ns);
-		goto out_ns;
-	}
+	if (IS_ERR(new_nsp->mnt_ns))
+		return ERR_CAST(new_nsp->mnt_ns);
 
 	new_nsp->uts_ns = copy_utsname(flags, user_ns, tsk->nsproxy->uts_ns);
-	if (IS_ERR(new_nsp->uts_ns)) {
-		err = PTR_ERR(new_nsp->uts_ns);
-		goto out_uts;
-	}
+	if (IS_ERR(new_nsp->uts_ns))
+		return ERR_CAST(new_nsp->uts_ns);
 
 	new_nsp->ipc_ns = copy_ipcs(flags, user_ns, tsk->nsproxy->ipc_ns);
-	if (IS_ERR(new_nsp->ipc_ns)) {
-		err = PTR_ERR(new_nsp->ipc_ns);
-		goto out_ipc;
-	}
+	if (IS_ERR(new_nsp->ipc_ns))
+		return ERR_CAST(new_nsp->ipc_ns);
 
-	new_nsp->pid_ns_for_children =
-		copy_pid_ns(flags, user_ns, tsk->nsproxy->pid_ns_for_children);
-	if (IS_ERR(new_nsp->pid_ns_for_children)) {
-		err = PTR_ERR(new_nsp->pid_ns_for_children);
-		goto out_pid;
-	}
+	new_nsp->pid_ns_for_children = copy_pid_ns(flags, user_ns,
+						   tsk->nsproxy->pid_ns_for_children);
+	if (IS_ERR(new_nsp->pid_ns_for_children))
+		return ERR_CAST(new_nsp->pid_ns_for_children);
 
 	new_nsp->cgroup_ns = copy_cgroup_ns(flags, user_ns,
 					    tsk->nsproxy->cgroup_ns);
-	if (IS_ERR(new_nsp->cgroup_ns)) {
-		err = PTR_ERR(new_nsp->cgroup_ns);
-		goto out_cgroup;
-	}
+	if (IS_ERR(new_nsp->cgroup_ns))
+		return ERR_CAST(new_nsp->cgroup_ns);
 
 	new_nsp->net_ns = copy_net_ns(flags, user_ns, tsk->nsproxy->net_ns);
-	if (IS_ERR(new_nsp->net_ns)) {
-		err = PTR_ERR(new_nsp->net_ns);
-		goto out_net;
-	}
+	if (IS_ERR(new_nsp->net_ns))
+		return ERR_CAST(new_nsp->net_ns);
 
 	new_nsp->time_ns_for_children = copy_time_ns(flags, user_ns,
-					tsk->nsproxy->time_ns_for_children);
-	if (IS_ERR(new_nsp->time_ns_for_children)) {
-		err = PTR_ERR(new_nsp->time_ns_for_children);
-		goto out_time;
-	}
+						     tsk->nsproxy->time_ns_for_children);
+	if (IS_ERR(new_nsp->time_ns_for_children))
+		return ERR_CAST(new_nsp->time_ns_for_children);
 	new_nsp->time_ns = get_time_ns(tsk->nsproxy->time_ns);
 
-	return new_nsp;
-
-out_time:
-	put_net(new_nsp->net_ns);
-out_net:
-	put_cgroup_ns(new_nsp->cgroup_ns);
-out_cgroup:
-	put_pid_ns(new_nsp->pid_ns_for_children);
-out_pid:
-	put_ipc_ns(new_nsp->ipc_ns);
-out_ipc:
-	put_uts_ns(new_nsp->uts_ns);
-out_uts:
-	put_mnt_ns(new_nsp->mnt_ns);
-out_ns:
-	kmem_cache_free(nsproxy_cachep, new_nsp);
-	return ERR_PTR(err);
+	return no_free_ptr(new_nsp);
 }
 
 /*
@@ -183,21 +173,6 @@ int copy_namespaces(u64 flags, struct task_struct *tsk)
 	nsproxy_ns_active_get(new_ns);
 	tsk->nsproxy = new_ns;
 	return 0;
-}
-
-void free_nsproxy(struct nsproxy *ns)
-{
-	nsproxy_ns_active_put(ns);
-
-	put_mnt_ns(ns->mnt_ns);
-	put_uts_ns(ns->uts_ns);
-	put_ipc_ns(ns->ipc_ns);
-	put_pid_ns(ns->pid_ns_for_children);
-	put_time_ns(ns->time_ns);
-	put_time_ns(ns->time_ns_for_children);
-	put_cgroup_ns(ns->cgroup_ns);
-	put_net(ns->net_ns);
-	kmem_cache_free(nsproxy_cachep, ns);
 }
 
 /*
@@ -338,7 +313,7 @@ static void put_nsset(struct nsset *nsset)
 	if (nsset->fs && (flags & CLONE_NEWNS) && (flags & ~CLONE_NEWNS))
 		free_fs_struct(nsset->fs);
 	if (nsset->nsproxy)
-		free_nsproxy(nsset->nsproxy);
+		nsproxy_free(nsset->nsproxy);
 }
 
 static int prepare_nsset(unsigned flags, struct nsset *nsset)
