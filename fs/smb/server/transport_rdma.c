@@ -425,6 +425,11 @@ static struct smb_direct_transport *alloc_transport(struct rdma_cm_id *cm_id)
 	conn = ksmbd_conn_alloc();
 	if (!conn)
 		goto err;
+
+	down_write(&conn_list_lock);
+	hash_add(conn_list, &conn->hlist, 0);
+	up_write(&conn_list_lock);
+
 	conn->transport = KSMBD_TRANS(t);
 	KSMBD_TRANS(t)->conn = conn;
 	KSMBD_TRANS(t)->ops = &ksmbd_smb_direct_transport_ops;
@@ -1569,18 +1574,14 @@ static int smb_direct_rdma_xmit(struct smb_direct_transport *t,
 					     get_buf_page_count(desc_buf, desc_buf_len),
 					     msg->sg_list, SG_CHUNK_SIZE);
 		if (ret) {
-			kfree(msg);
 			ret = -ENOMEM;
-			goto out;
+			goto free_msg;
 		}
 
 		ret = get_sg_list(desc_buf, desc_buf_len,
 				  msg->sgt.sgl, msg->sgt.orig_nents);
-		if (ret < 0) {
-			sg_free_table_chained(&msg->sgt, SG_CHUNK_SIZE);
-			kfree(msg);
-			goto out;
-		}
+		if (ret < 0)
+			goto free_table;
 
 		ret = rdma_rw_ctx_init(&msg->rdma_ctx, sc->ib.qp, sc->ib.qp->port,
 				       msg->sgt.sgl,
@@ -1591,9 +1592,7 @@ static int smb_direct_rdma_xmit(struct smb_direct_transport *t,
 				       is_read ? DMA_FROM_DEVICE : DMA_TO_DEVICE);
 		if (ret < 0) {
 			pr_err("failed to init rdma_rw_ctx: %d\n", ret);
-			sg_free_table_chained(&msg->sgt, SG_CHUNK_SIZE);
-			kfree(msg);
-			goto out;
+			goto free_table;
 		}
 
 		list_add_tail(&msg->list, &msg_list);
@@ -1625,6 +1624,12 @@ out:
 	atomic_add(credits_needed, &sc->rw_io.credits.count);
 	wake_up(&sc->rw_io.credits.wait_queue);
 	return ret;
+
+free_table:
+	sg_free_table_chained(&msg->sgt, SG_CHUNK_SIZE);
+free_msg:
+	kfree(msg);
+	goto out;
 }
 
 static int smb_direct_rdma_write(struct ksmbd_transport *t,

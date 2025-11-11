@@ -391,7 +391,9 @@ static void nfs4_setup_readdir(u64 cookie, __be32 *verifier, struct dentry *dent
 	*p++ = htonl(attrs);                           /* bitmap */
 	*p++ = htonl(12);             /* attribute buffer length */
 	*p++ = htonl(NF4DIR);
+	spin_lock(&dentry->d_lock);
 	p = xdr_encode_hyper(p, NFS_FILEID(d_inode(dentry->d_parent)));
+	spin_unlock(&dentry->d_lock);
 
 	readdir->pgbase = (char *)p - (char *)start;
 	readdir->count -= readdir->pgbase;
@@ -3634,6 +3636,7 @@ struct nfs4_closedata {
 	} lr;
 	struct nfs_fattr fattr;
 	unsigned long timestamp;
+	unsigned short retrans;
 };
 
 static void nfs4_free_closedata(void *data)
@@ -3662,6 +3665,7 @@ static void nfs4_close_done(struct rpc_task *task, void *data)
 		.state = state,
 		.inode = calldata->inode,
 		.stateid = &calldata->arg.stateid,
+		.retrans = calldata->retrans,
 	};
 
 	if (!nfs4_sequence_done(task, &calldata->res.seq_res))
@@ -3709,6 +3713,7 @@ static void nfs4_close_done(struct rpc_task *task, void *data)
 		default:
 			task->tk_status = nfs4_async_handle_exception(task,
 					server, task->tk_status, &exception);
+			calldata->retrans = exception.retrans;
 			if (exception.retry)
 				goto out_restart;
 	}
@@ -5591,9 +5596,11 @@ static int nfs4_read_done_cb(struct rpc_task *task, struct nfs_pgio_header *hdr)
 			.inode = hdr->inode,
 			.state = hdr->args.context->state,
 			.stateid = &hdr->args.stateid,
+			.retrans = hdr->retrans,
 		};
 		task->tk_status = nfs4_async_handle_exception(task,
 				server, task->tk_status, &exception);
+		hdr->retrans = exception.retrans;
 		if (exception.retry) {
 			rpc_restart_call_prepare(task);
 			return -EAGAIN;
@@ -5707,10 +5714,12 @@ static int nfs4_write_done_cb(struct rpc_task *task,
 			.inode = hdr->inode,
 			.state = hdr->args.context->state,
 			.stateid = &hdr->args.stateid,
+			.retrans = hdr->retrans,
 		};
 		task->tk_status = nfs4_async_handle_exception(task,
 				NFS_SERVER(inode), task->tk_status,
 				&exception);
+		hdr->retrans = exception.retrans;
 		if (exception.retry) {
 			rpc_restart_call_prepare(task);
 			return -EAGAIN;
@@ -6160,7 +6169,7 @@ static ssize_t __nfs4_get_acl_uncached(struct inode *inode, void *buf,
 	}
 
 	/* for decoding across pages */
-	res.acl_scratch = alloc_page(GFP_KERNEL);
+	res.acl_scratch = folio_alloc(GFP_KERNEL, 0);
 	if (!res.acl_scratch)
 		goto out_free;
 
@@ -6196,7 +6205,7 @@ out_free:
 	while (--i >= 0)
 		__free_page(pages[i]);
 	if (res.acl_scratch)
-		__free_page(res.acl_scratch);
+		folio_put(res.acl_scratch);
 	kfree(pages);
 	return ret;
 }
@@ -6724,6 +6733,7 @@ struct nfs4_delegreturndata {
 	struct nfs_fh fh;
 	nfs4_stateid stateid;
 	unsigned long timestamp;
+	unsigned short retrans;
 	struct {
 		struct nfs4_layoutreturn_args arg;
 		struct nfs4_layoutreturn_res res;
@@ -6744,6 +6754,7 @@ static void nfs4_delegreturn_done(struct rpc_task *task, void *calldata)
 		.inode = data->inode,
 		.stateid = &data->stateid,
 		.task_is_privileged = data->args.seq_args.sa_privileged,
+		.retrans = data->retrans,
 	};
 
 	if (!nfs4_sequence_done(task, &data->res.seq_res))
@@ -6815,6 +6826,7 @@ static void nfs4_delegreturn_done(struct rpc_task *task, void *calldata)
 		task->tk_status = nfs4_async_handle_exception(task,
 				data->res.server, task->tk_status,
 				&exception);
+		data->retrans = exception.retrans;
 		if (exception.retry)
 			goto out_restart;
 	}
@@ -7091,6 +7103,7 @@ struct nfs4_unlockdata {
 	struct file_lock fl;
 	struct nfs_server *server;
 	unsigned long timestamp;
+	unsigned short retrans;
 };
 
 static struct nfs4_unlockdata *nfs4_alloc_unlockdata(struct file_lock *fl,
@@ -7145,6 +7158,7 @@ static void nfs4_locku_done(struct rpc_task *task, void *data)
 	struct nfs4_exception exception = {
 		.inode = calldata->lsp->ls_state->inode,
 		.stateid = &calldata->arg.stateid,
+		.retrans = calldata->retrans,
 	};
 
 	if (!nfs4_sequence_done(task, &calldata->res.seq_res))
@@ -7178,6 +7192,7 @@ static void nfs4_locku_done(struct rpc_task *task, void *data)
 			task->tk_status = nfs4_async_handle_exception(task,
 					calldata->server, task->tk_status,
 					&exception);
+			calldata->retrans = exception.retrans;
 			if (exception.retry)
 				rpc_restart_call_prepare(task);
 	}
@@ -7872,10 +7887,10 @@ int nfs4_lock_delegation_recall(struct file_lock *fl, struct nfs4_state *state, 
 		return err;
 	do {
 		err = _nfs4_do_setlk(state, F_SETLK, fl, NFS_LOCK_NEW);
-		if (err != -NFS4ERR_DELAY)
+		if (err != -NFS4ERR_DELAY && err != -NFS4ERR_GRACE)
 			break;
 		ssleep(1);
-	} while (err == -NFS4ERR_DELAY);
+	} while (err == -NFS4ERR_DELAY || err == -NFSERR_GRACE);
 	return nfs4_handle_delegation_recall_error(server, state, stateid, fl, err);
 }
 
@@ -9442,7 +9457,7 @@ static int nfs4_verify_back_channel_attrs(struct nfs41_create_session_args *args
 		goto out;
 	if (rcvd->max_rqst_sz > sent->max_rqst_sz)
 		return -EINVAL;
-	if (rcvd->max_resp_sz < sent->max_resp_sz)
+	if (rcvd->max_resp_sz > sent->max_resp_sz)
 		return -EINVAL;
 	if (rcvd->max_resp_sz_cached > sent->max_resp_sz_cached)
 		return -EINVAL;

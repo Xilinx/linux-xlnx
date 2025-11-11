@@ -252,7 +252,8 @@ struct kvm_protected_vm {
 	pkvm_handle_t handle;
 	struct kvm_hyp_memcache teardown_mc;
 	struct kvm_hyp_memcache stage2_teardown_mc;
-	bool enabled;
+	bool is_protected;
+	bool is_created;
 };
 
 struct kvm_mpidr_data {
@@ -814,6 +815,11 @@ struct kvm_vcpu_arch {
 	u64 hcr_el2;
 	u64 hcrx_el2;
 	u64 mdcr_el2;
+
+	struct {
+		u64 r;
+		u64 w;
+	} fgt[__NR_FGT_GROUP_IDS__];
 
 	/* Exception Information */
 	struct kvm_vcpu_fault_info fault;
@@ -1442,7 +1448,7 @@ struct kvm *kvm_arch_alloc_vm(void);
 
 #define __KVM_HAVE_ARCH_FLUSH_REMOTE_TLBS_RANGE
 
-#define kvm_vm_is_protected(kvm)	(is_protected_kvm_enabled() && (kvm)->arch.pkvm.enabled)
+#define kvm_vm_is_protected(kvm)	(is_protected_kvm_enabled() && (kvm)->arch.pkvm.is_protected)
 
 #define vcpu_is_protected(vcpu)		kvm_vm_is_protected((vcpu)->kvm)
 
@@ -1599,6 +1605,51 @@ static inline bool kvm_arch_has_irq_bypass(void)
 void compute_fgu(struct kvm *kvm, enum fgt_group_id fgt);
 void get_reg_fixed_bits(struct kvm *kvm, enum vcpu_sysreg reg, u64 *res0, u64 *res1);
 void check_feature_map(void);
+void kvm_vcpu_load_fgt(struct kvm_vcpu *vcpu);
 
+static __always_inline enum fgt_group_id __fgt_reg_to_group_id(enum vcpu_sysreg reg)
+{
+	switch (reg) {
+	case HFGRTR_EL2:
+	case HFGWTR_EL2:
+		return HFGRTR_GROUP;
+	case HFGITR_EL2:
+		return HFGITR_GROUP;
+	case HDFGRTR_EL2:
+	case HDFGWTR_EL2:
+		return HDFGRTR_GROUP;
+	case HAFGRTR_EL2:
+		return HAFGRTR_GROUP;
+	case HFGRTR2_EL2:
+	case HFGWTR2_EL2:
+		return HFGRTR2_GROUP;
+	case HFGITR2_EL2:
+		return HFGITR2_GROUP;
+	case HDFGRTR2_EL2:
+	case HDFGWTR2_EL2:
+		return HDFGRTR2_GROUP;
+	default:
+		BUILD_BUG_ON(1);
+	}
+}
+
+#define vcpu_fgt(vcpu, reg)						\
+	({								\
+		enum fgt_group_id id = __fgt_reg_to_group_id(reg);	\
+		u64 *p;							\
+		switch (reg) {						\
+		case HFGWTR_EL2:					\
+		case HDFGWTR_EL2:					\
+		case HFGWTR2_EL2:					\
+		case HDFGWTR2_EL2:					\
+			p = &(vcpu)->arch.fgt[id].w;			\
+			break;						\
+		default:						\
+			p = &(vcpu)->arch.fgt[id].r;			\
+			break;						\
+		}							\
+									\
+		p;							\
+	})
 
 #endif /* __ARM64_KVM_HOST_H__ */

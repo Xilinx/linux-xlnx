@@ -66,6 +66,10 @@ specified as a bitmap::
 
 This will only count the operations from core/thread 0 and 1 in this cluster.
 
+User should not use tt_core_deprecated to specify the core/thread filtering.
+This option is provided for backward compatiblility and only support 8bit
+which may not cover all the core/thread sharing L3C.
+
 2. Tracetag allow the user to chose to count only read, write or atomic
 operations via the tt_req parameeter in perf. The default value counts all
 operations. tt_req is 3bits, 3'b100 represents read operations, 3'b101
@@ -110,8 +114,8 @@ uring channel. It is 2 bits. Some important codes are as follows:
 - 2'b11: count the events which sent to the uring_ext (MATA) channel;
 - 2'b01: is the same as 2'b11;
 - 2'b10: count the events which sent to the uring (non-MATA) channel;
-- 2'b00: default value, count the events which sent to the both uring and
-  uring_ext channel;
+- 2'b00: default value, count the events which sent to both uring and
+  uring_ext channels;
 
 6. ch: NoC PMU supports filtering the event counts of certain transaction
 channel with this option. The current supported channels are as follows:

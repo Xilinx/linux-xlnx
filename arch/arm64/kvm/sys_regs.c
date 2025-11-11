@@ -203,7 +203,6 @@ static void locate_register(const struct kvm_vcpu *vcpu, enum vcpu_sysreg reg,
 		MAPPED_EL2_SYSREG(AMAIR_EL2,   AMAIR_EL1,   NULL	     );
 		MAPPED_EL2_SYSREG(ELR_EL2,     ELR_EL1,	    NULL	     );
 		MAPPED_EL2_SYSREG(SPSR_EL2,    SPSR_EL1,    NULL	     );
-		MAPPED_EL2_SYSREG(ZCR_EL2,     ZCR_EL1,     NULL	     );
 		MAPPED_EL2_SYSREG(CONTEXTIDR_EL2, CONTEXTIDR_EL1, NULL	     );
 		MAPPED_EL2_SYSREG(SCTLR2_EL2,  SCTLR2_EL1,  NULL	     );
 	case CNTHCTL_EL2:
@@ -1595,14 +1594,47 @@ static bool access_arch_timer(struct kvm_vcpu *vcpu,
 	return true;
 }
 
-static bool access_hv_timer(struct kvm_vcpu *vcpu,
-			    struct sys_reg_params *p,
-			    const struct sys_reg_desc *r)
+static int arch_timer_set_user(struct kvm_vcpu *vcpu,
+			       const struct sys_reg_desc *rd,
+			       u64 val)
 {
-	if (!vcpu_el2_e2h_is_set(vcpu))
-		return undef_access(vcpu, p, r);
+	switch (reg_to_encoding(rd)) {
+	case SYS_CNTV_CTL_EL0:
+	case SYS_CNTP_CTL_EL0:
+	case SYS_CNTHV_CTL_EL2:
+	case SYS_CNTHP_CTL_EL2:
+		val &= ~ARCH_TIMER_CTRL_IT_STAT;
+		break;
+	case SYS_CNTVCT_EL0:
+		if (!test_bit(KVM_ARCH_FLAG_VM_COUNTER_OFFSET, &vcpu->kvm->arch.flags))
+			timer_set_offset(vcpu_vtimer(vcpu), kvm_phys_timer_read() - val);
+		return 0;
+	case SYS_CNTPCT_EL0:
+		if (!test_bit(KVM_ARCH_FLAG_VM_COUNTER_OFFSET, &vcpu->kvm->arch.flags))
+			timer_set_offset(vcpu_ptimer(vcpu), kvm_phys_timer_read() - val);
+		return 0;
+	}
 
-	return access_arch_timer(vcpu, p, r);
+	__vcpu_assign_sys_reg(vcpu, rd->reg, val);
+	return 0;
+}
+
+static int arch_timer_get_user(struct kvm_vcpu *vcpu,
+			       const struct sys_reg_desc *rd,
+			       u64 *val)
+{
+	switch (reg_to_encoding(rd)) {
+	case SYS_CNTVCT_EL0:
+		*val = kvm_phys_timer_read() - timer_get_offset(vcpu_vtimer(vcpu));
+		break;
+	case SYS_CNTPCT_EL0:
+		*val = kvm_phys_timer_read() - timer_get_offset(vcpu_ptimer(vcpu));
+		break;
+	default:
+		*val = __vcpu_sys_reg(vcpu, rd->reg);
+	}
+
+	return 0;
 }
 
 static s64 kvm_arm64_ftr_safe_value(u32 id, const struct arm64_ftr_bits *ftrp,
@@ -1757,7 +1789,8 @@ static u64 __kvm_read_sanitised_id_reg(const struct kvm_vcpu *vcpu,
 			val &= ~ID_AA64ISAR2_EL1_WFxT;
 		break;
 	case SYS_ID_AA64ISAR3_EL1:
-		val &= ID_AA64ISAR3_EL1_FPRCVT | ID_AA64ISAR3_EL1_FAMINMAX;
+		val &= ID_AA64ISAR3_EL1_FPRCVT | ID_AA64ISAR3_EL1_LSFE |
+			ID_AA64ISAR3_EL1_FAMINMAX;
 		break;
 	case SYS_ID_AA64MMFR2_EL1:
 		val &= ~ID_AA64MMFR2_EL1_CCIDX_MASK;
@@ -1997,6 +2030,26 @@ static u64 sanitise_id_aa64dfr0_el1(const struct kvm_vcpu *vcpu, u64 val)
 	return val;
 }
 
+/*
+ * Older versions of KVM erroneously claim support for FEAT_DoubleLock with
+ * NV-enabled VMs on unsupporting hardware. Silently ignore the incorrect
+ * value if it is consistent with the bug.
+ */
+static bool ignore_feat_doublelock(struct kvm_vcpu *vcpu, u64 val)
+{
+	u8 host, user;
+
+	if (!vcpu_has_nv(vcpu))
+		return false;
+
+	host = SYS_FIELD_GET(ID_AA64DFR0_EL1, DoubleLock,
+			     read_sanitised_ftr_reg(SYS_ID_AA64DFR0_EL1));
+	user = SYS_FIELD_GET(ID_AA64DFR0_EL1, DoubleLock, val);
+
+	return host == ID_AA64DFR0_EL1_DoubleLock_NI &&
+	       user == ID_AA64DFR0_EL1_DoubleLock_IMP;
+}
+
 static int set_id_aa64dfr0_el1(struct kvm_vcpu *vcpu,
 			       const struct sys_reg_desc *rd,
 			       u64 val)
@@ -2027,6 +2080,11 @@ static int set_id_aa64dfr0_el1(struct kvm_vcpu *vcpu,
 	 */
 	if (debugver < ID_AA64DFR0_EL1_DebugVer_IMP)
 		return -EINVAL;
+
+	if (ignore_feat_doublelock(vcpu, val)) {
+		val &= ~ID_AA64DFR0_EL1_DoubleLock;
+		val |= SYS_FIELD_PREP_ENUM(ID_AA64DFR0_EL1, DoubleLock, NI);
+	}
 
 	return set_id_reg(vcpu, rd, val);
 }
@@ -2148,16 +2206,29 @@ static int set_id_aa64pfr1_el1(struct kvm_vcpu *vcpu,
 	return set_id_reg(vcpu, rd, user_val);
 }
 
+/*
+ * Allow userspace to de-feature a stage-2 translation granule but prevent it
+ * from claiming the impossible.
+ */
+#define tgran2_val_allowed(tg, safe, user)			\
+({								\
+	u8 __s = SYS_FIELD_GET(ID_AA64MMFR0_EL1, tg, safe);	\
+	u8 __u = SYS_FIELD_GET(ID_AA64MMFR0_EL1, tg, user);	\
+								\
+	__s == __u || __u == ID_AA64MMFR0_EL1_##tg##_NI;	\
+})
+
 static int set_id_aa64mmfr0_el1(struct kvm_vcpu *vcpu,
 				const struct sys_reg_desc *rd, u64 user_val)
 {
 	u64 sanitized_val = kvm_read_sanitised_id_reg(vcpu, rd);
-	u64 tgran2_mask = ID_AA64MMFR0_EL1_TGRAN4_2_MASK |
-			  ID_AA64MMFR0_EL1_TGRAN16_2_MASK |
-			  ID_AA64MMFR0_EL1_TGRAN64_2_MASK;
 
-	if (vcpu_has_nv(vcpu) &&
-	    ((sanitized_val & tgran2_mask) != (user_val & tgran2_mask)))
+	if (!vcpu_has_nv(vcpu))
+		return set_id_reg(vcpu, rd, user_val);
+
+	if (!tgran2_val_allowed(TGRAN4_2, sanitized_val, user_val) ||
+	    !tgran2_val_allowed(TGRAN16_2, sanitized_val, user_val) ||
+	    !tgran2_val_allowed(TGRAN64_2, sanitized_val, user_val))
 		return -EINVAL;
 
 	return set_id_reg(vcpu, rd, user_val);
@@ -2468,14 +2539,19 @@ static bool bad_redir_trap(struct kvm_vcpu *vcpu,
 			"trap of EL2 register redirected to EL1");
 }
 
-#define EL2_REG_FILTERED(name, acc, rst, v, filter) {	\
+#define SYS_REG_USER_FILTER(name, acc, rst, v, gu, su, filter) { \
 	SYS_DESC(SYS_##name),			\
 	.access = acc,				\
 	.reset = rst,				\
 	.reg = name,				\
+	.get_user = gu,				\
+	.set_user = su,				\
 	.visibility = filter,			\
 	.val = v,				\
 }
+
+#define EL2_REG_FILTERED(name, acc, rst, v, filter)	\
+	SYS_REG_USER_FILTER(name, acc, rst, v, NULL, NULL, filter)
 
 #define EL2_REG(name, acc, rst, v)			\
 	EL2_REG_FILTERED(name, acc, rst, v, el2_visibility)
@@ -2486,6 +2562,10 @@ static bool bad_redir_trap(struct kvm_vcpu *vcpu,
 #define EL2_REG_VNCR_GICv3(name)			\
 	EL2_REG_VNCR_FILT(name, hidden_visibility)
 #define EL2_REG_REDIR(name, rst, v)	EL2_REG(name, bad_redir_trap, rst, v)
+
+#define TIMER_REG(name, vis)					   \
+	SYS_REG_USER_FILTER(name, access_arch_timer, reset_val, 0, \
+			    arch_timer_get_user, arch_timer_set_user, vis)
 
 /*
  * Since reset() callback and field val are not used for idregs, they will be
@@ -2666,18 +2746,17 @@ static bool access_zcr_el2(struct kvm_vcpu *vcpu,
 
 	if (guest_hyp_sve_traps_enabled(vcpu)) {
 		kvm_inject_nested_sve_trap(vcpu);
-		return true;
+		return false;
 	}
 
 	if (!p->is_write) {
-		p->regval = vcpu_read_sys_reg(vcpu, ZCR_EL2);
+		p->regval = __vcpu_sys_reg(vcpu, ZCR_EL2);
 		return true;
 	}
 
 	vq = SYS_FIELD_GET(ZCR_ELx, LEN, p->regval) + 1;
 	vq = min(vq, vcpu_sve_max_vq(vcpu));
-	vcpu_write_sys_reg(vcpu, vq - 1, ZCR_EL2);
-
+	__vcpu_assign_sys_reg(vcpu, ZCR_EL2, vq - 1);
 	return true;
 }
 
@@ -2792,6 +2871,16 @@ static unsigned int s1pie_el2_visibility(const struct kvm_vcpu *vcpu,
 					 const struct sys_reg_desc *rd)
 {
 	return __el2_visibility(vcpu, rd, s1pie_visibility);
+}
+
+static unsigned int cnthv_visibility(const struct kvm_vcpu *vcpu,
+				     const struct sys_reg_desc *rd)
+{
+	if (vcpu_has_nv(vcpu) &&
+	    !vcpu_has_feature(vcpu, KVM_ARM_VCPU_HAS_EL2_E2H0))
+		return 0;
+
+	return REG_HIDDEN;
 }
 
 static bool access_mdcr(struct kvm_vcpu *vcpu,
@@ -3141,6 +3230,7 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 					ID_AA64ISAR2_EL1_APA3 |
 					ID_AA64ISAR2_EL1_GPA3)),
 	ID_WRITABLE(ID_AA64ISAR3_EL1, (ID_AA64ISAR3_EL1_FPRCVT |
+				       ID_AA64ISAR3_EL1_LSFE |
 				       ID_AA64ISAR3_EL1_FAMINMAX)),
 	ID_UNALLOCATED(6,4),
 	ID_UNALLOCATED(6,5),
@@ -3152,8 +3242,6 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 				      ~(ID_AA64MMFR0_EL1_RES0 |
 					ID_AA64MMFR0_EL1_ASIDBITS)),
 	ID_WRITABLE(ID_AA64MMFR1_EL1, ~(ID_AA64MMFR1_EL1_RES0 |
-					ID_AA64MMFR1_EL1_HCX |
-					ID_AA64MMFR1_EL1_TWED |
 					ID_AA64MMFR1_EL1_XNX |
 					ID_AA64MMFR1_EL1_VH |
 					ID_AA64MMFR1_EL1_VMIDBits)),
@@ -3238,6 +3326,7 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	{ SYS_DESC(SYS_PMBLIMITR_EL1), undef_access },
 	{ SYS_DESC(SYS_PMBPTR_EL1), undef_access },
 	{ SYS_DESC(SYS_PMBSR_EL1), undef_access },
+	{ SYS_DESC(SYS_PMSDSFR_EL1), undef_access },
 	/* PMBIDR_EL1 is not trapped */
 
 	{ PMU_SYS_REG(PMINTENSET_EL1),
@@ -3443,17 +3532,19 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	AMU_AMEVTYPER1_EL0(14),
 	AMU_AMEVTYPER1_EL0(15),
 
-	{ SYS_DESC(SYS_CNTPCT_EL0), access_arch_timer },
-	{ SYS_DESC(SYS_CNTVCT_EL0), access_arch_timer },
+	{ SYS_DESC(SYS_CNTPCT_EL0), .access = access_arch_timer,
+	  .get_user = arch_timer_get_user, .set_user = arch_timer_set_user },
+	{ SYS_DESC(SYS_CNTVCT_EL0), .access = access_arch_timer,
+	  .get_user = arch_timer_get_user, .set_user = arch_timer_set_user },
 	{ SYS_DESC(SYS_CNTPCTSS_EL0), access_arch_timer },
 	{ SYS_DESC(SYS_CNTVCTSS_EL0), access_arch_timer },
 	{ SYS_DESC(SYS_CNTP_TVAL_EL0), access_arch_timer },
-	{ SYS_DESC(SYS_CNTP_CTL_EL0), access_arch_timer },
-	{ SYS_DESC(SYS_CNTP_CVAL_EL0), access_arch_timer },
+	TIMER_REG(CNTP_CTL_EL0, NULL),
+	TIMER_REG(CNTP_CVAL_EL0, NULL),
 
 	{ SYS_DESC(SYS_CNTV_TVAL_EL0), access_arch_timer },
-	{ SYS_DESC(SYS_CNTV_CTL_EL0), access_arch_timer },
-	{ SYS_DESC(SYS_CNTV_CVAL_EL0), access_arch_timer },
+	TIMER_REG(CNTV_CTL_EL0, NULL),
+	TIMER_REG(CNTV_CVAL_EL0, NULL),
 
 	/* PMEVCNTRn_EL0 */
 	PMU_PMEVCNTR_EL0(0),
@@ -3651,12 +3742,12 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	EL2_REG_VNCR(CNTVOFF_EL2, reset_val, 0),
 	EL2_REG(CNTHCTL_EL2, access_rw, reset_val, 0),
 	{ SYS_DESC(SYS_CNTHP_TVAL_EL2), access_arch_timer },
-	EL2_REG(CNTHP_CTL_EL2, access_arch_timer, reset_val, 0),
-	EL2_REG(CNTHP_CVAL_EL2, access_arch_timer, reset_val, 0),
+	TIMER_REG(CNTHP_CTL_EL2, el2_visibility),
+	TIMER_REG(CNTHP_CVAL_EL2, el2_visibility),
 
-	{ SYS_DESC(SYS_CNTHV_TVAL_EL2), access_hv_timer },
-	EL2_REG(CNTHV_CTL_EL2, access_hv_timer, reset_val, 0),
-	EL2_REG(CNTHV_CVAL_EL2, access_hv_timer, reset_val, 0),
+	{ SYS_DESC(SYS_CNTHV_TVAL_EL2), access_arch_timer, .visibility = cnthv_visibility },
+	TIMER_REG(CNTHV_CTL_EL2, cnthv_visibility),
+	TIMER_REG(CNTHV_CVAL_EL2, cnthv_visibility),
 
 	{ SYS_DESC(SYS_CNTKCTL_EL12), access_cntkctl_el12 },
 
@@ -5194,15 +5285,28 @@ static int demux_c15_set(struct kvm_vcpu *vcpu, u64 id, void __user *uaddr)
 	}
 }
 
+static u64 kvm_one_reg_to_id(const struct kvm_one_reg *reg)
+{
+	switch(reg->id) {
+	case KVM_REG_ARM_TIMER_CVAL:
+		return TO_ARM64_SYS_REG(CNTV_CVAL_EL0);
+	case KVM_REG_ARM_TIMER_CNT:
+		return TO_ARM64_SYS_REG(CNTVCT_EL0);
+	default:
+		return reg->id;
+	}
+}
+
 int kvm_sys_reg_get_user(struct kvm_vcpu *vcpu, const struct kvm_one_reg *reg,
 			 const struct sys_reg_desc table[], unsigned int num)
 {
 	u64 __user *uaddr = (u64 __user *)(unsigned long)reg->addr;
 	const struct sys_reg_desc *r;
+	u64 id = kvm_one_reg_to_id(reg);
 	u64 val;
 	int ret;
 
-	r = id_to_sys_reg_desc(vcpu, reg->id, table, num);
+	r = id_to_sys_reg_desc(vcpu, id, table, num);
 	if (!r || sysreg_hidden(vcpu, r))
 		return -ENOENT;
 
@@ -5235,13 +5339,14 @@ int kvm_sys_reg_set_user(struct kvm_vcpu *vcpu, const struct kvm_one_reg *reg,
 {
 	u64 __user *uaddr = (u64 __user *)(unsigned long)reg->addr;
 	const struct sys_reg_desc *r;
+	u64 id = kvm_one_reg_to_id(reg);
 	u64 val;
 	int ret;
 
 	if (get_user(val, uaddr))
 		return -EFAULT;
 
-	r = id_to_sys_reg_desc(vcpu, reg->id, table, num);
+	r = id_to_sys_reg_desc(vcpu, id, table, num);
 	if (!r || sysreg_hidden(vcpu, r))
 		return -ENOENT;
 
@@ -5301,10 +5406,23 @@ static u64 sys_reg_to_index(const struct sys_reg_desc *reg)
 
 static bool copy_reg_to_user(const struct sys_reg_desc *reg, u64 __user **uind)
 {
+	u64 idx;
+
 	if (!*uind)
 		return true;
 
-	if (put_user(sys_reg_to_index(reg), *uind))
+	switch (reg_to_encoding(reg)) {
+	case SYS_CNTV_CVAL_EL0:
+		idx = KVM_REG_ARM_TIMER_CVAL;
+		break;
+	case SYS_CNTVCT_EL0:
+		idx = KVM_REG_ARM_TIMER_CNT;
+		break;
+	default:
+		idx = sys_reg_to_index(reg);
+	}
+
+	if (put_user(idx, *uind))
 		return false;
 
 	(*uind)++;
