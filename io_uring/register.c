@@ -379,11 +379,10 @@ struct io_ring_ctx_rings {
 };
 
 static void io_register_free_rings(struct io_ring_ctx *ctx,
-				   struct io_uring_params *p,
 				   struct io_ring_ctx_rings *r)
 {
-	io_free_region(ctx, &r->sq_region);
-	io_free_region(ctx, &r->ring_region);
+	io_free_region(ctx->user, &r->sq_region);
+	io_free_region(ctx->user, &r->ring_region);
 }
 
 #define swap_old(ctx, o, n, field)		\
@@ -395,7 +394,7 @@ static void io_register_free_rings(struct io_ring_ctx *ctx,
 #define RESIZE_FLAGS	(IORING_SETUP_CQSIZE | IORING_SETUP_CLAMP)
 #define COPY_FLAGS	(IORING_SETUP_NO_SQARRAY | IORING_SETUP_SQE128 | \
 			 IORING_SETUP_CQE32 | IORING_SETUP_NO_MMAP | \
-			 IORING_SETUP_CQE_MIXED)
+			 IORING_SETUP_CQE_MIXED | IORING_SETUP_SQE_MIXED)
 
 static int io_register_resize_rings(struct io_ring_ctx *ctx, void __user *arg)
 {
@@ -417,7 +416,7 @@ static int io_register_resize_rings(struct io_ring_ctx *ctx, void __user *arg)
 	/* properties that are always inherited */
 	p.flags |= (ctx->flags & COPY_FLAGS);
 
-	ret = io_uring_fill_params(p.sq_entries, &p);
+	ret = io_uring_fill_params(&p);
 	if (unlikely(ret))
 		return ret;
 
@@ -432,11 +431,10 @@ static int io_register_resize_rings(struct io_ring_ctx *ctx, void __user *arg)
 		rd.user_addr = p.cq_off.user_addr;
 		rd.flags |= IORING_MEM_REGION_TYPE_USER;
 	}
-	ret = io_create_region_mmap_safe(ctx, &n.ring_region, &rd, IORING_OFF_CQ_RING);
-	if (ret) {
-		io_register_free_rings(ctx, &p, &n);
+	ret = io_create_region(ctx, &n.ring_region, &rd, IORING_OFF_CQ_RING);
+	if (ret)
 		return ret;
-	}
+
 	n.rings = io_region_get_ptr(&n.ring_region);
 
 	/*
@@ -453,7 +451,7 @@ static int io_register_resize_rings(struct io_ring_ctx *ctx, void __user *arg)
 	WRITE_ONCE(n.rings->cq_ring_entries, p.cq_entries);
 
 	if (copy_to_user(arg, &p, sizeof(p))) {
-		io_register_free_rings(ctx, &p, &n);
+		io_register_free_rings(ctx, &n);
 		return -EFAULT;
 	}
 
@@ -462,7 +460,7 @@ static int io_register_resize_rings(struct io_ring_ctx *ctx, void __user *arg)
 	else
 		size = array_size(sizeof(struct io_uring_sqe), p.sq_entries);
 	if (size == SIZE_MAX) {
-		io_register_free_rings(ctx, &p, &n);
+		io_register_free_rings(ctx, &n);
 		return -EOVERFLOW;
 	}
 
@@ -472,9 +470,9 @@ static int io_register_resize_rings(struct io_ring_ctx *ctx, void __user *arg)
 		rd.user_addr = p.sq_off.user_addr;
 		rd.flags |= IORING_MEM_REGION_TYPE_USER;
 	}
-	ret = io_create_region_mmap_safe(ctx, &n.sq_region, &rd, IORING_OFF_SQES);
+	ret = io_create_region(ctx, &n.sq_region, &rd, IORING_OFF_SQES);
 	if (ret) {
-		io_register_free_rings(ctx, &p, &n);
+		io_register_free_rings(ctx, &n);
 		return ret;
 	}
 	n.sq_sqes = io_region_get_ptr(&n.sq_region);
@@ -564,7 +562,7 @@ overflow:
 out:
 	spin_unlock(&ctx->completion_lock);
 	mutex_unlock(&ctx->mmap_lock);
-	io_register_free_rings(ctx, &p, to_free);
+	io_register_free_rings(ctx, to_free);
 
 	if (ctx->sq_data)
 		io_sq_thread_unpark(ctx->sq_data);
@@ -578,6 +576,7 @@ static int io_register_mem_region(struct io_ring_ctx *ctx, void __user *uarg)
 	struct io_uring_mem_region_reg reg;
 	struct io_uring_region_desc __user *rd_uptr;
 	struct io_uring_region_desc rd;
+	struct io_mapped_region region = {};
 	int ret;
 
 	if (io_region_is_set(&ctx->param_region))
@@ -601,20 +600,20 @@ static int io_register_mem_region(struct io_ring_ctx *ctx, void __user *uarg)
 	    !(ctx->flags & IORING_SETUP_R_DISABLED))
 		return -EINVAL;
 
-	ret = io_create_region_mmap_safe(ctx, &ctx->param_region, &rd,
-					 IORING_MAP_OFF_PARAM_REGION);
+	ret = io_create_region(ctx, &region, &rd, IORING_MAP_OFF_PARAM_REGION);
 	if (ret)
 		return ret;
 	if (copy_to_user(rd_uptr, &rd, sizeof(rd))) {
-		guard(mutex)(&ctx->mmap_lock);
-		io_free_region(ctx, &ctx->param_region);
+		io_free_region(ctx->user, &region);
 		return -EFAULT;
 	}
 
 	if (reg.flags & IORING_MEM_REGION_REG_WAIT_ARG) {
-		ctx->cq_wait_arg = io_region_get_ptr(&ctx->param_region);
+		ctx->cq_wait_arg = io_region_get_ptr(&region);
 		ctx->cq_wait_size = rd.size;
 	}
+
+	io_region_publish(ctx, &region, &ctx->param_region);
 	return 0;
 }
 
