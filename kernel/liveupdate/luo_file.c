@@ -102,6 +102,7 @@
 #include <linux/liveupdate/abi/luo.h>
 #include <linux/module.h>
 #include <linux/rwsem.h>
+#include <linux/fs.h>
 #include <linux/sizes.h>
 #include <linux/slab.h>
 #include <linux/string.h>
