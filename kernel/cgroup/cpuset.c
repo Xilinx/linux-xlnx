@@ -94,9 +94,6 @@ static bool isolated_cpus_updating;
 static cpumask_var_t	boot_hk_cpus;
 static bool		have_boot_isolcpus;
 
-/* List of remote partition root children */
-static struct list_head remote_children;
-
 /*
  * A flag to force sched domain rebuild at the end of an operation.
  * It can be set in
@@ -219,7 +216,7 @@ static struct cpuset top_cpuset = {
 		 BIT(CS_MEM_EXCLUSIVE) | BIT(CS_SCHED_LOAD_BALANCE),
 	.partition_root_state = PRS_ROOT,
 	.relax_domain_level = -1,
-	.remote_sibling = LIST_HEAD_INIT(top_cpuset.remote_sibling),
+	.remote_partition = false,
 };
 
 /*
@@ -1572,7 +1569,7 @@ static int compute_trialcs_excpus(struct cpuset *trialcs, struct cpuset *cs)
 
 static inline bool is_remote_partition(struct cpuset *cs)
 {
-	return !list_empty(&cs->remote_sibling);
+	return cs->remote_partition;
 }
 
 static inline bool is_local_partition(struct cpuset *cs)
@@ -1621,7 +1618,7 @@ static int remote_partition_enable(struct cpuset *cs, int new_prs,
 
 	spin_lock_irq(&callback_lock);
 	partition_xcpus_add(new_prs, NULL, tmp->new_cpus);
-	list_add(&cs->remote_sibling, &remote_children);
+	cs->remote_partition = true;
 	cpumask_copy(cs->effective_xcpus, tmp->new_cpus);
 	spin_unlock_irq(&callback_lock);
 	update_isolation_cpumasks();
@@ -1651,7 +1648,7 @@ static void remote_partition_disable(struct cpuset *cs, struct tmpmasks *tmp)
 	WARN_ON_ONCE(!cpumask_subset(cs->effective_xcpus, subpartitions_cpus));
 
 	spin_lock_irq(&callback_lock);
-	list_del_init(&cs->remote_sibling);
+	cs->remote_partition = false;
 	partition_xcpus_del(cs->partition_root_state, NULL, cs->effective_xcpus);
 	if (cs->prs_err)
 		cs->partition_root_state = -cs->partition_root_state;
@@ -2187,7 +2184,6 @@ static void update_cpumasks_hier(struct cpuset *cs, struct tmpmasks *tmp,
 {
 	struct cpuset *cp;
 	struct cgroup_subsys_state *pos_css;
-	bool need_rebuild_sched_domains = false;
 	int old_prs, new_prs;
 
 	rcu_read_lock();
@@ -2351,15 +2347,12 @@ get_css:
 		if (!cpumask_empty(cp->cpus_allowed) &&
 		    is_sched_load_balance(cp) &&
 		   (!cpuset_v2() || is_partition_valid(cp)))
-			need_rebuild_sched_domains = true;
+			cpuset_force_rebuild();
 
 		rcu_read_lock();
 		css_put(&cp->css);
 	}
 	rcu_read_unlock();
-
-	if (need_rebuild_sched_domains)
-		cpuset_force_rebuild();
 }
 
 /**
@@ -2897,21 +2890,19 @@ static int update_nodemask(struct cpuset *cs, struct cpuset *trialcs,
 	 */
 	retval = nodelist_parse(buf, trialcs->mems_allowed);
 	if (retval < 0)
-		goto done;
+		return retval;
 
 	if (!nodes_subset(trialcs->mems_allowed,
-			  top_cpuset.mems_allowed)) {
-		retval = -EINVAL;
-		goto done;
-	}
+			  top_cpuset.mems_allowed))
+		return -EINVAL;
 
-	if (nodes_equal(cs->mems_allowed, trialcs->mems_allowed)) {
-		retval = 0;		/* Too easy - nothing to do */
-		goto done;
-	}
+	/* No change? nothing to do */
+	if (nodes_equal(cs->mems_allowed, trialcs->mems_allowed))
+		return 0;
+
 	retval = validate_change(cs, trialcs);
 	if (retval < 0)
-		goto done;
+		return retval;
 
 	check_insane_mems_config(&trialcs->mems_allowed);
 
@@ -2921,8 +2912,7 @@ static int update_nodemask(struct cpuset *cs, struct cpuset *trialcs,
 
 	/* use trialcs->mems_allowed as a temp variable */
 	update_nodemasks_hier(cs, &trialcs->mems_allowed);
-done:
-	return retval;
+	return 0;
 }
 
 bool current_cpuset_is_being_rebound(void)
@@ -3606,7 +3596,6 @@ cpuset_css_alloc(struct cgroup_subsys_state *parent_css)
 	__set_bit(CS_SCHED_LOAD_BALANCE, &cs->flags);
 	fmeter_init(&cs->fmeter);
 	cs->relax_domain_level = -1;
-	INIT_LIST_HEAD(&cs->remote_sibling);
 
 	/* Set CS_MEMORY_MIGRATE for default hierarchy */
 	if (cpuset_v2())
@@ -3877,7 +3866,6 @@ int __init cpuset_init(void)
 	nodes_setall(top_cpuset.effective_mems);
 
 	fmeter_init(&top_cpuset.fmeter);
-	INIT_LIST_HEAD(&remote_children);
 
 	BUG_ON(!alloc_cpumask_var(&cpus_attach, GFP_KERNEL));
 
