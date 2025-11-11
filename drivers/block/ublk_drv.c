@@ -963,8 +963,9 @@ static inline bool ublk_need_unmap_req(const struct request *req)
 	       (req_op(req) == REQ_OP_READ || req_op(req) == REQ_OP_DRV_IN);
 }
 
-static int ublk_map_io(const struct ublk_queue *ubq, const struct request *req,
-		       const struct ublk_io *io)
+static unsigned int ublk_map_io(const struct ublk_queue *ubq,
+				const struct request *req,
+				const struct ublk_io *io)
 {
 	const unsigned int rq_bytes = blk_rq_bytes(req);
 
@@ -986,7 +987,7 @@ static int ublk_map_io(const struct ublk_queue *ubq, const struct request *req,
 	return rq_bytes;
 }
 
-static int ublk_unmap_io(bool need_map,
+static unsigned int ublk_unmap_io(bool need_map,
 		const struct request *req,
 		const struct ublk_io *io)
 {
@@ -2508,9 +2509,6 @@ static struct request *ublk_check_and_get_req(struct kiocb *iocb,
 	size_t buf_off;
 	u16 tag, q_id;
 
-	if (!ub)
-		return ERR_PTR(-EACCES);
-
 	if (!user_backed_iter(iter))
 		return ERR_PTR(-EACCES);
 
@@ -2535,9 +2533,6 @@ static struct request *ublk_check_and_get_req(struct kiocb *iocb,
 	req = __ublk_check_and_get_req(ub, q_id, tag, *io, buf_off);
 	if (!req)
 		return ERR_PTR(-EINVAL);
-
-	if (!req->mq_hctx || !req->mq_hctx->driver_data)
-		goto fail;
 
 	if (!ublk_check_ubuf_dir(req, dir))
 		goto fail;
