@@ -1329,13 +1329,14 @@ static int stop_on_next(struct acpi_device *adev, void *data)
 	return 0;
 }
 
-/**
+/*
  * acpi_get_next_subnode - Return the next child node handle for a fwnode
  * @fwnode: Firmware node to find the next child node for.
  * @child: Handle to one of the device's child nodes or a null handle.
  */
-struct fwnode_handle *acpi_get_next_subnode(const struct fwnode_handle *fwnode,
-					    struct fwnode_handle *child)
+static struct fwnode_handle *
+acpi_get_next_subnode(const struct fwnode_handle *fwnode,
+		      struct fwnode_handle *child)
 {
 	struct acpi_device *adev = to_acpi_device_node(fwnode);
 
@@ -1472,7 +1473,7 @@ static struct fwnode_handle *acpi_graph_get_next_endpoint(
 
 	if (!prev) {
 		do {
-			port = fwnode_get_next_child_node(fwnode, port);
+			port = acpi_get_next_subnode(fwnode, port);
 			/*
 			 * The names of the port nodes begin with "port@"
 			 * followed by the number of the port node and they also
@@ -1490,14 +1491,17 @@ static struct fwnode_handle *acpi_graph_get_next_endpoint(
 	if (!port)
 		return NULL;
 
-	endpoint = fwnode_get_next_child_node(port, prev);
-	while (!endpoint) {
-		port = fwnode_get_next_child_node(fwnode, port);
-		if (!port)
+	do {
+		endpoint = acpi_get_next_subnode(port, prev);
+		if (endpoint)
 			break;
-		if (is_acpi_graph_node(port, "port"))
-			endpoint = fwnode_get_next_child_node(port, NULL);
-	}
+
+		prev = NULL;
+
+		do {
+			port = acpi_get_next_subnode(fwnode, port);
+		} while (port && !is_acpi_graph_node(port, "port"));
+	} while (port);
 
 	/*
 	 * The names of the endpoint nodes begin with "endpoint@" followed by
