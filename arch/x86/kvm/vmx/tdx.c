@@ -173,6 +173,8 @@ static void td_init_cpuid_entry2(struct kvm_cpuid_entry2 *entry, unsigned char i
 	tdx_clear_unsupported_cpuid(entry);
 }
 
+#define TDVMCALLINFO_SETUP_EVENT_NOTIFY_INTERRUPT	BIT(1)
+
 static int init_kvm_tdx_caps(const struct tdx_sys_info_td_conf *td_conf,
 			     struct kvm_tdx_capabilities *caps)
 {
@@ -187,6 +189,9 @@ static int init_kvm_tdx_caps(const struct tdx_sys_info_td_conf *td_conf,
 		return -EIO;
 
 	caps->cpuid.nent = td_conf->num_cpuid_config;
+
+	caps->user_tdvmcallinfo_1_r11 =
+		TDVMCALLINFO_SETUP_EVENT_NOTIFY_INTERRUPT;
 
 	for (i = 0; i < td_conf->num_cpuid_config; i++)
 		td_init_cpuid_entry2(&caps->cpuid.entries[i], i);
@@ -738,7 +743,7 @@ bool tdx_interrupt_allowed(struct kvm_vcpu *vcpu)
 	       !to_tdx(vcpu)->vp_enter_args.r12;
 }
 
-bool tdx_protected_apic_has_interrupt(struct kvm_vcpu *vcpu)
+static bool tdx_protected_apic_has_interrupt(struct kvm_vcpu *vcpu)
 {
 	u64 vcpu_state_details;
 
@@ -777,8 +782,6 @@ void tdx_prepare_switch_to_guest(struct kvm_vcpu *vcpu)
 		vt->msr_host_kernel_gs_base = current->thread.gsbase;
 	else
 		vt->msr_host_kernel_gs_base = read_msr(MSR_KERNEL_GS_BASE);
-
-	vt->host_debugctlmsr = get_debugctlmsr();
 
 	vt->guest_state_loaded = true;
 }
@@ -1020,20 +1023,20 @@ static void tdx_load_host_xsave_state(struct kvm_vcpu *vcpu)
 				DEBUGCTLMSR_FREEZE_PERFMON_ON_PMI | \
 				DEBUGCTLMSR_FREEZE_IN_SMM)
 
-fastpath_t tdx_vcpu_run(struct kvm_vcpu *vcpu, bool force_immediate_exit)
+fastpath_t tdx_vcpu_run(struct kvm_vcpu *vcpu, u64 run_flags)
 {
 	struct vcpu_tdx *tdx = to_tdx(vcpu);
 	struct vcpu_vt *vt = to_vt(vcpu);
 
 	/*
-	 * force_immediate_exit requires vCPU entering for events injection with
-	 * an immediately exit followed. But The TDX module doesn't guarantee
-	 * entry, it's already possible for KVM to _think_ it completely entry
-	 * to the guest without actually having done so.
-	 * Since KVM never needs to force an immediate exit for TDX, and can't
-	 * do direct injection, just warn on force_immediate_exit.
+	 * WARN if KVM wants to force an immediate exit, as the TDX module does
+	 * not guarantee entry into the guest, i.e. it's possible for KVM to
+	 * _think_ it completed entry to the guest and forced an immediate exit
+	 * without actually having done so.  Luckily, KVM never needs to force
+	 * an immediate exit for TDX (KVM can't do direct event injection, so
+	 * just WARN and continue on.
 	 */
-	WARN_ON_ONCE(force_immediate_exit);
+	WARN_ON_ONCE(run_flags);
 
 	/*
 	 * Wait until retry of SEPT-zap-related SEAMCALL completes before
@@ -1043,7 +1046,7 @@ fastpath_t tdx_vcpu_run(struct kvm_vcpu *vcpu, bool force_immediate_exit)
 	if (unlikely(READ_ONCE(to_kvm_tdx(vcpu->kvm)->wait_for_sept_zap)))
 		return EXIT_FASTPATH_EXIT_HANDLED;
 
-	trace_kvm_entry(vcpu, force_immediate_exit);
+	trace_kvm_entry(vcpu, run_flags & KVM_RUN_FORCE_IMMEDIATE_EXIT);
 
 	if (pi_test_on(&vt->pi_desc)) {
 		apic->send_IPI_self(POSTED_INTR_VECTOR);
@@ -1055,8 +1058,8 @@ fastpath_t tdx_vcpu_run(struct kvm_vcpu *vcpu, bool force_immediate_exit)
 
 	tdx_vcpu_enter_exit(vcpu);
 
-	if (vt->host_debugctlmsr & ~TDX_DEBUGCTL_PRESERVED)
-		update_debugctlmsr(vt->host_debugctlmsr);
+	if (vcpu->arch.host_debugctl & ~TDX_DEBUGCTL_PRESERVED)
+		update_debugctlmsr(vcpu->arch.host_debugctl);
 
 	tdx_load_host_xsave_state(vcpu);
 	tdx->guest_entered = true;
@@ -1530,6 +1533,27 @@ static int tdx_get_quote(struct kvm_vcpu *vcpu)
 	return 0;
 }
 
+static int tdx_setup_event_notify_interrupt(struct kvm_vcpu *vcpu)
+{
+	struct vcpu_tdx *tdx = to_tdx(vcpu);
+	u64 vector = tdx->vp_enter_args.r12;
+
+	if (vector < 32 || vector > 255) {
+		tdvmcall_set_return_code(vcpu, TDVMCALL_STATUS_INVALID_OPERAND);
+		return 1;
+	}
+
+	vcpu->run->exit_reason = KVM_EXIT_TDX;
+	vcpu->run->tdx.flags = 0;
+	vcpu->run->tdx.nr = TDVMCALL_SETUP_EVENT_NOTIFY_INTERRUPT;
+	vcpu->run->tdx.setup_event_notify.ret = TDVMCALL_STATUS_SUBFUNC_UNSUPPORTED;
+	vcpu->run->tdx.setup_event_notify.vector = vector;
+
+	vcpu->arch.complete_userspace_io = tdx_complete_simple;
+
+	return 0;
+}
+
 static int handle_tdvmcall(struct kvm_vcpu *vcpu)
 {
 	switch (tdvmcall_leaf(vcpu)) {
@@ -1541,6 +1565,8 @@ static int handle_tdvmcall(struct kvm_vcpu *vcpu)
 		return tdx_get_td_vm_call_info(vcpu);
 	case TDVMCALL_GET_QUOTE:
 		return tdx_get_quote(vcpu);
+	case TDVMCALL_SETUP_EVENT_NOTIFY_INTERRUPT:
+		return tdx_setup_event_notify_interrupt(vcpu);
 	default:
 		break;
 	}
@@ -1612,8 +1638,8 @@ static int tdx_mem_page_record_premap_cnt(struct kvm *kvm, gfn_t gfn,
 	return 0;
 }
 
-int tdx_sept_set_private_spte(struct kvm *kvm, gfn_t gfn,
-			      enum pg_level level, kvm_pfn_t pfn)
+static int tdx_sept_set_private_spte(struct kvm *kvm, gfn_t gfn,
+				     enum pg_level level, kvm_pfn_t pfn)
 {
 	struct kvm_tdx *kvm_tdx = to_kvm_tdx(kvm);
 	struct page *page = pfn_to_page(pfn);
@@ -1693,8 +1719,8 @@ static int tdx_sept_drop_private_spte(struct kvm *kvm, gfn_t gfn,
 	return 0;
 }
 
-int tdx_sept_link_private_spt(struct kvm *kvm, gfn_t gfn,
-			      enum pg_level level, void *private_spt)
+static int tdx_sept_link_private_spt(struct kvm *kvm, gfn_t gfn,
+				     enum pg_level level, void *private_spt)
 {
 	int tdx_level = pg_level_to_tdx_sept_level(level);
 	gpa_t gpa = gfn_to_gpa(gfn);
@@ -1829,8 +1855,8 @@ static void tdx_track(struct kvm *kvm)
 	kvm_make_all_cpus_request(kvm, KVM_REQ_OUTSIDE_GUEST_MODE);
 }
 
-int tdx_sept_free_private_spt(struct kvm *kvm, gfn_t gfn,
-			      enum pg_level level, void *private_spt)
+static int tdx_sept_free_private_spt(struct kvm *kvm, gfn_t gfn,
+				     enum pg_level level, void *private_spt)
 {
 	struct kvm_tdx *kvm_tdx = to_kvm_tdx(kvm);
 
@@ -1852,8 +1878,8 @@ int tdx_sept_free_private_spt(struct kvm *kvm, gfn_t gfn,
 	return tdx_reclaim_page(virt_to_page(private_spt));
 }
 
-int tdx_sept_remove_private_spte(struct kvm *kvm, gfn_t gfn,
-				 enum pg_level level, kvm_pfn_t pfn)
+static int tdx_sept_remove_private_spte(struct kvm *kvm, gfn_t gfn,
+					enum pg_level level, kvm_pfn_t pfn)
 {
 	struct page *page = pfn_to_page(pfn);
 	int ret;
@@ -2241,25 +2267,26 @@ static int tdx_get_capabilities(struct kvm_tdx_cmd *cmd)
 	const struct tdx_sys_info_td_conf *td_conf = &tdx_sysinfo->td_conf;
 	struct kvm_tdx_capabilities __user *user_caps;
 	struct kvm_tdx_capabilities *caps = NULL;
+	u32 nr_user_entries;
 	int ret = 0;
 
 	/* flags is reserved for future use */
 	if (cmd->flags)
 		return -EINVAL;
 
-	caps = kmalloc(sizeof(*caps) +
+	caps = kzalloc(sizeof(*caps) +
 		       sizeof(struct kvm_cpuid_entry2) * td_conf->num_cpuid_config,
 		       GFP_KERNEL);
 	if (!caps)
 		return -ENOMEM;
 
 	user_caps = u64_to_user_ptr(cmd->data);
-	if (copy_from_user(caps, user_caps, sizeof(*caps))) {
+	if (get_user(nr_user_entries, &user_caps->cpuid.nent)) {
 		ret = -EFAULT;
 		goto out;
 	}
 
-	if (caps->cpuid.nent < td_conf->num_cpuid_config) {
+	if (nr_user_entries < td_conf->num_cpuid_config) {
 		ret = -E2BIG;
 		goto out;
 	}
@@ -3576,10 +3603,14 @@ int __init tdx_bringup(void)
 	r = __tdx_bringup();
 	if (r) {
 		/*
-		 * Disable TDX only but don't fail to load module if
-		 * the TDX module could not be loaded.  No need to print
-		 * message saying "module is not loaded" because it was
-		 * printed when the first SEAMCALL failed.
+		 * Disable TDX only but don't fail to load module if the TDX
+		 * module could not be loaded.  No need to print message saying
+		 * "module is not loaded" because it was printed when the first
+		 * SEAMCALL failed.  Don't bother unwinding the S-EPT hooks or
+		 * vm_size, as kvm_x86_ops have already been finalized (and are
+		 * intentionally not exported).  The S-EPT code is unreachable,
+		 * and allocating a few more bytes per VM in a should-be-rare
+		 * failure scenario is a non-issue.
 		 */
 		if (r == -ENODEV)
 			goto success_disable_tdx;
@@ -3592,4 +3623,21 @@ int __init tdx_bringup(void)
 success_disable_tdx:
 	enable_tdx = 0;
 	return 0;
+}
+
+void __init tdx_hardware_setup(void)
+{
+	KVM_SANITY_CHECK_VM_STRUCT_SIZE(kvm_tdx);
+
+	/*
+	 * Note, if the TDX module can't be loaded, KVM TDX support will be
+	 * disabled but KVM will continue loading (see tdx_bringup()).
+	 */
+	vt_x86_ops.vm_size = max_t(unsigned int, vt_x86_ops.vm_size, sizeof(struct kvm_tdx));
+
+	vt_x86_ops.link_external_spt = tdx_sept_link_private_spt;
+	vt_x86_ops.set_external_spte = tdx_sept_set_private_spte;
+	vt_x86_ops.free_external_spt = tdx_sept_free_private_spt;
+	vt_x86_ops.remove_external_spte = tdx_sept_remove_private_spte;
+	vt_x86_ops.protected_apic_has_interrupt = tdx_protected_apic_has_interrupt;
 }

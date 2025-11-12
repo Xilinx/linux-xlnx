@@ -1984,8 +1984,10 @@ static void cdns_mhdp_atomic_enable(struct drm_bridge *bridge,
 	mhdp_state = to_cdns_mhdp_bridge_state(new_state);
 
 	mhdp_state->current_mode = drm_mode_duplicate(bridge->dev, mode);
-	if (!mhdp_state->current_mode)
-		return;
+	if (!mhdp_state->current_mode) {
+		ret = -EINVAL;
+		goto out;
+	}
 
 	drm_mode_set_name(mhdp_state->current_mode);
 
@@ -2143,7 +2145,8 @@ static int cdns_mhdp_atomic_check(struct drm_bridge *bridge,
 	return 0;
 }
 
-static enum drm_connector_status cdns_mhdp_bridge_detect(struct drm_bridge *bridge)
+static enum drm_connector_status
+cdns_mhdp_bridge_detect(struct drm_bridge *bridge, struct drm_connector *connector)
 {
 	struct cdns_mhdp_device *mhdp = bridge_to_mhdp(bridge);
 
@@ -2389,9 +2392,10 @@ static int cdns_mhdp_probe(struct platform_device *pdev)
 	int ret;
 	int irq;
 
-	mhdp = devm_kzalloc(dev, sizeof(*mhdp), GFP_KERNEL);
-	if (!mhdp)
-		return -ENOMEM;
+	mhdp = devm_drm_bridge_alloc(dev, struct cdns_mhdp_device, bridge,
+				     &cdns_mhdp_bridge_funcs);
+	if (IS_ERR(mhdp))
+		return PTR_ERR(mhdp);
 
 	clk = devm_clk_get_enabled(dev, NULL);
 	if (IS_ERR(clk)) {
@@ -2481,7 +2485,6 @@ static int cdns_mhdp_probe(struct platform_device *pdev)
 	mhdp->display_fmt.bpc = 8;
 
 	mhdp->bridge.of_node = pdev->dev.of_node;
-	mhdp->bridge.funcs = &cdns_mhdp_bridge_funcs;
 	mhdp->bridge.ops = DRM_BRIDGE_OP_DETECT | DRM_BRIDGE_OP_EDID |
 			   DRM_BRIDGE_OP_HPD;
 	mhdp->bridge.type = DRM_MODE_CONNECTOR_DisplayPort;

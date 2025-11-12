@@ -116,7 +116,7 @@ bool vgic_state_is_nested(struct kvm_vcpu *vcpu)
 {
 	u64 xmo;
 
-	if (vcpu_has_nv(vcpu) && !is_hyp_ctxt(vcpu)) {
+	if (is_nested_ctxt(vcpu)) {
 		xmo = __vcpu_sys_reg(vcpu, HCR_EL2) & (HCR_IMO | HCR_FMO);
 		WARN_ONCE(xmo && xmo != (HCR_IMO | HCR_FMO),
 			  "Separate virtual IRQ/FIQ settings not supported\n");
@@ -401,9 +401,7 @@ void vgic_v3_nested_update_mi(struct kvm_vcpu *vcpu)
 {
 	bool level;
 
-	level  = __vcpu_sys_reg(vcpu, ICH_HCR_EL2) & ICH_HCR_EL2_En;
-	if (level)
-		level &= vgic_v3_get_misr(vcpu);
+	level = (__vcpu_sys_reg(vcpu, ICH_HCR_EL2) & ICH_HCR_EL2_En) && vgic_v3_get_misr(vcpu);
 	kvm_vgic_inject_irq(vcpu->kvm, vcpu,
 			    vcpu->kvm->arch.vgic.mi_intid, level, vcpu);
 }

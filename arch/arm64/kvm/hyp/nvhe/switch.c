@@ -50,6 +50,10 @@ extern void kvm_nvhe_prepare_backtrace(unsigned long fp, unsigned long pc);
 static void __activate_traps(struct kvm_vcpu *vcpu)
 {
 	___activate_traps(vcpu, vcpu->arch.hcr_el2);
+
+	*host_data_ptr(host_debug_state.mdcr_el2) = read_sysreg(mdcr_el2);
+	write_sysreg(vcpu->arch.mdcr_el2, mdcr_el2);
+
 	__activate_traps_common(vcpu);
 	__activate_cptr_traps(vcpu);
 
@@ -92,6 +96,8 @@ static void __deactivate_traps(struct kvm_vcpu *vcpu)
 		write_sysreg_el1(val | SCTLR_ELx_M, SYS_SCTLR);
 		isb();
 	}
+
+	write_sysreg(*host_data_ptr(host_debug_state.mdcr_el2), mdcr_el2);
 
 	__deactivate_traps_common(vcpu);
 
@@ -272,7 +278,7 @@ int __kvm_vcpu_run(struct kvm_vcpu *vcpu)
 	 * We're about to restore some new MMU state. Make sure
 	 * ongoing page-table walks that have started before we
 	 * trapped to EL2 have completed. This also synchronises the
-	 * above disabling of SPE and TRBE.
+	 * above disabling of BRBE, SPE and TRBE.
 	 *
 	 * See DDI0487I.a D8.1.5 "Out-of-context translation regimes",
 	 * rule R_LFHQG and subsequent information statements.

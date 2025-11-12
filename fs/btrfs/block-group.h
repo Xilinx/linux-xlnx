@@ -63,7 +63,7 @@ enum btrfs_discard_state {
  * CHUNK_ALLOC_FORCE means it must try to allocate one
  *
  * CHUNK_ALLOC_FORCE_FOR_EXTENT like CHUNK_ALLOC_FORCE but called from
- * find_free_extent() that also activaes the zone
+ * find_free_extent() that also activates the zone
  */
 enum btrfs_chunk_alloc_enum {
 	CHUNK_ALLOC_NO_FORCE,
@@ -245,6 +245,11 @@ struct btrfs_block_group {
 
 	/* Lock for free space tree operations. */
 	struct mutex free_space_lock;
+
+	/* Protected by @free_space_lock. */
+	bool using_free_space_bitmaps;
+	/* Protected by @free_space_lock. */
+	bool using_free_space_bitmaps_cached;
 
 	/*
 	 * Number of extents in this block group used for swap files.
