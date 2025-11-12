@@ -18,20 +18,20 @@
 #include <linux/lockdep.h>
 #include <uapi/linux/btrfs_tree.h>
 #include <trace/events/btrfs.h>
+#include "ctree.h"
 #include "block-rsv.h"
 #include "extent_map.h"
-#include "extent_io.h"
 #include "extent-io-tree.h"
-#include "ordered-data.h"
-#include "delayed-inode.h"
 
-struct extent_state;
 struct posix_acl;
 struct iov_iter;
 struct writeback_control;
 struct btrfs_root;
 struct btrfs_fs_info;
 struct btrfs_trans_handle;
+struct btrfs_bio;
+struct btrfs_file_extent;
+struct btrfs_delayed_node;
 
 /*
  * Since we search a directory based on f_pos (struct dir_context::pos) we have
@@ -542,10 +542,6 @@ static inline void btrfs_set_inode_mapping_order(struct btrfs_inode *inode)
 				      inode->root->fs_info->block_max_order);
 #endif
 }
-
-/* Array of bytes with variable length, hexadecimal format 0x1234 */
-#define CSUM_FMT				"0x%*phN"
-#define CSUM_FMT_VALUE(size, bytes)		size, bytes
 
 void btrfs_calculate_block_csum(struct btrfs_fs_info *fs_info, phys_addr_t paddr,
 				u8 *dest);

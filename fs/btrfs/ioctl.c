@@ -503,7 +503,7 @@ static noinline int create_subvol(struct mnt_idmap *idmap,
 	struct btrfs_fs_info *fs_info = inode_to_fs_info(dir);
 	struct btrfs_trans_handle *trans;
 	struct btrfs_key key;
-	struct btrfs_root_item *root_item;
+	struct btrfs_root_item AUTO_KFREE(root_item);
 	struct btrfs_inode_item *inode_item;
 	struct extent_buffer *leaf;
 	struct btrfs_root *root = BTRFS_I(dir)->root;
@@ -527,20 +527,18 @@ static noinline int create_subvol(struct mnt_idmap *idmap,
 
 	ret = btrfs_get_free_objectid(fs_info->tree_root, &objectid);
 	if (ret)
-		goto out_root_item;
+		return ret;
 
 	/*
 	 * Don't create subvolume whose level is not zero. Or qgroup will be
 	 * screwed up since it assumes subvolume qgroup's level to be 0.
 	 */
-	if (btrfs_qgroup_level(objectid)) {
-		ret = -ENOSPC;
-		goto out_root_item;
-	}
+	if (btrfs_qgroup_level(objectid))
+		return -ENOSPC;
 
 	ret = get_anon_bdev(&anon_dev);
 	if (ret < 0)
-		goto out_root_item;
+		return ret;
 
 	new_inode_args.inode = btrfs_new_subvol_inode(idmap, dir);
 	if (!new_inode_args.inode) {
@@ -692,8 +690,7 @@ out_inode:
 out_anon_dev:
 	if (anon_dev)
 		free_anon_bdev(anon_dev);
-out_root_item:
-	kfree(root_item);
+
 	return ret;
 }
 
@@ -2956,7 +2953,7 @@ static long btrfs_ioctl_space_info(struct btrfs_fs_info *fs_info,
 	struct btrfs_ioctl_space_args space_args = { 0 };
 	struct btrfs_ioctl_space_info space;
 	struct btrfs_ioctl_space_info *dest;
-	struct btrfs_ioctl_space_info *dest_orig;
+	struct btrfs_ioctl_space_info AUTO_KFREE(dest_orig);
 	struct btrfs_ioctl_space_info __user *user_dest;
 	struct btrfs_space_info *info;
 	static const u64 types[] = {
@@ -3077,9 +3074,8 @@ static long btrfs_ioctl_space_info(struct btrfs_fs_info *fs_info,
 		(arg + sizeof(struct btrfs_ioctl_space_args));
 
 	if (copy_to_user(user_dest, dest_orig, alloc_size))
-		ret = -EFAULT;
+		return -EFAULT;
 
-	kfree(dest_orig);
 out:
 	if (ret == 0 && copy_to_user(arg, &space_args, sizeof(space_args)))
 		ret = -EFAULT;
@@ -3298,7 +3294,7 @@ static long btrfs_ioctl_ino_to_path(struct btrfs_root *root, void __user *arg)
 	u64 rel_ptr;
 	int size;
 	struct btrfs_ioctl_ino_path_args *ipa = NULL;
-	struct inode_fs_paths *ipath = NULL;
+	struct inode_fs_paths *ipath __free(inode_fs_paths) = NULL;
 	struct btrfs_path *path;
 
 	if (!capable(CAP_DAC_READ_SEARCH))
@@ -3346,7 +3342,6 @@ static long btrfs_ioctl_ino_to_path(struct btrfs_root *root, void __user *arg)
 
 out:
 	btrfs_free_path(path);
-	free_ipath(ipath);
 	kfree(ipa);
 
 	return ret;
@@ -3611,7 +3606,7 @@ static long btrfs_ioctl_balance_ctl(struct btrfs_fs_info *fs_info, int cmd)
 static long btrfs_ioctl_balance_progress(struct btrfs_fs_info *fs_info,
 					 void __user *arg)
 {
-	struct btrfs_ioctl_balance_args *bargs;
+	struct btrfs_ioctl_balance_args AUTO_KFREE(bargs);
 	int ret = 0;
 
 	if (!capable(CAP_SYS_ADMIN))
@@ -3633,8 +3628,6 @@ static long btrfs_ioctl_balance_progress(struct btrfs_fs_info *fs_info,
 
 	if (copy_to_user(arg, bargs, sizeof(*bargs)))
 		ret = -EFAULT;
-
-	kfree(bargs);
 out:
 	mutex_unlock(&fs_info->balance_mutex);
 	return ret;
@@ -4228,7 +4221,7 @@ static int check_feature_bits(const struct btrfs_fs_info *fs_info,
 			      u64 safe_set, u64 safe_clear)
 {
 	const char *type = btrfs_feature_set_name(set);
-	char *names;
+	const char AUTO_KFREE(names);
 	u64 disallowed, unsupported;
 	u64 set_mask = flags & change_mask;
 	u64 clear_mask = ~flags & change_mask;
@@ -4236,12 +4229,11 @@ static int check_feature_bits(const struct btrfs_fs_info *fs_info,
 	unsupported = set_mask & ~supported_flags;
 	if (unsupported) {
 		names = btrfs_printable_features(set, unsupported);
-		if (names) {
+		if (names)
 			btrfs_warn(fs_info,
 				   "this kernel does not support the %s feature bit%s",
 				   names, strchr(names, ',') ? "s" : "");
-			kfree(names);
-		} else
+		else
 			btrfs_warn(fs_info,
 				   "this kernel does not support %s bits 0x%llx",
 				   type, unsupported);
@@ -4251,12 +4243,11 @@ static int check_feature_bits(const struct btrfs_fs_info *fs_info,
 	disallowed = set_mask & ~safe_set;
 	if (disallowed) {
 		names = btrfs_printable_features(set, disallowed);
-		if (names) {
+		if (names)
 			btrfs_warn(fs_info,
 				   "can't set the %s feature bit%s while mounted",
 				   names, strchr(names, ',') ? "s" : "");
-			kfree(names);
-		} else
+		else
 			btrfs_warn(fs_info,
 				   "can't set %s bits 0x%llx while mounted",
 				   type, disallowed);
@@ -4266,12 +4257,11 @@ static int check_feature_bits(const struct btrfs_fs_info *fs_info,
 	disallowed = clear_mask & ~safe_clear;
 	if (disallowed) {
 		names = btrfs_printable_features(set, disallowed);
-		if (names) {
+		if (names)
 			btrfs_warn(fs_info,
 				   "can't clear the %s feature bit%s while mounted",
 				   names, strchr(names, ',') ? "s" : "");
-			kfree(names);
-		} else
+		else
 			btrfs_warn(fs_info,
 				   "can't clear %s bits 0x%llx while mounted",
 				   type, disallowed);
@@ -5077,6 +5067,9 @@ out_acct:
 
 int btrfs_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags)
 {
+	if (unlikely(btrfs_is_shutdown(inode_to_fs_info(file_inode(cmd->file)))))
+		return -EIO;
+
 	switch (cmd->cmd_op) {
 	case BTRFS_IOC_ENCODED_READ:
 #if defined(CONFIG_64BIT) && defined(CONFIG_COMPAT)
@@ -5219,6 +5212,43 @@ static int btrfs_ioctl_subvol_sync(struct btrfs_fs_info *fs_info, void __user *a
 
 	return 0;
 }
+
+#ifdef CONFIG_BTRFS_EXPERIMENTAL
+static int btrfs_ioctl_shutdown(struct btrfs_fs_info *fs_info, unsigned long arg)
+{
+	int ret = 0;
+	uint32_t flags;
+
+	if (!capable(CAP_SYS_ADMIN))
+		return -EPERM;
+
+	if (get_user(flags, (uint32_t __user *)arg))
+		return -EFAULT;
+
+	if (flags >= BTRFS_SHUTDOWN_FLAGS_LAST)
+		return -EINVAL;
+
+	if (btrfs_is_shutdown(fs_info))
+		return 0;
+
+	switch (flags) {
+	case BTRFS_SHUTDOWN_FLAGS_LOGFLUSH:
+	case BTRFS_SHUTDOWN_FLAGS_DEFAULT:
+		ret = freeze_super(fs_info->sb, FREEZE_HOLDER_KERNEL, NULL);
+		if (ret)
+			return ret;
+		btrfs_force_shutdown(fs_info);
+		ret = thaw_super(fs_info->sb, FREEZE_HOLDER_KERNEL, NULL);
+		if (ret)
+			return ret;
+		break;
+	case BTRFS_SHUTDOWN_FLAGS_NOLOGFLUSH:
+		btrfs_force_shutdown(fs_info);
+		break;
+	}
+	return ret;
+}
+#endif
 
 long btrfs_ioctl(struct file *file, unsigned int
 		cmd, unsigned long arg)
@@ -5375,6 +5405,10 @@ long btrfs_ioctl(struct file *file, unsigned int
 #endif
 	case BTRFS_IOC_SUBVOL_SYNC_WAIT:
 		return btrfs_ioctl_subvol_sync(fs_info, argp);
+#ifdef CONFIG_BTRFS_EXPERIMENTAL
+	case BTRFS_IOC_SHUTDOWN:
+		return btrfs_ioctl_shutdown(fs_info, arg);
+#endif
 	}
 
 	return -ENOTTY;

@@ -1263,7 +1263,14 @@ out:
 		btrfs_end_transaction(trans);
 	else if (trans)
 		ret = btrfs_end_transaction(trans);
-	kfree(prealloc);
+
+	/*
+	 * At this point we either failed at allocating prealloc, or we
+	 * succeeded and passed the ownership to it to add_qgroup_rb(). In any
+	 * case, this needs to be NULL or there is something wrong.
+	 */
+	ASSERT(prealloc == NULL);
+
 	return ret;
 }
 
@@ -1695,7 +1702,12 @@ int btrfs_create_qgroup(struct btrfs_trans_handle *trans, u64 qgroupid)
 	ret = btrfs_sysfs_add_one_qgroup(fs_info, qgroup);
 out:
 	mutex_unlock(&fs_info->qgroup_ioctl_lock);
-	kfree(prealloc);
+	/*
+	 * At this point we either failed at allocating prealloc, or we
+	 * succeeded and passed the ownership to it to add_qgroup_rb(). In any
+	 * case, this needs to be NULL or there is something wrong.
+	 */
+	ASSERT(prealloc == NULL);
 	return ret;
 }
 
@@ -3303,7 +3315,7 @@ int btrfs_qgroup_inherit(struct btrfs_trans_handle *trans, u64 srcid,
 	struct btrfs_root *quota_root;
 	struct btrfs_qgroup *srcgroup;
 	struct btrfs_qgroup *dstgroup;
-	struct btrfs_qgroup *prealloc;
+	struct btrfs_qgroup *prealloc = NULL;
 	struct btrfs_qgroup_list **qlist_prealloc = NULL;
 	bool free_inherit = false;
 	bool need_rescan = false;
@@ -3544,7 +3556,14 @@ out:
 	}
 	if (free_inherit)
 		kfree(inherit);
-	kfree(prealloc);
+
+	/*
+	 * At this point we either failed at allocating prealloc, or we
+	 * succeeded and passed the ownership to it to add_qgroup_rb(). In any
+	 * case, this needs to be NULL or there is something wrong.
+	 */
+	ASSERT(prealloc == NULL);
+
 	return ret;
 }
 
@@ -3712,10 +3731,8 @@ static int qgroup_rescan_leaf(struct btrfs_trans_handle *trans,
 					 path, 1, 0);
 
 	btrfs_debug(fs_info,
-		"current progress key (%llu %u %llu), search_slot ret %d",
-		fs_info->qgroup_rescan_progress.objectid,
-		fs_info->qgroup_rescan_progress.type,
-		fs_info->qgroup_rescan_progress.offset, ret);
+		    "current progress key " BTRFS_KEY_FMT ", search_slot ret %d",
+		    BTRFS_KEY_FMT_VALUE(&fs_info->qgroup_rescan_progress), ret);
 
 	if (ret) {
 		/*
@@ -4796,7 +4813,7 @@ int btrfs_qgroup_trace_subtree_after_cow(struct btrfs_trans_handle *trans,
 	struct btrfs_fs_info *fs_info = root->fs_info;
 	struct btrfs_tree_parent_check check = { 0 };
 	struct btrfs_qgroup_swapped_blocks *blocks = &root->swapped_blocks;
-	struct btrfs_qgroup_swapped_block *block;
+	struct btrfs_qgroup_swapped_block AUTO_KFREE(block);
 	struct extent_buffer *reloc_eb = NULL;
 	struct rb_node *node;
 	bool swapped = false;
@@ -4853,7 +4870,6 @@ int btrfs_qgroup_trace_subtree_after_cow(struct btrfs_trans_handle *trans,
 	ret = qgroup_trace_subtree_swap(trans, reloc_eb, subvol_eb,
 			block->last_snapshot, block->trace_leaf);
 free_out:
-	kfree(block);
 	free_extent_buffer(reloc_eb);
 out:
 	if (ret < 0) {
