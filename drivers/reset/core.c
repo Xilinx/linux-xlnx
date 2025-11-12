@@ -25,9 +25,6 @@
 static DEFINE_MUTEX(reset_list_mutex);
 static LIST_HEAD(reset_controller_list);
 
-static DEFINE_MUTEX(reset_lookup_mutex);
-static LIST_HEAD(reset_lookup_list);
-
 /* Protects reset_gpio_lookup_list */
 static DEFINE_MUTEX(reset_gpio_lookup_mutex);
 static LIST_HEAD(reset_gpio_lookup_list);
