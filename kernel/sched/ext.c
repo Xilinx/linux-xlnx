@@ -33,9 +33,10 @@ static DEFINE_MUTEX(scx_enable_mutex);
 DEFINE_STATIC_KEY_FALSE(__scx_enabled);
 DEFINE_STATIC_PERCPU_RWSEM(scx_fork_rwsem);
 static atomic_t scx_enable_state_var = ATOMIC_INIT(SCX_DISABLED);
-static unsigned long scx_in_softlockup;
-static atomic_t scx_breather_depth = ATOMIC_INIT(0);
 static int scx_bypass_depth;
+static cpumask_var_t scx_bypass_lb_donee_cpumask;
+static cpumask_var_t scx_bypass_lb_resched_cpumask;
+static bool scx_aborting;
 static bool scx_init_task_enabled;
 static bool scx_switching_all;
 DEFINE_STATIC_KEY_FALSE(__scx_switched_all);
@@ -143,27 +144,70 @@ static struct scx_dump_data scx_dump_data = {
 /* /sys/kernel/sched_ext interface */
 static struct kset *scx_kset;
 
+/*
+ * Parameters that can be adjusted through /sys/module/sched_ext/parameters.
+ * There usually is no reason to modify these as normal scheduler operation
+ * shouldn't be affected by them. The knobs are primarily for debugging.
+ */
+static u64 scx_slice_dfl = SCX_SLICE_DFL;
+static unsigned int scx_slice_bypass_us = SCX_SLICE_BYPASS / NSEC_PER_USEC;
+static unsigned int scx_bypass_lb_intv_us = SCX_BYPASS_LB_DFL_INTV_US;
+
+static int set_slice_us(const char *val, const struct kernel_param *kp)
+{
+	return param_set_uint_minmax(val, kp, 100, 100 * USEC_PER_MSEC);
+}
+
+static const struct kernel_param_ops slice_us_param_ops = {
+	.set = set_slice_us,
+	.get = param_get_uint,
+};
+
+static int set_bypass_lb_intv_us(const char *val, const struct kernel_param *kp)
+{
+	return param_set_uint_minmax(val, kp, 0, 10 * USEC_PER_SEC);
+}
+
+static const struct kernel_param_ops bypass_lb_intv_us_param_ops = {
+	.set = set_bypass_lb_intv_us,
+	.get = param_get_uint,
+};
+
+#undef MODULE_PARAM_PREFIX
+#define MODULE_PARAM_PREFIX	"sched_ext."
+
+module_param_cb(slice_bypass_us, &slice_us_param_ops, &scx_slice_bypass_us, 0600);
+MODULE_PARM_DESC(slice_bypass_us, "bypass slice in microseconds, applied on [un]load (100us to 100ms)");
+module_param_cb(bypass_lb_intv_us, &bypass_lb_intv_us_param_ops, &scx_bypass_lb_intv_us, 0600);
+MODULE_PARM_DESC(bypass_lb_intv_us, "bypass load balance interval in microseconds (0 (disable) to 10s)");
+
+#undef MODULE_PARAM_PREFIX
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched_ext.h>
 
 static void process_ddsp_deferred_locals(struct rq *rq);
 static u32 reenq_local(struct rq *rq);
 static void scx_kick_cpu(struct scx_sched *sch, s32 cpu, u64 flags);
-static void scx_vexit(struct scx_sched *sch, enum scx_exit_kind kind,
+static bool scx_vexit(struct scx_sched *sch, enum scx_exit_kind kind,
 		      s64 exit_code, const char *fmt, va_list args);
 
-static __printf(4, 5) void scx_exit(struct scx_sched *sch,
+static __printf(4, 5) bool scx_exit(struct scx_sched *sch,
 				    enum scx_exit_kind kind, s64 exit_code,
 				    const char *fmt, ...)
 {
 	va_list args;
+	bool ret;
 
 	va_start(args, fmt);
-	scx_vexit(sch, kind, exit_code, fmt, args);
+	ret = scx_vexit(sch, kind, exit_code, fmt, args);
 	va_end(args);
+
+	return ret;
 }
 
 #define scx_error(sch, fmt, args...)	scx_exit((sch), SCX_EXIT_ERROR, 0, fmt, ##args)
+#define scx_verror(sch, fmt, args)	scx_vexit((sch), SCX_EXIT_ERROR, 0, fmt, args)
 
 #define SCX_HAS_OP(sch, op)	test_bit(SCX_OP_IDX(op), (sch)->has_op)
 
@@ -919,7 +963,7 @@ static void dsq_mod_nr(struct scx_dispatch_q *dsq, s32 delta)
 
 static void refill_task_slice_dfl(struct scx_sched *sch, struct task_struct *p)
 {
-	p->scx.slice = SCX_SLICE_DFL;
+	p->scx.slice = READ_ONCE(scx_slice_dfl);
 	__scx_add_event(sch, SCX_EV_REFILL_SLICE_DFL, 1);
 }
 
@@ -933,7 +977,9 @@ static void dispatch_enqueue(struct scx_sched *sch, struct scx_dispatch_q *dsq,
 		     !RB_EMPTY_NODE(&p->scx.dsq_priq));
 
 	if (!is_local) {
-		raw_spin_lock(&dsq->lock);
+		raw_spin_lock_nested(&dsq->lock,
+			(enq_flags & SCX_ENQ_NESTED) ? SINGLE_DEPTH_NESTING : 0);
+
 		if (unlikely(dsq->id == SCX_DSQ_INVALID)) {
 			scx_error(sch, "attempting to dispatch to a destroyed dsq");
 			/* fall back to the global dsq */
@@ -1077,6 +1123,8 @@ static void dispatch_dequeue(struct rq *rq, struct task_struct *p)
 	struct scx_dispatch_q *dsq = p->scx.dsq;
 	bool is_local = dsq == &rq->scx.local_dsq;
 
+	lockdep_assert_rq_held(rq);
+
 	if (!dsq) {
 		/*
 		 * If !dsq && on-list, @p is on @rq's ddsp_deferred_locals.
@@ -1121,6 +1169,20 @@ static void dispatch_dequeue(struct rq *rq, struct task_struct *p)
 
 	if (!is_local)
 		raw_spin_unlock(&dsq->lock);
+}
+
+/*
+ * Abbreviated version of dispatch_dequeue() that can be used when both @p's rq
+ * and dsq are locked.
+ */
+static void dispatch_dequeue_locked(struct task_struct *p,
+				    struct scx_dispatch_q *dsq)
+{
+	lockdep_assert_rq_held(task_rq(p));
+	lockdep_assert_held(&dsq->lock);
+
+	task_unlink_from_dsq(p, dsq);
+	p->scx.dsq = NULL;
 }
 
 static struct scx_dispatch_q *find_dsq_for_dispatch(struct scx_sched *sch,
@@ -1253,6 +1315,7 @@ static void do_enqueue_task(struct rq *rq, struct task_struct *p, u64 enq_flags,
 {
 	struct scx_sched *sch = scx_root;
 	struct task_struct **ddsp_taskp;
+	struct scx_dispatch_q *dsq;
 	unsigned long qseq;
 
 	WARN_ON_ONCE(!(p->scx.flags & SCX_TASK_QUEUED));
@@ -1271,7 +1334,7 @@ static void do_enqueue_task(struct rq *rq, struct task_struct *p, u64 enq_flags,
 
 	if (scx_rq_bypassing(rq)) {
 		__scx_add_event(sch, SCX_EV_BYPASS_DISPATCH, 1);
-		goto global;
+		goto bypass;
 	}
 
 	if (p->scx.ddsp_dsq_id != SCX_DSQ_INVALID)
@@ -1320,8 +1383,20 @@ static void do_enqueue_task(struct rq *rq, struct task_struct *p, u64 enq_flags,
 direct:
 	direct_dispatch(sch, p, enq_flags);
 	return;
-
+local_norefill:
+	dispatch_enqueue(sch, &rq->scx.local_dsq, p, enq_flags);
+	return;
 local:
+	dsq = &rq->scx.local_dsq;
+	goto enqueue;
+global:
+	dsq = find_global_dsq(sch, p);
+	goto enqueue;
+bypass:
+	dsq = &task_rq(p)->scx.bypass_dsq;
+	goto enqueue;
+
+enqueue:
 	/*
 	 * For task-ordering, slice refill must be treated as implying the end
 	 * of the current slice. Otherwise, the longer @p stays on the CPU, the
@@ -1329,14 +1404,7 @@ local:
 	 */
 	touch_core_sched(rq, p);
 	refill_task_slice_dfl(sch, p);
-local_norefill:
-	dispatch_enqueue(sch, &rq->scx.local_dsq, p, enq_flags);
-	return;
-
-global:
-	touch_core_sched(rq, p);	/* see the comment in local: */
-	refill_task_slice_dfl(sch, p);
-	dispatch_enqueue(sch, find_global_dsq(sch, p), p, enq_flags);
+	dispatch_enqueue(sch, dsq, p, enq_flags);
 }
 
 static bool task_runnable(const struct task_struct *p)
@@ -1777,8 +1845,7 @@ static struct rq *move_task_between_dsqs(struct scx_sched *sch,
 		 * @p is going from a non-local DSQ to a non-local DSQ. As
 		 * $src_dsq is already locked, do an abbreviated dequeue.
 		 */
-		task_unlink_from_dsq(p, src_dsq);
-		p->scx.dsq = NULL;
+		dispatch_dequeue_locked(p, src_dsq);
 		raw_spin_unlock(&src_dsq->lock);
 
 		dispatch_enqueue(sch, dst_dsq, p, enq_flags);
@@ -1787,48 +1854,11 @@ static struct rq *move_task_between_dsqs(struct scx_sched *sch,
 	return dst_rq;
 }
 
-/*
- * A poorly behaving BPF scheduler can live-lock the system by e.g. incessantly
- * banging on the same DSQ on a large NUMA system to the point where switching
- * to the bypass mode can take a long time. Inject artificial delays while the
- * bypass mode is switching to guarantee timely completion.
- */
-static void scx_breather(struct rq *rq)
-{
-	u64 until;
-
-	lockdep_assert_rq_held(rq);
-
-	if (likely(!atomic_read(&scx_breather_depth)))
-		return;
-
-	raw_spin_rq_unlock(rq);
-
-	until = ktime_get_ns() + NSEC_PER_MSEC;
-
-	do {
-		int cnt = 1024;
-		while (atomic_read(&scx_breather_depth) && --cnt)
-			cpu_relax();
-	} while (atomic_read(&scx_breather_depth) &&
-		 time_before64(ktime_get_ns(), until));
-
-	raw_spin_rq_lock(rq);
-}
-
 static bool consume_dispatch_q(struct scx_sched *sch, struct rq *rq,
 			       struct scx_dispatch_q *dsq)
 {
 	struct task_struct *p;
 retry:
-	/*
-	 * This retry loop can repeatedly race against scx_bypass() dequeueing
-	 * tasks from @dsq trying to put the system into the bypass mode. On
-	 * some multi-socket machines (e.g. 2x Intel 8480c), this can live-lock
-	 * the machine into soft lockups. Give a breather.
-	 */
-	scx_breather(rq);
-
 	/*
 	 * The caller can't expect to successfully consume a task if the task's
 	 * addition to @dsq isn't guaranteed to be visible somehow. Test
@@ -1841,6 +1871,17 @@ retry:
 
 	nldsq_for_each_task(p, dsq) {
 		struct rq *task_rq = task_rq(p);
+
+		/*
+		 * This loop can lead to multiple lockup scenarios, e.g. the BPF
+		 * scheduler can put an enormous number of affinitized tasks into
+		 * a contended DSQ, or the outer retry loop can repeatedly race
+		 * against scx_bypass() dequeueing tasks from @dsq trying to put
+		 * the system into the bypass mode. This can easily live-lock the
+		 * machine. If aborting, exit from all non-bypass DSQs.
+		 */
+		if (unlikely(READ_ONCE(scx_aborting)) && dsq->id != SCX_DSQ_BYPASS)
+			break;
 
 		if (rq == task_rq) {
 			task_unlink_from_dsq(p, dsq);
@@ -2125,8 +2166,14 @@ static int balance_one(struct rq *rq, struct task_struct *prev)
 	if (consume_global_dsq(sch, rq))
 		goto has_tasks;
 
-	if (unlikely(!SCX_HAS_OP(sch, dispatch)) ||
-	    scx_rq_bypassing(rq) || !scx_rq_online(rq))
+	if (scx_rq_bypassing(rq)) {
+		if (consume_dispatch_q(sch, rq, &rq->scx.bypass_dsq))
+			goto has_tasks;
+		else
+			goto no_tasks;
+	}
+
+	if (unlikely(!SCX_HAS_OP(sch, dispatch)) || !scx_rq_online(rq))
 		goto no_tasks;
 
 	dspc->rq = rq;
@@ -2896,7 +2943,7 @@ void init_scx_entity(struct sched_ext_entity *scx)
 	INIT_LIST_HEAD(&scx->runnable_node);
 	scx->runnable_at = jiffies;
 	scx->ddsp_dsq_id = SCX_DSQ_INVALID;
-	scx->slice = SCX_SLICE_DFL;
+	scx->slice = READ_ONCE(scx_slice_dfl);
 }
 
 void scx_pre_fork(struct task_struct *p)
@@ -3640,6 +3687,30 @@ bool scx_allow_ttwu_queue(const struct task_struct *p)
 	return false;
 }
 
+static __printf(1, 2) bool handle_lockup(const char *fmt, ...)
+{
+	struct scx_sched *sch;
+	va_list args;
+	bool ret;
+
+	guard(rcu)();
+
+	sch = rcu_dereference(scx_root);
+	if (unlikely(!sch))
+		return false;
+
+	switch (scx_enable_state()) {
+	case SCX_ENABLING:
+	case SCX_ENABLED:
+		va_start(args, fmt);
+		ret = scx_verror(sch, fmt, args);
+		va_end(args);
+		return ret;
+	default:
+		return false;
+	}
+}
+
 /**
  * scx_rcu_cpu_stall - sched_ext RCU CPU stall handler
  *
@@ -3650,29 +3721,7 @@ bool scx_allow_ttwu_queue(const struct task_struct *p)
  */
 bool scx_rcu_cpu_stall(void)
 {
-	struct scx_sched *sch;
-
-	rcu_read_lock();
-
-	sch = rcu_dereference(scx_root);
-	if (unlikely(!sch)) {
-		rcu_read_unlock();
-		return false;
-	}
-
-	switch (scx_enable_state()) {
-	case SCX_ENABLING:
-	case SCX_ENABLED:
-		break;
-	default:
-		rcu_read_unlock();
-		return false;
-	}
-
-	scx_error(sch, "RCU CPU stall detected!");
-	rcu_read_unlock();
-
-	return true;
+	return handle_lockup("RCU CPU stall detected!");
 }
 
 /**
@@ -3687,45 +3736,231 @@ bool scx_rcu_cpu_stall(void)
  */
 void scx_softlockup(u32 dur_s)
 {
-	struct scx_sched *sch;
+	if (!handle_lockup("soft lockup - CPU %d stuck for %us", smp_processor_id(), dur_s))
+		return;
 
-	rcu_read_lock();
+	printk_deferred(KERN_ERR "sched_ext: Soft lockup - CPU %d stuck for %us, disabling BPF scheduler\n",
+			smp_processor_id(), dur_s);
+}
 
-	sch = rcu_dereference(scx_root);
-	if (unlikely(!sch))
-		goto out_unlock;
+/**
+ * scx_hardlockup - sched_ext hardlockup handler
+ *
+ * A poorly behaving BPF scheduler can trigger hard lockup by e.g. putting
+ * numerous affinitized tasks in a single queue and directing all CPUs at it.
+ * Try kicking out the current scheduler in an attempt to recover the system to
+ * a good state before taking more drastic actions.
+ */
+bool scx_hardlockup(void)
+{
+	if (!handle_lockup("hard lockup - CPU %d", smp_processor_id()))
+		return false;
 
-	switch (scx_enable_state()) {
-	case SCX_ENABLING:
-	case SCX_ENABLED:
-		break;
-	default:
-		goto out_unlock;
-	}
+	printk_deferred(KERN_ERR "sched_ext: Hard lockup - CPU %d, disabling BPF scheduler\n",
+			smp_processor_id());
+	return true;
+}
 
-	/* allow only one instance, cleared at the end of scx_bypass() */
-	if (test_and_set_bit(0, &scx_in_softlockup))
-		goto out_unlock;
-
-	printk_deferred(KERN_ERR "sched_ext: Soft lockup - CPU%d stuck for %us, disabling \"%s\"\n",
-			smp_processor_id(), dur_s, scx_root->ops.name);
+static u32 bypass_lb_cpu(struct scx_sched *sch, struct rq *rq,
+			 struct cpumask *donee_mask, struct cpumask *resched_mask,
+			 u32 nr_donor_target, u32 nr_donee_target)
+{
+	struct scx_dispatch_q *donor_dsq = &rq->scx.bypass_dsq;
+	struct task_struct *p, *n;
+	struct scx_dsq_list_node cursor = INIT_DSQ_LIST_CURSOR(cursor, 0, 0);
+	s32 delta = READ_ONCE(donor_dsq->nr) - nr_donor_target;
+	u32 nr_balanced = 0, min_delta_us;
 
 	/*
-	 * Some CPUs may be trapped in the dispatch paths. Enable breather
-	 * immediately; otherwise, we might even be able to get to scx_bypass().
+	 * All we want to guarantee is reasonable forward progress. No reason to
+	 * fine tune. Assuming every task on @donor_dsq runs their full slice,
+	 * consider offloading iff the total queued duration is over the
+	 * threshold.
 	 */
-	atomic_inc(&scx_breather_depth);
+	min_delta_us = scx_bypass_lb_intv_us / SCX_BYPASS_LB_MIN_DELTA_DIV;
+	if (delta < DIV_ROUND_UP(min_delta_us, scx_slice_bypass_us))
+		return 0;
 
-	scx_error(sch, "soft lockup - CPU#%d stuck for %us", smp_processor_id(), dur_s);
-out_unlock:
-	rcu_read_unlock();
+	raw_spin_rq_lock_irq(rq);
+	raw_spin_lock(&donor_dsq->lock);
+	list_add(&cursor.node, &donor_dsq->list);
+resume:
+	n = container_of(&cursor, struct task_struct, scx.dsq_list);
+	n = nldsq_next_task(donor_dsq, n, false);
+
+	while ((p = n)) {
+		struct rq *donee_rq;
+		struct scx_dispatch_q *donee_dsq;
+		int donee;
+
+		n = nldsq_next_task(donor_dsq, n, false);
+
+		if (donor_dsq->nr <= nr_donor_target)
+			break;
+
+		if (cpumask_empty(donee_mask))
+			break;
+
+		donee = cpumask_any_and_distribute(donee_mask, p->cpus_ptr);
+		if (donee >= nr_cpu_ids)
+			continue;
+
+		donee_rq = cpu_rq(donee);
+		donee_dsq = &donee_rq->scx.bypass_dsq;
+
+		/*
+		 * $p's rq is not locked but $p's DSQ lock protects its
+		 * scheduling properties making this test safe.
+		 */
+		if (!task_can_run_on_remote_rq(sch, p, donee_rq, false))
+			continue;
+
+		/*
+		 * Moving $p from one non-local DSQ to another. The source rq
+		 * and DSQ are already locked. Do an abbreviated dequeue and
+		 * then perform enqueue without unlocking $donor_dsq.
+		 *
+		 * We don't want to drop and reacquire the lock on each
+		 * iteration as @donor_dsq can be very long and potentially
+		 * highly contended. Donee DSQs are less likely to be contended.
+		 * The nested locking is safe as only this LB moves tasks
+		 * between bypass DSQs.
+		 */
+		dispatch_dequeue_locked(p, donor_dsq);
+		dispatch_enqueue(sch, donee_dsq, p, SCX_ENQ_NESTED);
+
+		/*
+		 * $donee might have been idle and need to be woken up. No need
+		 * to be clever. Kick every CPU that receives tasks.
+		 */
+		cpumask_set_cpu(donee, resched_mask);
+
+		if (READ_ONCE(donee_dsq->nr) >= nr_donee_target)
+			cpumask_clear_cpu(donee, donee_mask);
+
+		nr_balanced++;
+		if (!(nr_balanced % SCX_BYPASS_LB_BATCH) && n) {
+			list_move_tail(&cursor.node, &n->scx.dsq_list.node);
+			raw_spin_unlock(&donor_dsq->lock);
+			raw_spin_rq_unlock_irq(rq);
+			cpu_relax();
+			raw_spin_rq_lock_irq(rq);
+			raw_spin_lock(&donor_dsq->lock);
+			goto resume;
+		}
+	}
+
+	list_del_init(&cursor.node);
+	raw_spin_unlock(&donor_dsq->lock);
+	raw_spin_rq_unlock_irq(rq);
+
+	return nr_balanced;
 }
 
-static void scx_clear_softlockup(void)
+static void bypass_lb_node(struct scx_sched *sch, int node)
 {
-	if (test_and_clear_bit(0, &scx_in_softlockup))
-		atomic_dec(&scx_breather_depth);
+	const struct cpumask *node_mask = cpumask_of_node(node);
+	struct cpumask *donee_mask = scx_bypass_lb_donee_cpumask;
+	struct cpumask *resched_mask = scx_bypass_lb_resched_cpumask;
+	u32 nr_tasks = 0, nr_cpus = 0, nr_balanced = 0;
+	u32 nr_target, nr_donor_target;
+	u32 before_min = U32_MAX, before_max = 0;
+	u32 after_min = U32_MAX, after_max = 0;
+	int cpu;
+
+	/* count the target tasks and CPUs */
+	for_each_cpu_and(cpu, cpu_online_mask, node_mask) {
+		u32 nr = READ_ONCE(cpu_rq(cpu)->scx.bypass_dsq.nr);
+
+		nr_tasks += nr;
+		nr_cpus++;
+
+		before_min = min(nr, before_min);
+		before_max = max(nr, before_max);
+	}
+
+	if (!nr_cpus)
+		return;
+
+	/*
+	 * We don't want CPUs to have more than $nr_donor_target tasks and
+	 * balancing to fill donee CPUs upto $nr_target. Once targets are
+	 * calculated, find the donee CPUs.
+	 */
+	nr_target = DIV_ROUND_UP(nr_tasks, nr_cpus);
+	nr_donor_target = DIV_ROUND_UP(nr_target * SCX_BYPASS_LB_DONOR_PCT, 100);
+
+	cpumask_clear(donee_mask);
+	for_each_cpu_and(cpu, cpu_online_mask, node_mask) {
+		if (READ_ONCE(cpu_rq(cpu)->scx.bypass_dsq.nr) < nr_target)
+			cpumask_set_cpu(cpu, donee_mask);
+	}
+
+	/* iterate !donee CPUs and see if they should be offloaded */
+	cpumask_clear(resched_mask);
+	for_each_cpu_and(cpu, cpu_online_mask, node_mask) {
+		struct rq *rq = cpu_rq(cpu);
+		struct scx_dispatch_q *donor_dsq = &rq->scx.bypass_dsq;
+
+		if (cpumask_empty(donee_mask))
+			break;
+		if (cpumask_test_cpu(cpu, donee_mask))
+			continue;
+		if (READ_ONCE(donor_dsq->nr) <= nr_donor_target)
+			continue;
+
+		nr_balanced += bypass_lb_cpu(sch, rq, donee_mask, resched_mask,
+					     nr_donor_target, nr_target);
+	}
+
+	for_each_cpu(cpu, resched_mask) {
+		struct rq *rq = cpu_rq(cpu);
+
+		raw_spin_rq_lock_irq(rq);
+		resched_curr(rq);
+		raw_spin_rq_unlock_irq(rq);
+	}
+
+	for_each_cpu_and(cpu, cpu_online_mask, node_mask) {
+		u32 nr = READ_ONCE(cpu_rq(cpu)->scx.bypass_dsq.nr);
+
+		after_min = min(nr, after_min);
+		after_max = max(nr, after_max);
+
+	}
+
+	trace_sched_ext_bypass_lb(node, nr_cpus, nr_tasks, nr_balanced,
+				  before_min, before_max, after_min, after_max);
 }
+
+/*
+ * In bypass mode, all tasks are put on the per-CPU bypass DSQs. If the machine
+ * is over-saturated and the BPF scheduler skewed tasks into few CPUs, some
+ * bypass DSQs can be overloaded. If there are enough tasks to saturate other
+ * lightly loaded CPUs, such imbalance can lead to very high execution latency
+ * on the overloaded CPUs and thus to hung tasks and RCU stalls. To avoid such
+ * outcomes, a simple load balancing mechanism is implemented by the following
+ * timer which runs periodically while bypass mode is in effect.
+ */
+static void scx_bypass_lb_timerfn(struct timer_list *timer)
+{
+	struct scx_sched *sch;
+	int node;
+	u32 intv_us;
+
+	sch = rcu_dereference_all(scx_root);
+	if (unlikely(!sch) || !READ_ONCE(scx_bypass_depth))
+		return;
+
+	for_each_node_with_cpus(node)
+		bypass_lb_node(sch, node);
+
+	intv_us = READ_ONCE(scx_bypass_lb_intv_us);
+	if (intv_us)
+		mod_timer(timer, jiffies + usecs_to_jiffies(intv_us));
+}
+
+static DEFINE_TIMER(scx_bypass_lb_timer, scx_bypass_lb_timerfn);
 
 /**
  * scx_bypass - [Un]bypass scx_ops and guarantee forward progress
@@ -3770,24 +4005,33 @@ static void scx_bypass(bool bypass)
 	sch = rcu_dereference_bh(scx_root);
 
 	if (bypass) {
-		scx_bypass_depth++;
+		u32 intv_us;
+
+		WRITE_ONCE(scx_bypass_depth, scx_bypass_depth + 1);
 		WARN_ON_ONCE(scx_bypass_depth <= 0);
 		if (scx_bypass_depth != 1)
 			goto unlock;
+		WRITE_ONCE(scx_slice_dfl, scx_slice_bypass_us * NSEC_PER_USEC);
 		bypass_timestamp = ktime_get_ns();
 		if (sch)
 			scx_add_event(sch, SCX_EV_BYPASS_ACTIVATE, 1);
+
+		intv_us = READ_ONCE(scx_bypass_lb_intv_us);
+		if (intv_us && !timer_pending(&scx_bypass_lb_timer)) {
+			scx_bypass_lb_timer.expires =
+				jiffies + usecs_to_jiffies(intv_us);
+			add_timer_global(&scx_bypass_lb_timer);
+		}
 	} else {
-		scx_bypass_depth--;
+		WRITE_ONCE(scx_bypass_depth, scx_bypass_depth - 1);
 		WARN_ON_ONCE(scx_bypass_depth < 0);
 		if (scx_bypass_depth != 0)
 			goto unlock;
+		WRITE_ONCE(scx_slice_dfl, SCX_SLICE_DFL);
 		if (sch)
 			scx_add_event(sch, SCX_EV_BYPASS_DURATION,
 				      ktime_get_ns() - bypass_timestamp);
 	}
-
-	atomic_inc(&scx_breather_depth);
 
 	/*
 	 * No task property is changing. We just need to make sure all currently
@@ -3844,10 +4088,8 @@ static void scx_bypass(bool bypass)
 		raw_spin_rq_unlock(rq);
 	}
 
-	atomic_dec(&scx_breather_depth);
 unlock:
 	raw_spin_unlock_irqrestore(&bypass_lock, flags);
-	scx_clear_softlockup();
 }
 
 static void free_exit_info(struct scx_exit_info *ei)
@@ -3942,6 +4184,7 @@ static void scx_disable_workfn(struct kthread_work *work)
 
 	/* guarantee forward progress by bypassing scx_ops */
 	scx_bypass(true);
+	WRITE_ONCE(scx_aborting, false);
 
 	switch (scx_set_enable_state(SCX_DISABLING)) {
 	case SCX_DISABLING:
@@ -4064,9 +4307,24 @@ done:
 	scx_bypass(false);
 }
 
-static void scx_disable(enum scx_exit_kind kind)
+static bool scx_claim_exit(struct scx_sched *sch, enum scx_exit_kind kind)
 {
 	int none = SCX_EXIT_NONE;
+
+	if (!atomic_try_cmpxchg(&sch->exit_kind, &none, kind))
+		return false;
+
+	/*
+	 * Some CPUs may be trapped in the dispatch paths. Enable breather
+	 * immediately; otherwise, we might not even be able to get to
+	 * scx_bypass().
+	 */
+	WRITE_ONCE(scx_aborting, true);
+	return true;
+}
+
+static void scx_disable(enum scx_exit_kind kind)
+{
 	struct scx_sched *sch;
 
 	if (WARN_ON_ONCE(kind == SCX_EXIT_NONE || kind == SCX_EXIT_DONE))
@@ -4075,7 +4333,7 @@ static void scx_disable(enum scx_exit_kind kind)
 	rcu_read_lock();
 	sch = rcu_dereference(scx_root);
 	if (sch) {
-		atomic_try_cmpxchg(&sch->exit_kind, &none, kind);
+		scx_claim_exit(sch, kind);
 		kthread_queue_work(sch->helper, &sch->disable_work);
 	}
 	rcu_read_unlock();
@@ -4391,15 +4649,14 @@ static void scx_error_irq_workfn(struct irq_work *irq_work)
 	kthread_queue_work(sch->helper, &sch->disable_work);
 }
 
-static void scx_vexit(struct scx_sched *sch,
+static bool scx_vexit(struct scx_sched *sch,
 		      enum scx_exit_kind kind, s64 exit_code,
 		      const char *fmt, va_list args)
 {
 	struct scx_exit_info *ei = sch->exit_info;
-	int none = SCX_EXIT_NONE;
 
-	if (!atomic_try_cmpxchg(&sch->exit_kind, &none, kind))
-		return;
+	if (!scx_claim_exit(sch, kind))
+		return false;
 
 	ei->exit_code = exit_code;
 #ifdef CONFIG_STACKTRACE
@@ -4416,6 +4673,7 @@ static void scx_vexit(struct scx_sched *sch,
 	ei->reason = scx_exit_reason(ei->kind);
 
 	irq_work_queue(&sch->error_irq_work);
+	return true;
 }
 
 static int alloc_kick_syncs(void)
@@ -4614,6 +4872,8 @@ static int scx_enable(struct sched_ext_ops *ops, struct bpf_link *link)
 	 */
 	WARN_ON_ONCE(scx_set_enable_state(SCX_ENABLING) != SCX_DISABLED);
 	WARN_ON_ONCE(scx_root);
+	if (WARN_ON_ONCE(READ_ONCE(scx_aborting)))
+		WRITE_ONCE(scx_aborting, false);
 
 	atomic_long_set(&scx_nr_rejected, 0);
 
@@ -4780,7 +5040,7 @@ static int scx_enable(struct sched_ext_ops *ops, struct bpf_link *link)
 			queue_flags |= DEQUEUE_CLASS;
 
 		scoped_guard (sched_change, p, queue_flags) {
-			p->scx.slice = SCX_SLICE_DFL;
+			p->scx.slice = READ_ONCE(scx_slice_dfl);
 			p->sched_class = new_class;
 		}
 	}
@@ -5340,6 +5600,7 @@ void __init init_sched_ext_class(void)
 		int  n = cpu_to_node(cpu);
 
 		init_dsq(&rq->scx.local_dsq, SCX_DSQ_LOCAL);
+		init_dsq(&rq->scx.bypass_dsq, SCX_DSQ_BYPASS);
 		INIT_LIST_HEAD(&rq->scx.runnable_list);
 		INIT_LIST_HEAD(&rq->scx.ddsp_deferred_locals);
 
@@ -5600,6 +5861,13 @@ static bool scx_dsq_move(struct bpf_iter_scx_dsq_kern *kit,
 		return false;
 
 	/*
+	 * If the BPF scheduler keeps calling this function repeatedly, it can
+	 * cause similar live-lock conditions as consume_dispatch_q().
+	 */
+	if (unlikely(READ_ONCE(scx_aborting)))
+		return false;
+
+	/*
 	 * Can be called from either ops.dispatch() locking this_rq() or any
 	 * context where no rq lock is held. If latter, lock @p's task_rq which
 	 * we'll likely need anyway.
@@ -5618,13 +5886,6 @@ static bool scx_dsq_move(struct bpf_iter_scx_dsq_kern *kit,
 	} else {
 		raw_spin_rq_lock(src_rq);
 	}
-
-	/*
-	 * If the BPF scheduler keeps calling this function repeatedly, it can
-	 * cause similar live-lock conditions as consume_dispatch_q(). Insert a
-	 * breather if necessary.
-	 */
-	scx_breather(src_rq);
 
 	locked_rq = src_rq;
 	raw_spin_lock(&src_dsq->lock);
@@ -6234,9 +6495,8 @@ __bpf_kfunc int bpf_iter_scx_dsq_new(struct bpf_iter_scx_dsq *it, u64 dsq_id,
 	if (!kit->dsq)
 		return -ENOENT;
 
-	INIT_LIST_HEAD(&kit->cursor.node);
-	kit->cursor.flags = SCX_DSQ_LNODE_ITER_CURSOR | flags;
-	kit->cursor.priv = READ_ONCE(kit->dsq->seq);
+	kit->cursor = INIT_DSQ_LIST_CURSOR(kit->cursor, flags,
+					   READ_ONCE(kit->dsq->seq));
 
 	return 0;
 }
@@ -7017,6 +7277,12 @@ static int __init scx_init(void)
 	if (ret < 0) {
 		pr_err("sched_ext: Failed to add global attributes\n");
 		return ret;
+	}
+
+	if (!alloc_cpumask_var(&scx_bypass_lb_donee_cpumask, GFP_KERNEL) ||
+	    !alloc_cpumask_var(&scx_bypass_lb_resched_cpumask, GFP_KERNEL)) {
+		pr_err("sched_ext: Failed to allocate cpumasks\n");
+		return -ENOMEM;
 	}
 
 	return 0;
