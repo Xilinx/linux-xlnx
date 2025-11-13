@@ -570,7 +570,7 @@ int ni_fiemap(struct ntfs_inode *ni, struct fiemap_extent_info *fieinfo,
 int ni_readpage_cmpr(struct ntfs_inode *ni, struct folio *folio);
 int ni_decompress_file(struct ntfs_inode *ni);
 int ni_read_frame(struct ntfs_inode *ni, u64 frame_vbo, struct page **pages,
-		  u32 pages_per_frame);
+		  u32 pages_per_frame, int copy);
 int ni_write_frame(struct ntfs_inode *ni, struct page **pages,
 		   u32 pages_per_frame);
 int ni_remove_name(struct ntfs_inode *dir_ni, struct ntfs_inode *ni,
@@ -584,7 +584,8 @@ int ni_add_name(struct ntfs_inode *dir_ni, struct ntfs_inode *ni,
 		struct NTFS_DE *de);
 
 int ni_rename(struct ntfs_inode *dir_ni, struct ntfs_inode *new_dir_ni,
-	      struct ntfs_inode *ni, struct NTFS_DE *de, struct NTFS_DE *new_de);
+	      struct ntfs_inode *ni, struct NTFS_DE *de,
+	      struct NTFS_DE *new_de);
 
 bool ni_is_dirty(struct inode *inode);
 
@@ -632,9 +633,21 @@ int ntfs_get_bh(struct ntfs_sb_info *sbi, const struct runs_tree *run, u64 vbo,
 		u32 bytes, struct ntfs_buffers *nb);
 int ntfs_write_bh(struct ntfs_sb_info *sbi, struct NTFS_RECORD_HEADER *rhdr,
 		  struct ntfs_buffers *nb, int sync);
-int ntfs_bio_pages(struct ntfs_sb_info *sbi, const struct runs_tree *run,
-		   struct page **pages, u32 nr_pages, u64 vbo, u32 bytes,
-		   enum req_op op);
+int ntfs_read_write_run(struct ntfs_sb_info *sbi, const struct runs_tree *run,
+			void *buf, u64 vbo, size_t bytes, int wr);
+static inline int ntfs_read_run(struct ntfs_sb_info *sbi,
+				const struct runs_tree *run, void *buf, u64 vbo,
+				size_t bytes)
+{
+	return ntfs_read_write_run(sbi, run, buf, vbo, bytes, 0);
+}
+static inline int ntfs_write_run(struct ntfs_sb_info *sbi,
+				 const struct runs_tree *run, void *buf,
+				 u64 vbo, size_t bytes)
+{
+	return ntfs_read_write_run(sbi, run, buf, vbo, bytes, 1);
+}
+
 int ntfs_bio_fill_1(struct ntfs_sb_info *sbi, const struct runs_tree *run);
 int ntfs_vbo_to_lbo(struct ntfs_sb_info *sbi, const struct runs_tree *run,
 		    u64 vbo, u64 *lbo, u64 *bytes);
@@ -709,8 +722,7 @@ int ntfs_set_size(struct inode *inode, u64 new_size);
 int ntfs_get_block(struct inode *inode, sector_t vbn,
 		   struct buffer_head *bh_result, int create);
 int ntfs_write_begin(const struct kiocb *iocb, struct address_space *mapping,
-		     loff_t pos, u32 len, struct folio **foliop,
-		     void **fsdata);
+		     loff_t pos, u32 len, struct folio **foliop, void **fsdata);
 int ntfs_write_end(const struct kiocb *iocb, struct address_space *mapping,
 		   loff_t pos, u32 len, u32 copied, struct folio *folio,
 		   void *fsdata);
@@ -979,11 +991,12 @@ static inline __le64 kernel2nt(const struct timespec64 *ts)
  */
 static inline void nt2kernel(const __le64 tm, struct timespec64 *ts)
 {
-	u64 t = le64_to_cpu(tm) - _100ns2seconds * SecondsToStartOf1970;
+	s32 t32;
+	/* use signed 64 bit to support timestamps prior to epoch. xfstest 258. */
+	s64 t = le64_to_cpu(tm) - _100ns2seconds * SecondsToStartOf1970;
 
-	// WARNING: do_div changes its first argument(!)
-	ts->tv_nsec = do_div(t, _100ns2seconds) * 100;
-	ts->tv_sec = t;
+	ts->tv_sec = div_s64_rem(t, _100ns2seconds, &t32);
+	ts->tv_nsec = t32 * 100;
 }
 
 static inline struct ntfs_sb_info *ntfs_sb(struct super_block *sb)
