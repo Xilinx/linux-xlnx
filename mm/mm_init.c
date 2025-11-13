@@ -21,6 +21,7 @@
 #include <linux/buffer_head.h>
 #include <linux/kmemleak.h>
 #include <linux/kfence.h>
+#include <linux/liveupdate.h>
 #include <linux/page_ext.h>
 #include <linux/pti.h>
 #include <linux/pgtable.h>
@@ -2702,6 +2703,9 @@ void __init mm_core_init(void)
 	 * as close as possible to buddy initialization
 	 */
 	kho_memory_init();
+
+	/* Live Update should follow right after KHO is initialized */
+	liveupdate_init();
 
 	memblock_free_all();
 	mem_init();
