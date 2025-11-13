@@ -828,8 +828,8 @@ static const struct midr_range broken_seis[] = {
 static bool vgic_v3_broken_seis(void)
 {
 	return (is_kernel_in_hyp_mode() &&
-		(read_sysreg_s(SYS_ICH_VTR_EL2) & ICH_VTR_EL2_SEIS) &&
-		is_midr_in_range_list(broken_seis));
+		is_midr_in_range_list(broken_seis) &&
+		(read_sysreg_s(SYS_ICH_VTR_EL2) & ICH_VTR_EL2_SEIS));
 }
 
 void noinstr kvm_compute_ich_hcr_trap_bits(struct alt_instr *alt,
