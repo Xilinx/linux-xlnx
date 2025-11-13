@@ -260,6 +260,7 @@ struct ext4_map_blocks {
 	ext4_lblk_t m_lblk;
 	unsigned int m_len;
 	unsigned int m_flags;
+	u64 m_seq;
 };
 
 /*
@@ -1138,6 +1139,8 @@ struct ext4_inode_info {
 	ext4_lblk_t i_es_shrink_lblk;	/* Offset where we start searching for
 					   extents to shrink. Protected by
 					   i_es_lock  */
+	u64 i_es_seq;			/* Change counter for extents.
+					   Protected by i_es_lock */
 
 	/* ialloc */
 	ext4_group_t	i_last_alloc_group;
