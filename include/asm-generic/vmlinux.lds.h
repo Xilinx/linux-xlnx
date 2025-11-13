@@ -90,26 +90,42 @@
  * Support -ffunction-sections by matching .text and .text.*,
  * but exclude '.text..*', .text.startup[.*], and .text.exit[.*].
  *
- * .text.startup and .text.startup.* are matched later by INIT_TEXT.
- * .text.exit and .text.exit.* are matched later by EXIT_TEXT.
+ * .text.startup and .text.startup.* are matched later by INIT_TEXT, and
+ * .text.exit and .text.exit.* are matched later by EXIT_TEXT, so they must be
+ * explicitly excluded here.
  *
  * Other .text.* sections that are typically grouped separately, such as
  * .text.unlikely or .text.hot, must be matched explicitly before using
  * TEXT_MAIN.
+ *
+ * NOTE: builds *with* and *without* -ffunction-sections are both supported by
+ * this single macro.  Even with -ffunction-sections, there may be some objects
+ * NOT compiled with the flag due to the use of a specific Makefile override
+ * like cflags-y or AUTOFDO_PROFILE_foo.o.  So this single catchall rule is
+ * needed to support mixed object builds.
+ *
+ * One implication is that functions named startup(), exit(), split(),
+ * unlikely(), hot(), and unknown() are not allowed in the kernel due to the
+ * ambiguity of their section names with -ffunction-sections.  For example,
+ * .text.startup could be __attribute__((constructor)) code in a *non*
+ * ffunction-sections object, which should be placed in .init.text; or it could
+ * be an actual function named startup() in an ffunction-sections object, which
+ * should be placed in .text.  Objtool will detect and complain about any such
+ * ambiguously named functions.
  */
 #define TEXT_MAIN							\
 	.text								\
 	.text.[_0-9A-Za-df-rt-z]*					\
-	.text.s[_0-9A-Za-su-z]*						\
-	.text.st[_0-9A-Zb-z]*						\
-	.text.sta[_0-9A-Za-qs-z]*					\
-	.text.star[_0-9A-Za-su-z]*					\
-	.text.start[_0-9A-Za-tv-z]*					\
-	.text.startu[_0-9A-Za-oq-z]*					\
+	.text.s[_0-9A-Za-su-z]*		.text.s		.text.s.*	\
+	.text.st[_0-9A-Zb-z]*		.text.st	.text.st.*	\
+	.text.sta[_0-9A-Za-qs-z]*	.text.sta	.text.sta.*	\
+	.text.star[_0-9A-Za-su-z]*	.text.star	.text.star.*	\
+	.text.start[_0-9A-Za-tv-z]*	.text.start	.text.start.*	\
+	.text.startu[_0-9A-Za-oq-z]*	.text.startu	.text.startu.*	\
 	.text.startup[_0-9A-Za-z]*					\
-	.text.e[_0-9A-Za-wy-z]*						\
-	.text.ex[_0-9A-Za-hj-z]*					\
-	.text.exi[_0-9A-Za-su-z]*					\
+	.text.e[_0-9A-Za-wy-z]*		.text.e		.text.e.*	\
+	.text.ex[_0-9A-Za-hj-z]*	.text.ex	.text.ex.*	\
+	.text.exi[_0-9A-Za-su-z]*	.text.exi	.text.exi.*	\
 	.text.exit[_0-9A-Za-z]*
 
 /*
