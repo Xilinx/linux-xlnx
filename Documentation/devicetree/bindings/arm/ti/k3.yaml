@@ -37,6 +37,12 @@ properties:
           - const: phytec,am62a-phycore-som
           - const: ti,am62a7
 
+      - description: K3 AM62L3 SoC and Boards
+        items:
+          - enum:
+              - ti,am62l3-evm
+          - const: ti,am62l3
+
       - description: K3 AM62P5 SoC and Boards
         items:
           - enum:
@@ -157,6 +163,14 @@ properties:
               - siemens,iot2050-basic-pg2
               - ti,am654-evm
           - const: ti,am654
+
+      - description: K3 AM69 SoC Toradex Aquila Modules and Carrier Boards
+        items:
+          - enum:
+              - toradex,aquila-am69-clover   # Aquila AM69 Module on Clover Board
+              - toradex,aquila-am69-dev      # Aquila AM69 Module on Aquila Development Board
+          - const: toradex,aquila-am69       # Aquila AM69 Module
+          - const: ti,j784s4
 
       - description: K3 J7200 SoC
         oneOf:
