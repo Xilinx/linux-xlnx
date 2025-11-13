@@ -28,6 +28,18 @@ syscall_get_enter_fields(struct trace_event_call *call)
 	return &entry->enter_fields;
 }
 
+/*
+ * When PREEMPT_RT is enabled, it disables migration instead
+ * of preemption. The pseudo syscall trace events need to match
+ * so that the counter logic recorded into he ring buffer by
+ * trace_event_buffer_reserve() still matches what it expects.
+ */
+#ifdef CONFIG_PREEMPT_RT
+# define preempt_rt_guard()  guard(migrate)()
+#else
+# define preempt_rt_guard()
+#endif
+
 extern struct syscall_metadata *__start_syscalls_metadata[];
 extern struct syscall_metadata *__stop_syscalls_metadata[];
 
@@ -310,6 +322,7 @@ static void ftrace_syscall_enter(void *data, struct pt_regs *regs, long id)
 	 * buffer and per-cpu data require preemption to be disabled.
 	 */
 	might_fault();
+	preempt_rt_guard();
 	guard(preempt_notrace)();
 
 	syscall_nr = trace_get_syscall_nr(current, regs);
@@ -355,6 +368,7 @@ static void ftrace_syscall_exit(void *data, struct pt_regs *regs, long ret)
 	 * buffer and per-cpu data require preemption to be disabled.
 	 */
 	might_fault();
+	preempt_rt_guard();
 	guard(preempt_notrace)();
 
 	syscall_nr = trace_get_syscall_nr(current, regs);
