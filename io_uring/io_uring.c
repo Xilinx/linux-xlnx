@@ -2757,49 +2757,57 @@ static void io_rings_free(struct io_ring_ctx *ctx)
 	ctx->sq_sqes = NULL;
 }
 
-unsigned long rings_size(unsigned int flags, unsigned int sq_entries,
-			 unsigned int cq_entries, size_t *sq_offset)
+static int rings_size(unsigned int flags, unsigned int sq_entries,
+		      unsigned int cq_entries, struct io_rings_layout *rl)
 {
 	struct io_rings *rings;
-	size_t off, sq_array_size;
+	size_t sqe_size;
+	size_t off;
 
-	off = struct_size(rings, cqes, cq_entries);
-	if (off == SIZE_MAX)
-		return SIZE_MAX;
-	if (flags & IORING_SETUP_CQE32) {
-		if (check_shl_overflow(off, 1, &off))
-			return SIZE_MAX;
-	}
 	if (flags & IORING_SETUP_CQE_MIXED) {
 		if (cq_entries < 2)
-			return SIZE_MAX;
+			return -EOVERFLOW;
 	}
 	if (flags & IORING_SETUP_SQE_MIXED) {
 		if (sq_entries < 2)
-			return SIZE_MAX;
+			return -EOVERFLOW;
 	}
+
+	rl->sq_array_offset = SIZE_MAX;
+
+	sqe_size = sizeof(struct io_uring_sqe);
+	if (flags & IORING_SETUP_SQE128)
+		sqe_size *= 2;
+
+	rl->sq_size = array_size(sqe_size, sq_entries);
+	if (rl->sq_size == SIZE_MAX)
+		return -EOVERFLOW;
+
+	off = struct_size(rings, cqes, cq_entries);
+	if (flags & IORING_SETUP_CQE32)
+		off = size_mul(off, 2);
+	if (off == SIZE_MAX)
+		return -EOVERFLOW;
 
 #ifdef CONFIG_SMP
 	off = ALIGN(off, SMP_CACHE_BYTES);
 	if (off == 0)
-		return SIZE_MAX;
+		return -EOVERFLOW;
 #endif
 
-	if (flags & IORING_SETUP_NO_SQARRAY) {
-		*sq_offset = SIZE_MAX;
-		return off;
+	if (!(flags & IORING_SETUP_NO_SQARRAY)) {
+		size_t sq_array_size;
+
+		rl->sq_array_offset = off;
+
+		sq_array_size = array_size(sizeof(u32), sq_entries);
+		off = size_add(off, sq_array_size);
+		if (off == SIZE_MAX)
+			return -EOVERFLOW;
 	}
 
-	*sq_offset = off;
-
-	sq_array_size = array_size(sizeof(u32), sq_entries);
-	if (sq_array_size == SIZE_MAX)
-		return SIZE_MAX;
-
-	if (check_add_overflow(off, sq_array_size, &off))
-		return SIZE_MAX;
-
-	return off;
+	rl->rings_size = off;
+	return 0;
 }
 
 static __cold void __io_req_caches_free(struct io_ring_ctx *ctx)
@@ -3345,31 +3353,20 @@ bool io_is_uring_fops(struct file *file)
 }
 
 static __cold int io_allocate_scq_urings(struct io_ring_ctx *ctx,
-					 struct io_uring_params *p)
+					 struct io_ctx_config *config)
 {
+	struct io_uring_params *p = &config->p;
+	struct io_rings_layout *rl = &config->layout;
 	struct io_uring_region_desc rd;
 	struct io_rings *rings;
-	size_t sq_array_offset;
-	size_t sq_size, cq_size, sqe_size;
 	int ret;
 
 	/* make sure these are sane, as we already accounted them */
 	ctx->sq_entries = p->sq_entries;
 	ctx->cq_entries = p->cq_entries;
 
-	sqe_size = sizeof(struct io_uring_sqe);
-	if (p->flags & IORING_SETUP_SQE128)
-		sqe_size *= 2;
-	sq_size = array_size(sqe_size, p->sq_entries);
-	if (sq_size == SIZE_MAX)
-		return -EOVERFLOW;
-	cq_size = rings_size(ctx->flags, p->sq_entries, p->cq_entries,
-			  &sq_array_offset);
-	if (cq_size == SIZE_MAX)
-		return -EOVERFLOW;
-
 	memset(&rd, 0, sizeof(rd));
-	rd.size = PAGE_ALIGN(cq_size);
+	rd.size = PAGE_ALIGN(rl->rings_size);
 	if (ctx->flags & IORING_SETUP_NO_MMAP) {
 		rd.user_addr = p->cq_off.user_addr;
 		rd.flags |= IORING_MEM_REGION_TYPE_USER;
@@ -3378,12 +3375,11 @@ static __cold int io_allocate_scq_urings(struct io_ring_ctx *ctx,
 	if (ret)
 		return ret;
 	ctx->rings = rings = io_region_get_ptr(&ctx->ring_region);
-
 	if (!(ctx->flags & IORING_SETUP_NO_SQARRAY))
-		ctx->sq_array = (u32 *)((char *)rings + sq_array_offset);
+		ctx->sq_array = (u32 *)((char *)rings + rl->sq_array_offset);
 
 	memset(&rd, 0, sizeof(rd));
-	rd.size = PAGE_ALIGN(sq_size);
+	rd.size = PAGE_ALIGN(rl->sq_size);
 	if (ctx->flags & IORING_SETUP_NO_MMAP) {
 		rd.user_addr = p->sq_off.user_addr;
 		rd.flags |= IORING_MEM_REGION_TYPE_USER;
@@ -3482,7 +3478,7 @@ static int io_uring_sanitise_params(struct io_uring_params *p)
 	return 0;
 }
 
-int io_uring_fill_params(struct io_uring_params *p)
+static int io_uring_fill_params(struct io_uring_params *p)
 {
 	unsigned entries = p->sq_entries;
 
@@ -3523,6 +3519,27 @@ int io_uring_fill_params(struct io_uring_params *p)
 		p->cq_entries = 2 * p->sq_entries;
 	}
 
+	return 0;
+}
+
+int io_prepare_config(struct io_ctx_config *config)
+{
+	struct io_uring_params *p = &config->p;
+	int ret;
+
+	ret = io_uring_sanitise_params(p);
+	if (ret)
+		return ret;
+
+	ret = io_uring_fill_params(p);
+	if (ret)
+		return ret;
+
+	ret = rings_size(p->flags, p->sq_entries, p->cq_entries,
+			 &config->layout);
+	if (ret)
+		return ret;
+
 	p->sq_off.head = offsetof(struct io_rings, sq.head);
 	p->sq_off.tail = offsetof(struct io_rings, sq.tail);
 	p->sq_off.ring_mask = offsetof(struct io_rings, sq_ring_mask);
@@ -3543,24 +3560,22 @@ int io_uring_fill_params(struct io_uring_params *p)
 	p->cq_off.resv1 = 0;
 	if (!(p->flags & IORING_SETUP_NO_MMAP))
 		p->cq_off.user_addr = 0;
+	if (!(p->flags & IORING_SETUP_NO_SQARRAY))
+		p->sq_off.array = config->layout.sq_array_offset;
 
 	return 0;
 }
 
-static __cold int io_uring_create(struct io_uring_params *p,
-				  struct io_uring_params __user *params)
+static __cold int io_uring_create(struct io_ctx_config *config)
 {
+	struct io_uring_params *p = &config->p;
 	struct io_ring_ctx *ctx;
 	struct io_uring_task *tctx;
 	struct file *file;
 	int ret;
 
-	ret = io_uring_sanitise_params(p);
+	ret = io_prepare_config(config);
 	if (ret)
-		return ret;
-
-	ret = io_uring_fill_params(p);
-	if (unlikely(ret))
 		return ret;
 
 	ctx = io_ring_ctx_alloc(p);
@@ -3620,12 +3635,9 @@ static __cold int io_uring_create(struct io_uring_params *p,
 	mmgrab(current->mm);
 	ctx->mm_account = current->mm;
 
-	ret = io_allocate_scq_urings(ctx, p);
+	ret = io_allocate_scq_urings(ctx, config);
 	if (ret)
 		goto err;
-
-	if (!(p->flags & IORING_SETUP_NO_SQARRAY))
-		p->sq_off.array = (char *)ctx->sq_array - (char *)ctx->rings;
 
 	ret = io_sq_offload_create(ctx, p);
 	if (ret)
@@ -3633,7 +3645,7 @@ static __cold int io_uring_create(struct io_uring_params *p,
 
 	p->features = IORING_FEAT_FLAGS;
 
-	if (copy_to_user(params, p, sizeof(*p))) {
+	if (copy_to_user(config->uptr, p, sizeof(*p))) {
 		ret = -EFAULT;
 		goto err;
 	}
@@ -3686,16 +3698,19 @@ err_fput:
  */
 static long io_uring_setup(u32 entries, struct io_uring_params __user *params)
 {
-	struct io_uring_params p;
+	struct io_ctx_config config;
 
-	if (copy_from_user(&p, params, sizeof(p)))
+	memset(&config, 0, sizeof(config));
+
+	if (copy_from_user(&config.p, params, sizeof(config.p)))
 		return -EFAULT;
 
-	if (!mem_is_zero(&p.resv, sizeof(p.resv)))
+	if (!mem_is_zero(&config.p.resv, sizeof(config.p.resv)))
 		return -EINVAL;
 
-	p.sq_entries = entries;
-	return io_uring_create(&p, params);
+	config.p.sq_entries = entries;
+	config.uptr = params;
+	return io_uring_create(&config);
 }
 
 static inline int io_uring_allowed(void)
