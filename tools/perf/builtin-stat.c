@@ -74,6 +74,7 @@
 #include "util/intel-tpebs.h"
 #include "asm/bug.h"
 
+#include <linux/list_sort.h>
 #include <linux/time64.h>
 #include <linux/zalloc.h>
 #include <api/fs/fs.h>
@@ -95,6 +96,10 @@
 #include <linux/ctype.h>
 #include <perf/evlist.h>
 #include <internal/threadmap.h>
+
+#ifdef HAVE_BPF_SKEL
+#include "util/bpf_skel/bperf_cgroup.h"
+#endif
 
 #define DEFAULT_SEPARATOR	" "
 #define FREEZE_ON_SMI_PATH	"bus/event_source/devices/cpu/freeze_on_smi"
@@ -624,8 +629,9 @@ static enum counter_recovery stat_handle_error(struct evsel *counter, int err)
 	 */
 	if (err == EINVAL || err == ENOSYS || err == ENOENT || err == ENXIO) {
 		if (verbose > 0) {
-			ui__warning("%s event is not supported by the kernel.\n",
-				    evsel__name(counter));
+			evsel__open_strerror(counter, &target, err, msg, sizeof(msg));
+			ui__warning("%s event is not supported by the kernel.\n%s\n",
+				    evsel__name(counter), msg);
 		}
 		return COUNTER_SKIP;
 	}
@@ -649,10 +655,11 @@ static enum counter_recovery stat_handle_error(struct evsel *counter, int err)
 		}
 	}
 	if (verbose > 0) {
+		evsel__open_strerror(counter, &target, err, msg, sizeof(msg));
 		ui__warning(err == EOPNOTSUPP
-			? "%s event is not supported by the kernel.\n"
-			: "skipping event %s that kernel failed to open.\n",
-			evsel__name(counter));
+			? "%s event is not supported by the kernel.\n%s\n"
+			: "skipping event %s that kernel failed to open.\n%s\n",
+			evsel__name(counter), msg);
 	}
 	return COUNTER_SKIP;
 }
@@ -1851,6 +1858,35 @@ static int perf_stat_init_aggr_mode_file(struct perf_stat *st)
 	return 0;
 }
 
+static int default_evlist_evsel_cmp(void *priv __maybe_unused,
+				    const struct list_head *l,
+				    const struct list_head *r)
+{
+	const struct perf_evsel *lhs_core = container_of(l, struct perf_evsel, node);
+	const struct evsel *lhs = container_of(lhs_core, struct evsel, core);
+	const struct perf_evsel *rhs_core = container_of(r, struct perf_evsel, node);
+	const struct evsel *rhs = container_of(rhs_core, struct evsel, core);
+
+	if (evsel__leader(lhs) == evsel__leader(rhs)) {
+		/* Within the same group, respect the original order. */
+		return lhs_core->idx - rhs_core->idx;
+	}
+
+	/* Sort default metrics evsels first, and default show events before those. */
+	if (lhs->default_metricgroup != rhs->default_metricgroup)
+		return lhs->default_metricgroup ? -1 : 1;
+
+	if (lhs->default_show_events != rhs->default_show_events)
+		return lhs->default_show_events ? -1 : 1;
+
+	/* Sort by PMU type (prefers legacy types first). */
+	if (lhs->pmu != rhs->pmu)
+		return lhs->pmu->type - rhs->pmu->type;
+
+	/* Sort by name. */
+	return strcmp(evsel__name((struct evsel *)lhs), evsel__name((struct evsel *)rhs));
+}
+
 /*
  * Add default events, if there were no attributes specified or
  * if -d/--detailed, -d -d or -d -d -d is used:
@@ -1973,48 +2009,39 @@ static int add_default_events(void)
 		stat_config.topdown_level = 1;
 
 	if (!evlist->core.nr_entries && !evsel_list->core.nr_entries) {
-		/* No events so add defaults. */
-		if (target__has_cpu(&target))
-			ret = parse_events(evlist, "cpu-clock", &err);
-		else
-			ret = parse_events(evlist, "task-clock", &err);
-		if (ret)
-			goto out;
-
-		ret = parse_events(evlist,
-				"context-switches,"
-				"cpu-migrations,"
-				"page-faults,"
-				"instructions,"
-				"cycles,"
-				"stalled-cycles-frontend,"
-				"stalled-cycles-backend,"
-				"branches,"
-				"branch-misses",
-				&err);
-		if (ret)
-			goto out;
-
 		/*
-		 * Add TopdownL1 metrics if they exist. To minimize
-		 * multiplexing, don't request threshold computation.
+		 * Add Default metrics. To minimize multiplexing, don't request
+		 * threshold computation, but it will be computed if the events
+		 * are present.
 		 */
-		if (metricgroup__has_metric_or_groups(pmu, "Default")) {
-			struct evlist *metric_evlist = evlist__new();
+		const char *default_metricgroup_names[] = {
+			"Default", "Default2", "Default3", "Default4",
+		};
 
+		for (size_t i = 0; i < ARRAY_SIZE(default_metricgroup_names); i++) {
+			struct evlist *metric_evlist;
+
+			if (!metricgroup__has_metric_or_groups(pmu, default_metricgroup_names[i]))
+				continue;
+
+			if ((int)i > detailed_run)
+				break;
+
+			metric_evlist = evlist__new();
 			if (!metric_evlist) {
 				ret = -ENOMEM;
-				goto out;
+				break;
 			}
-			if (metricgroup__parse_groups(metric_evlist, pmu, "Default",
+			if (metricgroup__parse_groups(metric_evlist, pmu, default_metricgroup_names[i],
 							/*metric_no_group=*/false,
 							/*metric_no_merge=*/false,
 							/*metric_no_threshold=*/true,
 							stat_config.user_requested_cpu_list,
 							stat_config.system_wide,
 							stat_config.hardware_aware_grouping) < 0) {
+				evlist__delete(metric_evlist);
 				ret = -1;
-				goto out;
+				break;
 			}
 
 			evlist__for_each_entry(metric_evlist, evsel)
@@ -2026,44 +2053,8 @@ static int add_default_events(void)
 							&metric_evlist->metric_events);
 			evlist__delete(metric_evlist);
 		}
-	}
+		list_sort(/*priv=*/NULL, &evlist->core.entries, default_evlist_evsel_cmp);
 
-	/* Detailed events get appended to the event list: */
-
-	if (!ret && detailed_run >=  1) {
-		/*
-		 * Detailed stats (-d), covering the L1 and last level data
-		 * caches:
-		 */
-		ret = parse_events(evlist,
-				"L1-dcache-loads,"
-				"L1-dcache-load-misses,"
-				"LLC-loads,"
-				"LLC-load-misses",
-				&err);
-	}
-	if (!ret && detailed_run >=  2) {
-		/*
-		 * Very detailed stats (-d -d), covering the instruction cache
-		 * and the TLB caches:
-		 */
-		ret = parse_events(evlist,
-				"L1-icache-loads,"
-				"L1-icache-load-misses,"
-				"dTLB-loads,"
-				"dTLB-load-misses,"
-				"iTLB-loads,"
-				"iTLB-load-misses",
-				&err);
-	}
-	if (!ret && detailed_run >=  3) {
-		/*
-		 * Very, very detailed stats (-d -d -d), adding prefetch events:
-		 */
-		ret = parse_events(evlist,
-				"L1-dcache-prefetches,"
-				"L1-dcache-prefetch-misses",
-				&err);
 	}
 out:
 	if (!ret) {
@@ -2072,7 +2063,7 @@ out:
 			 * Make at least one event non-skippable so fatal errors are visible.
 			 * 'cycles' always used to be default and non-skippable, so use that.
 			 */
-			if (strcmp("cycles", evsel__name(evsel)))
+			if (!evsel__match(evsel, HARDWARE, HW_CPU_CYCLES))
 				evsel->skippable = true;
 		}
 	}
@@ -2136,7 +2127,8 @@ static int __cmd_record(const struct option stat_options[], struct opt_aggr_mode
 	return argc;
 }
 
-static int process_stat_round_event(struct perf_session *session,
+static int process_stat_round_event(const struct perf_tool *tool __maybe_unused,
+				    struct perf_session *session,
 				    union perf_event *event)
 {
 	struct perf_record_stat_round *stat_round = &event->stat_round;
@@ -2161,10 +2153,10 @@ static int process_stat_round_event(struct perf_session *session,
 }
 
 static
-int process_stat_config_event(struct perf_session *session,
+int process_stat_config_event(const struct perf_tool *tool,
+			      struct perf_session *session,
 			      union perf_event *event)
 {
-	const struct perf_tool *tool = session->tool;
 	struct perf_stat *st = container_of(tool, struct perf_stat, tool);
 
 	perf_event__read_stat_config(&stat_config, &event->stat_config);
@@ -2210,10 +2202,10 @@ static int set_maps(struct perf_stat *st)
 }
 
 static
-int process_thread_map_event(struct perf_session *session,
+int process_thread_map_event(const struct perf_tool *tool,
+			     struct perf_session *session __maybe_unused,
 			     union perf_event *event)
 {
-	const struct perf_tool *tool = session->tool;
 	struct perf_stat *st = container_of(tool, struct perf_stat, tool);
 
 	if (st->threads) {
@@ -2229,10 +2221,10 @@ int process_thread_map_event(struct perf_session *session,
 }
 
 static
-int process_cpu_map_event(struct perf_session *session,
+int process_cpu_map_event(const struct perf_tool *tool,
+			  struct perf_session *session __maybe_unused,
 			  union perf_event *event)
 {
-	const struct perf_tool *tool = session->tool;
 	struct perf_stat *st = container_of(tool, struct perf_stat, tool);
 	struct perf_cpu_map *cpus;
 
@@ -2540,6 +2532,7 @@ int cmd_stat(int argc, const char **argv)
 	unsigned int interval, timeout;
 	const char * const stat_subcommands[] = { "record", "report" };
 	char errbuf[BUFSIZ];
+	struct evsel *counter;
 
 	setlocale(LC_ALL, "");
 
@@ -2794,8 +2787,27 @@ int cmd_stat(int argc, const char **argv)
 			goto out;
 		}
 	}
-
+#ifdef HAVE_BPF_SKEL
+	if (target.use_bpf && nr_cgroups &&
+	    (evsel_list->core.nr_entries / nr_cgroups) > BPERF_CGROUP__MAX_EVENTS) {
+		pr_warning("Disabling BPF counters due to more events (%d) than the max (%d)\n",
+			   evsel_list->core.nr_entries / nr_cgroups, BPERF_CGROUP__MAX_EVENTS);
+		target.use_bpf = false;
+	}
+#endif // HAVE_BPF_SKEL
 	evlist__warn_user_requested_cpus(evsel_list, target.cpu_list);
+
+	evlist__for_each_entry(evsel_list, counter) {
+		/*
+		 * Setup BPF counters to require CPUs as any(-1) isn't
+		 * supported. evlist__create_maps below will propagate this
+		 * information to the evsels. Note, evsel__is_bperf isn't yet
+		 * set up, and this change must happen early, so directly use
+		 * the bpf_counter variable and target information.
+		 */
+		if ((counter->bpf_counter || target.use_bpf) && !target__has_cpu(&target))
+			counter->core.requires_cpu = true;
+	}
 
 	if (evlist__create_maps(evsel_list, &target) < 0) {
 		if (target__has_task(&target)) {

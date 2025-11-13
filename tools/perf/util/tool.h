@@ -26,10 +26,12 @@ typedef int (*event_attr_op)(const struct perf_tool *tool,
 			     union perf_event *event,
 			     struct evlist **pevlist);
 
-typedef int (*event_op2)(struct perf_session *session, union perf_event *event);
-typedef s64 (*event_op3)(struct perf_session *session, union perf_event *event);
-typedef int (*event_op4)(struct perf_session *session, union perf_event *event, u64 data,
-			 const char *str);
+typedef int (*event_op2)(const struct perf_tool *tool, struct perf_session *session,
+			 union perf_event *event);
+typedef s64 (*event_op3)(const struct perf_tool *tool, struct perf_session *session,
+			 union perf_event *event);
+typedef int (*event_op4)(const struct perf_tool *tool, struct perf_session *session,
+			 union perf_event *event, u64 data, const char *str);
 
 typedef int (*event_oe)(const struct perf_tool *tool, union perf_event *event,
 			struct ordered_events *oe);
@@ -99,5 +101,14 @@ int process_event_sample_stub(const struct perf_tool *tool,
 			      struct perf_sample *sample,
 			      struct evsel *evsel,
 			      struct machine *machine);
+
+struct delegate_tool {
+	/** @tool: The actual tool that calls the delegate. */
+	struct perf_tool tool;
+	/** @delegate: The tool that is delegated to. */
+	struct perf_tool *delegate;
+};
+
+void delegate_tool__init(struct delegate_tool *tool, struct perf_tool *delegate);
 
 #endif /* __PERF_TOOL_H */

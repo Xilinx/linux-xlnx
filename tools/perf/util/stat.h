@@ -184,7 +184,7 @@ struct perf_stat_output_ctx {
 
 void perf_stat__print_shadow_stats(struct perf_stat_config *config,
 				   struct evsel *evsel,
-				   double avg, int aggr_idx,
+				   int aggr_idx,
 				   struct perf_stat_output_ctx *out);
 bool perf_stat__skip_metric_event(struct evsel *evsel, u64 ena, u64 run);
 void *perf_stat__print_shadow_stats_metricgroup(struct perf_stat_config *config,
@@ -216,7 +216,8 @@ union perf_event;
 struct perf_session;
 struct target;
 
-int perf_event__process_stat_event(struct perf_session *session,
+int perf_event__process_stat_event(const struct perf_tool *tool,
+				   struct perf_session *session,
 				   union perf_event *event);
 
 size_t perf_event__fprintf_stat(union perf_event *event, FILE *fp);
