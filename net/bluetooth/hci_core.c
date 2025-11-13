@@ -4168,6 +4168,12 @@ static void hci_cmd_work(struct work_struct *work)
 
 		hci_send_cmd_sync(hdev, skb);
 
+		/* Don't trigger cmd_timer in case of HCI_OP_NOP since there is
+		 * no command pending.
+		 */
+		if (hci_skb_opcode(skb) == HCI_OP_NOP)
+			return;
+
 		rcu_read_lock();
 		if (test_bit(HCI_RESET, &hdev->flags) ||
 		    hci_dev_test_flag(hdev, HCI_CMD_DRAIN_WORKQUEUE))
