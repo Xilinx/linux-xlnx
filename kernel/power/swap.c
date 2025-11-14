@@ -519,8 +519,9 @@ static int swap_writer_finish(struct swap_map_handle *handle,
 				CMP_HEADER, PAGE_SIZE)
 #define CMP_SIZE	(CMP_PAGES * PAGE_SIZE)
 
-/* Maximum number of threads for compression/decompression. */
-#define CMP_THREADS	3
+/* Default number of threads for compression/decompression. */
+#define CMP_THREADS    3
+static unsigned int hibernate_compression_threads = CMP_THREADS;
 
 /* Minimum/maximum number of pages for read buffering. */
 #define CMP_MIN_RD_PAGES	1024
@@ -585,9 +586,47 @@ struct crc_data {
 	wait_queue_head_t go;                     /* start crc update */
 	wait_queue_head_t done;                   /* crc update done */
 	u32 *crc32;                               /* points to handle's crc32 */
-	size_t *unc_len[CMP_THREADS];             /* uncompressed lengths */
-	unsigned char *unc[CMP_THREADS];          /* uncompressed data */
+	size_t **unc_len;			  /* uncompressed lengths */
+	unsigned char **unc;			  /* uncompressed data */
 };
+
+static struct crc_data *alloc_crc_data(int nr_threads)
+{
+	struct crc_data *crc;
+
+	crc = kzalloc(sizeof(*crc), GFP_KERNEL);
+	if (!crc)
+		return NULL;
+
+	crc->unc = kcalloc(nr_threads, sizeof(*crc->unc), GFP_KERNEL);
+	if (!crc->unc)
+		goto err_free_crc;
+
+	crc->unc_len = kcalloc(nr_threads, sizeof(*crc->unc_len), GFP_KERNEL);
+	if (!crc->unc_len)
+		goto err_free_unc;
+
+	return crc;
+
+err_free_unc:
+	kfree(crc->unc);
+err_free_crc:
+	kfree(crc);
+	return NULL;
+}
+
+static void free_crc_data(struct crc_data *crc)
+{
+	if (!crc)
+		return;
+
+	if (crc->thr)
+		kthread_stop(crc->thr);
+
+	kfree(crc->unc_len);
+	kfree(crc->unc);
+	kfree(crc);
+}
 
 /*
  * CRC32 update function that runs in its own thread.
@@ -635,7 +674,7 @@ struct cmp_data {
 };
 
 /* Indicates the image size after compression */
-static atomic_t compressed_size = ATOMIC_INIT(0);
+static atomic64_t compressed_size = ATOMIC_INIT(0);
 
 /*
  * Compression function that runs in its own thread.
@@ -664,7 +703,7 @@ static int compress_threadfn(void *data)
 		d->ret = crypto_acomp_compress(d->cr);
 		d->cmp_len = d->cr->dlen;
 
-		atomic_set(&compressed_size, atomic_read(&compressed_size) + d->cmp_len);
+		atomic64_add(d->cmp_len, &compressed_size);
 		atomic_set_release(&d->stop, 1);
 		wake_up(&d->done);
 	}
@@ -689,21 +728,21 @@ static int save_compressed_image(struct swap_map_handle *handle,
 	ktime_t start;
 	ktime_t stop;
 	size_t off;
-	unsigned thr, run_threads, nr_threads;
+	unsigned int thr, run_threads, nr_threads;
 	unsigned char *page = NULL;
 	struct cmp_data *data = NULL;
 	struct crc_data *crc = NULL;
 
 	hib_init_batch(&hb);
 
-	atomic_set(&compressed_size, 0);
+	atomic64_set(&compressed_size, 0);
 
 	/*
 	 * We'll limit the number of threads for compression to limit memory
 	 * footprint.
 	 */
 	nr_threads = num_online_cpus() - 1;
-	nr_threads = clamp_val(nr_threads, 1, CMP_THREADS);
+	nr_threads = clamp_val(nr_threads, 1, hibernate_compression_threads);
 
 	page = (void *)__get_free_page(GFP_NOIO | __GFP_HIGH);
 	if (!page) {
@@ -719,7 +758,7 @@ static int save_compressed_image(struct swap_map_handle *handle,
 		goto out_clean;
 	}
 
-	crc = kzalloc(sizeof(*crc), GFP_KERNEL);
+	crc = alloc_crc_data(nr_threads);
 	if (!crc) {
 		pr_err("Failed to allocate crc\n");
 		ret = -ENOMEM;
@@ -877,19 +916,18 @@ out_finish:
 	stop = ktime_get();
 	if (!ret)
 		ret = err2;
-	if (!ret)
+	if (!ret) {
+		swsusp_show_speed(start, stop, nr_to_write, "Wrote");
+		pr_info("Image size after compression: %lld kbytes\n",
+			(atomic64_read(&compressed_size) / 1024));
 		pr_info("Image saving done\n");
-	swsusp_show_speed(start, stop, nr_to_write, "Wrote");
-	pr_info("Image size after compression: %d kbytes\n",
-		(atomic_read(&compressed_size) / 1024));
+	} else {
+		pr_err("Image saving failed: %d\n", ret);
+	}
 
 out_clean:
 	hib_finish_batch(&hb);
-	if (crc) {
-		if (crc->thr)
-			kthread_stop(crc->thr);
-		kfree(crc);
-	}
+	free_crc_data(crc);
 	if (data) {
 		for (thr = 0; thr < nr_threads; thr++) {
 			if (data[thr].thr)
@@ -899,7 +937,8 @@ out_clean:
 		}
 		vfree(data);
 	}
-	if (page) free_page((unsigned long)page);
+	if (page)
+		free_page((unsigned long)page);
 
 	return ret;
 }
@@ -1223,7 +1262,7 @@ static int load_compressed_image(struct swap_map_handle *handle,
 	 * footprint.
 	 */
 	nr_threads = num_online_cpus() - 1;
-	nr_threads = clamp_val(nr_threads, 1, CMP_THREADS);
+	nr_threads = clamp_val(nr_threads, 1, hibernate_compression_threads);
 
 	page = vmalloc_array(CMP_MAX_RD_PAGES, sizeof(*page));
 	if (!page) {
@@ -1239,7 +1278,7 @@ static int load_compressed_image(struct swap_map_handle *handle,
 		goto out_clean;
 	}
 
-	crc = kzalloc(sizeof(*crc), GFP_KERNEL);
+	crc = alloc_crc_data(nr_threads);
 	if (!crc) {
 		pr_err("Failed to allocate crc\n");
 		ret = -ENOMEM;
@@ -1506,11 +1545,7 @@ out_clean:
 	hib_finish_batch(&hb);
 	for (i = 0; i < ring_size; i++)
 		free_page((unsigned long)page[i]);
-	if (crc) {
-		if (crc->thr)
-			kthread_stop(crc->thr);
-		kfree(crc);
-	}
+	free_crc_data(crc);
 	if (data) {
 		for (thr = 0; thr < nr_threads; thr++) {
 			if (data[thr].thr)
@@ -1658,8 +1693,46 @@ int swsusp_unmark(void)
 }
 #endif
 
+static ssize_t hibernate_compression_threads_show(struct kobject *kobj,
+				struct kobj_attribute *attr, char *buf)
+{
+	return sysfs_emit(buf, "%d\n", hibernate_compression_threads);
+}
+
+static ssize_t hibernate_compression_threads_store(struct kobject *kobj,
+				struct kobj_attribute *attr,
+				const char *buf, size_t n)
+{
+	unsigned long val;
+
+	if (kstrtoul(buf, 0, &val))
+		return -EINVAL;
+
+	if (val < 1)
+		return -EINVAL;
+
+	hibernate_compression_threads = val;
+	return n;
+}
+power_attr(hibernate_compression_threads);
+
+static struct attribute *g[] = {
+	&hibernate_compression_threads_attr.attr,
+	NULL,
+};
+
+static const struct attribute_group attr_group = {
+	.attrs = g,
+};
+
 static int __init swsusp_header_init(void)
 {
+	int error;
+
+	error = sysfs_create_group(power_kobj, &attr_group);
+	if (error)
+		return -ENOMEM;
+
 	swsusp_header = (struct swsusp_header*) __get_free_page(GFP_KERNEL);
 	if (!swsusp_header)
 		panic("Could not allocate memory for swsusp_header\n");
@@ -1667,3 +1740,19 @@ static int __init swsusp_header_init(void)
 }
 
 core_initcall(swsusp_header_init);
+
+static int __init hibernate_compression_threads_setup(char *str)
+{
+	int rc = kstrtouint(str, 0, &hibernate_compression_threads);
+
+	if (rc)
+		return rc;
+
+	if (hibernate_compression_threads < 1)
+		hibernate_compression_threads = CMP_THREADS;
+
+	return 1;
+
+}
+
+__setup("hibernate_compression_threads=", hibernate_compression_threads_setup);
