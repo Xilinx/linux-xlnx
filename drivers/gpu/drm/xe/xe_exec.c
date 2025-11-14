@@ -21,6 +21,7 @@
 #include "xe_sched_job.h"
 #include "xe_sync.h"
 #include "xe_svm.h"
+#include "xe_trace.h"
 #include "xe_vm.h"
 
 /**
@@ -151,6 +152,12 @@ int xe_exec_ioctl(struct drm_device *dev, void *data, struct drm_file *file)
 
 	if (XE_IOCTL_DBG(xe, q->ops->reset_status(q))) {
 		err = -ECANCELED;
+		goto err_exec_queue;
+	}
+
+	if (atomic_read(&q->job_cnt) >= XE_MAX_JOB_COUNT_PER_EXEC_QUEUE) {
+		trace_xe_exec_queue_reach_max_job_count(q, XE_MAX_JOB_COUNT_PER_EXEC_QUEUE);
+		err = -EAGAIN;
 		goto err_exec_queue;
 	}
 
@@ -295,10 +302,6 @@ retry:
 		goto err_put_job;
 
 	if (!xe_vm_in_lr_mode(vm)) {
-		err = xe_sched_job_last_fence_add_dep(job, vm);
-		if (err)
-			goto err_put_job;
-
 		err = xe_svm_notifier_lock_interruptible(vm);
 		if (err)
 			goto err_put_job;
