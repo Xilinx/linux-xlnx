@@ -1403,8 +1403,7 @@ static int inc_block_group_ro(struct btrfs_block_group *cache, bool force)
 		 * BTRFS_RESERVE_NO_FLUSH to give ourselves the most amount of
 		 * leeway to allow us to mark this block group as read only.
 		 */
-		if (btrfs_can_overcommit(cache->fs_info, sinfo, num_bytes,
-					 BTRFS_RESERVE_NO_FLUSH))
+		if (btrfs_can_overcommit(sinfo, num_bytes, BTRFS_RESERVE_NO_FLUSH))
 			ret = 0;
 	}
 
@@ -1425,7 +1424,7 @@ out:
 	if (ret == -ENOSPC && btrfs_test_opt(cache->fs_info, ENOSPC_DEBUG)) {
 		btrfs_info(cache->fs_info,
 			"unable to make block group %llu ro", cache->start);
-		btrfs_dump_space_info(cache->fs_info, cache->space_info, 0, false);
+		btrfs_dump_space_info(cache->space_info, 0, false);
 	}
 	return ret;
 }
@@ -1850,12 +1849,10 @@ void btrfs_reclaim_bgs_work(struct work_struct *work)
 	if (!btrfs_should_reclaim(fs_info))
 		return;
 
-	sb_start_write(fs_info->sb);
+	guard(super_write)(fs_info->sb);
 
-	if (!btrfs_exclop_start(fs_info, BTRFS_EXCLOP_BALANCE)) {
-		sb_end_write(fs_info->sb);
+	if (!btrfs_exclop_start(fs_info, BTRFS_EXCLOP_BALANCE))
 		return;
-	}
 
 	/*
 	 * Long running balances can keep us blocked here for eternity, so
@@ -1863,7 +1860,6 @@ void btrfs_reclaim_bgs_work(struct work_struct *work)
 	 */
 	if (!mutex_trylock(&fs_info->reclaim_bgs_lock)) {
 		btrfs_exclop_finish(fs_info);
-		sb_end_write(fs_info->sb);
 		return;
 	}
 
@@ -1947,7 +1943,7 @@ void btrfs_reclaim_bgs_work(struct work_struct *work)
 		/*
 		 * Get out fast, in case we're read-only or unmounting the
 		 * filesystem. It is OK to drop block groups from the list even
-		 * for the read-only case. As we did sb_start_write(),
+		 * for the read-only case. As we did take the super write lock,
 		 * "mount -o remount,ro" won't happen and read-only filesystem
 		 * means it is forced read-only due to a fatal error. So, it
 		 * never gets back to read-write to let us reclaim again.
@@ -2030,7 +2026,6 @@ end:
 	list_splice_tail(&retry_list, &fs_info->reclaim_bgs);
 	spin_unlock(&fs_info->unused_bgs_lock);
 	btrfs_exclop_finish(fs_info);
-	sb_end_write(fs_info->sb);
 }
 
 void btrfs_reclaim_bgs(struct btrfs_fs_info *fs_info)
@@ -3072,7 +3067,7 @@ int btrfs_inc_block_group_ro(struct btrfs_block_group *cache,
 	 * We have allocated a new chunk. We also need to activate that chunk to
 	 * grant metadata tickets for zoned filesystem.
 	 */
-	ret = btrfs_zoned_activate_one_bg(fs_info, space_info, true);
+	ret = btrfs_zoned_activate_one_bg(space_info, true);
 	if (ret < 0)
 		goto out;
 
@@ -3814,30 +3809,38 @@ int btrfs_add_reserved_bytes(struct btrfs_block_group *cache,
 	spin_lock(&cache->lock);
 	if (cache->ro) {
 		ret = -EAGAIN;
-		goto out;
+		goto out_error;
 	}
 
 	if (btrfs_block_group_should_use_size_class(cache)) {
 		size_class = btrfs_calc_block_group_size_class(num_bytes);
 		ret = btrfs_use_block_group_size_class(cache, size_class, force_wrong_size_class);
 		if (ret)
-			goto out;
+			goto out_error;
 	}
+
 	cache->reserved += num_bytes;
-	space_info->bytes_reserved += num_bytes;
-	trace_btrfs_space_reservation(cache->fs_info, "space_info",
-				      space_info->flags, num_bytes, 1);
-	btrfs_space_info_update_bytes_may_use(space_info, -ram_bytes);
 	if (delalloc)
 		cache->delalloc_bytes += num_bytes;
+
+	trace_btrfs_space_reservation(cache->fs_info, "space_info",
+				      space_info->flags, num_bytes, 1);
+	spin_unlock(&cache->lock);
+
+	space_info->bytes_reserved += num_bytes;
+	btrfs_space_info_update_bytes_may_use(space_info, -ram_bytes);
 
 	/*
 	 * Compression can use less space than we reserved, so wake tickets if
 	 * that happens.
 	 */
 	if (num_bytes < ram_bytes)
-		btrfs_try_granting_tickets(cache->fs_info, space_info);
-out:
+		btrfs_try_granting_tickets(space_info);
+	spin_unlock(&space_info->lock);
+
+	return 0;
+
+out_error:
 	spin_unlock(&cache->lock);
 	spin_unlock(&space_info->lock);
 	return ret;
@@ -3859,22 +3862,25 @@ void btrfs_free_reserved_bytes(struct btrfs_block_group *cache, u64 num_bytes,
 			       bool is_delalloc)
 {
 	struct btrfs_space_info *space_info = cache->space_info;
+	bool bg_ro;
 
 	spin_lock(&space_info->lock);
 	spin_lock(&cache->lock);
-	if (cache->ro)
-		space_info->bytes_readonly += num_bytes;
-	else if (btrfs_is_zoned(cache->fs_info))
-		space_info->bytes_zone_unusable += num_bytes;
+	bg_ro = cache->ro;
 	cache->reserved -= num_bytes;
-	space_info->bytes_reserved -= num_bytes;
-	space_info->max_extent_size = 0;
-
 	if (is_delalloc)
 		cache->delalloc_bytes -= num_bytes;
 	spin_unlock(&cache->lock);
 
-	btrfs_try_granting_tickets(cache->fs_info, space_info);
+	if (bg_ro)
+		space_info->bytes_readonly += num_bytes;
+	else if (btrfs_is_zoned(cache->fs_info))
+		space_info->bytes_zone_unusable += num_bytes;
+
+	space_info->bytes_reserved -= num_bytes;
+	space_info->max_extent_size = 0;
+
+	btrfs_try_granting_tickets(space_info);
 	spin_unlock(&space_info->lock);
 }
 
@@ -4192,11 +4198,11 @@ int btrfs_chunk_alloc(struct btrfs_trans_handle *trans,
 		should_alloc = should_alloc_chunk(fs_info, space_info, force);
 		if (space_info->full) {
 			/* No more free physical space */
+			spin_unlock(&space_info->lock);
 			if (should_alloc)
 				ret = -ENOSPC;
 			else
 				ret = 0;
-			spin_unlock(&space_info->lock);
 			return ret;
 		} else if (!should_alloc) {
 			spin_unlock(&space_info->lock);
@@ -4208,16 +4214,16 @@ int btrfs_chunk_alloc(struct btrfs_trans_handle *trans,
 			 * recheck if we should continue with our allocation
 			 * attempt.
 			 */
+			spin_unlock(&space_info->lock);
 			wait_for_alloc = true;
 			force = CHUNK_ALLOC_NO_FORCE;
-			spin_unlock(&space_info->lock);
 			mutex_lock(&fs_info->chunk_mutex);
 			mutex_unlock(&fs_info->chunk_mutex);
 		} else {
 			/* Proceed with allocation */
-			space_info->chunk_alloc = 1;
-			wait_for_alloc = false;
+			space_info->chunk_alloc = true;
 			spin_unlock(&space_info->lock);
+			wait_for_alloc = false;
 		}
 
 		cond_resched();
@@ -4264,7 +4270,7 @@ int btrfs_chunk_alloc(struct btrfs_trans_handle *trans,
 	spin_lock(&space_info->lock);
 	if (ret < 0) {
 		if (ret == -ENOSPC)
-			space_info->full = 1;
+			space_info->full = true;
 		else
 			goto out;
 	} else {
@@ -4274,7 +4280,7 @@ int btrfs_chunk_alloc(struct btrfs_trans_handle *trans,
 
 	space_info->force_alloc = CHUNK_ALLOC_NO_FORCE;
 out:
-	space_info->chunk_alloc = 0;
+	space_info->chunk_alloc = false;
 	spin_unlock(&space_info->lock);
 	mutex_unlock(&fs_info->chunk_mutex);
 
@@ -4315,7 +4321,7 @@ static void reserve_chunk_space(struct btrfs_trans_handle *trans,
 	if (left < bytes && btrfs_test_opt(fs_info, ENOSPC_DEBUG)) {
 		btrfs_info(fs_info, "left=%llu, need=%llu, flags=%llu",
 			   left, bytes, type);
-		btrfs_dump_space_info(fs_info, info, 0, false);
+		btrfs_dump_space_info(info, 0, false);
 	}
 
 	if (left < bytes) {
@@ -4340,7 +4346,7 @@ static void reserve_chunk_space(struct btrfs_trans_handle *trans,
 			 * We have a new chunk. We also need to activate it for
 			 * zoned filesystem.
 			 */
-			ret = btrfs_zoned_activate_one_bg(fs_info, info, true);
+			ret = btrfs_zoned_activate_one_bg(info, true);
 			if (ret < 0)
 				return;
 
@@ -4460,7 +4466,7 @@ static void check_removing_space_info(struct btrfs_space_info *space_info)
 	 * indicates a real bug if this happens.
 	 */
 	if (WARN_ON(space_info->bytes_pinned > 0 || space_info->bytes_may_use > 0))
-		btrfs_dump_space_info(info, space_info, 0, false);
+		btrfs_dump_space_info(space_info, 0, false);
 
 	/*
 	 * If there was a failure to cleanup a log tree, very likely due to an
@@ -4471,7 +4477,7 @@ static void check_removing_space_info(struct btrfs_space_info *space_info)
 	if (!(space_info->flags & BTRFS_BLOCK_GROUP_METADATA) ||
 	    !BTRFS_FS_LOG_CLEANUP_ERROR(info)) {
 		if (WARN_ON(space_info->bytes_reserved > 0))
-			btrfs_dump_space_info(info, space_info, 0, false);
+			btrfs_dump_space_info(space_info, 0, false);
 	}
 
 	WARN_ON(space_info->reclaim_size > 0);

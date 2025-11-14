@@ -204,7 +204,7 @@ DECLARE_EVENT_CLASS(f2fs__inode,
 		__entry->pino	= F2FS_I(inode)->i_pino;
 		__entry->mode	= inode->i_mode;
 		__entry->nlink	= inode->i_nlink;
-		__entry->size	= inode->i_size;
+		__entry->size	= i_size_read(inode);
 		__entry->blocks	= inode->i_blocks;
 		__entry->advise	= F2FS_I(inode)->i_advise;
 	),
@@ -353,7 +353,7 @@ TRACE_EVENT(f2fs_unlink_enter,
 	TP_fast_assign(
 		__entry->dev	= dir->i_sb->s_dev;
 		__entry->ino	= dir->i_ino;
-		__entry->size	= dir->i_size;
+		__entry->size	= i_size_read(dir);
 		__entry->blocks	= dir->i_blocks;
 		__assign_str(name);
 	),
@@ -433,7 +433,7 @@ DECLARE_EVENT_CLASS(f2fs__truncate_op,
 	TP_fast_assign(
 		__entry->dev	= inode->i_sb->s_dev;
 		__entry->ino	= inode->i_ino;
-		__entry->size	= inode->i_size;
+		__entry->size	= i_size_read(inode);
 		__entry->blocks	= inode->i_blocks;
 		__entry->from	= from;
 	),
@@ -584,6 +584,38 @@ TRACE_EVENT(f2fs_file_write_iter,
 		__entry->offset,
 		__entry->length,
 		__entry->ret)
+);
+
+TRACE_EVENT(f2fs_fadvise,
+
+	TP_PROTO(struct inode *inode, loff_t offset, loff_t len, int advice),
+
+	TP_ARGS(inode, offset, len, advice),
+
+	TP_STRUCT__entry(
+		__field(dev_t,	dev)
+		__field(ino_t,	ino)
+		__field(loff_t, size)
+		__field(loff_t,	offset)
+		__field(loff_t,	len)
+		__field(int,	advice)
+	),
+
+	TP_fast_assign(
+		__entry->dev	= inode->i_sb->s_dev;
+		__entry->ino	= inode->i_ino;
+		__entry->size	= i_size_read(inode);
+		__entry->offset	= offset;
+		__entry->len	= len;
+		__entry->advice	= advice;
+	),
+
+	TP_printk("dev = (%d,%d), ino = %lu, i_size = %lld offset:%llu, len:%llu, advise:%d",
+		show_dev_ino(__entry),
+		(unsigned long long)__entry->size,
+		__entry->offset,
+		__entry->len,
+		__entry->advice)
 );
 
 TRACE_EVENT(f2fs_map_blocks,
@@ -1006,7 +1038,7 @@ TRACE_EVENT(f2fs_fallocate,
 		__entry->mode	= mode;
 		__entry->offset	= offset;
 		__entry->len	= len;
-		__entry->size	= inode->i_size;
+		__entry->size	= i_size_read(inode);
 		__entry->blocks = inode->i_blocks;
 		__entry->ret	= ret;
 	),

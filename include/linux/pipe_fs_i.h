@@ -44,12 +44,6 @@ typedef unsigned int pipe_index_t;
 typedef unsigned short pipe_index_t;
 #endif
 
-/*
- * We have to declare this outside 'struct pipe_inode_info',
- * but then we can't use 'union pipe_index' for an anonymous
- * union, so we end up having to duplicate this declaration
- * below. Annoying.
- */
 union pipe_index {
 	unsigned long head_tail;
 	struct {
@@ -87,14 +81,7 @@ struct pipe_inode_info {
 	struct mutex mutex;
 	wait_queue_head_t rd_wait, wr_wait;
 
-	/* This has to match the 'union pipe_index' above */
-	union {
-		unsigned long head_tail;
-		struct {
-			pipe_index_t head;
-			pipe_index_t tail;
-		};
-	};
+	union pipe_index;
 
 	unsigned int max_usage;
 	unsigned int ring_size;

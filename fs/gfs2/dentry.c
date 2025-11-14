@@ -35,40 +35,56 @@
 static int gfs2_drevalidate(struct inode *dir, const struct qstr *name,
 			    struct dentry *dentry, unsigned int flags)
 {
-	struct gfs2_sbd *sdp = GFS2_SB(dir);
 	struct gfs2_inode *dip = GFS2_I(dir);
 	struct inode *inode;
 	struct gfs2_holder d_gh;
-	struct gfs2_inode *ip = NULL;
+	struct gfs2_inode *ip;
 	int error, valid;
-	int had_lock = 0;
+	unsigned long ver;
+
+	gfs2_holder_mark_uninitialized(&d_gh);
+	if (flags & LOOKUP_RCU) {
+		inode = d_inode_rcu(dentry);
+		if (!inode)
+			return -ECHILD;
+	} else {
+		inode = d_inode(dentry);
+		if (inode && is_bad_inode(inode))
+			return 0;
+
+		if (gfs2_glock_is_locked_by_me(dip->i_gl) == NULL) {
+			error = gfs2_glock_nq_init(dip->i_gl, LM_ST_SHARED, 0,
+						   &d_gh);
+			if (error)
+				return 0;
+		}
+	}
+
+	/*
+	 * GFS2 doesn't have persistent inode versions.  Instead, when a
+	 * directory is instantiated (which implies that we are holding the
+	 * corresponding glock), we set i_version to a unique token based on
+	 * sdp->sd_unique.  Later, when the directory is invalidated, we set
+	 * i_version to 0.  The next time the directory is instantiated, a new
+	 * unique token will be assigned to i_version and all cached dentries
+	 * will be fully revalidated.
+	 */
+
+	ver = atomic64_read(&dir->i_version);
+	if (ver && READ_ONCE(dentry->d_time) == ver)
+		return 1;
 
 	if (flags & LOOKUP_RCU)
 		return -ECHILD;
 
-	inode = d_inode(dentry);
-
-	if (inode) {
-		if (is_bad_inode(inode))
-			return 0;
-		ip = GFS2_I(inode);
-	}
-
-	if (sdp->sd_lockstruct.ls_ops->lm_mount == NULL)
-		return 1;
-
-	had_lock = (gfs2_glock_is_locked_by_me(dip->i_gl) != NULL);
-	if (!had_lock) {
-		error = gfs2_glock_nq_init(dip->i_gl, LM_ST_SHARED, 0, &d_gh);
-		if (error)
-			return 0;
-	}
-
+	ip = inode ? GFS2_I(inode) : NULL;
 	error = gfs2_dir_check(dir, name, ip);
 	valid = inode ? !error : (error == -ENOENT);
-
-	if (!had_lock)
+	if (valid)
+		WRITE_ONCE(dentry->d_time, ver);
+	if (gfs2_holder_initialized(&d_gh))
 		gfs2_glock_dq_uninit(&d_gh);
+
 	return valid;
 }
 
@@ -94,6 +110,11 @@ static int gfs2_dentry_delete(const struct dentry *dentry)
 
 	return 0;
 }
+
+const struct dentry_operations gfs2_nolock_dops = {
+	.d_hash = gfs2_dhash,
+	.d_delete = gfs2_dentry_delete,
+};
 
 const struct dentry_operations gfs2_dops = {
 	.d_revalidate = gfs2_drevalidate,

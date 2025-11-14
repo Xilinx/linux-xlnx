@@ -282,7 +282,7 @@ void putname(struct filename *name)
 		return;
 
 	refcnt = atomic_read(&name->refcnt);
-	if (refcnt != 1) {
+	if (unlikely(refcnt != 1)) {
 		if (WARN_ON_ONCE(!refcnt))
 			return;
 
@@ -290,7 +290,7 @@ void putname(struct filename *name)
 			return;
 	}
 
-	if (name->name != name->iname) {
+	if (unlikely(name->name != name->iname)) {
 		__putname(name->name);
 		kfree(name);
 	} else
@@ -540,10 +540,13 @@ static inline int do_inode_permission(struct mnt_idmap *idmap,
  * @mask: Right to check for (%MAY_READ, %MAY_WRITE, %MAY_EXEC)
  *
  * Separate out file-system wide checks from inode-specific permission checks.
+ *
+ * Note: lookup_inode_permission_may_exec() does not call here. If you add
+ * MAY_EXEC checks, adjust it.
  */
 static int sb_permission(struct super_block *sb, struct inode *inode, int mask)
 {
-	if (unlikely(mask & MAY_WRITE)) {
+	if (mask & MAY_WRITE) {
 		umode_t mode = inode->i_mode;
 
 		/* Nobody gets write access to a read-only fs. */
@@ -574,7 +577,7 @@ int inode_permission(struct mnt_idmap *idmap,
 	if (unlikely(retval))
 		return retval;
 
-	if (unlikely(mask & MAY_WRITE)) {
+	if (mask & MAY_WRITE) {
 		/*
 		 * Nobody gets write access to an immutable file.
 		 */
@@ -601,6 +604,42 @@ int inode_permission(struct mnt_idmap *idmap,
 	return security_inode_permission(inode, mask);
 }
 EXPORT_SYMBOL(inode_permission);
+
+/**
+ * lookup_inode_permission_may_exec - Check traversal right for given inode
+ *
+ * This is a special case routine for may_lookup() making assumptions specific
+ * to path traversal. Use inode_permission() if you are doing something else.
+ *
+ * Work is shaved off compared to inode_permission() as follows:
+ * - we know for a fact there is no MAY_WRITE to worry about
+ * - it is an invariant the inode is a directory
+ *
+ * Since majority of real-world traversal happens on inodes which grant it for
+ * everyone, we check it upfront and only resort to more expensive work if it
+ * fails.
+ *
+ * Filesystems which have their own ->permission hook and consequently miss out
+ * on IOP_FASTPERM can still get the optimization if they set IOP_FASTPERM_MAY_EXEC
+ * on their directory inodes.
+ */
+static __always_inline int lookup_inode_permission_may_exec(struct mnt_idmap *idmap,
+	struct inode *inode, int mask)
+{
+	/* Lookup already checked this to return -ENOTDIR */
+	VFS_BUG_ON_INODE(!S_ISDIR(inode->i_mode), inode);
+	VFS_BUG_ON((mask & ~MAY_NOT_BLOCK) != 0);
+
+	mask |= MAY_EXEC;
+
+	if (unlikely(!(inode->i_opflags & (IOP_FASTPERM | IOP_FASTPERM_MAY_EXEC))))
+		return inode_permission(idmap, inode, mask);
+
+	if (unlikely(((inode->i_mode & 0111) != 0111) || !no_acl_inode(inode)))
+		return inode_permission(idmap, inode, mask);
+
+	return security_inode_permission(inode, mask);
+}
 
 /**
  * path_get - get a reference to a path
@@ -1855,7 +1894,7 @@ static inline int may_lookup(struct mnt_idmap *idmap,
 	int err, mask;
 
 	mask = nd->flags & LOOKUP_RCU ? MAY_NOT_BLOCK : 0;
-	err = inode_permission(idmap, nd->inode, mask | MAY_EXEC);
+	err = lookup_inode_permission_may_exec(idmap, nd->inode, mask);
 	if (likely(!err))
 		return 0;
 
@@ -1870,7 +1909,7 @@ static inline int may_lookup(struct mnt_idmap *idmap,
 	if (err != -ECHILD)	// hard error
 		return err;
 
-	return inode_permission(idmap, nd->inode, MAY_EXEC);
+	return lookup_inode_permission_may_exec(idmap, nd->inode, 0);
 }
 
 static int reserve_stack(struct nameidata *nd, struct path *link)
@@ -4036,7 +4075,7 @@ int vfs_tmpfile(struct mnt_idmap *idmap,
 	inode = file_inode(file);
 	if (!(open_flag & O_EXCL)) {
 		spin_lock(&inode->i_lock);
-		inode->i_state |= I_LINKABLE;
+		inode_state_set(inode, I_LINKABLE);
 		spin_unlock(&inode->i_lock);
 	}
 	security_inode_post_create_tmpfile(idmap, inode);
@@ -4931,7 +4970,7 @@ int vfs_link(struct dentry *old_dentry, struct mnt_idmap *idmap,
 
 	inode_lock(inode);
 	/* Make sure we don't allow creating hardlink to an unlinked file */
-	if (inode->i_nlink == 0 && !(inode->i_state & I_LINKABLE))
+	if (inode->i_nlink == 0 && !(inode_state_read_once(inode) & I_LINKABLE))
 		error =  -ENOENT;
 	else if (max_links && inode->i_nlink >= max_links)
 		error = -EMLINK;
@@ -4941,9 +4980,9 @@ int vfs_link(struct dentry *old_dentry, struct mnt_idmap *idmap,
 			error = dir->i_op->link(old_dentry, dir, new_dentry);
 	}
 
-	if (!error && (inode->i_state & I_LINKABLE)) {
+	if (!error && (inode_state_read_once(inode) & I_LINKABLE)) {
 		spin_lock(&inode->i_lock);
-		inode->i_state &= ~I_LINKABLE;
+		inode_state_clear(inode, I_LINKABLE);
 		spin_unlock(&inode->i_lock);
 	}
 	inode_unlock(inode);

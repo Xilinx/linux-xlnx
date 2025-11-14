@@ -38,13 +38,14 @@ static int gc_thread_func(void *data)
 	struct f2fs_gc_control gc_control = {
 		.victim_segno = NULL_SEGNO,
 		.should_migrate_blocks = false,
-		.err_gc_skipped = false };
+		.err_gc_skipped = false,
+		.one_time = false };
 
 	wait_ms = gc_th->min_sleep_time;
 
 	set_freezable();
 	do {
-		bool sync_mode, foreground = false;
+		bool sync_mode, foreground = false, gc_boost = false;
 
 		wait_event_freezable_timeout(*wq,
 				kthread_should_stop() ||
@@ -52,8 +53,12 @@ static int gc_thread_func(void *data)
 				gc_th->gc_wake,
 				msecs_to_jiffies(wait_ms));
 
-		if (test_opt(sbi, GC_MERGE) && waitqueue_active(fggc_wq))
+		if (test_opt(sbi, GC_MERGE) && waitqueue_active(fggc_wq)) {
 			foreground = true;
+			gc_control.one_time = false;
+		} else if (f2fs_sb_has_blkzoned(sbi)) {
+			gc_control.one_time = true;
+		}
 
 		/* give it a try one time */
 		if (gc_th->gc_wake)
@@ -80,8 +85,6 @@ static int gc_thread_func(void *data)
 			stat_other_skip_bggc_count(sbi);
 			continue;
 		}
-
-		gc_control.one_time = false;
 
 		/*
 		 * [GC triggering condition]
@@ -132,7 +135,7 @@ static int gc_thread_func(void *data)
 		if (need_to_boost_gc(sbi)) {
 			decrease_sleep_time(gc_th, &wait_ms);
 			if (f2fs_sb_has_blkzoned(sbi))
-				gc_control.one_time = true;
+				gc_boost = true;
 		} else {
 			increase_sleep_time(gc_th, &wait_ms);
 		}
@@ -141,7 +144,7 @@ do_gc:
 					FOREGROUND : BACKGROUND);
 
 		sync_mode = (F2FS_OPTION(sbi).bggc_mode == BGGC_MODE_SYNC) ||
-			(gc_control.one_time && gc_th->boost_gc_greedy);
+			(gc_boost && gc_th->boost_gc_greedy);
 
 		/* foreground GC was been triggered via f2fs_balance_fs() */
 		if (foreground && !f2fs_sb_has_blkzoned(sbi))
@@ -771,7 +774,7 @@ int f2fs_get_victim(struct f2fs_sb_info *sbi, unsigned int *result,
 {
 	struct dirty_seglist_info *dirty_i = DIRTY_I(sbi);
 	struct sit_info *sm = SIT_I(sbi);
-	struct victim_sel_policy p;
+	struct victim_sel_policy p = {0};
 	unsigned int secno, last_victim;
 	unsigned int last_segment;
 	unsigned int nsearched;
@@ -1208,7 +1211,7 @@ static int ra_data_block(struct inode *inode, pgoff_t index)
 	struct address_space *mapping = f2fs_is_cow_file(inode) ?
 				F2FS_I(inode)->atomic_inode->i_mapping : inode->i_mapping;
 	struct dnode_of_data dn;
-	struct folio *folio;
+	struct folio *folio, *efolio;
 	struct f2fs_io_info fio = {
 		.sbi = sbi,
 		.ino = inode->i_ino,
@@ -1263,18 +1266,19 @@ got_it:
 
 	f2fs_wait_on_block_writeback(inode, dn.data_blkaddr);
 
-	fio.encrypted_page = f2fs_pagecache_get_page(META_MAPPING(sbi),
-					dn.data_blkaddr,
+	efolio = f2fs_filemap_get_folio(META_MAPPING(sbi), dn.data_blkaddr,
 					FGP_LOCK | FGP_CREAT, GFP_NOFS);
-	if (!fio.encrypted_page) {
-		err = -ENOMEM;
+	if (IS_ERR(efolio)) {
+		err = PTR_ERR(efolio);
 		goto put_folio;
 	}
+
+	fio.encrypted_page = &efolio->page;
 
 	err = f2fs_submit_page_bio(&fio);
 	if (err)
 		goto put_encrypted_page;
-	f2fs_put_page(fio.encrypted_page, 0);
+	f2fs_put_page(fio.encrypted_page, false);
 	f2fs_folio_put(folio, true);
 
 	f2fs_update_iostat(sbi, inode, FS_DATA_READ_IO, F2FS_BLKSIZE);
@@ -1282,7 +1286,7 @@ got_it:
 
 	return 0;
 put_encrypted_page:
-	f2fs_put_page(fio.encrypted_page, 1);
+	f2fs_put_page(fio.encrypted_page, true);
 put_folio:
 	f2fs_folio_put(folio, true);
 	return err;
@@ -1310,7 +1314,7 @@ static int move_data_block(struct inode *inode, block_t bidx,
 	struct dnode_of_data dn;
 	struct f2fs_summary sum;
 	struct node_info ni;
-	struct folio *folio, *mfolio;
+	struct folio *folio, *mfolio, *efolio;
 	block_t newaddr;
 	int err = 0;
 	bool lfs_mode = f2fs_lfs_mode(fio.sbi);
@@ -1404,13 +1408,15 @@ static int move_data_block(struct inode *inode, block_t bidx,
 		goto up_out;
 	}
 
-	fio.encrypted_page = f2fs_pagecache_get_page(META_MAPPING(fio.sbi),
-				newaddr, FGP_LOCK | FGP_CREAT, GFP_NOFS);
-	if (!fio.encrypted_page) {
-		err = -ENOMEM;
+	efolio = f2fs_filemap_get_folio(META_MAPPING(fio.sbi), newaddr,
+					FGP_LOCK | FGP_CREAT, GFP_NOFS);
+	if (IS_ERR(efolio)) {
+		err = PTR_ERR(efolio);
 		f2fs_folio_put(mfolio, true);
 		goto recover_block;
 	}
+
+	fio.encrypted_page = &efolio->page;
 
 	/* write target block */
 	f2fs_wait_on_page_writeback(fio.encrypted_page, DATA, true, true);
@@ -1436,7 +1442,7 @@ static int move_data_block(struct inode *inode, block_t bidx,
 	f2fs_update_data_blkaddr(&dn, newaddr);
 	set_inode_flag(inode, FI_APPEND_WRITE);
 
-	f2fs_put_page(fio.encrypted_page, 1);
+	f2fs_put_page(fio.encrypted_page, true);
 recover_block:
 	if (err)
 		f2fs_do_replace_block(fio.sbi, &sum, newaddr, fio.old_blkaddr,

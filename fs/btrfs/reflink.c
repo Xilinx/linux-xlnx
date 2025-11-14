@@ -343,7 +343,7 @@ static int btrfs_clone(struct inode *src, struct inode *inode,
 	BTRFS_PATH_AUTO_FREE(path);
 	struct extent_buffer *leaf;
 	struct btrfs_trans_handle *trans;
-	char *buf = NULL;
+	char AUTO_KVFREE(buf);
 	struct btrfs_key key;
 	u32 nritems;
 	int slot;
@@ -358,10 +358,8 @@ static int btrfs_clone(struct inode *src, struct inode *inode,
 		return ret;
 
 	path = btrfs_alloc_path();
-	if (!path) {
-		kvfree(buf);
+	if (!path)
 		return ret;
-	}
 
 	path->reada = READA_FORWARD;
 	/* Clone data */
@@ -611,7 +609,6 @@ process_slot:
 	}
 
 out:
-	kvfree(buf);
 	clear_bit(BTRFS_INODE_NO_DELALLOC_FLUSH, &BTRFS_I(inode)->runtime_flags);
 
 	return ret;
@@ -867,6 +864,9 @@ loff_t btrfs_remap_file_range(struct file *src_file, loff_t off,
 	struct btrfs_inode *dst_inode = BTRFS_I(file_inode(dst_file));
 	bool same_inode = dst_inode == src_inode;
 	int ret;
+
+	if (unlikely(btrfs_is_shutdown(inode_to_fs_info(file_inode(src_file)))))
+		return -EIO;
 
 	if (remap_flags & ~(REMAP_FILE_DEDUP | REMAP_FILE_ADVISORY))
 		return -EINVAL;
