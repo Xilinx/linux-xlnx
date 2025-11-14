@@ -35,6 +35,7 @@
 #include "xe_pt.h"
 #include "xe_pxp.h"
 #include "xe_res_cursor.h"
+#include "xe_sriov_vf.h"
 #include "xe_svm.h"
 #include "xe_sync.h"
 #include "xe_tile.h"
@@ -111,12 +112,22 @@ static int alloc_preempt_fences(struct xe_vm *vm, struct list_head *list,
 static int wait_for_existing_preempt_fences(struct xe_vm *vm)
 {
 	struct xe_exec_queue *q;
+	bool vf_migration = IS_SRIOV_VF(vm->xe) &&
+		xe_sriov_vf_migration_supported(vm->xe);
+	signed long wait_time = vf_migration ? HZ / 5 : MAX_SCHEDULE_TIMEOUT;
 
 	xe_vm_assert_held(vm);
 
 	list_for_each_entry(q, &vm->preempt.exec_queues, lr.link) {
 		if (q->lr.pfence) {
-			long timeout = dma_fence_wait(q->lr.pfence, false);
+			long timeout;
+
+			timeout = dma_fence_wait_timeout(q->lr.pfence, false,
+							 wait_time);
+			if (!timeout) {
+				xe_assert(vm->xe, vf_migration);
+				return -EAGAIN;
+			}
 
 			/* Only -ETIME on fence indicates VM needs to be killed */
 			if (timeout < 0 || q->lr.pfence->error == -ETIME)
@@ -466,6 +477,8 @@ static void preempt_rebind_work_func(struct work_struct *w)
 retry:
 	if (!try_wait_for_completion(&vm->xe->pm_block) && vm_suspend_rebind_worker(vm)) {
 		up_write(&vm->lock);
+		/* We don't actually block but don't make progress. */
+		xe_pm_might_block_on_suspend();
 		return;
 	}
 
@@ -539,6 +552,19 @@ out_unlock:
 out_unlock_outer:
 	if (err == -EAGAIN) {
 		trace_xe_vm_rebind_worker_retry(vm);
+
+		/*
+		 * We can't block in workers on a VF which supports migration
+		 * given this can block the VF post-migration workers from
+		 * getting scheduled.
+		 */
+		if (IS_SRIOV_VF(vm->xe) &&
+		    xe_sriov_vf_migration_supported(vm->xe)) {
+			up_write(&vm->lock);
+			xe_vm_queue_rebind_worker(vm);
+			return;
+		}
+
 		goto retry;
 	}
 
@@ -798,7 +824,7 @@ xe_vm_ops_add_range_rebind(struct xe_vma_ops *vops,
  *
  * (re)bind SVM range setting up GPU page tables for the range.
  *
- * Return: dma fence for rebind to signal completion on succees, ERR_PTR on
+ * Return: dma fence for rebind to signal completion on success, ERR_PTR on
  * failure
  */
 struct dma_fence *xe_vm_range_rebind(struct xe_vm *vm,
@@ -881,7 +907,7 @@ xe_vm_ops_add_range_unbind(struct xe_vma_ops *vops,
  *
  * Unbind SVM range removing the GPU page tables for the range.
  *
- * Return: dma fence for unbind to signal completion on succees, ERR_PTR on
+ * Return: dma fence for unbind to signal completion on success, ERR_PTR on
  * failure
  */
 struct dma_fence *xe_vm_range_unbind(struct xe_vm *vm,
@@ -1265,7 +1291,7 @@ static u16 pde_pat_index(struct xe_bo *bo)
 	 * selection of options. The user PAT index is only for encoding leaf
 	 * nodes, where we have use of more bits to do the encoding. The
 	 * non-leaf nodes are instead under driver control so the chosen index
-	 * here should be distict from the user PAT index. Also the
+	 * here should be distinct from the user PAT index. Also the
 	 * corresponding coherency of the PAT index should be tied to the
 	 * allocation type of the page table (or at least we should pick
 	 * something which is always safe).
@@ -1875,6 +1901,7 @@ int xe_vm_create_ioctl(struct drm_device *dev, void *data,
 	struct xe_device *xe = to_xe_device(dev);
 	struct xe_file *xef = to_xe_file(file);
 	struct drm_xe_vm_create *args = data;
+	struct xe_gt *wa_gt = xe_root_mmio_gt(xe);
 	struct xe_vm *vm;
 	u32 id;
 	int err;
@@ -1883,7 +1910,7 @@ int xe_vm_create_ioctl(struct drm_device *dev, void *data,
 	if (XE_IOCTL_DBG(xe, args->extensions))
 		return -EINVAL;
 
-	if (XE_GT_WA(xe_root_mmio_gt(xe), 14016763929))
+	if (wa_gt && XE_GT_WA(wa_gt, 22014953428))
 		args->flags |= DRM_XE_VM_CREATE_FLAG_SCRATCH_PAGE;
 
 	if (XE_IOCTL_DBG(xe, args->flags & DRM_XE_VM_CREATE_FLAG_FAULT_MODE &&
@@ -4149,7 +4176,7 @@ void xe_vm_snapshot_free(struct xe_vm_snapshot *snap)
 
 /**
  * xe_vma_need_vram_for_atomic - Check if VMA needs VRAM migration for atomic operations
- * @xe: Pointer to the XE device structure
+ * @xe: Pointer to the Xe device structure
  * @vma: Pointer to the virtual memory area (VMA) structure
  * @is_atomic: In pagefault path and atomic operation
  *
@@ -4296,7 +4323,7 @@ static int xe_vm_alloc_vma(struct xe_vm *vm,
 			xe_vma_destroy(gpuva_to_vma(op->base.remap.unmap->va), NULL);
 		} else if (__op->op == DRM_GPUVA_OP_MAP) {
 			vma = op->map.vma;
-			/* In case of madvise call, MAP will always be follwed by REMAP.
+			/* In case of madvise call, MAP will always be followed by REMAP.
 			 * Therefore temp_attr will always have sane values, making it safe to
 			 * copy them to new vma.
 			 */

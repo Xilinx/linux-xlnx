@@ -98,6 +98,7 @@ enum mod_hdcp_status {
 	MOD_HDCP_STATUS_HDCP2_REAUTH_LINK_INTEGRITY_FAILURE,
 	MOD_HDCP_STATUS_HDCP2_DEVICE_COUNT_MISMATCH_FAILURE,
 	MOD_HDCP_STATUS_UNSUPPORTED_PSP_VER_FAILURE,
+	MOD_HDCP_STATUS_HDCP2_LOCALITY_COMBO_READ_FAILURE,
 };
 
 struct mod_hdcp_displayport {
@@ -214,8 +215,9 @@ struct mod_hdcp_link_adjustment_hdcp2 {
 	uint8_t force_type		: 2;
 	uint8_t force_no_stored_km	: 1;
 	uint8_t increase_h_prime_timeout: 1;
-	uint8_t force_sw_locality_check : 1;
-	uint8_t reserved		: 2;
+	uint8_t use_fw_locality_check 	: 1;
+	uint8_t use_sw_locality_fallback: 1;
+	uint8_t reserved		: 1;
 };
 
 struct mod_hdcp_link_adjustment {
@@ -230,9 +232,23 @@ struct mod_hdcp_error {
 	uint8_t state_id;
 };
 
+struct mod_hdcp1_trace {
+	uint8_t attempt_count;
+	uint8_t downstream_device_count;
+};
+
+struct mod_hdcp2_trace {
+	uint8_t attempt_count;
+	uint8_t downstream_device_count;
+	uint8_t hdcp1_device_downstream;
+	uint8_t hdcp2_legacy_device_downstream;
+};
+
 struct mod_hdcp_trace {
 	struct mod_hdcp_error errors[MAX_NUM_OF_ERROR_TRACE];
 	uint8_t error_count;
+	struct mod_hdcp1_trace hdcp1;
+	struct mod_hdcp2_trace hdcp2;
 };
 
 enum mod_hdcp_encryption_status {
@@ -303,10 +319,6 @@ struct mod_hdcp_display_query {
 struct mod_hdcp_config {
 	struct mod_hdcp_psp psp;
 	struct mod_hdcp_ddc ddc;
-	struct {
-		uint8_t lc_enable_sw_fallback : 1;
-		uint8_t reserved : 7;
-	} debug;
 	uint8_t index;
 };
 
