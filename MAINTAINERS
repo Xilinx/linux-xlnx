@@ -26564,6 +26564,13 @@ F:	Documentation/devicetree/bindings/ufs/
 F:	Documentation/scsi/ufs.rst
 F:	drivers/ufs/core/
 
+UNIVERSAL FLASH STORAGE HOST CONTROLLER DRIVER AMD VERSAL2
+M:	Sai Krishna Potthuri <sai.krishna.potthuri@amd.com>
+M:	Ajay Neeli <ajay.neeli@amd.com>
+S:	Maintained
+F:	Documentation/devicetree/bindings/ufs/amd,versal2-ufs.yaml
+F:	drivers/ufs/host/ufs-amd-versal2.c
+
 UNIVERSAL FLASH STORAGE HOST CONTROLLER DRIVER DWC HOOKS
 M:	Pedro Sousa <pedrom.sousa@synopsys.com>
 L:	linux-scsi@vger.kernel.org
@@ -26580,6 +26587,7 @@ F:	drivers/ufs/host/ufs-exynos*
 
 UNIVERSAL FLASH STORAGE HOST CONTROLLER DRIVER MEDIATEK HOOKS
 M:	Peter Wang <peter.wang@mediatek.com>
+M:	Chaotian Jing <chaotian.jing@mediatek.com>
 R:	Stanley Jhu <chu.stanley@gmail.com>
 L:	linux-scsi@vger.kernel.org
 L:	linux-mediatek@lists.infradead.org (moderated for non-subscribers)
