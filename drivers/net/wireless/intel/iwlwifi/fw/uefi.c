@@ -818,8 +818,8 @@ out:
 
 int iwl_uefi_get_phy_filters(struct iwl_fw_runtime *fwrt)
 {
-	struct uefi_cnv_wpfc_data *data __free(kfree);
 	struct iwl_phy_specific_cfg *filters = &fwrt->phy_filters;
+	struct uefi_cnv_wpfc_data *data __free(kfree) = NULL;
 
 	data = iwl_uefi_get_verified_variable(fwrt->trans, IWL_UEFI_WPFC_NAME,
 					      "WPFC", sizeof(*data), NULL);
