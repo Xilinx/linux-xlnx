@@ -1225,6 +1225,7 @@ struct soc_mixer_control {
 	unsigned int sign_bit;
 	unsigned int invert:1;
 	unsigned int autodisable:1;
+	unsigned int sdca_q78:1;
 #ifdef CONFIG_SND_SOC_TOPOLOGY
 	struct snd_soc_dobj dobj;
 #endif
@@ -1303,22 +1304,6 @@ static inline unsigned int snd_soc_enum_item_to_val(const struct soc_enum *e,
 		return item;
 
 	return e->values[item];
-}
-
-/**
- * snd_soc_kcontrol_component() - Returns the component that registered the
- *  control
- * @kcontrol: The control for which to get the component
- *
- * Note: This function will work correctly if the control has been registered
- * for a component. With snd_soc_add_codec_controls() or via table based
- * setup for either a CODEC or component driver. Otherwise the behavior is
- * undefined.
- */
-static inline struct snd_soc_component *snd_soc_kcontrol_component(
-	struct snd_kcontrol *kcontrol)
-{
-	return snd_kcontrol_chip(kcontrol);
 }
 
 int snd_soc_util_init(void);
