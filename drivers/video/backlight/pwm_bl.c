@@ -518,13 +518,6 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 	if (!state.period && (data->pwm_period_ns > 0))
 		state.period = data->pwm_period_ns;
 
-	ret = pwm_apply_might_sleep(pb->pwm, &state);
-	if (ret) {
-		dev_err_probe(&pdev->dev, ret,
-			      "failed to apply initial PWM state");
-		goto err_alloc;
-	}
-
 	memset(&props, 0, sizeof(struct backlight_properties));
 
 	if (data->levels) {
@@ -581,6 +574,15 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 
 	pb->lth_brightness = data->lth_brightness * (div_u64(state.period,
 				pb->scale));
+
+	state.duty_cycle = compute_duty_cycle(pb, data->dft_brightness, &state);
+
+	ret = pwm_apply_might_sleep(pb->pwm, &state);
+	if (ret) {
+		dev_err_probe(&pdev->dev, ret,
+			      "failed to apply initial PWM state");
+		goto err_alloc;
+	}
 
 	props.type = BACKLIGHT_RAW;
 	props.max_brightness = data->max_brightness;
