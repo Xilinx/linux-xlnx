@@ -72,8 +72,6 @@ enum memory_block_state {
 	MEM_GOING_ONLINE,
 	MEM_CANCEL_ONLINE,
 	MEM_CANCEL_OFFLINE,
-	MEM_PREPARE_ONLINE,
-	MEM_FINISH_OFFLINE,
 };
 
 struct memory_block {
@@ -102,13 +100,6 @@ unsigned long memory_block_size_bytes(void);
 int set_memory_block_size_order(unsigned int order);
 
 struct memory_notify {
-	/*
-	 * The altmap_start_pfn and altmap_nr_pages fields are designated for
-	 * specifying the altmap range and are exclusively intended for use in
-	 * MEM_PREPARE_ONLINE/MEM_FINISH_OFFLINE notifiers.
-	 */
-	unsigned long altmap_start_pfn;
-	unsigned long altmap_nr_pages;
 	unsigned long start_pfn;
 	unsigned long nr_pages;
 };
