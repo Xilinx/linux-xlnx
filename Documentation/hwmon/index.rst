@@ -151,6 +151,7 @@ Hardware Monitoring Kernel Drivers
    max1619
    max16601
    max1668
+   max17616
    max197
    max20730
    max20751
@@ -177,6 +178,7 @@ Hardware Monitoring Kernel Drivers
    mp2869
    mp2888
    mp2891
+   mp2925
    mp29502
    mp2975
    mp2993
@@ -184,6 +186,7 @@ Hardware Monitoring Kernel Drivers
    mp5920
    mp5990
    mp9941
+   mp9945
    mpq8785
    nct6683
    nct6775
@@ -253,6 +256,7 @@ Hardware Monitoring Kernel Drivers
    tps40422
    tps53679
    tps546d24
+   tsc1641
    twl4030-madc-hwmon
    ucd9000
    ucd9200
