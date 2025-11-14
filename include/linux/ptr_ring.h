@@ -428,6 +428,26 @@ static inline int ptr_ring_consume_batched_bh(struct ptr_ring *r,
 	return ret;
 }
 
+/* Give me back the last entry produced, but only if ring is full.
+ * NB: MUST exclude both consumer and producer!
+ * E.g. by having producer take consumer lock.
+ */
+static inline void *__ptr_ring_peek_last_if_full(struct ptr_ring *r)
+{
+	int p;
+
+	if (unlikely(!r->size))
+		return NULL;
+
+	/* There can be space at tail if we flush entries out. */
+	if (r->consumer_tail != r->consumer_head) {
+		__ptr_ring_zero_tail(r, r->consumer_head);
+		return NULL;
+	}
+	p = r->producer ? r->producer : r->size;
+	return READ_ONCE(r->queue[p - 1]);
+}
+
 /* Cast to structure type and call a function without discarding from FIFO.
  * Function must return a value.
  * Callers must take consumer_lock.
