@@ -825,6 +825,11 @@ static inline bool btintel_pcie_in_d0(struct btintel_pcie_data *data)
 	return !(data->boot_stage_cache & BTINTEL_PCIE_CSR_BOOT_STAGE_D3_STATE_READY);
 }
 
+static inline bool btintel_pcie_in_device_halt(struct btintel_pcie_data *data)
+{
+	return data->boot_stage_cache & BTINTEL_PCIE_CSR_BOOT_STAGE_DEVICE_HALTED;
+}
+
 static void btintel_pcie_wr_sleep_cntrl(struct btintel_pcie_data *data,
 					u32 dxstate)
 {
@@ -2519,6 +2524,48 @@ static void btintel_pcie_coredump(struct device *dev)
 }
 #endif
 
+static int btintel_pcie_set_dxstate(struct btintel_pcie_data *data, u32 dxstate)
+{
+	int retry = 0, status;
+	u32 dx_intr_timeout_ms = 200;
+
+	do {
+		data->gp0_received = false;
+
+		btintel_pcie_wr_sleep_cntrl(data, dxstate);
+
+		status = wait_event_timeout(data->gp0_wait_q, data->gp0_received,
+			msecs_to_jiffies(dx_intr_timeout_ms));
+
+		if (status)
+			return 0;
+
+		bt_dev_warn(data->hdev,
+			   "Timeout (%u ms) on alive interrupt for D%d entry, retry count %d",
+			   dx_intr_timeout_ms, dxstate, retry);
+
+		/* clear gp0 cause */
+		btintel_pcie_clr_reg_bits(data,
+					  BTINTEL_PCIE_CSR_MSIX_HW_INT_CAUSES,
+					  BTINTEL_PCIE_MSIX_HW_INT_CAUSES_GP0);
+
+		/* A hardware bug may cause the alive interrupt to be missed.
+		 * Check if the controller reached the expected state and retry
+		 * the operation only if it hasn't.
+		 */
+		if (dxstate == BTINTEL_PCIE_STATE_D0) {
+			if (btintel_pcie_in_d0(data))
+				return 0;
+		} else {
+			if (btintel_pcie_in_d3(data))
+				return 0;
+		}
+
+	} while (++retry < BTINTEL_PCIE_DX_TRANSITION_MAX_RETRIES);
+
+	return -EBUSY;
+}
+
 static int btintel_pcie_suspend_late(struct device *dev, pm_message_t mesg)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
@@ -2532,26 +2579,20 @@ static int btintel_pcie_suspend_late(struct device *dev, pm_message_t mesg)
 	dxstate = (mesg.event == PM_EVENT_SUSPEND ?
 		   BTINTEL_PCIE_STATE_D3_HOT : BTINTEL_PCIE_STATE_D3_COLD);
 
-	data->gp0_received = false;
+	data->pm_sx_event = mesg.event;
 
 	start = ktime_get();
 
 	/* Refer: 6.4.11.7 -> Platform power management */
-	btintel_pcie_wr_sleep_cntrl(data, dxstate);
-	err = wait_event_timeout(data->gp0_wait_q, data->gp0_received,
-				 msecs_to_jiffies(BTINTEL_DEFAULT_INTR_TIMEOUT_MS));
-	if (err == 0) {
-		bt_dev_err(data->hdev,
-			   "Timeout (%u ms) on alive interrupt for D3 entry",
-			   BTINTEL_DEFAULT_INTR_TIMEOUT_MS);
-		return -EBUSY;
-	}
+	err = btintel_pcie_set_dxstate(data, dxstate);
+
+	if (err)
+		return err;
 
 	bt_dev_dbg(data->hdev,
 		   "device entered into d3 state from d0 in %lld us",
 		   ktime_to_us(ktime_get() - start));
-
-	return 0;
+	return err;
 }
 
 static int btintel_pcie_suspend(struct device *dev)
@@ -2581,21 +2622,50 @@ static int btintel_pcie_resume(struct device *dev)
 
 	start = ktime_get();
 
-	/* Refer: 6.4.11.7 -> Platform power management */
-	btintel_pcie_wr_sleep_cntrl(data, BTINTEL_PCIE_STATE_D0);
-	err = wait_event_timeout(data->gp0_wait_q, data->gp0_received,
-				 msecs_to_jiffies(BTINTEL_DEFAULT_INTR_TIMEOUT_MS));
-	if (err == 0) {
-		bt_dev_err(data->hdev,
-			   "Timeout (%u ms) on alive interrupt for D0 entry",
-			   BTINTEL_DEFAULT_INTR_TIMEOUT_MS);
-		return -EBUSY;
+	/* When the system enters S4 (hibernate) mode, bluetooth device loses
+	 * power, which results in the erasure of its loaded firmware.
+	 * Consequently, function level reset (flr) is required on system
+	 * resume to bring the controller back into an operational state by
+	 * initiating a new firmware download.
+	 */
+
+	if (data->pm_sx_event == PM_EVENT_FREEZE ||
+	    data->pm_sx_event == PM_EVENT_HIBERNATE) {
+		set_bit(BTINTEL_PCIE_CORE_HALTED, &data->flags);
+		btintel_pcie_reset(data->hdev);
+		return 0;
 	}
 
-	bt_dev_dbg(data->hdev,
-		    "device entered into d0 state from d3 in %lld us",
-		     ktime_to_us(ktime_get() - start));
-	return 0;
+	/* Refer: 6.4.11.7 -> Platform power management */
+	err = btintel_pcie_set_dxstate(data, BTINTEL_PCIE_STATE_D0);
+
+	if (err == 0) {
+		bt_dev_dbg(data->hdev,
+			   "device entered into d0 state from d3 in %lld us",
+			   ktime_to_us(ktime_get() - start));
+		return err;
+	}
+
+	/* Trigger function level reset if the controller is in error
+	 * state during resume() to bring back the controller to
+	 * operational mode
+	 */
+
+	data->boot_stage_cache = btintel_pcie_rd_reg32(data,
+			BTINTEL_PCIE_CSR_BOOT_STAGE_REG);
+	if (btintel_pcie_in_error(data) ||
+			btintel_pcie_in_device_halt(data)) {
+		bt_dev_err(data->hdev, "Controller in error state for D0 entry");
+		if (!test_and_set_bit(BTINTEL_PCIE_COREDUMP_INPROGRESS,
+				      &data->flags)) {
+			data->dmp_hdr.trigger_reason =
+				BTINTEL_PCIE_TRIGGER_REASON_FW_ASSERT;
+			queue_work(data->workqueue, &data->rx_work);
+		}
+		set_bit(BTINTEL_PCIE_CORE_HALTED, &data->flags);
+		btintel_pcie_reset(data->hdev);
+	}
+	return err;
 }
 
 static const struct dev_pm_ops btintel_pcie_pm_ops = {
