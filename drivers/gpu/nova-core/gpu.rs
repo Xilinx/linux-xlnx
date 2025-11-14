@@ -1,13 +1,26 @@
 // SPDX-License-Identifier: GPL-2.0
 
-use kernel::{device, devres::Devres, error::code::*, fmt, pci, prelude::*, sync::Arc};
+use kernel::{
+    device,
+    devres::Devres,
+    fmt,
+    pci,
+    prelude::*,
+    sync::Arc, //
+};
 
-use crate::driver::Bar0;
-use crate::falcon::{gsp::Gsp as GspFalcon, sec2::Sec2 as Sec2Falcon, Falcon};
-use crate::fb::SysmemFlush;
-use crate::gfw;
-use crate::gsp::Gsp;
-use crate::regs;
+use crate::{
+    driver::Bar0,
+    falcon::{
+        gsp::Gsp as GspFalcon,
+        sec2::Sec2 as Sec2Falcon,
+        Falcon, //
+    },
+    fb::SysmemFlush,
+    gfw,
+    gsp::Gsp,
+    regs,
+};
 
 macro_rules! define_chipset {
     ({ $($variant:ident = $value:expr),* $(,)* }) =>
@@ -213,12 +226,10 @@ impl Gpu {
             gsp_falcon: Falcon::new(
                 pdev.as_ref(),
                 spec.chipset,
-                bar,
-                spec.chipset > Chipset::GA100,
             )
             .inspect(|falcon| falcon.clear_swgen0_intr(bar))?,
 
-            sec2_falcon: Falcon::new(pdev.as_ref(), spec.chipset, bar, true)?,
+            sec2_falcon: Falcon::new(pdev.as_ref(), spec.chipset)?,
 
             gsp <- Gsp::new(),
 
