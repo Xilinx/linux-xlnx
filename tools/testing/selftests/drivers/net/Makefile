@@ -23,6 +23,7 @@ TEST_PROGS := \
 	ping.py \
 	psp.py \
 	queues.py \
+	ring_reconfig.py \
 	shaper.py \
 	stats.py \
 	xdp.py \

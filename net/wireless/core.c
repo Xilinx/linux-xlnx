@@ -34,6 +34,9 @@
 /* name for sysfs, %d is appended */
 #define PHY_NAME "phy"
 
+/* maximum length of radio debugfs directory name */
+#define RADIO_DEBUGFSDIR_MAX_LEN	8
+
 MODULE_AUTHOR("Johannes Berg");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("wireless configuration support");
@@ -1042,6 +1045,18 @@ int wiphy_register(struct wiphy *wiphy)
 	/* add to debugfs */
 	rdev->wiphy.debugfsdir = debugfs_create_dir(wiphy_name(&rdev->wiphy),
 						    ieee80211_debugfs_dir);
+	if (wiphy->n_radio > 0) {
+		int idx;
+		char radio_name[RADIO_DEBUGFSDIR_MAX_LEN];
+
+		for (idx = 0; idx < wiphy->n_radio; idx++) {
+			scnprintf(radio_name, sizeof(radio_name), "radio%d",
+				  idx);
+			wiphy->radio_cfg[idx].radio_debugfsdir =
+				debugfs_create_dir(radio_name,
+						   rdev->wiphy.debugfsdir);
+		}
+	}
 
 	cfg80211_debugfs_rdev_add(rdev);
 	nl80211_notify_wiphy(rdev, NL80211_CMD_NEW_WIPHY);
@@ -1051,12 +1066,12 @@ int wiphy_register(struct wiphy *wiphy)
 	wiphy_regulatory_register(wiphy);
 
 	if (wiphy->regulatory_flags & REGULATORY_CUSTOM_REG) {
-		struct regulatory_request request;
-
-		request.wiphy_idx = get_wiphy_idx(wiphy);
-		request.initiator = NL80211_REGDOM_SET_BY_DRIVER;
-		request.alpha2[0] = '9';
-		request.alpha2[1] = '9';
+		struct regulatory_request request = {
+			.wiphy_idx = get_wiphy_idx(wiphy),
+			.initiator = NL80211_REGDOM_SET_BY_DRIVER,
+			.alpha2[0] = '9',
+			.alpha2[1] = '9',
+		};
 
 		nl80211_send_reg_change_event(&request);
 	}

@@ -312,7 +312,6 @@ static void tcp_time_wait_init(struct sock *sk, struct tcp_timewait_sock *tcptw)
 			return;
 		if (!static_key_fast_inc_not_disabled(&tcp_md5_needed.key.key))
 			goto out_free;
-		tcp_md5_add_sigpool();
 	}
 	return;
 out_free:
@@ -406,7 +405,6 @@ void tcp_twsk_destructor(struct sock *sk)
 		if (twsk->tw_md5_key) {
 			kfree(twsk->tw_md5_key);
 			static_branch_slow_dec_deferred(&tcp_md5_needed);
-			tcp_md5_release_sigpool();
 		}
 	}
 #endif
@@ -716,7 +714,8 @@ struct sock *tcp_check_req(struct sock *sk, struct sk_buff *skb,
 			 * it can be estimated (approximately)
 			 * from another data.
 			 */
-			tmp_opt.ts_recent_stamp = ktime_get_seconds() - reqsk_timeout(req, TCP_RTO_MAX) / HZ;
+			tmp_opt.ts_recent_stamp = ktime_get_seconds() -
+				tcp_reqsk_timeout(req) / HZ;
 			paws_reject = tcp_paws_reject(&tmp_opt, th->rst);
 		}
 	}
@@ -755,7 +754,7 @@ struct sock *tcp_check_req(struct sock *sk, struct sk_buff *skb,
 		    !tcp_rtx_synack(sk, req)) {
 			unsigned long expires = jiffies;
 
-			expires += reqsk_timeout(req, TCP_RTO_MAX);
+			expires += tcp_reqsk_timeout(req);
 			if (!fastopen)
 				mod_timer_pending(&req->rsk_timer, expires);
 			else

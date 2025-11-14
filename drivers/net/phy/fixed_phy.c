@@ -131,12 +131,6 @@ static int __fixed_phy_add(int phy_addr,
 	return 0;
 }
 
-void fixed_phy_add(const struct fixed_phy_status *status)
-{
-	__fixed_phy_add(0, status);
-}
-EXPORT_SYMBOL_GPL(fixed_phy_add);
-
 static DEFINE_IDA(phy_fixed_ida);
 
 static void fixed_phy_del(int phy_addr)
@@ -180,13 +174,11 @@ struct phy_device *fixed_phy_register(const struct fixed_phy_status *status,
 	}
 
 	/* propagate the fixed link values to struct phy_device */
-	phy->link = status->link;
-	if (status->link) {
-		phy->speed = status->speed;
-		phy->duplex = status->duplex;
-		phy->pause = status->pause;
-		phy->asym_pause = status->asym_pause;
-	}
+	phy->link = 1;
+	phy->speed = status->speed;
+	phy->duplex = status->duplex;
+	phy->pause = status->pause;
+	phy->asym_pause = status->asym_pause;
 
 	of_node_get(np);
 	phy->mdio.dev.of_node = np;
@@ -226,6 +218,17 @@ struct phy_device *fixed_phy_register(const struct fixed_phy_status *status,
 	return phy;
 }
 EXPORT_SYMBOL_GPL(fixed_phy_register);
+
+struct phy_device *fixed_phy_register_100fd(void)
+{
+	static const struct fixed_phy_status status = {
+		.speed	= SPEED_100,
+		.duplex	= DUPLEX_FULL,
+	};
+
+	return fixed_phy_register(&status, NULL);
+}
+EXPORT_SYMBOL_GPL(fixed_phy_register_100fd);
 
 void fixed_phy_unregister(struct phy_device *phy)
 {

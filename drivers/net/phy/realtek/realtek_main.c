@@ -8,6 +8,7 @@
  * Copyright (c) 2004 Freescale Semiconductor, Inc.
  */
 #include <linux/bitops.h>
+#include <linux/ethtool_netlink.h>
 #include <linux/of.h>
 #include <linux/phy.h>
 #include <linux/pm_wakeirq.h>
@@ -126,6 +127,32 @@
  * is set, they cannot be accessed by C45-over-C22.
  */
 #define RTL822X_VND2_C22_REG(reg)		(0xa400 + 2 * (reg))
+
+#define RTL8221B_VND2_INER			0xa4d2
+#define RTL8221B_VND2_INER_LINK_STATUS		BIT(4)
+
+#define RTL8221B_VND2_INSR			0xa4d4
+
+#define RTL8224_MII_RTCT			0x11
+#define RTL8224_MII_RTCT_ENABLE			BIT(0)
+#define RTL8224_MII_RTCT_PAIR_A			BIT(4)
+#define RTL8224_MII_RTCT_PAIR_B			BIT(5)
+#define RTL8224_MII_RTCT_PAIR_C			BIT(6)
+#define RTL8224_MII_RTCT_PAIR_D			BIT(7)
+#define RTL8224_MII_RTCT_DONE			BIT(15)
+
+#define RTL8224_MII_SRAM_ADDR			0x1b
+#define RTL8224_MII_SRAM_DATA			0x1c
+
+#define RTL8224_SRAM_RTCT_FAULT(pair)		(0x8026 + (pair) * 4)
+#define RTL8224_SRAM_RTCT_FAULT_BUSY		BIT(0)
+#define RTL8224_SRAM_RTCT_FAULT_OPEN		BIT(3)
+#define RTL8224_SRAM_RTCT_FAULT_SAME_SHORT	BIT(4)
+#define RTL8224_SRAM_RTCT_FAULT_OK		BIT(5)
+#define RTL8224_SRAM_RTCT_FAULT_DONE		BIT(6)
+#define RTL8224_SRAM_RTCT_FAULT_CROSS_SHORT	BIT(7)
+
+#define RTL8224_SRAM_RTCT_LEN(pair)		(0x8028 + (pair) * 4)
 
 #define RTL8366RB_POWER_SAVE			0x15
 #define RTL8366RB_POWER_SAVE_ON			BIT(12)
@@ -1453,6 +1480,168 @@ static int rtl822xb_c45_read_status(struct phy_device *phydev)
 	return 0;
 }
 
+static int rtl8224_cable_test_start(struct phy_device *phydev)
+{
+	u32 val;
+	int ret;
+
+	/* disable auto-negotiation and force 1000/Full */
+	ret = phy_modify_mmd(phydev, MDIO_MMD_VEND2,
+			     RTL822X_VND2_C22_REG(MII_BMCR),
+			     BMCR_ANENABLE | BMCR_SPEED100 | BMCR_SPEED10,
+			     BMCR_SPEED1000 | BMCR_FULLDPLX);
+	if (ret)
+		return ret;
+
+	mdelay(500);
+
+	/* trigger cable test */
+	val = RTL8224_MII_RTCT_ENABLE;
+	val |= RTL8224_MII_RTCT_PAIR_A;
+	val |= RTL8224_MII_RTCT_PAIR_B;
+	val |= RTL8224_MII_RTCT_PAIR_C;
+	val |= RTL8224_MII_RTCT_PAIR_D;
+
+	return phy_modify_mmd(phydev, MDIO_MMD_VEND2,
+			      RTL822X_VND2_C22_REG(RTL8224_MII_RTCT),
+			      RTL8224_MII_RTCT_DONE, val);
+}
+
+static int rtl8224_sram_read(struct phy_device *phydev, u32 reg)
+{
+	int ret;
+
+	ret = phy_write_mmd(phydev, MDIO_MMD_VEND2,
+			    RTL822X_VND2_C22_REG(RTL8224_MII_SRAM_ADDR),
+			    reg);
+	if (ret)
+		return ret;
+
+	return phy_read_mmd(phydev, MDIO_MMD_VEND2,
+			    RTL822X_VND2_C22_REG(RTL8224_MII_SRAM_DATA));
+}
+
+static int rtl8224_pair_len_get(struct phy_device *phydev, u32 pair)
+{
+	int cable_len;
+	u32 reg_len;
+	int ret;
+	u32 cm;
+
+	reg_len = RTL8224_SRAM_RTCT_LEN(pair);
+
+	ret = rtl8224_sram_read(phydev, reg_len);
+	if (ret < 0)
+		return ret;
+
+	cable_len = ret & 0xff00;
+
+	ret = rtl8224_sram_read(phydev, reg_len + 1);
+	if (ret < 0)
+		return ret;
+
+	cable_len |= (ret & 0xff00) >> 8;
+
+	cable_len -= 620;
+	cable_len = max(cable_len, 0);
+
+	cm = cable_len * 100 / 78;
+
+	return cm;
+}
+
+static int rtl8224_cable_test_result_trans(u32 result)
+{
+	if (!(result & RTL8224_SRAM_RTCT_FAULT_DONE))
+		return -EBUSY;
+
+	if (result & RTL8224_SRAM_RTCT_FAULT_OK)
+		return ETHTOOL_A_CABLE_RESULT_CODE_OK;
+
+	if (result & RTL8224_SRAM_RTCT_FAULT_OPEN)
+		return ETHTOOL_A_CABLE_RESULT_CODE_OPEN;
+
+	if (result & RTL8224_SRAM_RTCT_FAULT_SAME_SHORT)
+		return ETHTOOL_A_CABLE_RESULT_CODE_SAME_SHORT;
+
+	if (result & RTL8224_SRAM_RTCT_FAULT_BUSY)
+		return ETHTOOL_A_CABLE_RESULT_CODE_UNSPEC;
+
+	if (result & RTL8224_SRAM_RTCT_FAULT_CROSS_SHORT)
+		return ETHTOOL_A_CABLE_RESULT_CODE_CROSS_SHORT;
+
+	return ETHTOOL_A_CABLE_RESULT_CODE_UNSPEC;
+}
+
+static int rtl8224_cable_test_report_pair(struct phy_device *phydev, unsigned int pair)
+{
+	int fault_rslt;
+	int ret;
+
+	ret = rtl8224_sram_read(phydev, RTL8224_SRAM_RTCT_FAULT(pair));
+	if (ret < 0)
+		return ret;
+
+	fault_rslt = rtl8224_cable_test_result_trans(ret);
+	if (fault_rslt < 0)
+		return 0;
+
+	ret = ethnl_cable_test_result(phydev, pair, fault_rslt);
+	if (ret < 0)
+		return ret;
+
+	switch (fault_rslt) {
+	case ETHTOOL_A_CABLE_RESULT_CODE_OPEN:
+	case ETHTOOL_A_CABLE_RESULT_CODE_SAME_SHORT:
+	case ETHTOOL_A_CABLE_RESULT_CODE_CROSS_SHORT:
+		ret = rtl8224_pair_len_get(phydev, pair);
+		if (ret < 0)
+			return ret;
+
+		return ethnl_cable_test_fault_length(phydev, pair, ret);
+	default:
+		return  0;
+	}
+}
+
+static int rtl8224_cable_test_report(struct phy_device *phydev, bool *finished)
+{
+	unsigned int pair;
+	int ret;
+
+	for (pair = ETHTOOL_A_CABLE_PAIR_A; pair <= ETHTOOL_A_CABLE_PAIR_D; pair++) {
+		ret = rtl8224_cable_test_report_pair(phydev, pair);
+		if (ret == -EBUSY) {
+			*finished = false;
+			return 0;
+		}
+
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+
+static int rtl8224_cable_test_get_status(struct phy_device *phydev, bool *finished)
+{
+	int ret;
+
+	*finished = false;
+
+	ret = phy_read_mmd(phydev, MDIO_MMD_VEND2,
+			   RTL822X_VND2_C22_REG(RTL8224_MII_RTCT));
+	if (ret < 0)
+		return ret;
+
+	if (!(ret & RTL8224_MII_RTCT_DONE))
+		return 0;
+
+	*finished = true;
+
+	return rtl8224_cable_test_report(phydev, finished);
+}
+
 static bool rtlgen_supports_2_5gbps(struct phy_device *phydev)
 {
 	int val;
@@ -1696,6 +1885,53 @@ static irqreturn_t rtl9000a_handle_interrupt(struct phy_device *phydev)
 	return IRQ_HANDLED;
 }
 
+static int rtl8221b_ack_interrupt(struct phy_device *phydev)
+{
+	int err;
+
+	err = phy_read_mmd(phydev, MDIO_MMD_VEND2, RTL8221B_VND2_INSR);
+
+	return (err < 0) ? err : 0;
+}
+
+static int rtl8221b_config_intr(struct phy_device *phydev)
+{
+	int err;
+
+	if (phydev->interrupts == PHY_INTERRUPT_ENABLED) {
+		err = rtl8221b_ack_interrupt(phydev);
+		if (err)
+			return err;
+
+		err = phy_write_mmd(phydev, MDIO_MMD_VEND2, RTL8221B_VND2_INER,
+				    RTL8221B_VND2_INER_LINK_STATUS);
+	} else {
+		err = phy_write_mmd(phydev, MDIO_MMD_VEND2,
+				    RTL8221B_VND2_INER, 0);
+		if (err)
+			return err;
+
+		err = rtl8221b_ack_interrupt(phydev);
+	}
+
+	return err;
+}
+
+static irqreturn_t rtl8221b_handle_interrupt(struct phy_device *phydev)
+{
+	int err;
+
+	err = rtl8221b_ack_interrupt(phydev);
+	if (err) {
+		phy_error(phydev);
+		return IRQ_NONE;
+	}
+
+	phy_trigger_machine(phydev);
+
+	return IRQ_HANDLED;
+}
+
 static struct phy_driver realtek_drvs[] = {
 	{
 		PHY_ID_MATCH_EXACT(0x00008201),
@@ -1870,6 +2106,8 @@ static struct phy_driver realtek_drvs[] = {
 	}, {
 		.match_phy_device = rtl8221b_vb_cg_c45_match_phy_device,
 		.name           = "RTL8221B-VB-CG 2.5Gbps PHY (C45)",
+		.config_intr	= rtl8221b_config_intr,
+		.handle_interrupt = rtl8221b_handle_interrupt,
 		.probe		= rtl822x_probe,
 		.config_init    = rtl822xb_config_init,
 		.get_rate_matching = rtl822xb_get_rate_matching,
@@ -1894,6 +2132,8 @@ static struct phy_driver realtek_drvs[] = {
 	}, {
 		.match_phy_device = rtl8221b_vm_cg_c45_match_phy_device,
 		.name           = "RTL8221B-VM-CG 2.5Gbps PHY (C45)",
+		.config_intr	= rtl8221b_config_intr,
+		.handle_interrupt = rtl8221b_handle_interrupt,
 		.probe		= rtl822x_probe,
 		.config_init    = rtl822xb_config_init,
 		.get_rate_matching = rtl822xb_get_rate_matching,
@@ -1930,11 +2170,14 @@ static struct phy_driver realtek_drvs[] = {
 	}, {
 		PHY_ID_MATCH_EXACT(0x001ccad0),
 		.name		= "RTL8224 2.5Gbps PHY",
+		.flags		= PHY_POLL_CABLE_TEST,
 		.get_features   = rtl822x_c45_get_features,
 		.config_aneg    = rtl822x_c45_config_aneg,
 		.read_status    = rtl822x_c45_read_status,
 		.suspend        = genphy_c45_pma_suspend,
 		.resume         = rtlgen_c45_resume,
+		.cable_test_start = rtl8224_cable_test_start,
+		.cable_test_get_status = rtl8224_cable_test_get_status,
 	}, {
 		PHY_ID_MATCH_EXACT(0x001cc961),
 		.name		= "RTL8366RB Gigabit Ethernet",
