@@ -79,8 +79,7 @@ static bool blk_map_iter_next(struct request *req, struct blk_map_iter *iter,
 static inline bool blk_can_dma_map_iova(struct request *req,
 		struct device *dma_dev)
 {
-	return !((queue_virt_boundary(req->q) + 1) &
-		dma_get_merge_boundary(dma_dev));
+	return !(req_phys_gap_mask(req) & dma_get_merge_boundary(dma_dev));
 }
 
 static bool blk_dma_map_bus(struct blk_dma_iter *iter, struct phys_vec *vec)
@@ -143,7 +142,7 @@ static inline void blk_rq_map_iter_init(struct request *rq,
 				.bi_size = rq->special_vec.bv_len,
 			}
 		};
-       } else if (bio) {
+	} else if (bio) {
 		*iter = (struct blk_map_iter) {
 			.bio = bio,
 			.bvecs = bio->bi_io_vec,
@@ -151,7 +150,7 @@ static inline void blk_rq_map_iter_init(struct request *rq,
 		};
 	} else {
 		/* the internal flush request may not have bio attached */
-	        *iter = (struct blk_map_iter) {};
+		*iter = (struct blk_map_iter) {};
 	}
 }
 
@@ -352,7 +351,7 @@ bool blk_rq_integrity_dma_map_iter_start(struct request *req,
 EXPORT_SYMBOL_GPL(blk_rq_integrity_dma_map_iter_start);
 
 /**
- * blk_rq_integrity_dma_map_iter_start - map the next integrity DMA segment for
+ * blk_rq_integrity_dma_map_iter_next - map the next integrity DMA segment for
  * 					 a request
  * @req:	request to map
  * @dma_dev:	device to map to
