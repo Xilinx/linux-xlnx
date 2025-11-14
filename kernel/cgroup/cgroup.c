@@ -941,7 +941,8 @@ static void css_set_move_task(struct task_struct *task,
 		/*
 		 * We are synchronized through cgroup_threadgroup_rwsem
 		 * against PF_EXITING setting such that we can't race
-		 * against cgroup_exit()/cgroup_free() dropping the css_set.
+		 * against cgroup_task_dead()/cgroup_task_free() dropping
+		 * the css_set.
 		 */
 		WARN_ON_ONCE(task->flags & PF_EXITING);
 
@@ -6968,19 +6969,29 @@ void cgroup_post_fork(struct task_struct *child,
 }
 
 /**
- * cgroup_exit - detach cgroup from exiting task
+ * cgroup_task_exit - detach cgroup from exiting task
  * @tsk: pointer to task_struct of exiting process
  *
  * Description: Detach cgroup from @tsk.
  *
  */
-void cgroup_exit(struct task_struct *tsk)
+void cgroup_task_exit(struct task_struct *tsk)
 {
 	struct cgroup_subsys *ss;
-	struct css_set *cset;
 	int i;
 
-	spin_lock_irq(&css_set_lock);
+	/* see cgroup_post_fork() for details */
+	do_each_subsys_mask(ss, i, have_exit_callback) {
+		ss->exit(tsk);
+	} while_each_subsys_mask();
+}
+
+void cgroup_task_dead(struct task_struct *tsk)
+{
+	struct css_set *cset;
+	unsigned long flags;
+
+	spin_lock_irqsave(&css_set_lock, flags);
 
 	WARN_ON_ONCE(list_empty(&tsk->cg_list));
 	cset = task_css_set(tsk);
@@ -6998,15 +7009,10 @@ void cgroup_exit(struct task_struct *tsk)
 		     test_bit(CGRP_FREEZE, &task_dfl_cgroup(tsk)->flags)))
 		cgroup_update_frozen(task_dfl_cgroup(tsk));
 
-	spin_unlock_irq(&css_set_lock);
-
-	/* see cgroup_post_fork() for details */
-	do_each_subsys_mask(ss, i, have_exit_callback) {
-		ss->exit(tsk);
-	} while_each_subsys_mask();
+	spin_unlock_irqrestore(&css_set_lock, flags);
 }
 
-void cgroup_release(struct task_struct *task)
+void cgroup_task_release(struct task_struct *task)
 {
 	struct cgroup_subsys *ss;
 	int ssid;
@@ -7014,6 +7020,11 @@ void cgroup_release(struct task_struct *task)
 	do_each_subsys_mask(ss, ssid, have_release_callback) {
 		ss->release(task);
 	} while_each_subsys_mask();
+}
+
+void cgroup_task_free(struct task_struct *task)
+{
+	struct css_set *cset = task_css_set(task);
 
 	if (!list_empty(&task->cg_list)) {
 		spin_lock_irq(&css_set_lock);
@@ -7021,11 +7032,7 @@ void cgroup_release(struct task_struct *task)
 		list_del_init(&task->cg_list);
 		spin_unlock_irq(&css_set_lock);
 	}
-}
 
-void cgroup_free(struct task_struct *task)
-{
-	struct css_set *cset = task_css_set(task);
 	put_css_set(cset);
 }
 
