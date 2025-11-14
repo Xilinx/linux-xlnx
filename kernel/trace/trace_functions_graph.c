@@ -101,9 +101,9 @@ static struct tracer_flags tracer_flags = {
 	.opts = trace_opts
 };
 
-static bool tracer_flags_is_set(u32 flags)
+static bool tracer_flags_is_set(struct trace_array *tr, u32 flags)
 {
-	return (tracer_flags.val & flags) == flags;
+	return (tr->current_trace_flags->val & flags) == flags;
 }
 
 /*
@@ -263,7 +263,7 @@ static int graph_entry(struct ftrace_graph_ent *trace,
 
 	trace_ctx = tracing_gen_ctx();
 	if (IS_ENABLED(CONFIG_FUNCTION_GRAPH_RETADDR) &&
-	    tracer_flags_is_set(TRACE_GRAPH_PRINT_RETADDR)) {
+	    tracer_flags_is_set(tr, TRACE_GRAPH_PRINT_RETADDR)) {
 		unsigned long retaddr = ftrace_graph_top_ret_addr(current);
 		ret = __trace_graph_retaddr_entry(tr, trace, trace_ctx, retaddr);
 	} else {
@@ -441,7 +441,7 @@ static int graph_trace_init(struct trace_array *tr)
 {
 	int ret;
 
-	if (tracer_flags_is_set(TRACE_GRAPH_ARGS))
+	if (tracer_flags_is_set(tr, TRACE_GRAPH_ARGS))
 		tr->gops->entryfunc = trace_graph_entry_args;
 	else
 		tr->gops->entryfunc = trace_graph_entry;
@@ -703,7 +703,7 @@ print_graph_irq(struct trace_iterator *iter, unsigned long addr,
 		addr >= (unsigned long)__irqentry_text_end)
 		return;
 
-	if (tr->trace_flags & TRACE_ITER_CONTEXT_INFO) {
+	if (tr->trace_flags & TRACE_ITER(CONTEXT_INFO)) {
 		/* Absolute time */
 		if (flags & TRACE_GRAPH_PRINT_ABS_TIME)
 			print_graph_abs_time(iter->ts, s);
@@ -723,7 +723,7 @@ print_graph_irq(struct trace_iterator *iter, unsigned long addr,
 		}
 
 		/* Latency format */
-		if (tr->trace_flags & TRACE_ITER_LATENCY_FMT)
+		if (tr->trace_flags & TRACE_ITER(LATENCY_FMT))
 			print_graph_lat_fmt(s, ent);
 	}
 
@@ -777,7 +777,7 @@ print_graph_duration(struct trace_array *tr, unsigned long long duration,
 		     struct trace_seq *s, u32 flags)
 {
 	if (!(flags & TRACE_GRAPH_PRINT_DURATION) ||
-	    !(tr->trace_flags & TRACE_ITER_CONTEXT_INFO))
+	    !(tr->trace_flags & TRACE_ITER(CONTEXT_INFO)))
 		return;
 
 	/* No real adata, just filling the column with spaces */
@@ -818,7 +818,7 @@ static void print_graph_retaddr(struct trace_seq *s, struct fgraph_retaddr_ent_e
 		trace_seq_puts(s, " /*");
 
 	trace_seq_puts(s, " <-");
-	seq_print_ip_sym(s, entry->graph_ent.retaddr, trace_flags | TRACE_ITER_SYM_OFFSET);
+	seq_print_ip_sym_offset(s, entry->graph_ent.retaddr, trace_flags);
 
 	if (comment)
 		trace_seq_puts(s, " */");
@@ -1054,7 +1054,7 @@ print_graph_prologue(struct trace_iterator *iter, struct trace_seq *s,
 		/* Interrupt */
 		print_graph_irq(iter, addr, type, cpu, ent->pid, flags);
 
-	if (!(tr->trace_flags & TRACE_ITER_CONTEXT_INFO))
+	if (!(tr->trace_flags & TRACE_ITER(CONTEXT_INFO)))
 		return;
 
 	/* Absolute time */
@@ -1076,7 +1076,7 @@ print_graph_prologue(struct trace_iterator *iter, struct trace_seq *s,
 	}
 
 	/* Latency format */
-	if (tr->trace_flags & TRACE_ITER_LATENCY_FMT)
+	if (tr->trace_flags & TRACE_ITER(LATENCY_FMT))
 		print_graph_lat_fmt(s, ent);
 
 	return;
@@ -1459,7 +1459,8 @@ print_graph_function_flags(struct trace_iterator *iter, u32 flags)
 static enum print_line_t
 print_graph_function(struct trace_iterator *iter)
 {
-	return print_graph_function_flags(iter, tracer_flags.val);
+	struct trace_array *tr = iter->tr;
+	return print_graph_function_flags(iter, tr->current_trace_flags->val);
 }
 
 static enum print_line_t
@@ -1495,7 +1496,7 @@ static void print_lat_header(struct seq_file *s, u32 flags)
 static void __print_graph_headers_flags(struct trace_array *tr,
 					struct seq_file *s, u32 flags)
 {
-	int lat = tr->trace_flags & TRACE_ITER_LATENCY_FMT;
+	int lat = tr->trace_flags & TRACE_ITER(LATENCY_FMT);
 
 	if (lat)
 		print_lat_header(s, flags);
@@ -1535,7 +1536,10 @@ static void __print_graph_headers_flags(struct trace_array *tr,
 
 static void print_graph_headers(struct seq_file *s)
 {
-	print_graph_headers_flags(s, tracer_flags.val);
+	struct trace_iterator *iter = s->private;
+	struct trace_array *tr = iter->tr;
+
+	print_graph_headers_flags(s, tr->current_trace_flags->val);
 }
 
 void print_graph_headers_flags(struct seq_file *s, u32 flags)
@@ -1543,10 +1547,10 @@ void print_graph_headers_flags(struct seq_file *s, u32 flags)
 	struct trace_iterator *iter = s->private;
 	struct trace_array *tr = iter->tr;
 
-	if (!(tr->trace_flags & TRACE_ITER_CONTEXT_INFO))
+	if (!(tr->trace_flags & TRACE_ITER(CONTEXT_INFO)))
 		return;
 
-	if (tr->trace_flags & TRACE_ITER_LATENCY_FMT) {
+	if (tr->trace_flags & TRACE_ITER(LATENCY_FMT)) {
 		/* print nothing if the buffers are empty */
 		if (trace_empty(iter))
 			return;
@@ -1660,7 +1664,7 @@ static struct tracer graph_trace __tracer_data = {
 	.reset		= graph_trace_reset,
 	.print_line	= print_graph_function,
 	.print_header	= print_graph_headers,
-	.flags		= &tracer_flags,
+	.default_flags	= &tracer_flags,
 	.set_flag	= func_graph_set_flag,
 	.allow_instances = true,
 #ifdef CONFIG_FTRACE_SELFTEST

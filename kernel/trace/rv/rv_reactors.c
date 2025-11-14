@@ -61,6 +61,7 @@
  *      printk
  */
 
+#include <linux/lockdep.h>
 #include <linux/slab.h>
 
 #include "rv.h"
@@ -347,7 +348,7 @@ static bool __read_mostly reacting_on;
  *
  * Returns 1 if on, 0 otherwise.
  */
-bool rv_reacting_on(void)
+static bool rv_reacting_on(void)
 {
 	/* Ensures that concurrent monitors read consistent reacting_on */
 	smp_rmb();
@@ -438,7 +439,7 @@ int reactor_populate_monitor(struct rv_monitor *mon)
 /*
  * Nop reactor register
  */
-__printf(1, 2) static void rv_nop_reaction(const char *msg, ...)
+__printf(1, 0) static void rv_nop_reaction(const char *msg, va_list args)
 {
 }
 
@@ -476,4 +477,21 @@ rm_available:
 	rv_remove(available);
 out_err:
 	return -ENOMEM;
+}
+
+void rv_react(struct rv_monitor *monitor, const char *msg, ...)
+{
+	static DEFINE_WAIT_OVERRIDE_MAP(rv_react_map, LD_WAIT_FREE);
+	va_list args;
+
+	if (!rv_reacting_on() || !monitor->react)
+		return;
+
+	va_start(args, msg);
+
+	lock_map_acquire_try(&rv_react_map);
+	monitor->react(msg, args);
+	lock_map_release(&rv_react_map);
+
+	va_end(args);
 }
