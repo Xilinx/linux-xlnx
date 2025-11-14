@@ -30,7 +30,7 @@
 
 #define vmemmap			((struct page *)VMEMMAP_START - (memstart_addr >> PAGE_SHIFT))
 
-#ifndef __ASSEMBLY__
+#ifndef __ASSEMBLER__
 
 #include <asm/cmpxchg.h>
 #include <asm/fixmap.h>
@@ -433,7 +433,7 @@ bool pgattr_change_is_safe(pteval_t old, pteval_t new);
  *   1      0      |   1           0          1
  *   1      1      |   0           1          x
  *
- * When hardware DBM is not present, the sofware PTE_DIRTY bit is updated via
+ * When hardware DBM is not present, the software PTE_DIRTY bit is updated via
  * the page fault mechanism. Checking the dirty status of a pte becomes:
  *
  *   PTE_DIRTY || (PTE_WRITE && !PTE_RDONLY)
@@ -599,7 +599,7 @@ static inline int pte_protnone(pte_t pte)
 	/*
 	 * pte_present_invalid() tells us that the pte is invalid from HW
 	 * perspective but present from SW perspective, so the fields are to be
-	 * interpretted as per the HW layout. The second 2 checks are the unique
+	 * interpreted as per the HW layout. The second 2 checks are the unique
 	 * encoding that we use for PROT_NONE. It is insufficient to only use
 	 * the first check because we share the same encoding scheme with pmds
 	 * which support pmd_mkinvalid(), so can be present-invalid without
@@ -1949,6 +1949,6 @@ static inline void clear_young_dirty_ptes(struct vm_area_struct *vma,
 
 #endif /* CONFIG_ARM64_CONTPTE */
 
-#endif /* !__ASSEMBLY__ */
+#endif /* !__ASSEMBLER__ */
 
 #endif /* __ASM_PGTABLE_H */
