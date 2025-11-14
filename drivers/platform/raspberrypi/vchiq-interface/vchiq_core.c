@@ -15,8 +15,8 @@
 #include <linux/rcupdate.h>
 #include <linux/sched/signal.h>
 
-#include "vchiq_arm.h"
-#include "vchiq_core.h"
+#include <linux/raspberrypi/vchiq_arm.h>
+#include <linux/raspberrypi/vchiq_core.h>
 
 #define VCHIQ_SLOT_HANDLER_STACK 8192
 
@@ -4001,10 +4001,7 @@ void vchiq_log_dump_mem(struct device *dev, const char *label, u32 addr,
 		}
 		*s++ = '\0';
 
-		if (label && (*label != '\0'))
-			dev_dbg(dev, "core: %s: %08x: %s\n", label, addr, line_buf);
-		else
-			dev_dbg(dev, "core: %s: %08x: %s\n", label, addr, line_buf);
+		dev_dbg(dev, "core: %s: %08x: %s\n", label, addr, line_buf);
 
 		addr += 16;
 		mem += 16;

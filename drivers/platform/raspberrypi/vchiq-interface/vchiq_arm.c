@@ -30,11 +30,12 @@
 #include <linux/uaccess.h>
 #include <soc/bcm2835/raspberrypi-firmware.h>
 
-#include "vchiq_core.h"
+#include <linux/raspberrypi/vchiq_core.h>
+#include <linux/raspberrypi/vchiq_arm.h>
+#include <linux/raspberrypi/vchiq_bus.h>
+#include <linux/raspberrypi/vchiq_debugfs.h>
+
 #include "vchiq_ioctl.h"
-#include "vchiq_arm.h"
-#include "vchiq_bus.h"
-#include "vchiq_debugfs.h"
 
 #define DEVICE_NAME "vchiq"
 
@@ -62,7 +63,6 @@
  * the interface.
  */
 static struct vchiq_device *bcm2835_audio;
-static struct vchiq_device *bcm2835_camera;
 
 static const struct vchiq_platform_info bcm2835_info = {
 	.cache_line_size = 32,
@@ -73,7 +73,13 @@ static const struct vchiq_platform_info bcm2836_info = {
 };
 
 struct vchiq_arm_state {
-	/* Keepalive-related data */
+	/*
+	 * Keepalive-related data
+	 *
+	 * The keepalive mechanism was retro-fitted to VCHIQ to allow active
+	 * services to prevent the system from suspending.
+	 * This feature is not used on Raspberry Pi devices.
+	 */
 	struct task_struct *ka_thread;
 	struct completion ka_evt;
 	atomic_t ka_use_count;
@@ -1416,7 +1422,6 @@ static int vchiq_probe(struct platform_device *pdev)
 	vchiq_debugfs_init(&mgmt->state);
 
 	bcm2835_audio = vchiq_device_register(&pdev->dev, "bcm2835-audio");
-	bcm2835_camera = vchiq_device_register(&pdev->dev, "bcm2835-camera");
 
 	return 0;
 }
@@ -1426,7 +1431,6 @@ static void vchiq_remove(struct platform_device *pdev)
 	struct vchiq_drv_mgmt *mgmt = dev_get_drvdata(&pdev->dev);
 
 	vchiq_device_unregister(bcm2835_audio);
-	vchiq_device_unregister(bcm2835_camera);
 	vchiq_debugfs_deinit();
 	vchiq_deregister_chrdev();
 	vchiq_platform_uninit(mgmt);
