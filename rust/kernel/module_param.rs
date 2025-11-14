@@ -70,6 +70,7 @@ where
     // SAFETY: By function safety requirement, val is non-null, null-terminated
     // and valid for reads for the duration of this function.
     let arg = unsafe { CStr::from_char_ptr(val) };
+    let arg: &BStr = arg.as_ref();
 
     crate::error::from_result(|| {
         let new_value = T::try_from_param_arg(arg)?;

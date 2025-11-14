@@ -6,9 +6,9 @@
 
 use crate::{
     bindings,
+    fmt,
     prelude::*, //
 };
-use core::fmt;
 
 /// PCI device class codes.
 ///

@@ -3,12 +3,12 @@
 
 use super::{BinaryReader, BinaryWriter, Reader, Writer};
 use crate::debugfs::callback_adapters::Adapter;
+use crate::fmt;
 use crate::fs::file;
 use crate::prelude::*;
 use crate::seq_file::SeqFile;
 use crate::seq_print;
 use crate::uaccess::UserSlice;
-use core::fmt;
 use core::marker::PhantomData;
 
 #[cfg(CONFIG_DEBUG_FS)]

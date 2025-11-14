@@ -14,6 +14,7 @@ use core::{any::TypeId, marker::PhantomData, ptr};
 
 #[cfg(CONFIG_PRINTK)]
 use crate::c_str;
+use crate::str::CStrExt as _;
 
 pub mod property;
 
