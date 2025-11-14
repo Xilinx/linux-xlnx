@@ -714,7 +714,8 @@ static void test_is_eacces_with_write(struct kunit *const test)
  * is_access_to_paths_allowed - Check accesses for requests with a common path
  *
  * @domain: Domain to check against.
- * @path: File hierarchy to walk through.
+ * @path: File hierarchy to walk through.  For refer checks, this would be
+ *     the common mountpoint.
  * @access_request_parent1: Accesses to check, once @layer_masks_parent1 is
  *     equal to @layer_masks_parent2 (if any).  This is tied to the unique
  *     requested path for most actions, or the source in case of a refer action
@@ -764,11 +765,14 @@ static bool is_access_to_paths_allowed(
 	struct dentry *const dentry_child2)
 {
 	bool allowed_parent1 = false, allowed_parent2 = false, is_dom_check,
-	     child1_is_directory = true, child2_is_directory = true;
+	     is_dom_check_bkp, child1_is_directory = true,
+	     child2_is_directory = true;
 	struct path walker_path;
 	access_mask_t access_masked_parent1, access_masked_parent2;
 	layer_mask_t _layer_masks_child1[LANDLOCK_NUM_ACCESS_FS],
-		_layer_masks_child2[LANDLOCK_NUM_ACCESS_FS];
+		_layer_masks_child2[LANDLOCK_NUM_ACCESS_FS],
+		_layer_masks_parent1_bkp[LANDLOCK_NUM_ACCESS_FS],
+		_layer_masks_parent2_bkp[LANDLOCK_NUM_ACCESS_FS];
 	layer_mask_t(*layer_masks_child1)[LANDLOCK_NUM_ACCESS_FS] = NULL,
 	(*layer_masks_child2)[LANDLOCK_NUM_ACCESS_FS] = NULL;
 
@@ -784,12 +788,18 @@ static bool is_access_to_paths_allowed(
 	if (WARN_ON_ONCE(!layer_masks_parent1))
 		return false;
 
-	allowed_parent1 = is_layer_masks_allowed(layer_masks_parent1);
-
 	if (unlikely(layer_masks_parent2)) {
 		if (WARN_ON_ONCE(!dentry_child1))
 			return false;
 
+		/*
+		 * Creates a backup of the initial layer masks to be able to restore
+		 * them if we find out that we were walking a disconnected directory,
+		 * which would make the collected access rights inconsistent (cf.
+		 * reset_to_mount_root).
+		 */
+		memcpy(&_layer_masks_parent2_bkp, layer_masks_parent2,
+		       sizeof(_layer_masks_parent2_bkp));
 		allowed_parent2 = is_layer_masks_allowed(layer_masks_parent2);
 
 		/*
@@ -808,6 +818,16 @@ static bool is_access_to_paths_allowed(
 		access_masked_parent2 = access_request_parent2;
 		is_dom_check = false;
 	}
+
+	/*
+	 * Creates a backup of the initial layer masks to be able to restore them if
+	 * we find out that we were walking a disconnected directory, which would
+	 * make the collected access rights inconsistent (cf. reset_to_mount_root).
+	 */
+	memcpy(&_layer_masks_parent1_bkp, layer_masks_parent1,
+	       sizeof(_layer_masks_parent1_bkp));
+	allowed_parent1 = is_layer_masks_allowed(layer_masks_parent1);
+	is_dom_check_bkp = is_dom_check;
 
 	if (unlikely(dentry_child1)) {
 		landlock_unmask_layers(
@@ -874,13 +894,13 @@ static bool is_access_to_paths_allowed(
 				allowed_parent2 ||
 				scope_to_request(access_masked_parent2,
 						 layer_masks_parent2);
-
-			/* Stops when all accesses are granted. */
-			if (allowed_parent1 && allowed_parent2)
-				break;
 		}
 
-		rule = find_rule(domain, walker_path.dentry);
+		/* Looks for a rule when needed. */
+		rule = unlikely(allowed_parent1 && allowed_parent2) ?
+			       NULL :
+			       find_rule(domain, walker_path.dentry);
+
 		allowed_parent1 = allowed_parent1 ||
 				  landlock_unmask_layers(
 					  rule, access_masked_parent1,
@@ -893,12 +913,47 @@ static bool is_access_to_paths_allowed(
 					  ARRAY_SIZE(*layer_masks_parent2));
 
 		/* Stops when a rule from each layer grants access. */
-		if (allowed_parent1 && allowed_parent2)
+		if (allowed_parent1 && allowed_parent2) {
+			/*
+			 * Before allowing the access request, checks that the walk was not
+			 * in a disconnected directory.
+			 */
+			if (unlikely(!path_connected(walker_path.mnt,
+						     walker_path.dentry)))
+				goto reset_to_mount_root;
+
 			break;
+		}
 
 jump_up:
 		if (walker_path.dentry == walker_path.mnt->mnt_root) {
+			/*
+			 * We reached a mount point which is not a disconnected directory.
+			 * We can now safely assume that the collected access rights are
+			 * valid, and we can save them to be able to get back to this state
+			 * later on.  If we reached the real root, the walk will end, and we
+			 * will not need to restore anything, so we only need to save the
+			 * collected access rights if we are not at the real root.
+			 */
 			if (follow_up(&walker_path)) {
+				/*
+				 * The mount point before this follow_up() call was connected.
+				 * We will know during the ongoing walk if the path from this
+				 * new mount point (i.e. walker_path) is disconnected.  If it is
+				 * the case, we will restore the collected access rights from
+				 * here and jump to walker_path.mnt->mnt_root, short-circuiting
+				 * the disconnected hierarchy (cf. reset_to_mount_root).
+				 */
+				memcpy(&_layer_masks_parent1_bkp,
+				       layer_masks_parent1,
+				       sizeof(_layer_masks_parent1_bkp));
+				if (layer_masks_parent2) {
+					memcpy(&_layer_masks_parent2_bkp,
+					       layer_masks_parent2,
+					       sizeof(_layer_masks_parent2_bkp));
+					is_dom_check_bkp = is_dom_check;
+				}
+
 				/* Ignores hidden mount points. */
 				goto jump_up;
 			} else {
@@ -910,20 +965,69 @@ jump_up:
 			}
 		}
 		if (unlikely(IS_ROOT(walker_path.dentry))) {
-			/*
-			 * Stops at disconnected root directories.  Only allows
-			 * access to internal filesystems (e.g. nsfs, which is
-			 * reachable through /proc/<pid>/ns/<namespace>).
-			 */
-			if (walker_path.mnt->mnt_flags & MNT_INTERNAL) {
+			if (likely(walker_path.mnt->mnt_flags & MNT_INTERNAL)) {
+				/*
+				 * Stops and allows access when reaching disconnected root
+				 * directories that are part of internal filesystems (e.g. nsfs,
+				 * which is reachable through /proc/<pid>/ns/<namespace>).
+				 */
 				allowed_parent1 = true;
 				allowed_parent2 = true;
+				break;
 			}
-			break;
+
+			/*
+			 * We reached a disconnected root directory from a bind mount, and
+			 * we need to reset the walk to the current mount root.
+			 */
+			goto reset_to_mount_root;
 		}
 		parent_dentry = dget_parent(walker_path.dentry);
 		dput(walker_path.dentry);
 		walker_path.dentry = parent_dentry;
+		continue;
+
+reset_to_mount_root:
+		/*
+		 * At this point, we know that the walk was in a disconnected file
+		 * hierarchy and we need to restore the layer masks from the last known
+		 * good values.  These were either built from the domain (at the
+		 * beginning of the walk) or from the collected access rights up to the
+		 * previous connected mount point.  This ensures we don't use
+		 * potentially invalid access rights from the disconnected path
+		 * traversal.
+		 */
+		memcpy(layer_masks_parent1, &_layer_masks_parent1_bkp,
+		       sizeof(_layer_masks_parent1_bkp));
+		allowed_parent1 =
+			is_layer_masks_allowed(&_layer_masks_parent1_bkp);
+		if (layer_masks_parent2) {
+			memcpy(layer_masks_parent2, &_layer_masks_parent2_bkp,
+			       sizeof(_layer_masks_parent2_bkp));
+			allowed_parent2 = is_layer_masks_allowed(
+				&_layer_masks_parent2_bkp);
+
+			/*
+			 * Restores domain check mode if needed: increases back the scope of
+			 * the access checks to the domain's handled accesses, which are a
+			 * superset of the requested ones.
+			 */
+			if (is_dom_check_bkp) {
+				access_masked_parent1 = access_masked_parent2 =
+					landlock_union_access_masks(domain).fs;
+				is_dom_check = true;
+			}
+		}
+
+		/*
+		 * Jumps to the root of the current mount point to short-circuit the
+		 * disconnected walk with a reachable directory.  This ensures we
+		 * continue the access check from a known good location in the
+		 * filesystem hierarchy.
+		 */
+		dput(walker_path.dentry);
+		walker_path.dentry = walker_path.mnt->mnt_root;
+		dget(walker_path.dentry);
 	}
 	path_put(&walker_path);
 
@@ -1011,15 +1115,18 @@ static access_mask_t maybe_remove(const struct dentry *const dentry)
  * collect_domain_accesses - Walk through a file path and collect accesses
  *
  * @domain: Domain to check against.
- * @mnt_root: Last directory to check.
+ * @mnt_dir: Mount point directory to stop the walk at.
  * @dir: Directory to start the walk from.
  * @layer_masks_dom: Where to store the collected accesses.
  *
- * This helper is useful to begin a path walk from the @dir directory to a
- * @mnt_root directory used as a mount point.  This mount point is the common
- * ancestor between the source and the destination of a renamed and linked
- * file.  While walking from @dir to @mnt_root, we record all the domain's
- * allowed accesses in @layer_masks_dom.
+ * This helper is useful to begin a path walk from the @dir directory to
+ * @mnt_dir.  This mount point is the common ancestor between the source and the
+ * destination of a renamed and linked file.  While walking from @dir to
+ * @mnt_dir, we record all the domain's allowed accesses in @layer_masks_dom.
+ *
+ * Because of disconnected directories, this walk may not reach @mnt_dir.  In
+ * this case, the walk is canceled and the collected accesses are reset to the
+ * domain handled ones.
  *
  * This is similar to is_access_to_paths_allowed() but much simpler because it
  * only handles walking on the same mount point and only checks one set of
@@ -1031,13 +1138,13 @@ static access_mask_t maybe_remove(const struct dentry *const dentry)
  */
 static bool collect_domain_accesses(
 	const struct landlock_ruleset *const domain,
-	const struct dentry *const mnt_root, struct dentry *dir,
+	const struct path *const mnt_dir, struct dentry *dir,
 	layer_mask_t (*const layer_masks_dom)[LANDLOCK_NUM_ACCESS_FS])
 {
-	unsigned long access_dom;
+	access_mask_t access_dom;
 	bool ret = false;
 
-	if (WARN_ON_ONCE(!domain || !mnt_root || !dir || !layer_masks_dom))
+	if (WARN_ON_ONCE(!domain || !mnt_dir || !dir || !layer_masks_dom))
 		return true;
 	if (is_nouser_or_private(dir))
 		return true;
@@ -1055,6 +1162,13 @@ static bool collect_domain_accesses(
 					   layer_masks_dom,
 					   ARRAY_SIZE(*layer_masks_dom))) {
 			/*
+			 * Before allowing this side of the access request, checks that the
+			 * walk was not in a disconnected directory.
+			 */
+			if (unlikely(!path_connected(mnt_dir->mnt, dir)))
+				goto cancel_walk;
+
+			/*
 			 * Stops when all handled accesses are allowed by at
 			 * least one rule in each layer.
 			 */
@@ -1062,13 +1176,27 @@ static bool collect_domain_accesses(
 			break;
 		}
 
-		/* We should not reach a root other than @mnt_root. */
-		if (dir == mnt_root || WARN_ON_ONCE(IS_ROOT(dir)))
+		/* Stops at the mount point. */
+		if (dir == mnt_dir->dentry)
 			break;
+
+		/* Ignores the walk if we end up in a disconnected root directory. */
+		if (unlikely(IS_ROOT(dir)))
+			goto cancel_walk;
 
 		parent_dentry = dget_parent(dir);
 		dput(dir);
 		dir = parent_dentry;
+		continue;
+
+cancel_walk:
+		/*
+		 * Resets the inconsistent collected access rights to the domain's
+		 * handled access rights since we encountered a disconnected directory.
+		 */
+		landlock_init_layer_masks(domain, LANDLOCK_MASK_ACCESS_FS,
+					  layer_masks_dom, LANDLOCK_KEY_INODE);
+		break;
 	}
 	dput(dir);
 	return ret;
@@ -1199,13 +1327,11 @@ static int current_check_refer_path(struct dentry *const old_dentry,
 						      old_dentry->d_parent;
 
 	/* new_dir->dentry is equal to new_dentry->d_parent */
-	allow_parent1 = collect_domain_accesses(subject->domain, mnt_dir.dentry,
-						old_parent,
-						&layer_masks_parent1);
-	allow_parent2 = collect_domain_accesses(subject->domain, mnt_dir.dentry,
+	allow_parent1 = collect_domain_accesses(
+		subject->domain, &mnt_dir, old_parent, &layer_masks_parent1);
+	allow_parent2 = collect_domain_accesses(subject->domain, &mnt_dir,
 						new_dir->dentry,
 						&layer_masks_parent2);
-
 	if (allow_parent1 && allow_parent2)
 		return 0;
 
