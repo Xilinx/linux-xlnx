@@ -576,6 +576,10 @@ static inline bool lockdep_softirq_start(void) { return false; }
 static inline void lockdep_softirq_end(bool in_hardirq) { }
 #endif
 
+#ifdef CONFIG_NET_DEV_REFCNT_TRACKER
+static noinline void handle_softirqs(bool ksirqd);
+#endif
+
 static void handle_softirqs(bool ksirqd)
 {
 	unsigned long end = jiffies + MAX_SOFTIRQ_TIME;

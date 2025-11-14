@@ -3145,6 +3145,10 @@ static bool manage_workers(struct worker *worker)
 	return true;
 }
 
+#ifdef CONFIG_NET_DEV_REFCNT_TRACKER
+static noinline void process_one_work(struct worker *worker, struct work_struct *work);
+#endif
+
 /**
  * process_one_work - process single work
  * @worker: self
