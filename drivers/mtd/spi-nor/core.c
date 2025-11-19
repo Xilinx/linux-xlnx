@@ -652,7 +652,7 @@ static int spi_nor_write_ear(struct spi_nor *nor, u32 addr)
 		return 0;
 	else if (((nor->flags & SNOR_F_HAS_PARALLEL) ||
 		  (nor->flags & SNOR_F_HAS_STACKED)) &&
-		 mtd->size <= OFFSET_16_MB * SNOR_FLASH_CNT_MAX)
+		 mtd->size < OFFSET_16_MB * SNOR_FLASH_CNT_MAX)
 		return 0;
 
 	if (!(nor->flags & SNOR_F_HAS_PARALLEL) || !(nor->flags & SNOR_F_HAS_STACKED))
