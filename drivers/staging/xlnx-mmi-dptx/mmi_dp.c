@@ -1087,9 +1087,10 @@ static int mmi_dp_probe(struct platform_device *pdev)
 
 	dev = &pdev->dev;
 
-	dptx = devm_kzalloc(dev, sizeof(*dptx), GFP_KERNEL);
-	if (!dptx)
-		return -ENOMEM;
+	dptx = devm_drm_bridge_alloc(dev, struct dptx, bridge,
+				     &mmi_dp_bridge_funcs);
+	if (IS_ERR(dptx))
+		return PTR_ERR(dptx);
 
 	/* Update the device node */
 	dptx->dev = dev;
@@ -1145,7 +1146,6 @@ static int mmi_dp_probe(struct platform_device *pdev)
 	dptx->bridge.interlace_allowed = true;
 	dptx->bridge.type = DRM_MODE_CONNECTOR_DisplayPort;
 	dptx->bridge.of_node = pdev->dev.of_node;
-	dptx->bridge.funcs = &mmi_dp_bridge_funcs;
 	dptx->conn_status = connector_status_disconnected;
 
 	/* Get next bridge in chain using drm_of_find_panel_or_bridge */
