@@ -688,11 +688,12 @@ static void zynqmp_qspi_filltxfifo(struct zynqmp_qspi *xqspi, int size)
 			xqspi->bytes_to_transfer -= 4;
 			count += 4;
 		} else {
+			intermediate = 0xFFFFFFFF;
 			memcpy(&intermediate, xqspi->txbuf,
 			       xqspi->bytes_to_transfer);
 			xqspi->txbuf += xqspi->bytes_to_transfer;
-			xqspi->bytes_to_transfer = 0;
 			count += xqspi->bytes_to_transfer;
+			xqspi->bytes_to_transfer = 0;
 		}
 		zynqmp_gqspi_write(xqspi, GQSPI_TXD_OFST, intermediate);
 	}
