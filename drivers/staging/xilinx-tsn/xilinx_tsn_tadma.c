@@ -710,8 +710,6 @@ int axienet_tadma_program(struct net_device *ndev, void __user *useraddr)
 	struct tadma_stream_entry *entry;
 	struct tadma_cb *cb = lp->t_cb;
 	struct hlist_head *bucket;
-	bool res_enabled = false;
-	bool st_enabled = false;
 	struct hlist_node *tmp;
 	u32 cr, hash = 0;
 
@@ -725,21 +723,11 @@ int axienet_tadma_program(struct net_device *ndev, void __user *useraddr)
 			if (ret)
 				return ret;
 
-			if (entry->qtype == qt_st) {
-				lp->default_st_sid = -1;
-				st_enabled = true;
-			} else if (entry->qtype == qt_res) {
-				lp->default_res_sid = -1;
-				res_enabled = true;
-			}
 		}
 	}
 
-	if (!res_enabled && tadma_queue_enabled(lp, qt_res))
-		lp->default_res_sid = tadma_set_contiguous_mode(ndev, qt_res);
-
-	if (!st_enabled && tadma_queue_enabled(lp, qt_st))
-		lp->default_st_sid = tadma_set_contiguous_mode(ndev, qt_st);
+	lp->default_st_sid = -1;
+	lp->default_res_sid = -1;
 
 	/* flip memory first so access other sfm bank
 	 * cr = tadma_ior(lp, XTADMA_CR_OFFSET);
