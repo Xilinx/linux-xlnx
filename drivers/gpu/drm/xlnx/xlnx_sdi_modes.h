@@ -75,6 +75,12 @@ static const struct xlnx_sdi_display_config xlnx_sdi_modes[] = {
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC),
 		   }, {0x9, 0x9},
 		   {0x84, 0x84, 0x88, 0x84, 0x84, 0x84} },
+	/* HD: 1280x720@59.94Hz */
+	{{ DRM_MODE("1280x720", DRM_MODE_TYPE_DRIVER, 74175, 1280, 1390,
+		   1430, 1650, 0, 720, 725, 730, 750, 0,
+		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC),
+		   }, {0xB, 0xA},
+		   {0x84, 0x84, 0x88, 0x84, 0x84, 0x84} },
 	/* HD: 1280x720@60Hz */
 	{{ DRM_MODE("1280x720", DRM_MODE_TYPE_DRIVER, 74250, 1280, 1390,
 		   1430, 1650, 0, 720, 725, 730, 750, 0,
