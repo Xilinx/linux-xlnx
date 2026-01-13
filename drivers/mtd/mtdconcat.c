@@ -21,18 +21,6 @@
 #include <asm/div64.h>
 
 /*
- * Our storage structure:
- * Subdev points to an array of pointers to struct mtd_info objects
- * which is allocated along with this structure
- *
- */
-struct mtd_concat {
-	struct mtd_info mtd;
-	int num_subdev;
-	struct mtd_info **subdev;
-};
-
-/*
  * how to calculate the size required for the above structure,
  * including the pointer array subdev points to:
  */
