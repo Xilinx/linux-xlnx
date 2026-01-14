@@ -893,7 +893,7 @@ static void aie2ps_l1_backtrack(struct aie_partition *apart, u32 col, enum aie_s
 
 		if (!aie_part_check_clk_enable_loc(apart, &loc))
 			continue;
-		ret |= aie_tile_backtrack(apart, loc, module, sw,
+		ret |= aie_tile_backtrack(apart, loc, AIE_MEM_MOD, sw,
 					  AIE_ARRAY_TILE_ERROR_BC_ID, event_status);
 		aie_clear_event_status(apart, &loc, AIE_MEM_MOD, bc_event);
 	}
