@@ -170,6 +170,11 @@ ssize_t aie_tile_show_error(struct device *dev, struct device_attribute *attr,
 							core_attr);
 		mem_count = aie_get_module_error_count(apart, atile->loc,
 						       AIE_MEM_MOD, mem_attr);
+	} else if (ttype == AIE_TILE_TYPE_MEMORY) {
+		memtile_attr = apart->adev->memtile_errors;
+		memtile_count = aie_get_module_error_count(apart, atile->loc,
+							   AIE_MEM_MOD,
+							   memtile_attr);
 	} else {
 		pl_attr = apart->adev->shim_errors;
 		pl_count = aie_get_module_error_count(apart, atile->loc,
