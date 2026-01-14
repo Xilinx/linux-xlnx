@@ -1654,6 +1654,7 @@ void aie_part_clear_cached_events(struct aie_partition *apart)
 {
 	aie_resource_clear_all(&apart->core_event_status);
 	aie_resource_clear_all(&apart->mem_event_status);
+	aie_resource_clear_all(&apart->memtile_event_status);
 	aie_resource_clear_all(&apart->pl_event_status);
 }
 

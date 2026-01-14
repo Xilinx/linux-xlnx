@@ -607,10 +607,10 @@ static int aie_part_create_event_bitmap(struct aie_partition *apart)
 {
 	struct aie_range range = apart->range;
 	u32 bitmap_sz;
-	u32 num_aie_module = range.size.col * (range.size.row - 1);
 	int ret;
 
-	bitmap_sz = num_aie_module * apart->adev->core_events->num_events;
+	bitmap_sz = range.size.col * apart->adev->ttype_attr[AIE_TILE_TYPE_TILE].num_rows *
+		    apart->adev->core_events->num_events;
 	ret = aie_resource_initialize(&apart->core_event_status, bitmap_sz);
 	if (ret) {
 		dev_err(&apart->dev,
@@ -618,7 +618,8 @@ static int aie_part_create_event_bitmap(struct aie_partition *apart)
 		return -ENOMEM;
 	}
 
-	bitmap_sz = num_aie_module * apart->adev->mem_events->num_events;
+	bitmap_sz = range.size.col * apart->adev->ttype_attr[AIE_TILE_TYPE_TILE].num_rows *
+		    apart->adev->mem_events->num_events;
 	ret = aie_resource_initialize(&apart->mem_event_status, bitmap_sz);
 	if (ret) {
 		dev_err(&apart->dev,
@@ -626,7 +627,19 @@ static int aie_part_create_event_bitmap(struct aie_partition *apart)
 		return -ENOMEM;
 	}
 
-	bitmap_sz = range.size.col * apart->adev->pl_events->num_events;
+	bitmap_sz = range.size.col * apart->adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows *
+		    apart->adev->memtile_events->num_events;
+	if (bitmap_sz) {
+		ret = aie_resource_initialize(&apart->memtile_event_status, bitmap_sz);
+		if (ret) {
+			dev_err(&apart->dev,
+				"failed to initialize event status resource.\n");
+			return -ENOMEM;
+		}
+	}
+
+	bitmap_sz = range.size.col * apart->adev->ttype_attr[AIE_TILE_TYPE_SHIMPL].num_rows *
+		    apart->adev->pl_events->num_events;
 	ret = aie_resource_initialize(&apart->pl_event_status, bitmap_sz);
 	if (ret) {
 		dev_err(&apart->dev,
@@ -646,6 +659,7 @@ static void aie_part_release_event_bitmap(struct aie_partition *apart)
 {
 	aie_resource_uninitialize(&apart->core_event_status);
 	aie_resource_uninitialize(&apart->mem_event_status);
+	aie_resource_uninitialize(&apart->memtile_event_status);
 	aie_resource_uninitialize(&apart->pl_event_status);
 }
 

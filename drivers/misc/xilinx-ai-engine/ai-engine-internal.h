@@ -1442,6 +1442,7 @@ struct aie_partition {
 	struct aie_error_cb error_cb;
 	struct aie_resource core_event_status;
 	struct aie_resource mem_event_status;
+	struct aie_resource memtile_event_status;
 	struct aie_resource pl_event_status;
 	struct attribute_group *attr_grp;
 	struct aie_pm_ops pm_ops;
