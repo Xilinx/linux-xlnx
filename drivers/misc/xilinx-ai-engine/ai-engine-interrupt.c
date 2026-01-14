@@ -868,14 +868,13 @@ static void aie2ps_l1_backtrack(struct aie_partition *apart, u32 col, enum aie_s
 		u32 event_status[AIE_NUM_EVENT_STS_SHIMTILE] = {};
 
 		aie_clear_l1_intr(apart, &loc, sw, AIE_SHIM_TILE_ERROR_IRQ_ID);
-		if (aie_tile_backtrack(apart, loc, AIE_PL_MOD, sw, AIE_SHIM_TILE_ERROR_IRQ_ID,
-				       event_status))
-			ret = true;
+		ret |= aie_tile_backtrack(apart, loc, AIE_PL_MOD, sw, AIE_SHIM_TILE_ERROR_IRQ_ID,
+					  event_status);
 	}
 
 	if (!(status & BIT(AIE_ARRAY_TILE_ERROR_BC_ID)) &&
 	    col != (apart->range.start.col + 1))
-		return;
+		goto out;
 
 	if (col != (apart->range.start.col + 1))
 		aie_clear_l1_intr(apart, &loc, sw, AIE_ARRAY_TILE_ERROR_BC_ID);
@@ -910,6 +909,7 @@ backtrack_aie_tile:
 			break;
 		aie_clear_event_status(apart, &loc, module, bc_event);
 	}
+out:
 	apart->error_to_report |= ret;
 }
 
