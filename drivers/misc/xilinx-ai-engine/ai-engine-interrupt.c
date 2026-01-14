@@ -438,7 +438,8 @@ static void aie_part_set_event_bitmap(struct aie_partition *apart,
 				      struct aie_location loc,
 				      enum aie_module_type module, u8 event)
 {
-	u8 row, col, mod_num_events;
+	u8 row, col;
+	u16 mod_num_events;
 	struct aie_resource *event_sts;
 	u32 offset;
 
@@ -476,7 +477,8 @@ bool aie_check_error_bitmap(struct aie_partition *apart,
 {
 	struct aie_resource *event_sts;
 	u32 offset;
-	u8 row, col, mod_num_events;
+	u8 row, col;
+	u16 mod_num_events;
 
 	if (module == AIE_CORE_MOD) {
 		event_sts = &apart->core_event_status;
@@ -518,7 +520,8 @@ static bool aie_tile_backtrack(struct aie_partition *apart,
 			       u32 *status)
 {
 	unsigned long grenabled;
-	u8 n, grevent, eevent;
+	u8 n, grevent;
+	u16 eevent;
 	bool ret = false;
 
 	trace_aie_tile_backtrack(apart, loc, module, sw, bc_id);
