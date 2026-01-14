@@ -977,8 +977,10 @@ static void aie2ps_partition_backtrack(struct aie_partition *apart)
 	 * to backtrack this error interrupt when partition is
 	 * requested.
 	 */
-	if (!apart->status)
-		goto out;
+	if (!apart->status) {
+		mutex_unlock(&apart->mlock);
+		return;
+	}
 
 	_aie2ps_interrupt_user_event1(apart);
 	for (col = apart->range.start.col; col < apart->range.size.col; col++) {
@@ -1000,6 +1002,8 @@ static void aie2ps_partition_backtrack(struct aie_partition *apart)
 			aie_aperture_enable_l2_ctrl(aperture, &loc, l2_mask);
 	}
 
+	mutex_unlock(&apart->mlock);
+
 	/*
 	 * If error was asserted or there are errors pending to be reported to
 	 * the application, then invoke callback.
@@ -1008,8 +1012,6 @@ static void aie2ps_partition_backtrack(struct aie_partition *apart)
 		apart->error_to_report = 0;
 		apart->error_cb.cb(apart->error_cb.priv);
 	}
-out:
-	mutex_unlock(&apart->mlock);
 }
 
 /**
