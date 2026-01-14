@@ -446,11 +446,26 @@ static void aie_part_set_event_bitmap(struct aie_partition *apart,
 	if (module == AIE_CORE_MOD) {
 		event_sts = &apart->core_event_status;
 		mod_num_events = apart->adev->core_events->num_events;
-		row = loc.row - apart->range.start.row - 1;
+		row = loc.row -
+		      apart->adev->ttype_attr[AIE_TILE_TYPE_SHIMPL].num_rows -
+		      apart->adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows;
 	} else if (module == AIE_MEM_MOD) {
-		event_sts = &apart->mem_event_status;
-		mod_num_events = apart->adev->mem_events->num_events;
-		row = loc.row - apart->range.start.row - 1;
+		u8 tile_type;
+
+		tile_type = apart->adev->ops->get_tile_type(apart->adev, &loc);
+		if (tile_type == AIE_TILE_TYPE_MEMORY) {
+			/* Memory tile */
+			event_sts = &apart->memtile_event_status;
+			mod_num_events = apart->adev->memtile_events->num_events;
+			row = loc.row - apart->adev->ttype_attr[AIE_TILE_TYPE_SHIMPL].num_rows;
+		} else {
+			/* Core tile memory module */
+			event_sts = &apart->mem_event_status;
+			mod_num_events = apart->adev->mem_events->num_events;
+			row = loc.row -
+			      apart->adev->ttype_attr[AIE_TILE_TYPE_SHIMPL].num_rows -
+			      apart->adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows;
+		}
 	} else {
 		event_sts = &apart->pl_event_status;
 		mod_num_events = apart->adev->pl_events->num_events;
@@ -483,11 +498,26 @@ bool aie_check_error_bitmap(struct aie_partition *apart,
 	if (module == AIE_CORE_MOD) {
 		event_sts = &apart->core_event_status;
 		mod_num_events = apart->adev->core_events->num_events;
-		row = loc.row - apart->range.start.row - 1;
+		row = loc.row -
+		      apart->adev->ttype_attr[AIE_TILE_TYPE_SHIMPL].num_rows -
+		      apart->adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows;
 	} else if (module == AIE_MEM_MOD) {
-		event_sts = &apart->mem_event_status;
-		mod_num_events = apart->adev->mem_events->num_events;
-		row = loc.row - apart->range.start.row - 1;
+		u8 tile_type;
+
+		tile_type = apart->adev->ops->get_tile_type(apart->adev, &loc);
+		if (tile_type == AIE_TILE_TYPE_MEMORY) {
+			/* Memory tile */
+			event_sts = &apart->memtile_event_status;
+			mod_num_events = apart->adev->memtile_events->num_events;
+			row = loc.row - apart->adev->ttype_attr[AIE_TILE_TYPE_SHIMPL].num_rows;
+		} else {
+			/* Core tile memory module */
+			event_sts = &apart->mem_event_status;
+			mod_num_events = apart->adev->mem_events->num_events;
+			row = loc.row -
+			      apart->adev->ttype_attr[AIE_TILE_TYPE_SHIMPL].num_rows -
+			      apart->adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows;
+		}
 	} else {
 		event_sts = &apart->pl_event_status;
 		mod_num_events = apart->adev->pl_events->num_events;
@@ -1597,48 +1627,47 @@ static u32 aie_get_errors_from_bitmap(struct aie_partition *apart,
  *
  * This function parses local bitmaps and initializes @aie_err structures.
  */
-static u32 aie_get_module_errors(struct aie_partition *apart,
-				 enum aie_module_type module,
-				 struct aie_error *aie_err)
+static u32 aie_get_module_errors(struct aie_partition *apart, struct aie_error *aie_err)
 {
 	const struct aie_error_attr *err_attr;
 	struct aie_location loc;
 	u32 srow, erow, scol, ecol, num_err = 0;
 	u32 ttype;
 
-	if (module == AIE_CORE_MOD || module == AIE_MEM_MOD) {
-		srow = apart->range.start.row + 1;
-		erow = srow + apart->range.size.row - 1;
-	} else {
-		srow = 0;
-		erow = 0;
-	}
-
 	scol = apart->range.start.col;
-	ecol = apart->range.start.col + apart->range.size.col - 1;
+	ecol = apart->range.start.col + apart->range.size.col;
 
-	for (loc.col = scol; loc.col <= ecol; loc.col++) {
-		for (loc.row = srow; loc.row <= erow; loc.row++) {
+	srow = apart->range.start.row;
+	erow = apart->range.start.row + apart->range.size.row;
+
+	for (loc.col = scol; loc.col < ecol; loc.col++) {
+		for (loc.row = srow; loc.row < erow; loc.row++) {
 			ttype = apart->adev->ops->get_tile_type(apart->adev,
 									&loc);
 			if (ttype == AIE_TILE_TYPE_TILE) {
-				if (module == AIE_CORE_MOD)
-					err_attr = apart->adev->core_errors;
-				else
-					err_attr = apart->adev->mem_errors;
+				err_attr = apart->adev->core_errors;
+				num_err += aie_get_errors_from_bitmap(apart, loc,
+								      AIE_CORE_MOD,
+								      err_attr,
+								      &aie_err[num_err]);
+				err_attr = apart->adev->mem_errors;
+				num_err += aie_get_errors_from_bitmap(apart, loc,
+								      AIE_MEM_MOD,
+								      err_attr,
+								      &aie_err[num_err]);
 			} else if (ttype == AIE_TILE_TYPE_MEMORY) {
-				if (module == AIE_MEM_MOD)
-					err_attr = apart->adev->memtile_errors;
-				else
-					continue;
+				err_attr = apart->adev->memtile_errors;
+				num_err += aie_get_errors_from_bitmap(apart, loc,
+								      AIE_MEM_MOD,
+								      err_attr,
+								      &aie_err[num_err]);
 			} else {
 				err_attr = apart->adev->shim_errors;
+				num_err += aie_get_errors_from_bitmap(apart, loc,
+								      AIE_PL_MOD,
+								      err_attr,
+								      &aie_err[num_err]);
 			}
-
-			num_err +=
-				aie_get_errors_from_bitmap(apart, loc,
-							   module, err_attr,
-							   &aie_err[num_err]);
 		}
 	}
 	return num_err;
@@ -1841,9 +1870,7 @@ struct aie_errors *aie_get_errors(struct device *dev)
 		return ERR_PTR(-ENOMEM);
 	}
 
-	count += aie_get_module_errors(apart, AIE_MEM_MOD, &error[count]);
-	count += aie_get_module_errors(apart, AIE_CORE_MOD, &error[count]);
-	count += aie_get_module_errors(apart, AIE_PL_MOD, &error[count]);
+	count += aie_get_module_errors(apart, &error[count]);
 
 	aie_errs->dev = dev;
 	aie_errs->errors = error;
