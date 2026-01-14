@@ -509,12 +509,48 @@ static const struct aie_event_prop aie2ps_core_stream_error_prop[] = {
 
 static const struct aie_event_prop aie2ps_core_inst_error_prop[] = {
 	{
+		.event = 70U,
+		.event_str = "sparity_overflow",
+	},
+	{
+		.event = 69U,
+		.event_str = "instr_error",
+	},
+	{
+		.event = 68U,
+		.event_str = "instr_warning",
+	},
+	{
 		.event = 59U,
 		.event_str = "instruction_decompression_error",
 	},
 	{
-		.event = 70U,
-		.event_str = "decompression_underflow",
+		.event = 54U,
+		.event_str = "reserved",
+	},
+	{
+		.event = 53U,
+		.event_str = "fp_inf",
+	},
+	{
+		.event = 52U,
+		.event_str = "fp_invalid",
+	},
+	{
+		.event = 51U,
+		.event_str = "int_fp_zero",
+	},
+	{
+		.event = 50U,
+		.event_str = "fp_huge",
+	},
+	{
+		.event = 49U,
+		.event_str = "ups_overflow",
+	},
+	{
+		.event = 48U,
+		.event_str = "srs_overflow",
 	},
 };
 
@@ -524,8 +560,16 @@ static const struct aie_event_prop aie2ps_core_ecc_error_prop[] = {
 		.event_str = "pm_ecc_error_2-bit",
 	},
 	{
+		.event = 63U,
+		.event_str = "pm_ecc_error_1-bit",
+	},
+	{
 		.event = 62U,
 		.event_str = "pm_ecc_error_scrub_2-bit",
+	},
+	{
+		.event = 61U,
+		.event_str = "pm_ecc_error_scrub_corrected",
 	},
 };
 
@@ -568,12 +612,20 @@ static const struct aie_event_prop aie2ps_core_bus_error_prop[] = {
 
 static const struct aie_event_prop aie2ps_mem_ecc_error_prop[] = {
 	{
+		.event = 90U,
+		.event_str = "dm_ecc_error_2-bit",
+	},
+	{
+		.event = 89U,
+		.event_str = "dm_ecc_error_1-bit",
+	},
+	{
 		.event = 88U,
 		.event_str = "dm_ecc_error_scrub_2-bit",
 	},
 	{
-		.event = 90U,
-		.event_str = "dm_ecc_error_2-bit",
+		.event = 87U,
+		.event_str = "dm_ecc_error_scrub_corrected",
 	},
 };
 
@@ -606,6 +658,10 @@ static const struct aie_event_prop aie2ps_mem_parity_error_prop[] = {
 
 static const struct aie_event_prop aie2ps_mem_dma_error_prop[] = {
 	{
+		.event = 102U,
+		.event_str = "dma_task_token_stall",
+	},
+	{
 		.event = 100U,
 		.event_str = "dma_mm2s_1_error",
 	},
@@ -623,18 +679,37 @@ static const struct aie_event_prop aie2ps_mem_dma_error_prop[] = {
 	},
 };
 
+static const struct aie_event_prop aie2ps_mem_lock_error_prop[] = {
+	{
+		.event = 101U,
+		.event_str = "lock_error",
+	},
+};
+
 static const struct aie_event_prop aie2ps_memtile_ecc_error_prop[] = {
 	{
 		.event = 132U,
 		.event_str = "dm_ecc_error_2-bit",
 	},
 	{
+		.event = 131U,
+		.event_str = "dm_ecc_error_1-bit",
+	},
+	{
 		.event = 130U,
 		.event_str = "dm_ecc_error_scrub_2-bit",
+	},
+	{
+		.event = 129U,
+		.event_str = "dm_ecc_error_scrub_corrected",
 	},
 };
 
 static const struct aie_event_prop aie2ps_memtile_dma_error_prop[] = {
+	{
+		.event = 140,
+		.event_str = "dma_task_token_stall",
+	},
 	{
 		.event = 134U,
 		.event_str = "dma_mm2s_error",
@@ -703,16 +778,40 @@ static const struct aie_event_prop aie2ps_shim_bus_error_prop[] = {
 
 static const struct aie_event_prop aie2ps_shim_stream_error_prop[] = {
 	{
-		.event = 66U,
+		.event = 116U,
 		.event_str = "stream_switch_port_parity_error",
 	},
 	{
-		.event = 65U,
+		.event = 115U,
 		.event_str = "control_pkt_error",
 	},
 };
 
 static const struct aie_event_prop aie2ps_shim_dma_error_prop[] = {
+	{
+		.event = 131U,
+		.event_str = "noc_1_dma_hw_error",
+	},
+	{
+		.event = 130U,
+		.event_str = "noc_0_dma_hw_error",
+	},
+	{
+		.event = 129U,
+		.event_str = "noc_1_dma_task_token_stall",
+	},
+	{
+		.event = 128U,
+		.event_str = "noc_0_dma_task_token_stall",
+	},
+	{
+		.event = 127U,
+		.event_str = "noc_1_lock_error",
+	},
+	{
+		.event = 126U,
+		.event_str = "noc_0_lock_error",
+	},
 	{
 		.event = 125U,
 		.event_str = "noc_1_dma_mm2s_error",
@@ -789,6 +888,12 @@ static const struct aie_err_category aie2ps_mem_err_category[] = {
 		.err_category = AIE_ERROR_CATEGORY_DMA,
 		.num_events = ARRAY_SIZE(aie2ps_mem_dma_error_prop),
 		.prop = aie2ps_mem_dma_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_LOCK */
+		.err_category = AIE_ERROR_CATEGORY_LOCK,
+		.num_events = ARRAY_SIZE(aie2ps_mem_lock_error_prop),
+		.prop = aie2ps_mem_lock_error_prop,
 	},
 };
 
