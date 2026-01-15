@@ -268,7 +268,7 @@ int aie_part_release_tiles_from_user(struct aie_partition *apart,
 int aie2ps_part_set_column_clock_from_user(struct aie_partition *apart,
 					   struct aie_column_args *args)
 {
-	u32 part_end_col = apart->range.start.col + apart->range.size.col - 1;
+	u32 part_end_col;
 	struct aie_location locs;
 	struct aie_range range = {};
 	int ret;
@@ -276,7 +276,8 @@ int aie2ps_part_set_column_clock_from_user(struct aie_partition *apart,
 
 	trace_aie_part_set_column_clock_from_user(apart, args);
 
-	if ((args->start_col + args->num_cols - 1) > part_end_col) {
+	if (check_add_overflow(args->start_col, args->num_cols, &part_end_col) ||
+	    part_end_col > apart->range.size.col) {
 		dev_err(&apart->dev, "invalid start column/size column\n");
 		return -EINVAL;
 	}
@@ -286,7 +287,7 @@ int aie2ps_part_set_column_clock_from_user(struct aie_partition *apart,
 	if (ret)
 		return ret;
 
-	range.start.col = args->start_col;
+	range.start.col = apart->range.start.col + args->start_col;
 	range.size.col = args->num_cols;
 
 	if (args->enable) {
@@ -352,7 +353,7 @@ exit:
  */
 int aie_part_set_column_clock_from_user(struct aie_partition *apart, struct aie_column_args *args)
 {
-	u32 part_end_col = apart->range.start.col + apart->range.size.col - 1;
+	u32 part_end_col;
 	u32 node_id = apart->aperture->node_id;
 	struct aie_location locs;
 	int ret;
@@ -360,7 +361,8 @@ int aie_part_set_column_clock_from_user(struct aie_partition *apart, struct aie_
 
 	trace_aie_part_set_column_clock_from_user(apart, args);
 
-	if ((args->start_col + args->num_cols - 1) > part_end_col) {
+	if (check_add_overflow(args->start_col, args->num_cols, &part_end_col) ||
+	    part_end_col > apart->range.size.col) {
 		dev_err(&apart->dev, "invalid start column/size column\n");
 		return -EINVAL;
 	}
