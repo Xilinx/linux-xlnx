@@ -1921,7 +1921,7 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
 	len = instr->len;
 
 	if (n_dice) {
-		die_size = div_u64(mtd->size / nor->num_flash, n_dice);
+		die_size = div_u64(div_u64(mtd->size, nor->num_flash), n_dice);
 		if (!(len & (die_size - 1)) && !(addr & (die_size - 1)))
 			multi_die_erase = true;
 	} else {
