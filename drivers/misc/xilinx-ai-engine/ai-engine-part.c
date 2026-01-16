@@ -1570,6 +1570,7 @@ EXPORT_SYMBOL_GPL(aie_load_cert);
  * aie_partition_handshake_update() - loads cert in program memory of uc in shim tile.
  * @dev: AI Engine partition device
  * @handshake: struct with the handshake write info.
+ * @handshake_cols: number of columns in the handshake data.
  * @return: 0 on success, negative value on failure.
  */
 int aie_partition_handshake_update(struct device *dev,
