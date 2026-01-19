@@ -978,7 +978,7 @@ int aie_part_open(struct aie_partition *apart, void *rsc_metadata)
 	}
 
 	/* preallocate memory pool for storing dmabuf descriptors */
-	ret =  aie_part_prealloc_dbufs_cache(apart);
+	ret = aie_part_prealloc_dbufs_cache(apart);
 	if (ret)
 		return ret;
 
