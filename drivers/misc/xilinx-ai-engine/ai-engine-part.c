@@ -518,23 +518,23 @@ static int aie_part_access_regs(struct aie_partition *apart, u32 num_reqs,
 			if (ret)
 				break;
 
-			ret =  aie_part_set_bd(apart,
-				(struct aie_dma_bd_args *)data_region.user_addr);
+			ret = aie_part_set_bd(apart,
+					      (struct aie_dma_bd_args *)data_region.user_addr);
 			aie_part_free_region(apart, &data_region);
 			break;
 		}
 		case AIE_CONFIG_SHIMDMA_DMABUF_BD:
 		{
 			struct aie_part_pinned_region data_region;
+			struct aie_dmabuf_bd_args *user_addr;
 
 			data_region.len = sizeof(struct aie_dmabuf_bd_args);
 			ret = aie_part_copy_user_region(apart, &data_region,
 							(void *)args->dataptr);
 			if (ret)
 				break;
-
-			ret =  aie_part_set_dmabuf_bd(apart,
-				(struct aie_dmabuf_bd_args *)data_region.user_addr);
+			user_addr = (struct aie_dmabuf_bd_args *)data_region.user_addr;
+			ret = aie_part_set_dmabuf_bd(apart, user_addr);
 			aie_part_free_region(apart, &data_region);
 			break;
 		}
@@ -1199,14 +1199,12 @@ struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
 	 * memories information of the AI engine partition.
 	 */
 	ret = aie_part_create_mems_info(apart);
-	if (ret) {
+	if (ret)
 		goto err;
-	}
 
 	ret = apart->adev->ops->init_part_clk_state(apart);
-	if (ret) {
+	if (ret)
 		goto err;
-	}
 
 	/*
 	 * Create bitmap to record event status for each module in a
