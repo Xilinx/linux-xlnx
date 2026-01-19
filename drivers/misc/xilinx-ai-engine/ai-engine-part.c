@@ -872,12 +872,12 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 	{
 		__kernel_size_t size;
 
-		if (get_user(size, (__kernel_size_t *)argp))
+		if (get_user(size, (__kernel_size_t __user *)argp))
 			return -EFAULT;
 
 		size = PAGE_ALIGN(size);
 		ret = aie_dma_mem_alloc(apart, size);
-		if (put_user(size, (__kernel_size_t *)argp)) {
+		if (put_user(size, (__kernel_size_t __user *)argp)) {
 			aie_dma_mem_free(ret);
 			return -EFAULT;
 		}
@@ -887,7 +887,7 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 	{
 		int fd;
 
-		if (get_user(fd, (int *)argp))
+		if (get_user(fd, (int __user *)argp))
 			return -EFAULT;
 		return aie_dma_mem_free(fd);
 	}
