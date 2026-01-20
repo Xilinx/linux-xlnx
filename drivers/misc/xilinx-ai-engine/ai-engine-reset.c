@@ -566,6 +566,7 @@ int aie_partition_uc_wakeup(struct device *dev, struct aie_location *loc)
 	if (!apart)
 		return -EINVAL;
 
+	trace_aie_partition_uc_wakeup(apart, loc);
 	adev = apart->adev;
 	if (!adev->ops->wake_tile_uc_core_up)
 		return -EINVAL;
@@ -656,6 +657,7 @@ int aie_partition_teardown(struct device *dev)
 		return -EINVAL;
 
 	apart = dev_to_aiepart(dev);
+	trace_aie_partition_teardown(apart);
 	if (apart->adev->ops->part_teardown)
 		return apart->adev->ops->part_teardown(apart);
 	return -EINVAL;

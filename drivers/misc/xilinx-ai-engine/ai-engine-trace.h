@@ -806,6 +806,40 @@ TRACE_EVENT(aie_partition_release,
 		  __entry->partition_id, __entry->start_col, __entry->num_cols)
 );
 
+TRACE_EVENT(aie_partition_teardown,
+	TP_PROTO(struct aie_partition *apart),
+	TP_ARGS(apart),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u32, start_col)
+		__field(__u32, num_cols)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->start_col = aie_part_id_get_start_col(apart->partition_id);
+		__entry->num_cols = aie_part_id_get_num_cols(apart->partition_id);
+	),
+	TP_printk("id: %d start_col: %d num_cols: %d",
+		  __entry->partition_id, __entry->start_col, __entry->num_cols)
+);
+
+TRACE_EVENT(aie_partition_uc_wakeup,
+	TP_PROTO(struct aie_partition *apart, struct aie_location *loc),
+	TP_ARGS(apart, loc),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u32, col)
+		__field(__u32, row)
+		),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->col = loc->col;
+		__entry->row = loc->row;
+		),
+	TP_printk("id: %d col: %d, row: %d",
+		__entry->partition_id, __entry->col, __entry->row)
+);
+
 TRACE_EVENT(aie_part_release_device,
 	TP_PROTO(struct aie_partition *apart),
 	TP_ARGS(apart),
@@ -937,6 +971,103 @@ TRACE_EVENT(aie_hw_err,
 		__entry->err = err;
 	),
 	TP_printk("Received Hw error: err: 0x%x on col: %d", __entry->err, __entry->col)
+);
+
+TRACE_EVENT(aie_get_errors_from_bitmap,
+	TP_PROTO(struct aie_partition *apart, struct aie_location loc, enum aie_module_type mod,
+		u32 event),
+	TP_ARGS(apart, loc, mod, event),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u32, col)
+		__field(__u32, row)
+		__field(__u8, mod)
+		__field(u32, event)
+		),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->col = loc.col;
+		__entry->row = loc.row;
+		__entry->mod = mod;
+		__entry->event = event;
+		),
+	TP_printk("id: %d [%d, %d]: mod: %d error event: %u",
+		__entry->partition_id, __entry->col, __entry->row, __entry->mod,
+		__entry->event)
+);
+
+TRACE_EVENT(aie_get_error_categories,
+	TP_PROTO(u32 category),
+	TP_ARGS(category),
+	TP_STRUCT__entry(
+		__field(__u32, category)
+	    ),
+	TP_fast_assign(
+		__entry->category = category;
+	  ),
+	TP_printk("category: %d", __entry->category)
+);
+
+TRACE_EVENT(aie_flush_errors,
+	TP_PROTO(struct aie_partition *apart),
+	TP_ARGS(apart),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+	    ),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+	  ),
+	TP_printk("id: %d",
+		__entry->partition_id)
+);
+
+TRACE_EVENT(aie_partition_set_freq_req,
+	TP_PROTO(struct aie_partition *apart, u64 freq),
+	TP_ARGS(apart, freq),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u64, freq)
+	    ),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->freq = freq;
+	  ),
+	TP_printk("id: %d, freq %lld",
+		__entry->partition_id, __entry->freq)
+);
+
+TRACE_EVENT(aie_partition_get_freq,
+	TP_PROTO(struct aie_partition *apart, u64 freq),
+	TP_ARGS(apart, freq),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u64, freq)
+	    ),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->freq = freq;
+	  ),
+	TP_printk("id: %d, freq %lld",
+		__entry->partition_id, __entry->freq)
+);
+
+TRACE_EVENT(aie_part_rscmgr_set_static_range,
+	TP_PROTO(struct aie_partition *apart, u8 start_col, u8 num_col, u64 num_bitmaps),
+	TP_ARGS(apart, start_col, num_col, num_bitmaps),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u8, start_col)
+		__field(__u8, num_col)
+		__field(__u64, num_bitmaps)
+	    ),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->start_col = start_col;
+		__entry->num_col = num_col;
+		__entry->num_bitmaps = num_bitmaps;
+	  ),
+	TP_printk("id: %d start_col: %d, num_col: %d, num_bitmaps %lld",
+		__entry->partition_id, __entry->start_col, __entry->num_col, __entry->num_bitmaps)
 );
 
 #endif /* _AI_ENGINE_TRACE_H_ */

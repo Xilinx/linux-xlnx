@@ -570,6 +570,7 @@ int aie_partition_set_freq_req(struct device *dev, u64 freq)
 		return -EINVAL;
 
 	apart = dev_to_aiepart(dev);
+	trace_aie_partition_set_freq_req(apart, freq);
 	return aie_part_set_freq(apart, freq);
 }
 EXPORT_SYMBOL_GPL(aie_partition_set_freq_req);
@@ -604,6 +605,7 @@ int aie_part_get_freq(struct aie_partition *apart, u64 *freq)
 	}
 
 	*freq = (clk_rate * boot_qos) / current_qos;
+	trace_aie_partition_get_freq(apart, *freq);
 	return 0;
 }
 
@@ -643,6 +645,7 @@ int aie_partition_get_freq_req(struct device *dev, u64 *freq)
 
 	apart = dev_to_aiepart(dev);
 	*freq = apart->freq_req;
+	trace_aie_partition_get_freq(apart, *freq);
 
 	return 0;
 }

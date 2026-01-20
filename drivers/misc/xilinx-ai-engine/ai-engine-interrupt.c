@@ -1611,6 +1611,7 @@ static u32 aie_get_errors_from_bitmap(struct aie_partition *apart,
 			aie_err[num_err].module = module;
 			aie_err[num_err].error_id = event;
 			aie_err[num_err].category = category->err_category;
+			trace_aie_get_errors_from_bitmap(apart, loc, module, event);
 			num_err++;
 		}
 	}
@@ -1905,6 +1906,7 @@ u32 aie_get_error_categories(struct aie_errors *aie_errs)
 		ret |= BIT(error->category);
 	}
 
+	trace_aie_get_error_categories(ret);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(aie_get_error_categories);
@@ -1975,6 +1977,7 @@ int aie_flush_errors(struct device *dev)
 		return -EINVAL;
 
 	apart = container_of(dev, struct aie_partition, dev);
+	trace_aie_flush_errors(apart);
 	aie_part_backtrack(apart);
 
 	return 0;

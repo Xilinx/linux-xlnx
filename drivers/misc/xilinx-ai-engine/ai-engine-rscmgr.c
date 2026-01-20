@@ -1462,6 +1462,8 @@ int aie_part_rscmgr_set_static_range(struct device *dev, u8 start_col,
 	 */
 	num_bitmaps = header->stat;
 	offset = header->bitmap_off;
+	trace_aie_part_rscmgr_set_static_range(apart, start_col, num_col, num_bitmaps);
+
 	if (!num_bitmaps || offset < sizeof(*header)) {
 		dev_err(&apart->dev,
 			"failed to get static resources, invalid header.\n");
