@@ -919,7 +919,8 @@ static int zynqmp_qspi_setuprxdma(struct zynqmp_qspi *xqspi)
 
 	if ((xqspi->bytes_to_receive < 8 || xqspi->io_mode) ||
 	    ((dma_align & GQSPI_DMA_UNALIGN) != 0x0) ||
-	    is_vmalloc_addr(xqspi->rxbuf)) {
+	    is_vmalloc_addr(xqspi->rxbuf)  ||
+	    !IS_ALIGNED(dma_align, dma_get_cache_alignment())) {
 		/* Setting to IO mode */
 		zynqmp_qspi_disable_dma(xqspi);
 		xqspi->dma_rx_bytes = 0;
