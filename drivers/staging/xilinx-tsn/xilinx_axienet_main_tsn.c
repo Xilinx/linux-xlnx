@@ -408,44 +408,49 @@ void axienet_adjust_link_tsn(struct net_device *ndev)
 	struct phy_device *phy = ndev->phydev;
 
 	link_state = phy->speed | (phy->duplex << 1) | phy->link;
+
 	if (lp->last_link != link_state) {
-		if (phy->speed == SPEED_10 || phy->speed == SPEED_100) {
-			if (lp->phy_mode == PHY_INTERFACE_MODE_1000BASEX)
-				setspeed = 0;
-		} else {
-			if (phy->speed == SPEED_1000 &&
-			    lp->phy_mode == PHY_INTERFACE_MODE_MII)
-				setspeed = 0;
-		}
-
-		if (setspeed == 1) {
-			emmc_reg = axienet_ior(lp, XAE_EMMC_OFFSET);
-			emmc_reg &= ~XAE_EMMC_LINKSPEED_MASK;
-
-			switch (phy->speed) {
-			case SPEED_2500:
-				emmc_reg |= XAE_EMMC_LINKSPD_2500;
-				break;
-			case SPEED_1000:
-				emmc_reg |= XAE_EMMC_LINKSPD_1000;
-				break;
-			case SPEED_100:
-				emmc_reg |= XAE_EMMC_LINKSPD_100;
-				break;
-			case SPEED_10:
-				emmc_reg |= XAE_EMMC_LINKSPD_10;
-				break;
-			default:
-				dev_err(&ndev->dev, "Speed other than 10, 100 ");
-				dev_err(&ndev->dev, "or 1Gbps is not supported\n");
-				break;
+		if (phy->link) {
+			if (phy->speed == SPEED_10 || phy->speed == SPEED_100) {
+				if (lp->phy_mode == PHY_INTERFACE_MODE_1000BASEX)
+					setspeed = 0;
+			} else {
+				if (phy->speed == SPEED_1000 &&
+				    lp->phy_mode == PHY_INTERFACE_MODE_MII)
+					setspeed = 0;
 			}
 
-			axienet_iow(lp, XAE_EMMC_OFFSET, emmc_reg);
-			phy_print_status(phy);
+			if (setspeed == 1) {
+				emmc_reg = axienet_ior(lp, XAE_EMMC_OFFSET);
+				emmc_reg &= ~XAE_EMMC_LINKSPEED_MASK;
+
+				switch (phy->speed) {
+				case SPEED_2500:
+					emmc_reg |= XAE_EMMC_LINKSPD_2500;
+					break;
+				case SPEED_1000:
+					emmc_reg |= XAE_EMMC_LINKSPD_1000;
+					break;
+				case SPEED_100:
+					emmc_reg |= XAE_EMMC_LINKSPD_100;
+					break;
+				case SPEED_10:
+					emmc_reg |= XAE_EMMC_LINKSPD_10;
+					break;
+				default:
+					dev_err(&ndev->dev, "Speed other than 10, 100 ");
+					dev_err(&ndev->dev, "or 1Gbps is not supported\n");
+					break;
+				}
+
+				axienet_iow(lp, XAE_EMMC_OFFSET, emmc_reg);
+				phy_print_status(phy);
+			} else {
+				netdev_err(ndev,
+					   "Error setting Axi Ethernet mac speed\n");
+			}
 		} else {
-			netdev_err(ndev,
-				   "Error setting Axi Ethernet mac speed\n");
+			phy_print_status(phy);
 		}
 
 		lp->last_link = link_state;
