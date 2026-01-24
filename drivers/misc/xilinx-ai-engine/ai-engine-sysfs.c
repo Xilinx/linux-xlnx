@@ -72,13 +72,13 @@ aie_sysfs_create_dev_attr(struct device *dev, const struct aie_dev_attr *attr)
  * @attr: AI engine binary attribute.
  * @return: pointer to the allocated binary attribute.
  */
-static struct bin_attribute *
+static const struct bin_attribute *
 aie_sysfs_create_bin_attr(struct device *dev, const struct aie_bin_attr *attr)
 {
 	struct bin_attribute *node;
 	struct aie_sysfs_prop *prop;
 
-	node = devm_kzalloc(dev, sizeof(struct bin_attribute), GFP_KERNEL);
+	node = devm_kzalloc(dev, sizeof(*node), GFP_KERNEL);
 	if (!node)
 		return ERR_PTR(-ENOMEM);
 
@@ -152,7 +152,7 @@ static int aie_tile_sysfs_create(struct aie_tile *atile)
 			return -ENOMEM;
 
 		for (index = 0; index < attr->num_bin_attrs; index++) {
-			struct bin_attribute *node;
+			const struct bin_attribute *node;
 			const struct aie_bin_attr *bin_attr;
 
 			bin_attr = &attr->bin_attr[index];
@@ -240,7 +240,7 @@ static int aie_part_sysfs_create(struct aie_partition *apart)
 			return -ENOMEM;
 
 		for (index = 0; index < attr->num_bin_attrs; index++) {
-			struct bin_attribute *node;
+			const struct bin_attribute *node;
 			const struct aie_bin_attr *bin_attr;
 
 			bin_attr = &attr->bin_attr[index];
@@ -326,7 +326,7 @@ static int aie_aperture_sysfs_create(struct aie_aperture *aperture)
 			return -ENOMEM;
 
 		for (index = 0; index < attr->num_bin_attrs; index++) {
-			struct bin_attribute *node;
+			const struct bin_attribute *node;
 			const struct aie_bin_attr *bin_attr;
 
 			bin_attr = &attr->bin_attr[index];
