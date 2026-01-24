@@ -1470,7 +1470,7 @@ int aie_partition_uc_zeroize_mem(struct device *dev, struct aie_location *loc, u
 EXPORT_SYMBOL_GPL(aie_partition_uc_zeroize_mem);
 
 static int aie_apart_load_uc_phdr(struct aie_partition *apart,
-				  const Elf32_Phdr *phdr,
+				  const struct elf32_phdr *phdr,
 				  struct aie_addrlen *addrlen,
 				  struct aie_part_mem *pmem)
 {
@@ -1505,7 +1505,7 @@ static int aie_apart_load_uc_phdr(struct aie_partition *apart,
  */
 int aie_load_cert(struct device *dev, unsigned char *elf_addr)
 {
-	const Elf32_Ehdr *ehdr = (Elf32_Ehdr *)elf_addr;
+	const struct elf32_hdr *ehdr = (struct elf32_hdr *)elf_addr;
 	u16 data_ops = AIE_PART_ZEROIZE_UC_MEM_ALL;
 	struct aie_addrlen addrlen;
 	struct aie_partition *apart;
@@ -1530,10 +1530,10 @@ int aie_load_cert(struct device *dev, unsigned char *elf_addr)
 
 	for (i = 0; i < ehdr->e_phnum; i++) {
 		struct aie_part_mem pmem;
-		const Elf32_Phdr *phdr;
+		const struct elf32_phdr *phdr;
 		void *sptr;
 
-		phdr = (Elf32_Phdr *)(elf_addr + sizeof(*ehdr) + i * sizeof(*phdr));
+		phdr = (struct elf32_phdr *)(elf_addr + sizeof(*ehdr) + i * sizeof(*phdr));
 		sptr = elf_addr + phdr->p_offset;
 		/* ignore non-loadable sections */
 		if (phdr->p_type != PT_LOAD)
@@ -1620,7 +1620,7 @@ static u8 aie_get_parity_bit(u32 header)
 static int aie_ctrl_pktize_elf(struct aie_partition *apart, u32 *ctrlbuf,
 			       void *elf_addr, size_t ctrlbuf_size)
 {
-	const Elf32_Ehdr *ehdr = (Elf32_Ehdr *)elf_addr;
+	const struct elf32_hdr *ehdr = (struct elf32_hdr *)elf_addr;
 	struct aie_device *adev = apart->adev;
 	u32 ctrlbuf_idx = 0;
 	u32 mem_type;
@@ -1628,10 +1628,10 @@ static int aie_ctrl_pktize_elf(struct aie_partition *apart, u32 *ctrlbuf,
 	for (u32 i = 0; i < ehdr->e_phnum; i++) {
 		size_t memsz32, tile_addr;
 		struct aie_part_mem pmem;
-		const Elf32_Phdr *phdr;
+		const struct elf32_phdr *phdr;
 		u32 *sptr32;
 
-		phdr = (Elf32_Phdr *)(elf_addr + sizeof(*ehdr) + i * sizeof(*phdr));
+		phdr = (struct elf32_phdr *)(elf_addr + sizeof(*ehdr) + i * sizeof(*phdr));
 		/* ignore non-loadable sections */
 		if (phdr->p_type != PT_LOAD)
 			continue;
@@ -1811,7 +1811,7 @@ static int aie_load_cert_start_dma(struct aie_partition *apart, int dmabuf_fd,
  */
 int aie_load_cert_broadcast(struct device *dev, void *elf_addr)
 {
-	const Elf32_Ehdr *ehdr = (Elf32_Ehdr *)elf_addr;
+	const struct elf32_hdr *ehdr = (struct elf32_hdr *)elf_addr;
 	u16 data_ops = AIE_PART_ZEROIZE_UC_MEM_ALL;
 	u32 mem_type, end_elf_word = 0;
 	struct aie_location last_col;
@@ -1844,10 +1844,10 @@ int aie_load_cert_broadcast(struct device *dev, void *elf_addr)
 	for (i = 0; i < ehdr->e_phnum; i++) {
 		u32 num_headers, offset, *sptr32;
 		struct aie_part_mem pmem;
-		const Elf32_Phdr *phdr;
+		const struct elf32_phdr *phdr;
 		size_t memsz32;
 
-		phdr = (Elf32_Phdr *)(elf_addr + sizeof(*ehdr) + i * sizeof(*phdr));
+		phdr = (struct elf32_phdr *)(elf_addr + sizeof(*ehdr) + i * sizeof(*phdr));
 		/* ignore non-loadable sections */
 		if (phdr->p_type != PT_LOAD)
 			continue;
