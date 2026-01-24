@@ -259,22 +259,21 @@ int aie_part_clear_context(struct aie_partition *apart)
 		goto exit;
 
 	ret = zynqmp_pm_feature(PM_IOCTL);
-	if ((ret < 0) || ((ret >= 0) &&
+	if (ret < 0 || (ret >= 0 &&
 			((ret & FIRMWARE_VERSION_MASK) < PM_API_VERSION_3))) {
 		if (aie_part_clear_data_mem(apart))
 			dev_warn(&apart->dev, "failed to clear data memory.\n");
 	} else {
 		ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
-					apart->range.size.col,
-					XILINX_AIE_OPS_DATA_MEM_ZEROIZATION |
-					XILINX_AIE_OPS_MEM_TILE_ZEROIZATION);
+					      apart->range.size.col,
+					      XILINX_AIE_OPS_DATA_MEM_ZEROIZATION |
+					      XILINX_AIE_OPS_MEM_TILE_ZEROIZATION);
 		if (ret < 0)
 			goto exit;
 	}
 
-	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col,
-					apart->range.size.col,
-					XILINX_AIE_OPS_SET_L2_CTRL_NPI_INTR);
+	ret = zynqmp_pm_aie_operation(node_id, apart->range.start.col, apart->range.size.col,
+				      XILINX_AIE_OPS_SET_L2_CTRL_NPI_INTR);
 	aie_part_core_regs_clr(apart);
 
 exit:
@@ -1085,7 +1084,6 @@ int aie_part_initialize(struct aie_partition *apart, struct aie_partition_init_a
 	if (args->num_tiles && trace_aie_part_initialize_tiles_enabled()) {
 		for (i = 0; i < args->num_tiles; i++)
 			trace_aie_part_initialize_tiles(apart, args->locs[i]);
-
 	}
 	ret = aie_part_request_tiles(apart, args->num_tiles, args->locs);
 
