@@ -984,8 +984,7 @@ long aie_part_set_dmabuf_bd(struct aie_partition *apart,
  * buffer descriptor. The buffer descriptor contained in the @user_args has the
  * offset to the start of the buffer descriptor.
  */
-long aie_part_set_dmabuf_bd_from_user(struct aie_partition *apart,
-			    void __user *user_args)
+long aie_part_set_dmabuf_bd_from_user(struct aie_partition *apart, void __user *user_args)
 {
 	struct aie_dmabuf_bd_args args;
 	int ret;
