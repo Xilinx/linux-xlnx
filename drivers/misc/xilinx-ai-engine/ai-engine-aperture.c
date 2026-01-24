@@ -536,7 +536,6 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 	/* Initialize interrupt */
 	if (aperture->adev->device_name == AIE_DEV_GEN_S100 ||
 	    aperture->adev->device_name == AIE_DEV_GEN_S200) {
-
 		ret = xlnx_register_event(PM_NOTIFY_CB, VERSAL_EVENT_ERROR_PMC_ERR1,
 					  XPM_VERSAL_EVENT_ERROR_MASK_AIE_CR,
 					  false, aie_interrupt_callback, aperture);
@@ -549,9 +548,11 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 		ret = of_irq_get_byname(nc, "interrupt1");
 		if (ret < 0) {
 			dev_warn(&adev->dev, "interrupt1 not found.");
+			aperture->npi_irq[0] = 0;
 		} else {
 			aperture->npi_irq[0] = ret;
-		}		ret = of_irq_get_byname(nc, "interrupt2");
+		}
+		ret = of_irq_get_byname(nc, "interrupt2");
 		if (ret < 0) {
 			dev_warn(&adev->dev, "interrupt2 not found");
 			aperture->npi_irq[1] = 0;
