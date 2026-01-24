@@ -62,7 +62,7 @@ struct aie_rsc_meta_header {
  */
 struct aie_rsc_bitmap {
 	u64 header;
-	u64 bitmap[0];
+	u64 bitmap[];
 };
 
 /**
@@ -1234,7 +1234,6 @@ long aie_part_rscmgr_get_broadcast(struct aie_partition *apart,
 		}
 		for (i = 0; i < args.num_rscs; i++)
 			trace_aie_part_rsc(apart, &rscs[i]);
-
 	}
 
 	ret = mutex_lock_interruptible(&apart->mlock);
