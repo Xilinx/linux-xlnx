@@ -261,10 +261,7 @@ int axienet_eoe_recv_gro(struct net_device *ndev, int budget,
 
 		q->rx_data += length;
 
-		if (!q->skb)
-			return -ENOMEM;
-
-		else
+		if (q->skb)
 			skb_add_rx_frag(q->skb,
 					skb_shinfo(q->skb)->nr_frags,
 					page, 0, length, q->rx_data);
