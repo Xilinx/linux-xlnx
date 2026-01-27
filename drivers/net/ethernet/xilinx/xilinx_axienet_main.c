@@ -57,7 +57,7 @@
 #include "xilinx_axienet_eoe.h"
 
 /* Descriptors defines for Tx and Rx DMA */
-#define RX_BD_NUM_DEFAULT		128
+#define RX_BD_NUM_DEFAULT		1024
 #define TX_BD_NUM_MIN			(MAX_SKB_FRAGS + 1)
 #define TX_BD_NUM_MAX			4096
 #define RX_BD_NUM_MAX			4096
@@ -2602,39 +2602,26 @@ int xaxienet_rx_poll(struct napi_struct *napi, int quota)
 
 	struct axienet_dma_q *q = container_of(napi, struct axienet_dma_q, napi_rx);
 	int work_done = 0;
-	unsigned int status, cr;
 
 #ifdef CONFIG_AXIENET_HAS_MCDMA
-	status = axienet_dma_in32(q, XMCDMA_CHAN_SR_OFFSET(q->chan_id) +
-				  q->rx_offset);
-	while ((status & (XMCDMA_IRQ_IOC_MASK | XMCDMA_IRQ_DELAY_MASK)) &&
-	       (work_done < quota)) {
-		axienet_dma_out32(q, XMCDMA_CHAN_SR_OFFSET(q->chan_id) +
-				 q->rx_offset, status);
-		if (status & XMCDMA_IRQ_ERR_MASK) {
-			dev_err(lp->dev, "Rx error 0x%x\n\r", status);
-			break;
-		}
+	struct aximcdma_bd *cur_p = &q->rxq_bd_v[q->rx_bd_ci];
 
+	while (cur_p->status & XAXIDMA_BD_STS_COMPLETE_MASK &&
+	       (work_done < quota)) {
 		if (axienet_eoe_is_channel_gro(lp, q))
 			work_done += axienet_eoe_recv_gro(lp->ndev, quota - work_done, q);
 		else
 			work_done += axienet_recv(lp->ndev, quota - work_done, q);
 
-		status = axienet_dma_in32(q, XMCDMA_CHAN_SR_OFFSET(q->chan_id) +
-					  q->rx_offset);
+		cur_p = &q->rxq_bd_v[q->rx_bd_ci];
 	}
 #else
-	status = axienet_dma_in32(q, XAXIDMA_RX_SR_OFFSET);
-	while ((status & (XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK)) &&
+	struct axidma_bd *cur_p = &q->rx_bd_v[q->rx_bd_ci];
+
+	while ((cur_p->status & XAXIDMA_BD_STS_COMPLETE_MASK) &&
 	       (work_done < quota)) {
-		axienet_dma_out32(q, XAXIDMA_RX_SR_OFFSET, status);
-		if (status & XAXIDMA_IRQ_ERROR_MASK) {
-			dev_err(lp->dev, "Rx error 0x%x\n\r", status);
-			break;
-		}
 		work_done += axienet_recv(lp->ndev, quota - work_done, q);
-		status = axienet_dma_in32(q, XAXIDMA_RX_SR_OFFSET);
+		cur_p = &q->rx_bd_v[q->rx_bd_ci];
 	}
 
 #endif
@@ -2642,16 +2629,16 @@ int xaxienet_rx_poll(struct napi_struct *napi, int quota)
 		napi_complete(napi);
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 		/* Enable the interrupts again */
-		cr = axienet_dma_in32(q, XMCDMA_CHAN_CR_OFFSET(q->chan_id) +
+		u32 cr = axienet_dma_in32(q, XMCDMA_CHAN_CR_OFFSET(q->chan_id) +
 				      XMCDMA_RX_OFFSET);
 		cr |= (XMCDMA_IRQ_IOC_MASK | XMCDMA_IRQ_DELAY_MASK);
 		axienet_dma_out32(q, XMCDMA_CHAN_CR_OFFSET(q->chan_id) +
 				  XMCDMA_RX_OFFSET, cr);
 #else
 		/* Enable the interrupts again */
-		cr = axienet_dma_in32(q, XAXIDMA_RX_CR_OFFSET);
-		cr |= (XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK);
-		axienet_dma_out32(q, XAXIDMA_RX_CR_OFFSET, cr);
+		spin_lock_irq(&q->rx_cr_lock);
+		axienet_dma_out32(q, XAXIDMA_RX_CR_OFFSET, q->rx_dma_cr);
+		spin_unlock_irq(&q->rx_cr_lock);
 #endif
 	}
 

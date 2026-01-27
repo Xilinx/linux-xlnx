@@ -227,7 +227,6 @@ static int map_dma_q_irq(int irq, struct axienet_local *lp)
  */
 irqreturn_t __maybe_unused axienet_tx_irq(int irq, void *_ndev)
 {
-	u32 cr;
 	unsigned int status;
 	struct net_device *ndev = _ndev;
 	struct axienet_local *lp = netdev_priv(ndev);
@@ -240,45 +239,34 @@ irqreturn_t __maybe_unused axienet_tx_irq(int irq, void *_ndev)
 	q = lp->dq[i];
 
 	status = axienet_dma_in32(q, XAXIDMA_TX_SR_OFFSET);
-	if (status & (XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK)) {
-		/* Disable further TX completion interrupts and schedule
-		 * NAPI to handle the completions.
-		 */
-		axienet_dma_out32(q, XAXIDMA_TX_SR_OFFSET, status);
-		cr = q->tx_dma_cr;
-
-		cr &= ~(XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK);
-		if (napi_schedule_prep(&q->napi_tx)) {
-			axienet_dma_out32(q, XAXIDMA_TX_CR_OFFSET, cr);
-			__napi_schedule(&q->napi_tx);
-		}
-		goto out;
-	}
 
 	if (!(status & XAXIDMA_IRQ_ALL_MASK))
 		return IRQ_NONE;
-	if (status & XAXIDMA_IRQ_ERROR_MASK) {
-		dev_err(&ndev->dev, "DMA Tx error 0x%x\n", status);
-		dev_err(&ndev->dev, "Current BD is at: 0x%x%08x\n",
-			q->tx_bd_v[q->tx_bd_ci].phys_msb,
-			q->tx_bd_v[q->tx_bd_ci].phys);
 
-		cr = axienet_dma_in32(q, XAXIDMA_TX_CR_OFFSET);
-		/* Disable coalesce, delay timer and error interrupts */
-		cr &= (~XAXIDMA_IRQ_ALL_MASK);
-		/* Write to the Tx channel control register */
-		axienet_dma_out32(q, XAXIDMA_TX_CR_OFFSET, cr);
+	axienet_dma_out32(q, XAXIDMA_TX_SR_OFFSET, status);
 
-		cr = axienet_dma_in32(q, XAXIDMA_RX_CR_OFFSET);
-		/* Disable coalesce, delay timer and error interrupts */
-		cr &= (~XAXIDMA_IRQ_ALL_MASK);
-		/* Write to the Rx channel control register */
-		axienet_dma_out32(q, XAXIDMA_RX_CR_OFFSET, cr);
-
+	if (unlikely(status & XAXIDMA_IRQ_ERROR_MASK)) {
+		netdev_err(ndev, "DMA Tx error 0x%x\n", status);
+		netdev_err(ndev, "Current BD is at: 0x%x%08x\n",
+			   q->tx_bd_v[q->tx_bd_ci].phys_msb,
+			   q->tx_bd_v[q->tx_bd_ci].phys);
 		tasklet_schedule(&lp->dma_err_tasklet[i]);
-		axienet_dma_out32(q, XAXIDMA_TX_SR_OFFSET, status);
+	} else {
+		/* Disable further TX completion interrupts and schedule
+		 * NAPI to handle the completions.
+		 */
+		if (napi_schedule_prep(&q->napi_tx)) {
+			u32 cr;
+
+			spin_lock(&q->tx_cr_lock);
+			cr = q->tx_dma_cr;
+			cr &= ~(XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK);
+			axienet_dma_out32(q, XAXIDMA_TX_CR_OFFSET, cr);
+			spin_unlock(&q->tx_cr_lock);
+			__napi_schedule(&q->napi_tx);
+		}
 	}
-out:
+
 	return IRQ_HANDLED;
 }
 
@@ -294,7 +282,6 @@ out:
  */
 irqreturn_t __maybe_unused axienet_rx_irq(int irq, void *_ndev)
 {
-	u32 cr;
 	unsigned int status;
 	struct net_device *ndev = _ndev;
 	struct axienet_local *lp = netdev_priv(ndev);
@@ -307,41 +294,34 @@ irqreturn_t __maybe_unused axienet_rx_irq(int irq, void *_ndev)
 	q = lp->dq[i];
 
 	status = axienet_dma_in32(q, XAXIDMA_RX_SR_OFFSET);
-	if (status & (XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK)) {
-		cr = axienet_dma_in32(q, XAXIDMA_RX_CR_OFFSET);
-		cr &= ~(XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK);
-		if (napi_schedule_prep(&q->napi_rx)) {
-			axienet_dma_out32(q, XAXIDMA_RX_CR_OFFSET, cr);
-			__napi_schedule(&q->napi_rx);
-		}
-	}
 
 	if (!(status & XAXIDMA_IRQ_ALL_MASK))
 		return IRQ_NONE;
 
-	if (status & XAXIDMA_IRQ_ERROR_MASK) {
-		dev_err(&ndev->dev, "DMA Rx error 0x%x\n", status);
-		dev_err(&ndev->dev, "Current BD is at: 0x%x%08x\n",
-			q->rx_bd_v[q->rx_bd_ci].phys_msb,
-			q->rx_bd_v[q->rx_bd_ci].phys);
+	axienet_dma_out32(q, XAXIDMA_RX_SR_OFFSET, status);
 
-		cr = axienet_dma_in32(q, XAXIDMA_TX_CR_OFFSET);
-		/* Disable coalesce, delay timer and error interrupts */
-		cr &= (~XAXIDMA_IRQ_ALL_MASK);
-		/* Finally write to the Tx channel control register */
-		axienet_dma_out32(q, XAXIDMA_TX_CR_OFFSET, cr);
-
-		cr = axienet_dma_in32(q, XAXIDMA_RX_CR_OFFSET);
-		/* Disable coalesce, delay timer and error interrupts */
-		cr &= (~XAXIDMA_IRQ_ALL_MASK);
-			/* write to the Rx channel control register */
-		axienet_dma_out32(q, XAXIDMA_RX_CR_OFFSET, cr);
-
+	if (unlikely(status & XAXIDMA_IRQ_ERROR_MASK)) {
+		netdev_err(ndev, "DMA Rx error 0x%x\n", status);
+		netdev_err(ndev, "Current BD is at: 0x%x%08x\n",
+			   q->rx_bd_v[q->rx_bd_ci].phys_msb,
+			   q->rx_bd_v[q->rx_bd_ci].phys);
 		tasklet_schedule(&lp->dma_err_tasklet[i]);
-		axienet_dma_out32(q, XAXIDMA_RX_SR_OFFSET, status);
-	}
-	WRITE_ONCE(q->rx_irqs, READ_ONCE(q->rx_irqs) + 1);
+	} else {
+		/* Disable further RX completion interrupts and schedule
+		 * NAPI receive.
+		 */
+		WRITE_ONCE(q->rx_irqs, READ_ONCE(q->rx_irqs) + 1);
+		if (napi_schedule_prep(&q->napi_rx)) {
+			u32 cr;
 
+			spin_lock(&q->rx_cr_lock);
+			cr = q->rx_dma_cr;
+			cr &= ~(XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK);
+			axienet_dma_out32(q, XAXIDMA_RX_CR_OFFSET, cr);
+			spin_unlock(&q->rx_cr_lock);
+			__napi_schedule(&q->napi_rx);
+		}
+	}
 	return IRQ_HANDLED;
 }
 
