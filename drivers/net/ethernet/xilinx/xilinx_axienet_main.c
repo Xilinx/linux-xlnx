@@ -1813,12 +1813,20 @@ int axienet_tx_poll(struct napi_struct *napi, int budget)
 	struct net_device *ndev = lp->ndev;
 	u32 size = 0;
 	int packets;
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+	struct netdev_queue *txq;
+#endif
 
 	packets = axienet_free_tx_chain(q, q->tx_bd_ci, lp->tx_bd_num, false,
 					&size, budget);
 
 	if (packets) {
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+		txq = netdev_get_tx_queue(ndev, (q->chan_id - 1));
+		netdev_tx_completed_queue(txq, packets, size);
+#else
 		netdev_completed_queue(ndev, packets, size);
+#endif
 		u64_stats_update_begin(&lp->tx_stat_sync);
 		u64_stats_add(&lp->tx_packets, packets);
 		u64_stats_add(&lp->tx_bytes, size);
@@ -1832,7 +1840,11 @@ int axienet_tx_poll(struct napi_struct *napi, int budget)
 		smp_mb();
 
 		if (!axienet_check_tx_bd_space(q, MAX_SKB_FRAGS + 1))
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+			netif_tx_wake_queue(txq);
+#else
 			netif_wake_queue(ndev);
+#endif
 	}
 
 	if (packets < budget && napi_complete_done(napi, packets)) {
@@ -2086,6 +2098,7 @@ static int axienet_queue_xmit(struct sk_buff *skb,
 	struct axienet_local *lp = netdev_priv(ndev);
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 	struct aximcdma_bd *cur_p;
+	struct netdev_queue *txq;
 #else
 	struct axidma_bd *cur_p;
 #endif
@@ -2117,12 +2130,20 @@ static int axienet_queue_xmit(struct sk_buff *skb,
 	cur_p = &q->tx_bd_v[q->tx_bd_tail];
 #endif
 
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+	txq = skb_get_tx_queue(ndev, skb);
+#endif
+
 	if (axienet_check_tx_bd_space(q, num_frag + 1)) {
 		/* Should not happen as last start_xmit call should have
 		 * checked for sufficient space and queue should only be
 		 * woken when sufficient space is available.
 		 */
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+		netif_tx_stop_queue(txq);
+#else
 		netif_stop_queue(ndev);
+#endif
 
 		if (net_ratelimit())
 			netdev_warn(ndev, "TX ring unexpectedly full\n");
@@ -2245,7 +2266,11 @@ out:
 
 	/* Ensure BD write before starting transfer */
 	wmb();
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+	netdev_tx_sent_queue(txq, skb->len);
+#else
 	netdev_sent_queue(ndev, skb->len);
+#endif
 
 	/* Start the transfer */
 #ifdef CONFIG_AXIENET_HAS_MCDMA
@@ -2259,14 +2284,22 @@ out:
 
 	/* Stop queue if next transmit may not have space */
 	if (axienet_check_tx_bd_space(q, MAX_SKB_FRAGS + 1)) {
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+		netif_tx_stop_queue(txq);
+#else
 		netif_stop_queue(ndev);
+#endif
 
 		/* Matches barrier in axienet_start_xmit_done */
 		smp_mb();
 
 		/* Space might have just been freed - check again */
 		if (!axienet_check_tx_bd_space(q, MAX_SKB_FRAGS + 1))
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+			netif_tx_wake_queue(txq);
+#else
 			netif_wake_queue(ndev);
+#endif
 	}
 	return NETDEV_TX_OK;
 }
