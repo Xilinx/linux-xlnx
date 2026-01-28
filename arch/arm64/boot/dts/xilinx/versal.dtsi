@@ -486,7 +486,6 @@
 			reg = <0 0xf12a0000 0 0x100>;
 			interrupt-names = "alarm", "sec";
 			interrupts = <0 142 4>, <0 143 4>;
-			calibration = <0x7fff>;
 		};
 
 		sdhci0: mmc@f1040000 {
