@@ -41,7 +41,6 @@
 
 #define DRIVER_NAME	"xlnx-avpg"
 #define DRIVER_DESC	"Xilinx AV Pattern Generator DRM KMS Driver"
-#define DRIVER_DATE	"20251009"
 #define DRIVER_MAJOR	1
 #define DRIVER_MINOR	0
 
@@ -696,7 +695,6 @@ static struct drm_driver xlnx_avpg_drm_driver = {
 	.fops			= &xlnx_avpg_gem_fops,
 	.name			= DRIVER_NAME,
 	.desc			= DRIVER_DESC,
-	.date			= DRIVER_DATE,
 	.major			= DRIVER_MAJOR,
 	.minor			= DRIVER_MINOR,
 	DRM_GEM_SHMEM_DRIVER_OPS,
