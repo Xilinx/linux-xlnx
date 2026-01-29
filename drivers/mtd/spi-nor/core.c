@@ -2295,6 +2295,19 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 	 * and ignore offset[0] data.
 	 */
 	if ((nor->flags & SNOR_F_HAS_PARALLEL) && (!(nor->num_flash % 2)) && (from & 0x01)) {
+		/*
+		 * Prevent kmalloc failures in parallel mode by limiting the read length.
+		 *
+		 * The MTD layer splits large writes into 4MB chunks. Odd-offset reads
+		 * require (len + 1) temporary buffers for realignment.
+		 * When crossing 4MB boundaries, this becomes kmalloc(4MB + 1), exceeding
+		 * KMALLOC_MAX_SIZE and often failing due to fragmentation. Cap at 4MB-1
+		 * to complete within the current window, ensuring subsequent chunks start
+		 * at even offsets and avoid repeated temporary allocations.
+		 */
+		if (len > (SZ_4M - 1))
+			len = SZ_4M - 1;
+
 		from = (loff_t)(from - 1);
 		len = (size_t)(len + 1);
 		is_ofst_odd = true;
@@ -2497,6 +2510,18 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 		if ((!(nor->num_flash % 2)) && (to & 0x01)) {
 			u8 two[2] = {0xff, buf[0]};
 			size_t written_len;
+			/*
+			 * Prevent data corruption by limiting the writes length.
+			 *
+			 * The MTD layer splits large writes into 4MB chunks. Odd-offset writes are
+			 * realigned by writing 0xFF to (offset - 1) before the data. When an
+			 * odd-offset write crosses a 4MB boundary, the next chunk also requires
+			 * realignment, which overwrites the last byte of the previous chunk,
+			 * causing data corruption. Cap at 4MB-1 to ensure subsequent chunks start
+			 * at even offsets, avoiding repeated realignment.
+			 */
+			if (len > (SZ_4M - 1))
+				len = SZ_4M - 1;
 
 			ret = spi_nor_write(mtd, to & ~1, 2, &written_len, two);
 			if (ret < 0)
