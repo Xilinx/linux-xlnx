@@ -2488,7 +2488,11 @@ static int cqspi_probe(struct platform_device *pdev)
 		pm_runtime_enable(dev);
 		pm_runtime_set_autosuspend_delay(dev, CQSPI_AUTOSUSPEND_TIMEOUT);
 		pm_runtime_use_autosuspend(dev);
-		pm_runtime_get_noresume(dev);
+		ret = pm_runtime_resume_and_get(dev);
+		if (ret) {
+			dev_err(dev, "resume failed with %d\n", ret);
+			return ret;
+		}
 	}
 
 	ret = cqspi_setup_flash(cqspi);
