@@ -901,8 +901,8 @@ static int xlnx_avpg_probe(struct platform_device *pdev)
 		return -EPROBE_DEFER;
 	}
 
-	hrtimer_init(&avpg->timer, CLOCK_REALTIME, HRTIMER_MODE_REL);
-	avpg->timer.function = xlnx_avpg_timer_cb;
+	hrtimer_setup(&avpg->timer, xlnx_avpg_timer_cb, CLOCK_REALTIME,
+		      HRTIMER_MODE_REL);
 
 	return 0;
 }
