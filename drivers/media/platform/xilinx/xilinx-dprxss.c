@@ -413,7 +413,7 @@
 #define xdprxss_enable_training_timeout(xdprxss) \
 		xdprxss_clr(xdprxss, XDPRX_CDRCTRL_CFG_REG, \
 			    XDPRX_CDRCTRL_DIS_TIMEOUT)
-#define xdprxss_enable_training_intr(xdprxss) \
+#define xdprxss_enable_training_intr(state) \
 		xdprxss_clr(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_TRNG_MASK)
 #define xdprxss_enable_training_intr_1(state) \
 		xdprxss_clr(state, XDPRX_INTR_MASK_1_REG, XDPRX_INTR_TRNG_MASK_1)
