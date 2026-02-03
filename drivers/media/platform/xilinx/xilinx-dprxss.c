@@ -211,6 +211,8 @@
 #define XDPRX_LINK_BW_REG		0x400
 #define XDPRX_LANE_COUNT_REG		0x404
 #define XDPRX_DPCD_TRAINING_PATTERN_SET	0x40c
+#define XDPRX_DPCD_SET_POWER_STATE	0x438
+#define XDPRX_POWERNORMAL_STATE		1
 #define XDPRX_DPCD_LANE01_STATUS	0x43c
 #define XDPRX_LANE01_PEVS_MASK		GENMASK(15, 8)
 #define XDPRX_DPC_LINK_QUAL_CONFIG	0x454
@@ -557,6 +559,7 @@ struct xdprxss_state {
 	struct vidphy_cfg *vidphy_prvdata;
 	struct delayed_work tp1_work;
 	struct delayed_work unplug_work;
+	struct delayed_work powerchange_work;
 	struct work_struct lane_set_work;
 	struct work_struct link_qual_work;
 	/* protects width, height, framerate variables */
@@ -578,6 +581,7 @@ struct xdprxss_state {
 	unsigned int valid_stream : 1;
 	unsigned int streaming : 1;
 	unsigned int ltstate : 2;
+	unsigned int last_powered_down : 1;
 	int hdcp2x_timer_irq;
 };
 
@@ -1573,6 +1577,8 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 		schedule_work(&state->lane_set_work);
 	if (status1 & XDPRX_INTR_LINKQUAL_MASK)
 		schedule_work(&state->link_qual_work);
+	if (status & XDPRX_INTR_POWER_MASK)
+		schedule_delayed_work(&state->powerchange_work, 0);
 	if (status & XDPRX_INTR_UNPLUG_MASK)
 		schedule_delayed_work(&state->unplug_work, 0);
 	if (status & XDPRX_INTR_TP1_MASK)
@@ -2510,6 +2516,29 @@ static void xlnx_dp_unplug_work_func(struct work_struct *work)
 	xdprxss_irq_unplug(dp);
 }
 
+static void xlnx_dp_powerchange_work_func(struct work_struct *work)
+{
+	struct xdprxss_state *state;
+	bool powered_down = true;
+	u32 power_state;
+
+	state = container_of(work, struct xdprxss_state, powerchange_work.work);
+	power_state = xdprxss_read(state, XDPRX_DPCD_SET_POWER_STATE);
+
+	if (power_state == XDPRX_POWERNORMAL_STATE)
+		powered_down = false;
+
+	if (state->last_powered_down != powered_down) {
+		state->last_powered_down = powered_down;
+		if (!powered_down) {
+			/* From other power state -> power normal */
+			/* => Reset PHY */
+			xdprxss_write(state, XDPRX_PHY_REG, XDPRX_PHY_INIT_MASK);
+			phy_reset(state->phy[0]);
+		}
+	}
+}
+
 static int xlnx_find_device(struct platform_device *pdev,
 			    struct xdprxss_state *xdprxss, const char *name)
 {
@@ -3170,6 +3199,7 @@ static int xdprxss_probe(struct platform_device *pdev)
 
 	INIT_DELAYED_WORK(&xdprxss->tp1_work, xlnx_dp_tp1_work_func);
 	INIT_DELAYED_WORK(&xdprxss->unplug_work, xlnx_dp_unplug_work_func);
+	INIT_DELAYED_WORK(&xdprxss->powerchange_work, xlnx_dp_powerchange_work_func);
 	INIT_WORK(&xdprxss->lane_set_work, xlnx_dp_laneset_work_func);
 	INIT_WORK(&xdprxss->link_qual_work, xlnx_dp_linkqual_work_func);
 
