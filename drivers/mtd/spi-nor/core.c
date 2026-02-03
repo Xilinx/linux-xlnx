@@ -4099,7 +4099,6 @@ static int spi_nor_set_mtd_info(struct spi_nor *nor)
 	struct mtd_info *mtd = &nor->mtd;
 	struct device *dev = nor->dev;
 	u64 total_sz = 0;
-	u32 n_flash = 1;
 	int idx;
 
 	spi_nor_set_mtd_locking_ops(nor);
@@ -4128,9 +4127,8 @@ static int spi_nor_set_mtd_info(struct spi_nor *nor)
 	else
 		mtd->writebufsize = params->page_size;
 
-	for (idx = 0; idx < n_flash; idx++) {
+	for (idx = 0; idx < nor->num_flash; idx++)
 		total_sz += params->size;
-	}
 
 	mtd->size = total_sz;
 	mtd->_read = spi_nor_read;
