@@ -99,6 +99,12 @@ static const struct xlnx_sdi_display_config xlnx_sdi_modes[] = {
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC),
 		   }, {0x5, 0x5},
 		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
+	/* HD: 1920x1080@29.97Hz */
+	{{ DRM_MODE("1920x1080", DRM_MODE_TYPE_DRIVER, 74175, 1920, 2008,
+		   2052, 2200, 0, 1080, 1084, 1089, 1125, 0,
+		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC),
+		   }, {0x7, 0x6},
+		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
 	/* HD: 1920x1080@30Hz */
 	{{ DRM_MODE("1920x1080", DRM_MODE_TYPE_DRIVER, 74250, 1920, 2008,
 		   2052, 2200, 0, 1080, 1084, 1089, 1125, 0,
