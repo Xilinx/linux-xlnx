@@ -2535,6 +2535,13 @@ static void xlnx_dp_powerchange_work_func(struct work_struct *work)
 			/* => Reset PHY */
 			xdprxss_write(state, XDPRX_PHY_REG, XDPRX_PHY_INIT_MASK);
 			phy_reset(state->phy[0]);
+
+			/* Reset interrupt mask to training mask */
+			xdprxss_disable_allintr(state);
+			xdprxss_disable_allintr_1(state);
+
+			xdprxss_enable_training_intr(state);
+			xdprxss_enable_training_intr_1(state);
 		}
 	}
 }
