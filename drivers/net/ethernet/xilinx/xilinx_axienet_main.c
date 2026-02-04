@@ -622,6 +622,18 @@ static void xxvenet_setoptions(struct net_device *ndev, u32 options)
 	lp->options |= options;
 }
 
+/**
+ * axienet_mrmac_reset_mux - Set Speed Configuration
+ * @lp:	Pointer to axienet local structure
+ */
+static inline void axienet_mrmac_reset_mux(struct axienet_local *lp)
+{
+	if (lp->max_speed == SPEED_25000)
+		gpiod_set_value(lp->aux_mux, 0);
+	else
+		gpiod_set_value(lp->aux_mux, 1);
+}
+
 static inline void axienet_mrmac_reset(struct axienet_local *lp)
 {
 	u32 val, reg, serdes_width, axis_cfg;
@@ -1224,6 +1236,8 @@ static int axienet_device_reset(struct net_device *ndev)
 
 	if (lp->axienet_config->mactype == XAXIENET_MRMAC) {
 		/* Reset MRMAC */
+		if (lp->aux_mux)
+			axienet_mrmac_reset_mux(lp);
 		axienet_mrmac_reset(lp);
 	}
 
@@ -4070,6 +4084,9 @@ axienet_ethtools_set_link_ksettings(struct net_device *ndev,
 	if (!lp->phylink)
 		return -EOPNOTSUPP;
 
+	if (lp->axienet_config->mactype == XAXIENET_MRMAC)
+		lp->max_speed = cmd->base.speed;
+
 	return phylink_ethtool_ksettings_set(lp->phylink, cmd);
 }
 
@@ -4683,6 +4700,40 @@ static void axienet_pcs_get_state(struct phylink_pcs *pcs,
 
 		/* rx status bit indicates current status of link */
 		state->link = axienet_ior(lp, XXVS_RX_STATUS_REG1) & XXVS_RX_STATUS_MASK;
+	} else if (lp->axienet_config->mactype == XAXIENET_MRMAC) {
+		u32 rx_status, block_lock_status;
+
+		state->duplex = DUPLEX_FULL;
+		state->an_complete = 0;
+
+		/* Read MRMAC status registers */
+		rx_status = axienet_ior(lp, MRMAC_RX_STS_OFFSET);
+		block_lock_status = axienet_ior(lp, MRMAC_STATRX_BLKLCK_OFFSET);
+
+		/* Determine current speed based on configurationi */
+		if (lp->max_speed == SPEED_100000)
+			state->speed = SPEED_100000;
+		else if (lp->max_speed == SPEED_25000)
+			state->speed = SPEED_25000;
+		else
+			state->speed = SPEED_10000;
+
+		state->link = 0;
+		axienet_iow(lp, MRMAC_TX_STS_OFFSET, MRMAC_STS_ALL_MASK);
+		axienet_iow(lp, MRMAC_RX_STS_OFFSET, MRMAC_STS_ALL_MASK);
+
+		block_lock_status = readx_poll_timeout(axienet_get_mrmac_blocklock, lp, val,
+						       (val & MRMAC_RX_BLKLCK_MASK), 10,
+						       DELAY_OF_ONE_MILLISEC);
+
+		if (!block_lock_status) {
+			rx_status = readx_poll_timeout(axienet_get_mrmac_rx_status, lp, val,
+						       (val & MRMAC_RX_STATUS_MASK), 10,
+						       DELAY_OF_ONE_MILLISEC);
+			if (!rx_status)
+				state->link = 1;
+		}
+
 	} else {
 		struct mdio_device *pcs_phy = pcs_to_axienet_local(pcs)->pcs_phy;
 
@@ -4785,6 +4836,18 @@ static int axienet_pcs_config(struct phylink_pcs *pcs, unsigned int neg_mode,
 					    XXVS_CTRL_CORE_SPEED_SEL_1G);
 		}
 		return 0;
+	} else if (lp->axienet_config->mactype == XAXIENET_MRMAC) {
+		axienet_mrmac_reset(lp);
+
+		if (lp->aux_mux)
+			axienet_mrmac_reset_mux(lp);
+		/* Trigger GT reset with new configuration */
+		ret = axienet_mrmac_gt_reset(lp->ndev);
+		if (ret) {
+			netdev_err(ndev, "MRMAC GT reset failed: %d\n", ret);
+			return ret;
+		}
+		return 0;
 	} else if (lp->axienet_config->mactype == XAXIENET_DCMAC) {
 		/* Nothing to change for fixed link */
 		return 0;
@@ -4810,6 +4873,18 @@ static int axienet_pcs_validate(struct phylink_pcs *pcs, unsigned long *supporte
 		for_each_set_bit(inf, lp->phylink_config.supported_interfaces,
 				 PHY_INTERFACE_MODE_MAX)
 			__set_bit(inf, supported);
+	}
+	if (lp->axienet_config->mactype == XAXIENET_MRMAC) {
+		/* Speed switching supported - advertise supported speeds */
+		if (lp->max_speed == SPEED_10000) {
+			__set_bit(ETHTOOL_LINK_MODE_10000baseKR_Full_BIT, supported);
+			__set_bit(ETHTOOL_LINK_MODE_25000baseKR_Full_BIT, supported);
+		} else if (lp->max_speed == SPEED_25000) {
+			__set_bit(ETHTOOL_LINK_MODE_10000baseKR_Full_BIT, supported);
+			__set_bit(ETHTOOL_LINK_MODE_25000baseKR_Full_BIT, supported);
+		} else if (lp->max_speed == SPEED_100000) {
+			__set_bit(ETHTOOL_LINK_MODE_100000baseKR4_Full_BIT, supported);
+		}
 	}
 
 	return 0;
@@ -4856,6 +4931,7 @@ static void axienet_mac_link_up(struct phylink_config *config,
 
 	if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
 	    lp->axienet_config->mactype == XAXIENET_1G_10G_25G ||
+	    lp->axienet_config->mactype == XAXIENET_MRMAC ||
 	    lp->axienet_config->mactype == XAXIENET_DCMAC) {
 		/* nothing meaningful to do */
 		return;
@@ -5459,37 +5535,35 @@ static int axienet_probe(struct platform_device *pdev)
 						   "xlnx,switch-x-sgmii");
 
 	/* Start with the proprietary, and broken phy_type */
-	if (lp->axienet_config->mactype != XAXIENET_MRMAC) {
-		ret = of_property_read_u32(pdev->dev.of_node, "xlnx,phy-type", &value);
-		if (!ret) {
-			switch (value) {
-			case XAE_PHY_TYPE_MII:
-				lp->phy_mode = PHY_INTERFACE_MODE_MII;
-				break;
-			case XAE_PHY_TYPE_GMII:
-				lp->phy_mode = PHY_INTERFACE_MODE_GMII;
-				break;
-			case XAE_PHY_TYPE_RGMII_2_0:
-				lp->phy_mode = PHY_INTERFACE_MODE_RGMII_ID;
-				break;
-			case XAE_PHY_TYPE_SGMII:
-				lp->phy_mode = PHY_INTERFACE_MODE_SGMII;
-				break;
-			case XAE_PHY_TYPE_1000BASE_X:
-				lp->phy_mode = PHY_INTERFACE_MODE_1000BASEX;
-				break;
-			case XXE_PHY_TYPE_USXGMII:
-				lp->phy_mode = PHY_INTERFACE_MODE_USXGMII;
-				break;
-			default:
-				/* Don't error out as phy-type is an optional property */
-				break;
-			}
-		} else {
-			ret = of_get_phy_mode(pdev->dev.of_node, &lp->phy_mode);
-			if (ret)
-				goto cleanup_clk;
+	ret = of_property_read_u32(pdev->dev.of_node, "xlnx,phy-type", &value);
+	if (!ret) {
+		switch (value) {
+		case XAE_PHY_TYPE_MII:
+			lp->phy_mode = PHY_INTERFACE_MODE_MII;
+			break;
+		case XAE_PHY_TYPE_GMII:
+			lp->phy_mode = PHY_INTERFACE_MODE_GMII;
+			break;
+		case XAE_PHY_TYPE_RGMII_2_0:
+			lp->phy_mode = PHY_INTERFACE_MODE_RGMII_ID;
+			break;
+		case XAE_PHY_TYPE_SGMII:
+			lp->phy_mode = PHY_INTERFACE_MODE_SGMII;
+			break;
+		case XAE_PHY_TYPE_1000BASE_X:
+			lp->phy_mode = PHY_INTERFACE_MODE_1000BASEX;
+			break;
+		case XXE_PHY_TYPE_USXGMII:
+			lp->phy_mode = PHY_INTERFACE_MODE_USXGMII;
+			break;
+		default:
+			/* Don't error out as phy-type is an optional property */
+			break;
 		}
+	} else {
+		ret = of_get_phy_mode(pdev->dev.of_node, &lp->phy_mode);
+		if (ret)
+			goto cleanup_clk;
 	}
 
 	/* Set default USXGMII rate */
@@ -5635,6 +5709,17 @@ static int axienet_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "MRMAC GT lane information missing\n");
 			goto cleanup_clk;
 		}
+
+		if (lp->max_speed != SPEED_100000) {
+			lp->aux_mux = devm_gpiod_get(&pdev->dev, "aux-mux", GPIOD_OUT_LOW);
+			if (IS_ERR(lp->aux_mux)) {
+				dev_warn(&pdev->dev,
+					 "Failed to request Speed Switch GPIO\n");
+				ret = PTR_ERR(lp->aux_mux);
+				goto cleanup_clk;
+			}
+		}
+
 		dev_info(&pdev->dev, "GT lane: %d\n", lp->gt_lane);
 	} else if (lp->axienet_config->mactype == XAXIENET_DCMAC) {
 		lp->gds_gt_ctrl = devm_gpiod_get_array(&pdev->dev,
@@ -5965,8 +6050,7 @@ static int axienet_probe(struct platform_device *pdev)
 		of_node_put(np);
 	}
 
-	if (lp->axienet_config->mactype != XAXIENET_MRMAC &&
-	    lp->phy_mode != PHY_INTERFACE_MODE_USXGMII) {
+	if (lp->phy_mode != PHY_INTERFACE_MODE_USXGMII) {
 		lp->pcs.ops = &axienet_pcs_ops;
 		lp->pcs.poll = true;
 
@@ -6023,6 +6107,19 @@ static int axienet_probe(struct platform_device *pdev)
 				__set_bit(PHY_INTERFACE_MODE_25GBASER,
 					  lp->phylink_config.supported_interfaces);
 			}
+		} else if (lp->axienet_config->mactype == XAXIENET_MRMAC) {
+			if (lp->max_speed == SPEED_10000 || lp->max_speed == SPEED_25000) {
+				/* Support runtime switching between 10G and 25G */
+				lp->phylink_config.mac_capabilities |= (MAC_10000FD | MAC_25000FD);
+				__set_bit(PHY_INTERFACE_MODE_10GBASER,
+					  lp->phylink_config.supported_interfaces);
+				__set_bit(PHY_INTERFACE_MODE_25GBASER,
+					  lp->phylink_config.supported_interfaces);
+			} else if (lp->max_speed == SPEED_100000) {
+				lp->phylink_config.mac_capabilities |= (MAC_100000FD);
+				__set_bit(PHY_INTERFACE_MODE_100GBASER,
+					  lp->phylink_config.supported_interfaces);
+			}
 		} else if (lp->axienet_config->mactype == XAXIENET_DCMAC) {
 			if (lp->max_speed == SPEED_100000) {
 				lp->phylink_config.mac_capabilities |= MAC_100000FD;
@@ -6063,8 +6160,7 @@ static int axienet_probe(struct platform_device *pdev)
 
 	__set_bit(lp->phy_mode, lp->phylink_config.supported_interfaces);
 
-	if (lp->axienet_config->mactype != XAXIENET_MRMAC &&
-	    lp->phy_mode != PHY_INTERFACE_MODE_USXGMII)
+	if (lp->phy_mode != PHY_INTERFACE_MODE_USXGMII)
 		lp->phylink = phylink_create(&lp->phylink_config, pdev->dev.fwnode,
 					     lp->phy_mode,
 					     &axienet_phylink_ops);

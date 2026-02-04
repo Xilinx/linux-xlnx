@@ -1020,6 +1020,7 @@ struct skbuf_dma_descriptor {
  * @dma_mask: Specify the width of the DMA address space.
  * @usxgmii_rate: USXGMII PHY speed.
  * @max_speed: Maximum possible MAC speed.
+ * @aux_mux: GPIO descriptor array for speed switching.
  * @gds_gt_ctrl_rate: GPIO descriptor array for GT control rate.
  * @gds_gt_ctrl:	GPIO descriptor array for GT control.
  * @gds_gt_rx_dpath: GPIO descriptor array for GT Rx datapath reset.
@@ -1144,6 +1145,7 @@ struct axienet_local {
 	u32 usxgmii_rate;
 
 	u32 max_speed;		/* Max MAC speed */
+	struct gpio_desc *aux_mux;
 	struct gpio_descs *gds_gt_ctrl_rate;
 	struct gpio_descs *gds_gt_ctrl;
 	struct gpio_descs *gds_gt_rx_dpath;
