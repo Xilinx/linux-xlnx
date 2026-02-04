@@ -260,6 +260,10 @@ properties:
     description: Phandle and specifier for the GPIO used to
       set GT Control Rate.
 
+  aux-mux-gpios:
+    description: Phandle and specifier for the GPIO used for
+      speed switching.
+
   xlnx,gt-mode:
     description: Describes GT Quad interface operating mode.
     $ref: /schemas/types.yaml#/definitions/string
