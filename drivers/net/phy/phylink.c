@@ -2960,8 +2960,17 @@ int phylink_ethtool_ksettings_set(struct phylink *pl,
 			return 0;
 		}
 
-		config.speed = c->speed;
-		config.duplex = c->duplex;
+		/* Allow speed/duplex change in in-band mode with autoneg off */
+		if (pl->req_link_an_mode == MLO_AN_INBAND &&
+		    (c->speed != pl->link_config.speed ||
+		    c->duplex != pl->link_config.duplex)) {
+			config.speed = c->speed;
+			config.duplex = c->duplex;
+		/* Mark for reconfiguration below */
+		} else {
+			config.speed = c->speed;
+			config.duplex = c->duplex;
+		}
 		break;
 
 	case AUTONEG_ENABLE:
@@ -3034,6 +3043,15 @@ int phylink_ethtool_ksettings_set(struct phylink *pl,
 	if (!phylink_validate_pcs_inband_autoneg(pl, config.interface,
 						 config.advertising))
 		return -EINVAL;
+	/* If speed/duplex changed in in-band mode with autoneg off, reconfigure MAC/PCS */
+	if (pl->req_link_an_mode == MLO_AN_INBAND &&
+	    !linkmode_test_bit(ETHTOOL_LINK_MODE_Autoneg_BIT, config.advertising) &&
+	    (pl->link_config.speed != config.speed ||
+	    pl->link_config.duplex != config.duplex)) {
+		pl->link_config.speed = config.speed;
+		pl->link_config.duplex = config.duplex;
+		phylink_mac_initial_config(pl, false);
+	}
 
 	mutex_lock(&pl->state_mutex);
 	pl->link_config.speed = config.speed;
