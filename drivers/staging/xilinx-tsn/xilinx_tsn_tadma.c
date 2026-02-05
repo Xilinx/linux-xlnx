@@ -56,10 +56,12 @@ struct tadma_stream_entry {
 	enum qtype qtype;
 };
 
-#define sfm_entry_offset(lp, sid) \
-	((lp->active_sfm == SFM_UPPER) ? \
-	(XTADMA_USFM_OFFSET) +  ((sid) * sizeof(struct sfm_entry)) : \
-	(XTADMA_LSFM_OFFSET) +  ((sid) * sizeof(struct sfm_entry)))
+#define sfm_entry_offset(lp, sid) ({ \
+	u32 __sid = (sid); \
+	((lp)->active_sfm == SFM_UPPER) ? \
+	(XTADMA_USFM_OFFSET +  (__sid * sizeof(struct sfm_entry))) : \
+	(XTADMA_LSFM_OFFSET +  (__sid * sizeof(struct sfm_entry))); \
+})
 
 static inline bool tadma_queue_enabled(struct axienet_local *lp, enum qtype qt)
 {
@@ -722,7 +724,6 @@ int axienet_tadma_program(struct net_device *ndev, void __user *useraddr)
 						entry->tticks, entry->count);
 			if (ret)
 				return ret;
-
 		}
 	}
 
