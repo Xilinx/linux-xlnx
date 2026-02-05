@@ -943,9 +943,7 @@ struct axienet_local {
  * @rx_irq:	Axidma RX IRQ number
  * @tx_lock:	Spin lock for tx path
  * @rx_lock:	Spin lock for tx path
- * @tx_bd_v:	Virtual address of the TX buffer descriptor ring
  * @tx_bd_p:	Physical address(start address) of the TX buffer descr. ring
- * @rx_bd_v:	Virtual address of the RX buffer descriptor ring
  * @rx_bd_p:	Physical address(start address) of the RX buffer descr. ring
  * @tx_buf:	Virtual address of the Tx buffer pool used by the driver when
  *		DMA h/w is configured without DRE.
