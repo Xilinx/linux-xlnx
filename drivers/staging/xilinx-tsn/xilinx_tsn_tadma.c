@@ -830,7 +830,7 @@ int axienet_tadma_add_stream(struct net_device *ndev, void __user *useraddr)
 				stream.qno);
 			return -EINVAL;
 		}
-		qtype = lp->txqs[stream.qno].dmaq_idx;
+		qtype = lp->txqs[array_index_nospec(stream.qno, lp->num_tc)].dmaq_idx;
 	}
 
 	memcpy(mac_vlan, stream.dmac, 6);
