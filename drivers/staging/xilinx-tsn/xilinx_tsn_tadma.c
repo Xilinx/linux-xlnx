@@ -387,7 +387,7 @@ int axienet_tadma_open(struct net_device *ndev)
 	struct axienet_local *lp = netdev_priv(ndev);
 	static char irq_name[32];
 	u8 i = 0;
-	int ret;
+	int ret = 0;
 	u32 cr;
 
 	if (lp->tadma_irq) {
@@ -410,8 +410,10 @@ int axienet_tadma_open(struct net_device *ndev)
 
 	lp->tx_bd = kmalloc_array(lp->num_streams, sizeof(struct axitadma_bd *),
 				  GFP_KERNEL);
-	if (!lp->tx_bd)
+	if (!lp->tx_bd) {
 		ret = -ENOMEM;
+		goto release_irq;
+	}
 
 	for (i = 0; i < lp->num_streams ; i++) {
 		lp->tx_bd_head[i] = 0;
@@ -419,10 +421,20 @@ int axienet_tadma_open(struct net_device *ndev)
 		lp->tx_bd_rd[i] = 0;
 		lp->tx_bd[i] = kmalloc_array(lp->num_tadma_buffers,
 					     sizeof(*lp->tx_bd[i]), GFP_KERNEL);
-		if (!lp->tx_bd[i])
-			return -ENOMEM;
+		if (!lp->tx_bd[i]) {
+			ret = -ENOMEM;
+			goto cleanup_buffers;
+		}
 	}
 
+	return ret;
+cleanup_buffers:
+	while (i--)
+		kfree(lp->tx_bd[i]);
+	kfree(lp->tx_bd);
+release_irq:
+	if (lp->tadma_irq)
+		free_irq(lp->tadma_irq, ndev);
 	return ret;
 }
 
