@@ -634,7 +634,7 @@ int axienet_tadma_xmit(struct sk_buff *skb, struct net_device *ndev,
 		lp->tx_bd[sid][lp->tx_bd_head[sid]].tx_skb = skb;
 		alm_fframe.cfg |= XTADMA_ALM_SOP | XTADMA_ALM_EOP;
 	} else {
-		lp->tx_bd[sid][lp->tx_bd_head[sid]].tx_skb = 0;
+		lp->tx_bd[sid][lp->tx_bd_head[sid]].tx_skb = NULL;
 		alm_fframe.cfg |= XTADMA_ALM_SOP;
 	}
 	alm_fframe.cfg &= ~XTADMA_ALM_FETCH_SZ_MASK;
@@ -660,7 +660,7 @@ int axienet_tadma_xmit(struct sk_buff *skb, struct net_device *ndev,
 #ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
 		alm.cfg |= (u32)(phys_addr >> 32);
 #endif
-		lp->tx_bd[sid][lp->tx_bd_head[sid]].tx_skb = 0;
+		lp->tx_bd[sid][lp->tx_bd_head[sid]].tx_skb = NULL;
 		if (ii == (num_frag - 1)) {
 			alm.cfg |= XTADMA_ALM_EOP;
 			lp->tx_bd[sid][lp->tx_bd_head[sid]].tx_skb = skb;

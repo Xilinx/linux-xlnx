@@ -809,8 +809,8 @@ void __maybe_unused axienet_mcdma_err_handler_tsn(unsigned long data)
 		cur_p->app2 = 0;
 		cur_p->app3 = 0;
 		cur_p->app4 = 0;
-		cur_p->sw_id_offset = 0;
-		cur_p->tx_skb = 0;
+		cur_p->sw_id_offset = NULL;
+		cur_p->tx_skb = NULL;
 	}
 
 	for (i = 0; i < lp->rx_bd_num; i++) {
