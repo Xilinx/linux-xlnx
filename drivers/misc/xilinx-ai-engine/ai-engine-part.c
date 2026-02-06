@@ -627,8 +627,12 @@ static int aie_part_create_event_bitmap(struct aie_partition *apart)
 		return -ENOMEM;
 	}
 
-	bitmap_sz = range.size.col * apart->adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows *
-		    apart->adev->memtile_events->num_events;
+	if (apart->adev->memtile_events)
+		bitmap_sz = range.size.col * apart->adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows *
+			    apart->adev->memtile_events->num_events;
+	else
+		bitmap_sz = 0;
+
 	if (bitmap_sz) {
 		ret = aie_resource_initialize(&apart->memtile_event_status, bitmap_sz);
 		if (ret) {
