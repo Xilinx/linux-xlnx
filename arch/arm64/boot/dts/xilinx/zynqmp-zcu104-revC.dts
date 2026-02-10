@@ -45,6 +45,7 @@
 
 	ina226 {
 		compatible = "iio-hwmon";
+		status = "disabled";
 		io-channels = <&u183 0>, <&u183 1>, <&u183 2>, <&u183 3>;
 	};
 

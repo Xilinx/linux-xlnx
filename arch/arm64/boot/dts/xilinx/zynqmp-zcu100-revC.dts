@@ -61,6 +61,7 @@
 
 	iio-hwmon {
 		compatible = "iio-hwmon";
+		status = "disabled";
 		io-channels = <&xilinx_ams 0>, <&xilinx_ams 1>, <&xilinx_ams 2>,
 			      <&xilinx_ams 3>, <&xilinx_ams 4>, <&xilinx_ams 5>,
 			      <&xilinx_ams 6>, <&xilinx_ams 7>, <&xilinx_ams 8>,
@@ -120,6 +121,7 @@
 
 	ina226 {
 		compatible = "iio-hwmon";
+		status = "disabled";
 		io-channels = <&u35 0>, <&u35 1>, <&u35 2>, <&u35 3>;
 	};
 
