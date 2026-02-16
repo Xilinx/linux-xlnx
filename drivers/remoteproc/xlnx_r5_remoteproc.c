@@ -4,7 +4,6 @@
  *
  */
 
-#include <dt-bindings/power/xlnx-zynqmp-power.h>
 #include <linux/dma-mapping.h>
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/kernel.h>
@@ -18,6 +17,11 @@
 #include <linux/remoteproc.h>
 
 #include "remoteproc_internal.h"
+
+#define		PD_R5_0_ATCM	15
+#define		PD_R5_0_BTCM	16
+#define		PD_R5_1_ATCM	17
+#define		PD_R5_1_BTCM	18
 
 /* IPI buffer MAX length */
 #define IPI_BUF_LEN_MAX	32U
