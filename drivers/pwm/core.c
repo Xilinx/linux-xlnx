@@ -2294,8 +2294,9 @@ static long pwm_cdev_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 				.duty_offset_ns = wf.duty_offset_ns,
 			};
 
-			return copy_to_user((struct pwmchip_waveform __user *)arg,
-					    &cwf, sizeof(cwf));
+			ret = copy_to_user((struct pwmchip_waveform __user *)arg,
+					   &cwf, sizeof(cwf));
+			return ret ? -EFAULT : 0;
 		}
 
 	case PWM_IOCTL_GETWF:
@@ -2328,8 +2329,9 @@ static long pwm_cdev_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 				.duty_offset_ns = wf.duty_offset_ns,
 			};
 
-			return copy_to_user((struct pwmchip_waveform __user *)arg,
-					    &cwf, sizeof(cwf));
+			ret = copy_to_user((struct pwmchip_waveform __user *)arg,
+					   &cwf, sizeof(cwf));
+			return ret ? -EFAULT : 0;
 		}
 
 	case PWM_IOCTL_SETROUNDEDWF:
@@ -2696,11 +2698,10 @@ static int pwm_seq_show(struct seq_file *s, void *v)
 {
 	struct pwm_chip *chip = v;
 
-	seq_printf(s, "%s%d: %s/%s, %d PWM device%s\n",
+	seq_printf(s, "%s%u: %s/%s, npwm: %u\n",
 		   (char *)s->private, chip->id,
 		   pwmchip_parent(chip)->bus ? pwmchip_parent(chip)->bus->name : "no-bus",
-		   dev_name(pwmchip_parent(chip)), chip->npwm,
-		   (chip->npwm != 1) ? "s" : "");
+		   dev_name(pwmchip_parent(chip)), chip->npwm);
 
 	pwm_dbg_show(chip, s);
 

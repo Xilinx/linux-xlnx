@@ -17,6 +17,7 @@
 #include <linux/iopoll.h>
 #include <linux/pci.h>
 #include <linux/xarray.h>
+#include <asm/hypervisor.h>
 
 #include "aie2_msg_priv.h"
 #include "aie2_pci.h"
@@ -486,6 +487,11 @@ static int aie2_init(struct amdxdna_dev *xdna)
 	unsigned long bars = 0;
 	int i, nvec, ret;
 
+	if (!hypervisor_is_type(X86_HYPER_NATIVE)) {
+		XDNA_ERR(xdna, "Running under hypervisor not supported");
+		return -EINVAL;
+	}
+
 	ndev = drmm_kzalloc(&xdna->ddev, sizeof(*ndev), GFP_KERNEL);
 	if (!ndev)
 		return -ENOMEM;
@@ -845,7 +851,7 @@ static int aie2_get_hwctx_status(struct amdxdna_client *client,
 	}
 
 	args->buffer_size -= (u32)(array_args.buffer - args->buffer);
-	return ret;
+	return 0;
 }
 
 static int aie2_get_info(struct amdxdna_client *client, struct amdxdna_drm_get_info *args)
@@ -898,6 +904,12 @@ static int aie2_query_ctx_status_array(struct amdxdna_client *client,
 
 	drm_WARN_ON(&xdna->ddev, !mutex_is_locked(&xdna->dev_lock));
 
+	if (args->element_size > SZ_4K || args->num_element > SZ_1K) {
+		XDNA_DBG(xdna, "Invalid element size %d or number of element %d",
+			 args->element_size, args->num_element);
+		return -EINVAL;
+	}
+
 	array_args.element_size = min(args->element_size,
 				      sizeof(struct amdxdna_drm_hwctx_entry));
 	array_args.buffer = args->buffer;
@@ -914,7 +926,7 @@ static int aie2_query_ctx_status_array(struct amdxdna_client *client,
 	args->num_element = (u32)((array_args.buffer - args->buffer) /
 				  args->element_size);
 
-	return ret;
+	return 0;
 }
 
 static int aie2_get_array(struct amdxdna_client *client,

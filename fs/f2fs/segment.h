@@ -85,8 +85,12 @@ static inline void sanity_check_seg_type(struct f2fs_sb_info *sbi,
 #define GET_ZONE_FROM_SEG(sbi, segno)				\
 	GET_ZONE_FROM_SEC(sbi, GET_SEC_FROM_SEG(sbi, segno))
 
-#define GET_SUM_BLOCK(sbi, segno)				\
-	((sbi)->sm_info->ssa_blkaddr + (segno))
+#define SUMS_PER_BLOCK (F2FS_BLKSIZE / F2FS_SUM_BLKSIZE)
+#define GET_SUM_BLOCK(sbi, segno)	\
+	(SM_I(sbi)->ssa_blkaddr + (segno / SUMS_PER_BLOCK))
+#define GET_SUM_BLKOFF(segno) (segno % SUMS_PER_BLOCK)
+#define SUM_BLK_PAGE_ADDR(folio, segno)	\
+	(folio_address(folio) + GET_SUM_BLKOFF(segno) * F2FS_SUM_BLKSIZE)
 
 #define GET_SUM_TYPE(footer) ((footer)->entry_type)
 #define SET_SUM_TYPE(footer, type) ((footer)->entry_type = (type))
@@ -603,10 +607,12 @@ static inline int reserved_sections(struct f2fs_sb_info *sbi)
 static inline unsigned int get_left_section_blocks(struct f2fs_sb_info *sbi,
 					enum log_type type, unsigned int segno)
 {
-	if (f2fs_lfs_mode(sbi) && __is_large_section(sbi))
-		return CAP_BLKS_PER_SEC(sbi) - SEGS_TO_BLKS(sbi,
-			(segno - GET_START_SEG_FROM_SEC(sbi, segno))) -
+	if (f2fs_lfs_mode(sbi)) {
+		unsigned int used_blocks = __is_large_section(sbi) ? SEGS_TO_BLKS(sbi,
+				(segno - GET_START_SEG_FROM_SEC(sbi, segno))) : 0;
+		return CAP_BLKS_PER_SEC(sbi) - used_blocks -
 			CURSEG_I(sbi, type)->next_blkoff;
+	}
 	return CAP_BLKS_PER_SEC(sbi) - get_ckpt_valid_blocks(sbi, segno, true);
 }
 

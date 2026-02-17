@@ -495,6 +495,7 @@ static int ishtp_enum_enum_devices(struct ishtp_cl *hid_ishtp_cl)
 	int rv;
 
 	/* Send HOSTIF_DM_ENUM_DEVICES */
+	client_data->enum_devices_done = false;
 	memset(&msg, 0, sizeof(struct hostif_msg));
 	msg.hdr.command = HOSTIF_DM_ENUM_DEVICES;
 	rv = ishtp_cl_send(hid_ishtp_cl, (unsigned char *)&msg,
@@ -860,7 +861,7 @@ static int hid_ishtp_cl_reset(struct ishtp_cl_device *cl_device)
 	hid_ishtp_trace(client_data, "%s hid_ishtp_cl %p\n", __func__,
 			hid_ishtp_cl);
 
-	schedule_work(&client_data->work);
+	queue_work(ishtp_get_workqueue(cl_device), &client_data->work);
 
 	return 0;
 }
@@ -902,7 +903,7 @@ static int hid_ishtp_cl_resume(struct device *device)
 
 	hid_ishtp_trace(client_data, "%s hid_ishtp_cl %p\n", __func__,
 			hid_ishtp_cl);
-	schedule_work(&client_data->resume_work);
+	queue_work(ishtp_get_workqueue(cl_device), &client_data->resume_work);
 	return 0;
 }
 

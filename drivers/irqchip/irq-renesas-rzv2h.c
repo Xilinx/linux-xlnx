@@ -89,6 +89,8 @@
 #define ICU_RZG3E_TSSEL_MAX_VAL			0x8c
 #define ICU_RZV2H_TSSEL_MAX_VAL			0x55
 
+#define field_get(_mask, _reg) (((_reg) & (_mask)) >> (ffs(_mask) - 1))
+
 /**
  * struct rzv2h_hw_info - Interrupt Control Unit controller hardware info structure.
  * @tssel_lut:		TINT lookup table
@@ -328,6 +330,7 @@ static int rzv2h_tint_set_type(struct irq_data *d, unsigned int type)
 	u32 titsr, titsr_k, titsel_n, tien;
 	struct rzv2h_icu_priv *priv;
 	u32 tssr, tssr_k, tssel_n;
+	u32 titsr_cur, tssr_cur;
 	unsigned int hwirq;
 	u32 tint, sense;
 	int tint_nr;
@@ -376,12 +379,18 @@ static int rzv2h_tint_set_type(struct irq_data *d, unsigned int type)
 	guard(raw_spinlock)(&priv->lock);
 
 	tssr = readl_relaxed(priv->base + priv->info->t_offs + ICU_TSSR(tssr_k));
+	titsr = readl_relaxed(priv->base + priv->info->t_offs + ICU_TITSR(titsr_k));
+
+	tssr_cur = field_get(ICU_TSSR_TSSEL_MASK(tssel_n, priv->info->field_width), tssr);
+	titsr_cur = field_get(ICU_TITSR_TITSEL_MASK(titsel_n), titsr);
+	if (tssr_cur == tint && titsr_cur == sense)
+		return 0;
+
 	tssr &= ~(ICU_TSSR_TSSEL_MASK(tssel_n, priv->info->field_width) | tien);
 	tssr |= ICU_TSSR_TSSEL_PREP(tint, tssel_n, priv->info->field_width);
 
 	writel_relaxed(tssr, priv->base + priv->info->t_offs + ICU_TSSR(tssr_k));
 
-	titsr = readl_relaxed(priv->base + priv->info->t_offs + ICU_TITSR(titsr_k));
 	titsr &= ~ICU_TITSR_TITSEL_MASK(titsel_n);
 	titsr |= ICU_TITSR_TITSEL_PREP(sense, titsel_n);
 
@@ -490,28 +499,14 @@ static int rzv2h_icu_parse_interrupts(struct rzv2h_icu_priv *priv, struct device
 	return 0;
 }
 
-static void rzv2h_icu_put_device(void *data)
-{
-	put_device(data);
-}
-
-static int rzv2h_icu_init_common(struct device_node *node, struct device_node *parent,
-				 const struct rzv2h_hw_info *hw_info)
+static int rzv2h_icu_probe_common(struct platform_device *pdev, struct device_node *parent,
+				  const struct rzv2h_hw_info *hw_info)
 {
 	struct irq_domain *irq_domain, *parent_domain;
+	struct device_node *node = pdev->dev.of_node;
 	struct rzv2h_icu_priv *rzv2h_icu_data;
-	struct platform_device *pdev;
 	struct reset_control *resetn;
 	int ret;
-
-	pdev = of_find_device_by_node(node);
-	if (!pdev)
-		return -ENODEV;
-
-	ret = devm_add_action_or_reset(&pdev->dev, rzv2h_icu_put_device,
-				       &pdev->dev);
-	if (ret < 0)
-		return ret;
 
 	parent_domain = irq_find_host(parent);
 	if (!parent_domain) {
@@ -618,19 +613,19 @@ static const struct rzv2h_hw_info rzv2h_hw_params = {
 	.field_width	= 8,
 };
 
-static int rzg3e_icu_init(struct device_node *node, struct device_node *parent)
+static int rzg3e_icu_probe(struct platform_device *pdev, struct device_node *parent)
 {
-	return rzv2h_icu_init_common(node, parent, &rzg3e_hw_params);
+	return rzv2h_icu_probe_common(pdev, parent, &rzg3e_hw_params);
 }
 
-static int rzv2h_icu_init(struct device_node *node, struct device_node *parent)
+static int rzv2h_icu_probe(struct platform_device *pdev, struct device_node *parent)
 {
-	return rzv2h_icu_init_common(node, parent, &rzv2h_hw_params);
+	return rzv2h_icu_probe_common(pdev, parent, &rzv2h_hw_params);
 }
 
 IRQCHIP_PLATFORM_DRIVER_BEGIN(rzv2h_icu)
-IRQCHIP_MATCH("renesas,r9a09g047-icu", rzg3e_icu_init)
-IRQCHIP_MATCH("renesas,r9a09g057-icu", rzv2h_icu_init)
+IRQCHIP_MATCH("renesas,r9a09g047-icu", rzg3e_icu_probe)
+IRQCHIP_MATCH("renesas,r9a09g057-icu", rzv2h_icu_probe)
 IRQCHIP_PLATFORM_DRIVER_END(rzv2h_icu)
 MODULE_AUTHOR("Fabrizio Castro <fabrizio.castro.jz@renesas.com>");
 MODULE_DESCRIPTION("Renesas RZ/V2H(P) ICU Driver");

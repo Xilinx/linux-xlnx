@@ -9,6 +9,8 @@
  *                         Cirrus Logic International Semiconductor Ltd.
  */
 
+#include <kunit/visibility.h>
+#include <linux/cleanup.h>
 #include <linux/ctype.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
@@ -22,6 +24,41 @@
 #include <linux/firmware/cirrus/cs_dsp.h>
 #include <linux/firmware/cirrus/wmfw.h>
 
+#include "cs_dsp.h"
+
+/*
+ * When the KUnit test is running the error-case tests will cause a lot
+ * of messages. Rate-limit to prevent overflowing the kernel log buffer
+ * during KUnit test runs.
+ */
+#if IS_ENABLED(CONFIG_FW_CS_DSP_KUNIT_TEST)
+bool cs_dsp_suppress_err_messages;
+EXPORT_SYMBOL_IF_KUNIT(cs_dsp_suppress_err_messages);
+
+bool cs_dsp_suppress_warn_messages;
+EXPORT_SYMBOL_IF_KUNIT(cs_dsp_suppress_warn_messages);
+
+bool cs_dsp_suppress_info_messages;
+EXPORT_SYMBOL_IF_KUNIT(cs_dsp_suppress_info_messages);
+
+#define cs_dsp_err(_dsp, fmt, ...) \
+	do { \
+		if (!cs_dsp_suppress_err_messages) \
+			dev_err_ratelimited(_dsp->dev, "%s: " fmt, _dsp->name, ##__VA_ARGS__); \
+	} while (false)
+#define cs_dsp_warn(_dsp, fmt, ...) \
+	do { \
+		if (!cs_dsp_suppress_warn_messages) \
+			dev_warn_ratelimited(_dsp->dev, "%s: " fmt, _dsp->name, ##__VA_ARGS__); \
+	} while (false)
+#define cs_dsp_info(_dsp, fmt, ...) \
+	do { \
+		if (!cs_dsp_suppress_info_messages) \
+			dev_info_ratelimited(_dsp->dev, "%s: " fmt, _dsp->name, ##__VA_ARGS__); \
+	} while (false)
+#define cs_dsp_dbg(_dsp, fmt, ...) \
+	dev_dbg_ratelimited(_dsp->dev, "%s: " fmt, _dsp->name, ##__VA_ARGS__)
+#else
 #define cs_dsp_err(_dsp, fmt, ...) \
 	dev_err(_dsp->dev, "%s: " fmt, _dsp->name, ##__VA_ARGS__)
 #define cs_dsp_warn(_dsp, fmt, ...) \
@@ -30,6 +67,7 @@
 	dev_info(_dsp->dev, "%s: " fmt, _dsp->name, ##__VA_ARGS__)
 #define cs_dsp_dbg(_dsp, fmt, ...) \
 	dev_dbg(_dsp->dev, "%s: " fmt, _dsp->name, ##__VA_ARGS__)
+#endif
 
 #define ADSP1_CONTROL_1                   0x00
 #define ADSP1_CONTROL_2                   0x02
@@ -410,24 +448,30 @@ static void cs_dsp_debugfs_clear(struct cs_dsp *dsp)
 	dsp->bin_file_name = NULL;
 }
 
+static ssize_t cs_dsp_debugfs_string_read(struct cs_dsp *dsp,
+					  char __user *user_buf,
+					  size_t count, loff_t *ppos,
+					  const char **pstr)
+{
+	const char *str;
+
+	scoped_guard(mutex, &dsp->pwr_lock) {
+		str = *pstr;
+		if (!str)
+			return 0;
+
+		return simple_read_from_buffer(user_buf, count, ppos, str, strlen(str));
+	}
+}
+
 static ssize_t cs_dsp_debugfs_wmfw_read(struct file *file,
 					char __user *user_buf,
 					size_t count, loff_t *ppos)
 {
 	struct cs_dsp *dsp = file->private_data;
-	ssize_t ret;
 
-	mutex_lock(&dsp->pwr_lock);
-
-	if (!dsp->wmfw_file_name || !dsp->booted)
-		ret = 0;
-	else
-		ret = simple_read_from_buffer(user_buf, count, ppos,
-					      dsp->wmfw_file_name,
-					      strlen(dsp->wmfw_file_name));
-
-	mutex_unlock(&dsp->pwr_lock);
-	return ret;
+	return cs_dsp_debugfs_string_read(dsp, user_buf, count, ppos,
+					  &dsp->wmfw_file_name);
 }
 
 static ssize_t cs_dsp_debugfs_bin_read(struct file *file,
@@ -435,19 +479,9 @@ static ssize_t cs_dsp_debugfs_bin_read(struct file *file,
 				       size_t count, loff_t *ppos)
 {
 	struct cs_dsp *dsp = file->private_data;
-	ssize_t ret;
 
-	mutex_lock(&dsp->pwr_lock);
-
-	if (!dsp->bin_file_name || !dsp->booted)
-		ret = 0;
-	else
-		ret = simple_read_from_buffer(user_buf, count, ppos,
-					      dsp->bin_file_name,
-					      strlen(dsp->bin_file_name));
-
-	mutex_unlock(&dsp->pwr_lock);
-	return ret;
+	return cs_dsp_debugfs_string_read(dsp, user_buf, count, ppos,
+					  &dsp->bin_file_name);
 }
 
 static const struct {

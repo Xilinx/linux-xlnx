@@ -158,10 +158,15 @@ static int spacemit_i2c_handle_err(struct spacemit_i2c_dev *i2c)
 {
 	dev_dbg(i2c->dev, "i2c error status: 0x%08x\n", i2c->status);
 
-	if (i2c->status & (SPACEMIT_SR_BED | SPACEMIT_SR_ALD)) {
+	/* Arbitration Loss Detected */
+	if (i2c->status & SPACEMIT_SR_ALD) {
 		spacemit_i2c_reset(i2c);
 		return -EAGAIN;
 	}
+
+	/* Bus Error No ACK/NAK */
+	if (i2c->status & SPACEMIT_SR_BED)
+		spacemit_i2c_reset(i2c);
 
 	return i2c->status & SPACEMIT_SR_ACKNAK ? -ENXIO : -EIO;
 }
@@ -224,6 +229,12 @@ static void spacemit_i2c_check_bus_release(struct spacemit_i2c_dev *i2c)
 	}
 }
 
+static inline void
+spacemit_i2c_clear_int_status(struct spacemit_i2c_dev *i2c, u32 mask)
+{
+	writel(mask & SPACEMIT_I2C_INT_STATUS_MASK, i2c->base + SPACEMIT_ISR);
+}
+
 static void spacemit_i2c_init(struct spacemit_i2c_dev *i2c)
 {
 	u32 val;
@@ -267,12 +278,8 @@ static void spacemit_i2c_init(struct spacemit_i2c_dev *i2c)
 	val = readl(i2c->base + SPACEMIT_IRCR);
 	val |= SPACEMIT_RCR_SDA_GLITCH_NOFIX;
 	writel(val, i2c->base + SPACEMIT_IRCR);
-}
 
-static inline void
-spacemit_i2c_clear_int_status(struct spacemit_i2c_dev *i2c, u32 mask)
-{
-	writel(mask & SPACEMIT_I2C_INT_STATUS_MASK, i2c->base + SPACEMIT_ISR);
+	spacemit_i2c_clear_int_status(i2c, SPACEMIT_I2C_INT_STATUS_MASK);
 }
 
 static void spacemit_i2c_start(struct spacemit_i2c_dev *i2c)
@@ -559,7 +566,7 @@ static int spacemit_i2c_probe(struct platform_device *pdev)
 		return dev_err_probe(dev, i2c->irq, "failed to get irq resource");
 
 	ret = devm_request_irq(i2c->dev, i2c->irq, spacemit_i2c_irq_handler,
-			       IRQF_NO_SUSPEND | IRQF_ONESHOT, dev_name(i2c->dev), i2c);
+			       IRQF_NO_SUSPEND, dev_name(i2c->dev), i2c);
 	if (ret)
 		return dev_err_probe(dev, ret, "failed to request irq");
 

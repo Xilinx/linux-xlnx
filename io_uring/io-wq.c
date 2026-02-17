@@ -598,9 +598,9 @@ static void io_worker_handle_work(struct io_wq_acct *acct,
 	__releases(&acct->lock)
 {
 	struct io_wq *wq = worker->wq;
-	bool do_kill = test_bit(IO_WQ_BIT_EXIT, &wq->state);
 
 	do {
+		bool do_kill = test_bit(IO_WQ_BIT_EXIT, &wq->state);
 		struct io_wq_work *work;
 
 		/*
@@ -951,11 +951,11 @@ static bool io_wq_for_each_worker(struct io_wq *wq,
 				  void *data)
 {
 	for (int i = 0; i < IO_WQ_ACCT_NR; i++) {
-		if (!io_acct_for_each_worker(&wq->acct[i], func, data))
-			return false;
+		if (io_acct_for_each_worker(&wq->acct[i], func, data))
+			return true;
 	}
 
-	return true;
+	return false;
 }
 
 static bool io_wq_worker_wake(struct io_worker *worker, void *data)
