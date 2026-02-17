@@ -369,109 +369,6 @@ int mmi_dp_dtd_fill(struct dtd *mdtd, struct display_mode_t *display_mode)
 	return 0;
 }
 
-static int mmi_dp_fill_current_mode_1080(struct display_mode_t *cmode)
-{
-	cmode->refresh_rate = 60000;
-	/* Pixel Clock */
-	cmode->dtd.m_pixel_clock = 148500;
-	/* Interlaced */
-	cmode->dtd.m_interlaced = 0;
-
-	/* Horizontal data */
-	cmode->dtd.m_h_active = 1920;
-	cmode->dtd.m_h_blanking = 280;
-	cmode->dtd.m_h_border = 0;
-	cmode->dtd.m_h_image_size = 16;
-	cmode->dtd.m_h_sync_pulse_width = 44;
-	cmode->dtd.m_h_sync_offset = 88;
-
-	/* Vertical data */
-	cmode->dtd.m_v_active = 1080;
-	cmode->dtd.m_v_blanking = 45;
-	cmode->dtd.m_v_border = 0;
-	cmode->dtd.m_v_image_size = 9;
-	cmode->dtd.m_v_sync_pulse_width = 5;
-	cmode->dtd.m_v_sync_offset = 4;
-	return 0;
-}
-
-static int mmi_dp_video_mode_change(struct dptx *dptx)
-{
-	struct video_params *vparams;
-	struct display_mode_t current_mode;
-	u16 peak_stream_bw, link_bw;
-	struct dtd mdtd;
-	u32 pixel_clk;
-	int retval;
-	s64 fixp;
-	u16 rate;
-	u8 bpp;
-
-	vparams = &dptx->vparams[0];
-	retval = 0;
-
-	mmi_dp_fill_current_mode_1080(&current_mode);
-	mmi_dp_dtd_fill(&mdtd, &current_mode);
-
-	vparams->mdtd = mdtd;
-
-	dptx->selected_pixel_clock = mdtd.pixel_clock;
-	/* Check if the stablished link is enough for the payload requested */
-	bpp = mmi_dp_get_color_depth_bpp(vparams->bpc, vparams->pix_enc);
-	rate = mmi_dp_get_link_rate(dptx->link.rate);
-	pixel_clk = mdtd.pixel_clock;
-	fixp = drm_fixp_div(drm_int2fixp(bpp), drm_int2fixp(8));
-	fixp = drm_fixp_mul(fixp, drm_int2fixp(pixel_clk));
-	fixp = drm_fixp_div(fixp, drm_int2fixp(1000));
-	peak_stream_bw = drm_fixp2int(fixp);
-	link_bw = rate * dptx->link.lanes;
-
-	if (peak_stream_bw > link_bw) {
-		dptx_err(dptx, "ERROR: VIC chosen isn't suitable for Link Rate running\n");
-		dptx_err(dptx, "refresh_rate: %d BPC: %d PixelClock: %d",
-			 vparams->refresh_rate, vparams->bpc, mdtd.pixel_clock);
-		dptx_err(dptx, "Rate: %d Lanes: %d", dptx->link.rate, dptx->link.lanes);
-		return -EINVAL;
-	}
-
-	/* Disable Video Stream and Generator */
-	mmi_dp_write_mask(dptx, DPTX_VSAMPLE_CTRL_N(0), VIDEO_STREAM_ENABLE_MASK, 0);
-
-	mmi_dp_sst_configuration(dptx);
-
-	mmi_dp_clean_interrupts(dptx);
-
-	return retval;
-}
-
-/**
- * mmi_dp_set_video_mode() - Set current video mode
- * @dptx: The dptx struct
- *
- * Return: Returns 0 on success otherwise negative errno.
- */
-static int mmi_dp_set_video_mode(struct dptx *dptx)
-{
-	u32 hpdsts;
-	int retval;
-
-	retval = 0;
-
-	hpdsts = mmi_dp_read_regfield(dptx->base, HPD_STATUS, HPD_STATUS_MASK);
-	if (!hpdsts) {
-		dptx_dbg(dptx, "%s: Not connected\n", __func__);
-		return -ENODEV;
-	}
-	retval = mmi_dp_video_mode_change(dptx);
-	if (retval < 0) {
-		mmi_dp_write_mask(dptx, DPTX_VSAMPLE_CTRL_N(DEFAULT_STREAM),
-				  VIDEO_STREAM_ENABLE_MASK, 0);
-		mmi_dp_soft_reset(dptx, DPTX_SRST_VIDEO_RESET_ALL);
-	}
-
-	return retval;
-}
-
 /**
  * mmi_dp_set_bpc() - Set bits per component
  * @dptx: The dptx struct
@@ -1178,10 +1075,6 @@ int mmi_dp_full_link_training(struct dptx *dptx)
 		retval = mmi_dp_set_pixel_enc(dptx, RGB);
 		if (retval)
 			dptx_info(dptx, "mmi_dp_set_pixel_enc failed");
-
-		retval = mmi_dp_set_video_mode(dptx); /* 1920x1080@60 */
-		if (retval)
-			dptx_info(dptx, "mmi_dp_set_video_mode failed");
 	} else {
 		dptx_info(dptx, "Link Training Failed");
 	}
