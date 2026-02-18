@@ -1033,6 +1033,7 @@ static void aie_part_release_device(struct device *dev)
 	/* Check and set frequency requirement for aperture */
 	aie_part_set_freq(apart, 0);
 	trace_aie_part_release_device_done(apart);
+	devm_kfree(&aperture->dev, apart);
 }
 
 /**
@@ -1280,7 +1281,6 @@ static void aie_tile_remove(struct aie_tile *atile)
  */
 void aie_part_remove(struct aie_partition *apart)
 {
-	struct aie_aperture *aperture = apart->aperture;
 	struct aie_tile *atile = apart->atiles;
 	u32 index;
 
@@ -1292,7 +1292,6 @@ void aie_part_remove(struct aie_partition *apart)
 
 	device_del(&apart->dev);
 	put_device(&apart->dev);
-	devm_kfree(&aperture->dev, apart);
 }
 
 /**
