@@ -1097,7 +1097,7 @@ static const struct aie_dma_attr aie2ps_tiledma = {
 	},
 	.bd_regoff = AIE2PS_TILE_MEMMOD_BD0_0_REGOFF,
 	.num_bds = 16,
-	.bd_len = 0x18U,
+	.bd_len = 0x20U,
 	.num_bd_regs = 6U,
 	.num_mm2s_chan = 2U,
 	.num_s2mm_chan = 2U,
