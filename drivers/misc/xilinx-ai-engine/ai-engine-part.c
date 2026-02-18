@@ -1757,11 +1757,11 @@ fail:
  * aie_load_cert_start_dma() - Creates a buffer descriptor and starts DMA
  *			       transaction for CERT firmware contorl packets
  * @apart: AI Engine partition device
- * @dmabuf_fd: dmabuf file descriptor
+ * @dma_addr: DMA address of the CERT firmware control packet buffer
  * @bufsize: size of CERT firmware control packet buffer in bytes
  * @return: 0 for success and negative value for failure
  */
-static int aie_load_cert_start_dma(struct aie_partition *apart, int dmabuf_fd,
+static int aie_load_cert_start_dma(struct aie_partition *apart, dma_addr_t dma_addr,
 				   size_t bufsize)
 {
 	struct aie_dmabuf_bd_args dmabuf_args;
@@ -1774,7 +1774,6 @@ static int aie_load_cert_start_dma(struct aie_partition *apart, int dmabuf_fd,
 	start_col.col = apart->range.start.col;
 
 	dmabuf_args.bd = bd;
-	dmabuf_args.buf_fd = dmabuf_fd;
 	dmabuf_args.loc = start_col;
 	dmabuf_args.bd_id = bd_id;
 
@@ -1790,7 +1789,7 @@ static int aie_load_cert_start_dma(struct aie_partition *apart, int dmabuf_fd,
 		return ret;
 	}
 
-	ret = aie_part_set_dmabuf_bd_kernel(apart, &dmabuf_args);
+	ret = aie_part_set_dmabuf_bd_kernel(apart, &dmabuf_args, dma_addr);
 	if (ret < 0) {
 		dev_err(&apart->dev, "failed to set shim dma buffer descriptor");
 		return ret;
@@ -1823,8 +1822,9 @@ int aie_load_cert_broadcast(struct device *dev, void *elf_addr)
 	Elf32_Addr end_elf_addr = 0;
 	struct aie_device *adev;
 	size_t ctrlbuf_size = 0;
-	int ret, i, dma_fd;
+	int ret, i;
 	void *ctrlbuf;
+	dma_addr_t ctrlbuf_dma;
 
 	if (!dev || !elf_addr)
 		return -EINVAL;
@@ -1886,9 +1886,9 @@ int aie_load_cert_broadcast(struct device *dev, void *elf_addr)
 		end_elf_word = sptr32[memsz32 - 1];
 	}
 
-	ctrlbuf = aie_dma_mem_alloc_buffer(apart, PAGE_ALIGN(ctrlbuf_size), &dma_fd);
-	if (IS_ERR(ctrlbuf))
-		goto out;
+	ctrlbuf = dma_alloc_coherent(&apart->dev, ctrlbuf_size, &ctrlbuf_dma, GFP_KERNEL);
+	if (!ctrlbuf)
+		return -ENOMEM;
 
 	ret = aie_ctrl_pktize_elf(apart, (u32 *)ctrlbuf, elf_addr, ctrlbuf_size);
 	if (ret < 0)
@@ -1898,7 +1898,7 @@ int aie_load_cert_broadcast(struct device *dev, void *elf_addr)
 	if (ret < 0)
 		goto out;
 
-	ret = aie_load_cert_start_dma(apart, dma_fd, ctrlbuf_size);
+	ret = aie_load_cert_start_dma(apart, ctrlbuf_dma, ctrlbuf_size);
 	if (ret < 0)
 		goto out;
 
@@ -1912,7 +1912,7 @@ int aie_load_cert_broadcast(struct device *dev, void *elf_addr)
 		dev_err(&apart->dev, "failed to load cert: timeout reached");
 
 out:
-	aie_dma_mem_free_buffer(apart, dma_fd);
+	dma_free_coherent(&apart->dev, ctrlbuf_size, ctrlbuf, ctrlbuf_dma);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(aie_load_cert_broadcast);

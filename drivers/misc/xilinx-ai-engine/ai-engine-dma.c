@@ -745,6 +745,7 @@ int aie_part_set_len_bd(struct aie_partition *apart, struct aie_location loc,
  * aie_part_set_dmabuf_bd_kernel() - Set AI engine SHIM DMA buffer descriptor
  * @apart: AI engine partition
  * @args: user AI engine dmabuf argument
+ * @addr: DMA address of the buffer
  *
  * @return: 0 for success, negative value for failure
  *
@@ -752,11 +753,11 @@ int aie_part_set_len_bd(struct aie_partition *apart, struct aie_location loc,
  * buffer descriptor. The structure should contain no userspace pointers
  */
 int aie_part_set_dmabuf_bd_kernel(struct aie_partition *apart,
-				  struct aie_dmabuf_bd_args *args)
+				  struct aie_dmabuf_bd_args *args,
+				  dma_addr_t addr)
 {
 	const struct aie_dma_attr *shim_dma = apart->adev->shim_dma;
 	u32 *bd, *tmpbd, len, laddr, haddr, regval;
-	dma_addr_t addr;
 	int ret;
 
 	ret = aie_part_validate_bdloc(apart, args->loc, args->bd_id);
@@ -776,8 +777,6 @@ int aie_part_set_dmabuf_bd_kernel(struct aie_partition *apart,
 		return -EINVAL;
 	}
 
-	/* Get device address from virtual address */
-	addr = aie_part_get_dmabuf_da_from_off(apart, args->buf_fd, 0, len);
 	if (!addr) {
 		dev_err(&apart->dev, "invalid buffer 0x%llx, 0x%x.\n",
 			addr, len);
