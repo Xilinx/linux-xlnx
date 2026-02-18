@@ -1714,6 +1714,8 @@ int aie_init_freq(struct aie_aperture *aperture);
 
 int aie_part_request_tiles(struct aie_partition *apart, int num_tiles,
 			   struct aie_location *locs);
+int aie_part_release_tiles_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags);
+int aie_part_request_tiles_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags);
 int aie_part_release_tiles(struct aie_partition *apart, int num_tiles,
 			   struct aie_location *locs);
 int aie_part_request_tiles_from_user(struct aie_partition *apart,
