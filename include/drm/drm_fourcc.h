@@ -109,7 +109,7 @@ struct drm_format_info {
 		 * information from their drm_mode_config.get_format_info hook
 		 * if they want the core to be validating the pitch.
 		 */
-		u8 char_per_block[DRM_FORMAT_MAX_PLANES];
+		u32 char_per_block[DRM_FORMAT_MAX_PLANES];
 	};
 
 	/**
