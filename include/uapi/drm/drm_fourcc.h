@@ -462,6 +462,32 @@ extern "C" {
  */
 #define DRM_FORMAT_X423 fourcc_code('X', '4', '2', '3')
 
+/* tile formats */
+#define DRM_FORMAT_T5M8  fourcc_code('T', '5', 'M', '8') /* Y/CbCr 4:0:0 8-bit 32x4 tiles */
+#define DRM_FORMAT_T5MA  fourcc_code('T', '5', 'M', 'A') /* Y/CbCr 4:0:0 10-bit 32x4 tiles */
+#define DRM_FORMAT_T5MC  fourcc_code('T', '5', 'M', 'C') /* Y/CbCr 4:0:0 12-bit 32x4 tiles */
+#define DRM_FORMAT_T6M8  fourcc_code('T', '6', 'M', '8') /* Y/CbCr 4:0:0 8-bit 64x4 tiles */
+#define DRM_FORMAT_T6MA  fourcc_code('T', '6', 'M', 'A') /* Y/CbCr 4:0:0 10-bit 64x4 tiles */
+#define DRM_FORMAT_T6MC  fourcc_code('T', '6', 'M', 'C') /* Y/CbCr 4:0:0 12-bit 64x4 tiles */
+#define DRM_FORMAT_T508  fourcc_code('T', '5', '0', '8') /* Y/CbCr 4:2:0 8-bit 32x4 tiles */
+#define DRM_FORMAT_T50A  fourcc_code('T', '5', '0', 'A') /* Y/CbCr 4:2:0 10-bit 32x4 tiles */
+#define DRM_FORMAT_T50C  fourcc_code('T', '5', '0', 'C') /* Y/CbCr 4:2:0 12-bit 32x4 tiles */
+#define DRM_FORMAT_T608  fourcc_code('T', '6', '0', '8') /* Y/CbCr 4:2:0 8-bit 64x4 tiles */
+#define DRM_FORMAT_T60A  fourcc_code('T', '6', '0', 'A') /* Y/CbCr 4:2:0 10-bit 64x4 tiles */
+#define DRM_FORMAT_T60C  fourcc_code('T', '6', '0', 'C') /* Y/CbCr 4:2:0 12-bit 64x4 tiles */
+#define DRM_FORMAT_T528  fourcc_code('T', '5', '2', '8') /* Y/CbCr 4:2:2 8-bit 32x4 tiles */
+#define DRM_FORMAT_T52A  fourcc_code('T', '5', '2', 'A') /* Y/CbCr 4:2:2 10-bit 32x4 tiles */
+#define DRM_FORMAT_T52C  fourcc_code('T', '5', '2', 'C') /* Y/CbCr 4:2:2 12-bit 32x4 tiles */
+#define DRM_FORMAT_T628  fourcc_code('T', '6', '2', '8') /* Y/CbCr 4:2:2 8-bit 64x4 tiles */
+#define DRM_FORMAT_T62A  fourcc_code('T', '6', '2', 'A') /* Y/CbCr 4:2:2 10-bit 64x4 tiles */
+#define DRM_FORMAT_T62C  fourcc_code('T', '6', '2', 'C') /* Y/CbCr 4:2:2 12-bit 64x4 tiles */
+#define DRM_FORMAT_T548  fourcc_code('T', '5', '4', '8') /* Y/CbCr 4:4:4 8-bit 32x4 tiles */
+#define DRM_FORMAT_T54A  fourcc_code('T', '5', '4', 'A') /* Y/CbCr 4:4:4 10-bit 32x4 tiles */
+#define DRM_FORMAT_T54C  fourcc_code('T', '5', '4', 'C') /* Y/CbCr 4:4:4 12-bit 32x4 tiles */
+#define DRM_FORMAT_T648  fourcc_code('T', '6', '4', '8') /* Y/CbCr 4:4:4 8-bit 64x4 tiles */
+#define DRM_FORMAT_T64A  fourcc_code('T', '6', '4', 'A') /* Y/CbCr 4:4:4 10-bit 64x4 tiles */
+#define DRM_FORMAT_T64C  fourcc_code('T', '6', '4', 'C') /* Y/CbCr 4:4:4 12-bit 64x4 tiles */
+
 /*
  * 3 plane YCbCr LSB aligned
  * In order to use these formats in a similar fashion to MSB aligned ones
