@@ -816,4 +816,6 @@ struct aie_rsc_user_stat_array {
 
 #define AIE_BLOCK_WRITE64_CMD		_IOW(AIE_IOCTL_BASE, 0x20, \
 					     struct aie_block_write64)
+#define AIE_REG_WRITE_CMD		_IOW(AIE_IOCTL_BASE, 0x21, struct aie_reg_args)
+
 #endif
