@@ -227,6 +227,12 @@ enum aie_tile_type {
 #define AIE_NPI_NUM_IRQS		3U
 #define AIE_USER_EVENT1_NUM_IRQ		(AIE_NPI_NUM_IRQS - 1)
 
+#define AIE_IO_URING_SQE128_CMD(sqe, type)	({					\
+	BUILD_BUG_ON(sizeof(type) > ((2 * sizeof(struct io_uring_sqe)) -		\
+				     offsetof(struct io_uring_sqe, cmd)));		\
+	(const type *)(sqe)->cmd;							\
+})
+
 /*
  * enum aie_uc_mem_type - identifies the type of UC memory
  */
