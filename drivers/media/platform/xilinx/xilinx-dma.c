@@ -9,6 +9,8 @@
  *           Laurent Pinchart <laurent.pinchart@ideasonboard.com>
  */
 
+#include <dt-bindings/media/xilinx-vip.h>
+
 #include <linux/dma/xilinx_dma.h>
 #include <linux/dma/xilinx_frmbuf.h>
 #include <linux/lcm.h>
@@ -411,6 +413,15 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 		dma->sgl.icg = bpl - dma->sgl.size;
 		dma->xt.numf = dma->r.height;
 
+		dev_dbg(dma->xdev->dev,
+			"pix height: %u, width: %u, dma height: %u, width: %u\n",
+			pix_mp->height, pix_mp->width, dma->r.height, dma->r.width);
+		dev_dbg(dma->xdev->dev,
+			"bpl: %u, padding_num: %u, padding_deno: %u, bpl_nume: %u, bpl_deno: %u\n",
+			bpl, padding_factor_nume, padding_factor_deno, bpl_nume, bpl_deno);
+		dev_dbg(dma->xdev->dev,
+			"xt.frame_size: %lu, sgl_size: %lu, ICG: %lu, numframes: %lu\n",
+			dma->xt.frame_size, dma->sgl.size, dma->sgl.icg, dma->xt.numf);
 		/*
 		 * dst_icg is the number of bytes to jump after last luma addr
 		 * and before first chroma addr
@@ -809,6 +820,7 @@ __xvip_dma_try_format(struct xvip_dma *dma,
 	unsigned int fourcc;
 	unsigned int padding_factor_nume, padding_factor_deno;
 	unsigned int bpl_nume, bpl_deno;
+	unsigned char tile_size;
 	struct v4l2_subdev_format fmt;
 	struct v4l2_subdev *subdev;
 	int ret;
@@ -847,102 +859,159 @@ __xvip_dma_try_format(struct xvip_dma *dma,
 	if (IS_ERR(info))
 		info = xvip_get_format_by_fourcc(XVIP_DMA_DEF_FORMAT);
 
-	xvip_width_padding_factor(info->fourcc, &padding_factor_nume,
-				  &padding_factor_deno);
-	xvip_bpl_scaling_factor(info->fourcc, &bpl_nume, &bpl_deno);
+	dev_dbg(dma->xdev->dev, "fourcc: 0x%08x\n", info->fourcc);
 
-	/* The transfer alignment requirements are expressed in bytes. Compute
-	 * the minimum and maximum values, clamp the requested width and convert
-	 * it back to pixels.
-	 */
-	min_width = roundup(XVIP_DMA_MIN_WIDTH, dma->width_align);
-	max_width = rounddown(XVIP_DMA_MAX_WIDTH, dma->width_align);
+	if (xvip_is_tile_format(info->fourcc, &tile_size) &&
+	    V4L2_TYPE_IS_MULTIPLANAR(dma->format.type)) {
+		unsigned int min_height, max_height, height, pitch, round_factor;
+		struct v4l2_pix_format_mplane *pix_mp = &format->fmt.pix_mp;
 
-	if (V4L2_TYPE_IS_MULTIPLANAR(dma->format.type)) {
-		struct v4l2_pix_format_mplane *pix_mp;
-		struct v4l2_plane_pix_format *plane_fmt;
+		xvip_bpl_scaling_factor(info->fourcc, &bpl_nume, &bpl_deno);
 
-		pix_mp = &format->fmt.pix_mp;
-		plane_fmt = pix_mp->plane_fmt;
 		pix_mp->field = dma->format.fmt.pix_mp.field;
-		width = rounddown(pix_mp->width * info->bpl_factor,
-				  dma->width_align);
-		pix_mp->width = clamp(width, min_width, max_width) /
-				info->bpl_factor;
-		pix_mp->height = clamp(pix_mp->height, XVIP_DMA_MIN_HEIGHT,
-				       XVIP_DMA_MAX_HEIGHT);
+
+		min_width = round_up(XVIP_DMA_MIN_WIDTH, tile_size);
+		max_width = round_down(XVIP_DMA_MAX_WIDTH, tile_size);
+		width = round_up(pix_mp->width, tile_size);
+		pix_mp->width = clamp(pix_mp->width, min_width, max_width);
+
+		round_factor = info->vf_code == XVIP_VF_YUV_420 ? 8 : 4;
+		min_height = round_up(XVIP_DMA_MIN_HEIGHT, round_factor);
+		max_height = round_down(XVIP_DMA_MAX_HEIGHT, round_factor);
+		height = round_up(pix_mp->height, round_factor);
+		pix_mp->height = clamp(height, min_height, max_height);
 
 		/*
-		 * Clamp the requested bytes per line value. If the maximum
-		 * bytes per line value is zero, the module doesn't support
-		 * user configurable line sizes. Override the requested value
-		 * with the minimum in that case.
+		 * FIXME: roundup bytesperline based on AXIMM width (PPC * 8) value and
+		 * also clamp it with min_bpl & max_bpl values
 		 */
-
-		max_bpl = rounddown(XVIP_DMA_MAX_WIDTH, dma->align);
-
-		/* Handling contiguous data with mplanes */
 		if (info->buffers == 1) {
-			min_bpl = (pix_mp->width * info->bpl_factor *
-				   padding_factor_nume * bpl_nume) /
-				   (padding_factor_deno * bpl_deno);
-			min_bpl = roundup(min_bpl, dma->align);
-			bpl = roundup(plane_fmt[0].bytesperline, dma->align);
-			plane_fmt[0].bytesperline = clamp(bpl, min_bpl,
-							  max_bpl);
+			pix_mp->plane_fmt[0].bytesperline = (width * bpl_nume) / bpl_deno;
+			pitch = DIV_ROUND_UP(width * 4 * info->width, 8);
 
-			if (info->num_planes == 1) {
-				/* Single plane formats */
-				plane_fmt[0].sizeimage =
-						plane_fmt[0].bytesperline *
-						pix_mp->height;
-			} else {
-				/* Multi plane formats */
-				plane_fmt[0].sizeimage =
-					DIV_ROUND_UP(plane_fmt[0].bytesperline *
-						     pix_mp->height *
-						     info->bpp, 8);
-			}
+			pix_mp->plane_fmt[0].sizeimage = pix_mp->plane_fmt[0].bytesperline;
+			pix_mp->plane_fmt[0].sizeimage *= pix_mp->height * info->num_planes;
+
+			dev_dbg(dma->xdev->dev, "tile size is: %u, width: %u, height: %u, pitch(stride): %u, size: %u\n",
+				tile_size, pix_mp->width, pix_mp->height,
+				pix_mp->plane_fmt[0].bytesperline, pix_mp->plane_fmt[0].sizeimage);
 		} else {
 			/* Handling non-contiguous data with mplanes */
 			hsub = info->hsub;
 			vsub = info->vsub;
 			for (i = 0; i < info->num_planes; i++) {
+				pix_mp->plane_fmt[i].bytesperline = pix_mp->width;
 				plane_width = pix_mp->width / (i ? hsub : 1);
 				plane_height = pix_mp->height / (i ? vsub : 1);
-				min_bpl = (plane_width * info->bpl_factor *
-					   padding_factor_nume * bpl_nume) /
-					   (padding_factor_deno * bpl_deno);
-				min_bpl = roundup(min_bpl, dma->align);
-				bpl = rounddown(plane_fmt[i].bytesperline,
-						dma->align);
-				plane_fmt[i].bytesperline =
-						clamp(bpl, min_bpl, max_bpl);
-				plane_fmt[i].sizeimage =
-						plane_fmt[i].bytesperline *
-						plane_height;
+
+				pitch = DIV_ROUND_UP(plane_width * 4 * info->width, 8);
+
+				pix_mp->plane_fmt[i].sizeimage =
+					DIV_ROUND_UP(pitch * (plane_height / 4) * info->bpp, 8);
+
+				dev_dbg(dma->xdev->dev, "hsub: %u, vsub: %u, width: %u, height: %u, bpl[%d]: %u, size[%d]: %u\n",
+					hsub, vsub, plane_width, plane_height,
+					i, pix_mp->plane_fmt[i].bytesperline,
+					i, pix_mp->plane_fmt[i].sizeimage);
 			}
 		}
 	} else {
-		struct v4l2_pix_format *pix;
+		xvip_width_padding_factor(info->fourcc, &padding_factor_nume,
+					  &padding_factor_deno);
+		xvip_bpl_scaling_factor(info->fourcc, &bpl_nume, &bpl_deno);
 
-		pix = &format->fmt.pix;
-		pix->field = dma->format.fmt.pix.field;
-		width = rounddown(pix->width * info->bpl_factor,
-				  dma->width_align);
-		pix->width = clamp(width, min_width, max_width) /
-			     info->bpl_factor;
-		pix->height = clamp(pix->height, XVIP_DMA_MIN_HEIGHT,
-				    XVIP_DMA_MAX_HEIGHT);
+		/* The transfer alignment requirements are expressed in bytes. Compute
+		 * the minimum and maximum values, clamp the requested width and convert
+		 * it back to pixels.
+		 */
+		min_width = roundup(XVIP_DMA_MIN_WIDTH, dma->width_align);
+		max_width = rounddown(XVIP_DMA_MAX_WIDTH, dma->width_align);
+		if (V4L2_TYPE_IS_MULTIPLANAR(dma->format.type)) {
+			struct v4l2_pix_format_mplane *pix_mp;
+			struct v4l2_plane_pix_format *plane_fmt;
 
-		min_bpl = (pix->width * info->bpl_factor *
-			  padding_factor_nume * bpl_nume) /
-			  (padding_factor_deno * bpl_deno);
-		min_bpl = roundup(min_bpl, dma->align);
-		max_bpl = rounddown(XVIP_DMA_MAX_WIDTH, dma->align);
-		bpl = rounddown(pix->bytesperline, dma->align);
-		pix->bytesperline = clamp(bpl, min_bpl, max_bpl);
-		pix->sizeimage = pix->width * pix->height * info->bpp / 8;
+			pix_mp = &format->fmt.pix_mp;
+			plane_fmt = pix_mp->plane_fmt;
+			pix_mp->field = dma->format.fmt.pix_mp.field;
+			width = rounddown(pix_mp->width * info->bpl_factor,
+					  dma->width_align);
+			pix_mp->width = clamp(width, min_width, max_width) /
+					info->bpl_factor;
+			pix_mp->height = clamp(pix_mp->height, XVIP_DMA_MIN_HEIGHT,
+					       XVIP_DMA_MAX_HEIGHT);
+
+			/*
+			 * Clamp the requested bytes per line value. If the maximum
+			 * bytes per line value is zero, the module doesn't support
+			 * user configurable line sizes. Override the requested value
+			 * with the minimum in that case.
+			 */
+
+			max_bpl = rounddown(XVIP_DMA_MAX_WIDTH, dma->align);
+
+			/* Handling contiguous data with mplanes */
+			if (info->buffers == 1) {
+				min_bpl = (pix_mp->width * info->bpl_factor *
+					   padding_factor_nume * bpl_nume) /
+					   (padding_factor_deno * bpl_deno);
+				min_bpl = roundup(min_bpl, dma->align);
+				bpl = roundup(plane_fmt[0].bytesperline, dma->align);
+				plane_fmt[0].bytesperline = clamp(bpl, min_bpl,
+								  max_bpl);
+
+				if (info->num_planes == 1) {
+					/* Single plane formats */
+					plane_fmt[0].sizeimage =
+							plane_fmt[0].bytesperline *
+							pix_mp->height;
+				} else {
+					/* Multi plane formats */
+					plane_fmt[0].sizeimage =
+						DIV_ROUND_UP(plane_fmt[0].bytesperline *
+							     pix_mp->height *
+							     info->bpp, 8);
+				}
+			} else {
+				/* Handling non-contiguous data with mplanes */
+				hsub = info->hsub;
+				vsub = info->vsub;
+				for (i = 0; i < info->num_planes; i++) {
+					plane_width = pix_mp->width / (i ? hsub : 1);
+					plane_height = pix_mp->height / (i ? vsub : 1);
+					min_bpl = (plane_width * info->bpl_factor *
+						   padding_factor_nume * bpl_nume) /
+						   (padding_factor_deno * bpl_deno);
+					min_bpl = roundup(min_bpl, dma->align);
+					bpl = rounddown(plane_fmt[i].bytesperline,
+							dma->align);
+					plane_fmt[i].bytesperline =
+							clamp(bpl, min_bpl, max_bpl);
+					plane_fmt[i].sizeimage =
+							plane_fmt[i].bytesperline *
+							plane_height;
+				}
+			}
+		} else {
+			struct v4l2_pix_format *pix;
+
+			pix = &format->fmt.pix;
+			pix->field = dma->format.fmt.pix.field;
+			width = rounddown(pix->width * info->bpl_factor,
+					  dma->width_align);
+			pix->width = clamp(width, min_width, max_width) /
+				     info->bpl_factor;
+			pix->height = clamp(pix->height, XVIP_DMA_MIN_HEIGHT,
+					    XVIP_DMA_MAX_HEIGHT);
+
+			min_bpl = (pix->width * info->bpl_factor *
+				  padding_factor_nume * bpl_nume) /
+				  (padding_factor_deno * bpl_deno);
+			min_bpl = roundup(min_bpl, dma->align);
+			max_bpl = rounddown(XVIP_DMA_MAX_WIDTH, dma->align);
+			bpl = rounddown(pix->bytesperline, dma->align);
+			pix->bytesperline = clamp(bpl, min_bpl, max_bpl);
+			pix->sizeimage = pix->width * pix->height * info->bpp / 8;
+		}
 	}
 
 	if (fmtinfo)
