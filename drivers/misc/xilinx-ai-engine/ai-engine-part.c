@@ -25,6 +25,7 @@
 #include <linux/uio.h>
 #include <uapi/linux/xlnx-ai-engine.h>
 #include <linux/xlnx-ai-engine.h>
+#include <linux/fdtable.h>
 #include <linux/io_uring/cmd.h>
 
 #include "ai-engine-internal.h"
@@ -928,25 +929,24 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 			return -EFAULT;
 
 		size = PAGE_ALIGN(size);
-		ret = aie_dma_mem_alloc(apart, size);
+		ret = aie_dma_mem_alloc_xa(apart, size);
+		if (ret < 0)
+			return ret;
 		if (put_user(size, (__kernel_size_t __user *)argp)) {
-			aie_dma_mem_free(ret);
+			close_fd(ret);
 			return -EFAULT;
 		}
 		return ret;
 	}
 	case AIE_DMA_MEM_FREE_IOCTL:
-	{
-		int fd;
-
-		if (get_user(fd, (int __user *)argp))
-			return -EFAULT;
-		return aie_dma_mem_free(fd);
-	}
+		/* NOP. Resources freed in close_fd() */
+		fallthrough;
 	case AIE_ATTACH_DMABUF_IOCTL:
-		return aie_part_attach_dmabuf_req(apart, argp);
+		/* Attached in MemAlloc */
+		fallthrough;
 	case AIE_DETACH_DMABUF_IOCTL:
-		return aie_part_detach_dmabuf_req(apart, argp);
+		/* Detached in close_fd() */
+		return 0;
 	case AIE_UPDATE_SHIMDMA_DMABUF_BD_ADDR_IOCTL:
 		return aie_part_update_dmabuf_bd_from_user(apart, argp);
 	case AIE_SET_SHIMDMA_BD_IOCTL:
@@ -1111,6 +1111,7 @@ static void aie_part_release_device(struct device *dev)
 	aie_part_rscmgr_finish(apart);
 	/* Check and set frequency requirement for aperture */
 	aie_part_set_freq(apart, 0);
+	xa_destroy(&apart->dbuf_xa);
 	trace_aie_part_release_device_done(apart);
 	devm_kfree(&aperture->dev, apart);
 }
@@ -1239,8 +1240,6 @@ struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
 	apart->aperture = aperture;
 	apart->adev = aperture->adev;
 	apart->partition_id = partition_id;
-	INIT_LIST_HEAD(&apart->dbufs);
-	INIT_LIST_HEAD(&apart->dma_mem);
 	mutex_init(&apart->mlock);
 	apart->range.start.col = aie_part_id_get_start_col(partition_id);
 	apart->range.size.col = aie_part_id_get_num_cols(partition_id);
@@ -1327,6 +1326,8 @@ struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
 			goto err;
 		}
 	}
+
+	xa_init(&apart->dbuf_xa);
 
 	dev_dbg(dev, "created AIE partition device.\n");
 

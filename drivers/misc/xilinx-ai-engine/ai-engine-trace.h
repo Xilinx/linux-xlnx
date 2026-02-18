@@ -278,34 +278,6 @@ TRACE_EVENT(aie_part_write_register_data,
 		  __entry->col, __entry->row, __entry->regoff, __entry->index, __entry->data)
 );
 
-TRACE_EVENT(aie_part_attach_dmabuf_req,
-	TP_PROTO(struct aie_partition *apart, int fd),
-	TP_ARGS(apart, fd),
-	TP_STRUCT__entry(
-		__field(__u32, partition_id)
-		__field(int, fd)
-	),
-	TP_fast_assign(
-		__entry->partition_id = apart->partition_id;
-		__entry->fd = fd;
-	),
-	TP_printk("id: %d fd: %d", __entry->partition_id, __entry->fd)
-);
-
-TRACE_EVENT(aie_part_detach_dmabuf_req,
-	TP_PROTO(struct aie_partition *apart, int fd),
-	TP_ARGS(apart, fd),
-	TP_STRUCT__entry(
-		__field(__u32, partition_id)
-		__field(int, fd)
-	),
-	TP_fast_assign(
-		__entry->partition_id = apart->partition_id;
-		__entry->fd = fd;
-	),
-	TP_printk("id: %d fd: %d", __entry->partition_id, __entry->fd)
-);
-
 TRACE_EVENT(aie_part_rsc_req_rsp,
 	TP_PROTO(struct aie_partition *apart, struct aie_rsc_req_rsp *req),
 	TP_ARGS(apart, req),
