@@ -25,6 +25,7 @@
 #include <linux/uio.h>
 #include <uapi/linux/xlnx-ai-engine.h>
 #include <linux/xlnx-ai-engine.h>
+#include <linux/io_uring/cmd.h>
 
 #include "ai-engine-internal.h"
 #include "ai-engine-trace.h"
@@ -211,6 +212,53 @@ int aie_part_maskpoll_register(struct aie_partition *apart, u32 offset, u32 data
 		return 0;
 
 	return -EBUSY;
+}
+
+/**
+ * aie_part_block_write64() - Write a block of data to AI engine partition registers
+ * @apart: AI engine partition
+ * @offset: Register offset relative to the partition start
+ * @len: Number of 32-bit words to write (maximum 16, i.e., 64 bytes)
+ * @data: Pointer to the data array to write
+ * @return: 0 for success, negative error code for failure
+ *
+ * This function performs a block write operation to AI engine partition registers.
+ * The function validates that the length does not exceed 64 bytes (16 words),
+ * validates the register access permissions and location, calculates the actual
+ * register offset within the aperture, and writes the data using 32-bit I/O operations.
+ */
+static int aie_part_block_write64(struct aie_partition *apart, size_t offset,
+				  size_t len, const u32 *data)
+{
+	struct aie_aperture *aperture = apart->aperture;
+	u32 __iomem *va;
+	int ret;
+	u32 i;
+
+	trace_aie_part_block_write64(apart, offset, len, data);
+	if (len > 16) {
+		dev_err(&apart->dev,
+			"Invalid block write64 len %zu, max is 64 bytes.\n",
+			len);
+		return -EINVAL;
+	}
+
+	ret = aie_part_reg_validation(apart, offset, len * sizeof(u32), 1);
+	if (ret < 0) {
+		dev_dbg(&apart->dev,
+			"failed to write block write64 to 0x%zx,0x%zx.\n",
+			offset, len * sizeof(u32));
+		return ret;
+	}
+
+	offset += aie_aperture_cal_regoff(aperture, apart->range.start, 0);
+	va = aperture->base + offset;
+	for (i = 0; i < len; i++) {
+		trace_aie_part_write_register_data(apart, i, READ_ONCE(data[i]),
+						   offset + i * sizeof(u32));
+		iowrite32(READ_ONCE(data[i]), &va[i]);
+	}
+	return 0;
 }
 
 /**
@@ -945,6 +993,36 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 	return ret;
 }
 
+static int aie_part_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags)
+{
+	struct aie_partition *apart = cmd->file->private_data;
+	int ret;
+	u64 res2 = 0;
+
+	if ((issue_flags & (IO_URING_F_SQE128 | IO_URING_F_CQE32)) !=
+	    (IO_URING_F_SQE128 | IO_URING_F_CQE32))
+		return -EINVAL;
+
+	switch (cmd->cmd_op) {
+	case AIE_BLOCK_WRITE64_CMD:
+	{
+		const struct aie_block_write64 *args;
+
+		args = AIE_IO_URING_SQE128_CMD(cmd->sqe, struct aie_block_write64);
+		ret = aie_part_block_write64(apart, READ_ONCE(cmd->sqe->addr),
+					     READ_ONCE(args->size), args->data);
+	}
+	break;
+	default:
+		dev_err(&apart->dev, "Invalid/Unsupported command %u.\n", cmd->cmd_op);
+		ret = -EINVAL;
+		break;
+	}
+
+	io_uring_cmd_done32(cmd, ret, res2, issue_flags);
+	return -EIOCBQUEUED;
+}
+
 const struct file_operations aie_part_fops = {
 	.owner		= THIS_MODULE,
 	.release	= aie_part_release,
@@ -952,6 +1030,7 @@ const struct file_operations aie_part_fops = {
 	.write_iter	= aie_part_write_iter,
 	.mmap		= aie_part_mmap,
 	.unlocked_ioctl	= aie_part_ioctl,
+	.uring_cmd	= aie_part_uring_cmd,
 };
 
 /**

@@ -193,6 +193,20 @@ struct aie_reg_args {
 };
 
 /**
+ * struct aie_block_write64 - AIE 64-byte block write data structure
+ * @size: number of u32 to write (1 to 16)
+ * @pad: padding byte for alignment
+ * @data: data buffer containing up to 64 bytes to write
+ *
+ * This structure is used for 64-byte block write register operations.
+ */
+struct aie_block_write64 {
+	__u8 size;
+	__u8 pad;
+	__u32 data[16];
+};
+
+/**
  * struct aie_range_args - AIE range request arguments
  * @partition_id: partition id. It is used to identify the
  *		  AI engine partition in the system.
@@ -800,4 +814,6 @@ struct aie_rsc_user_stat_array {
 #define AIE_UPDATE_SHIMDMA_DMABUF_BD_ADDR_IOCTL	_IOW(AIE_IOCTL_BASE, 0x1e, \
 						struct aie_dmabuf_bd_args)
 
+#define AIE_BLOCK_WRITE64_CMD		_IOW(AIE_IOCTL_BASE, 0x20, \
+					     struct aie_block_write64)
 #endif
