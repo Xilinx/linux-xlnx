@@ -1057,6 +1057,18 @@ static int aie_part_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags
 	case AIE_PARTITION_INIT_IOCTL:
 		ret = aie_part_init_uring_cmd(cmd, issue_flags);
 		break;
+	case AIE_PARTITION_TEAR_IOCTL:
+		if (apart->adev->ops->part_teardown)
+			ret = apart->adev->ops->part_teardown(apart);
+		else
+			ret = -EINVAL;
+		break;
+	case AIE_PARTITION_CLR_CONTEXT_IOCTL:
+		if (apart->adev->ops->part_clear_context)
+			ret = apart->adev->ops->part_clear_context(apart);
+		else
+			ret = -EINVAL;
+		break;
 	case AIE_BLOCK_WRITE64_CMD:
 	{
 		const struct aie_block_write64 *args;
