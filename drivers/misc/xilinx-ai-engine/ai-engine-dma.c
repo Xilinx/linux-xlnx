@@ -201,8 +201,7 @@ static int aie_part_set_shimdma_bd(struct aie_partition *apart,
 	loc_adjust.row = loc.row + apart->range.start.row;
 	regoff = aie_aperture_cal_regoff(aperture, loc_adjust, intile_regoff);
 
-	for (i = 0; i < shim_dma->bd_len / (sizeof(*bd));
-	     i++, regoff += sizeof(*bd)) {
+	for (i = 0; i < shim_dma->num_bd_regs; i++, regoff += sizeof(*bd)) {
 		iowrite32(bd[i], aperture->base + regoff);
 		trace_aie_part_set_shimdma_bd(apart, loc, bd_id, bd[i], i);
 	}
@@ -826,7 +825,7 @@ long aie_part_set_bd(struct aie_partition *apart, struct aie_dma_bd_args *args)
 		return -EINVAL;
 	}
 
-	bd = memdup_user((void __user *)args->bd, shim_dma->bd_len);
+	bd = memdup_user((void __user *)args->bd, shim_dma->num_bd_regs * sizeof(u32));
 	if (IS_ERR(bd))
 		return PTR_ERR(bd);
 
@@ -923,7 +922,7 @@ long aie_part_set_dmabuf_bd(struct aie_partition *apart,
 		return -EINVAL;
 	}
 
-	bd = memdup_user((void __user *)args->bd, shim_dma->bd_len);
+	bd = memdup_user((void __user *)args->bd, shim_dma->num_bd_regs * sizeof(u32));
 	if (IS_ERR(bd))
 		return PTR_ERR(bd);
 

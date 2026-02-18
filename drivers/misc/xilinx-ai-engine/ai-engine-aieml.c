@@ -1381,6 +1381,7 @@ static const struct aie_dma_attr aieml_shimdma = {
 	.bd_regoff = AIEML_SHIMNOC_BD0_0_REGOFF,
 	.num_bds = 16,
 	.bd_len = 0x20U,
+	.num_bd_regs = 8U,
 	.num_mm2s_chan = 2U,
 	.num_s2mm_chan = 2U,
 	.mm2s_sts_regoff = AIEML_SHIMNOC_DMA_MM2S_STATUS_REGOFF,
@@ -1406,7 +1407,8 @@ static const struct aie_dma_attr aieml_tiledma = {
 	},
 	.bd_regoff = AIEML_TILE_MEMMOD_BD0_0_REGOFF,
 	.num_bds = 16,
-	.bd_len = 0x18U,
+	.bd_len = 0x20U,
+	.num_bd_regs = 6U,
 	.num_mm2s_chan = 2U,
 	.num_s2mm_chan = 2U,
 	.mm2s_sts_regoff = AIEML_TILE_MEMMOD_DMA_MM2S_STATUS_REGOFF,
@@ -1433,6 +1435,7 @@ static const struct aie_dma_attr aieml_memtiledma = {
 	.bd_regoff = AIEML_MEMORY_BD0_0_REGOFF,
 	.num_bds = 48,
 	.bd_len = 0x20U,
+	.num_bd_regs = 8U,
 	.num_mm2s_chan = 6U,
 	.num_s2mm_chan = 6U,
 	.mm2s_sts_regoff = AIEML_MEMORY_DMA_MM2S_STATUS_REGOFF,
@@ -2310,7 +2313,7 @@ static ssize_t aieml_get_tile_sysfs_bd_metadata(struct aie_partition *apart,
 
 		base_bdoff = dma_attr->bd_regoff + (bd_attr->bd_idx_off * bd);
 		memset(bd_data, 0, sizeof(bd_data));
-		for (i = 0; i < dma_attr->bd_len / sizeof(u32); i++) {
+		for (i = 0; i < dma_attr->num_bd_regs; i++) {
 			u32 regoff;
 
 			regoff = aie_cal_regoff(apart->adev, *loc,
