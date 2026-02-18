@@ -1411,6 +1411,7 @@ struct aie_op_handshake_addr {
  * @error_cb: error callback
  * @core_event_status: core module event bitmap
  * @mem_event_status: memory module event bitmap
+ * @memtile_event_status: memory tile module event bitmap
  * @pl_event_status: pl module event bitmap
  * @attr_grp: attribute group
  * @pm_ops: pm ops pkt and metadata for zynq plm calls
