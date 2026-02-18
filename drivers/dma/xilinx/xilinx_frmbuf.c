@@ -100,6 +100,9 @@
 #define XILINX_FRMBUF_FMT_UYVY8			28
 #define XILINX_FRMBUF_FMT_BGR8			29
 #define XILINX_FRMBUF_FMT_RGBX12		30
+#define XILINX_FRMBUF_FMT_Y_UV12		32
+#define XILINX_FRMBUF_FMT_Y_UV12_420		33
+#define XILINX_FRMBUF_FMT_Y12			34
 #define XILINX_FRMBUF_FMT_RGB16			35
 #define XILINX_FRMBUF_FMT_Y_U_V8		42
 #define XILINX_FRMBUF_FMT_Y_U_V10		43
@@ -116,6 +119,10 @@
 
 #define WAIT_FOR_FLUSH_DONE			25
 
+/* Pitch Calculations */
+#define XILINX_TILE_ROWS			4
+#define XILINX_BYTE_ALIGN			8
+
 /* Pixels per clock property flag */
 #define XILINX_PPC_PROP				BIT(0)
 #define XILINX_FLUSH_PROP			BIT(1)
@@ -123,6 +130,7 @@
 #define XILINX_CLK_PROP				BIT(3)
 #define XILINX_THREE_PLANES_PROP		BIT(4)
 #define XILINX_FID_ERR_DETECT_PROP		BIT(5)
+#define XILINX_TILE_FORMAT_PROP			BIT(6)
 
 #define XILINX_FRMBUF_MIN_HEIGHT		(64)
 #define XILINX_FRMBUF_MIN_WIDTH			(64)
@@ -215,6 +223,7 @@ struct xilinx_frmbuf_chan {
  * @bpw: Bits of pixel data + padding in a 32-bit word (luma plane for semi-pl)
  * @ppw: Number of pixels represented in a 32-bit word (luma plane for semi-pl)
  * @num_planes: Expected number of plane buffers in framebuffer for this format
+ * @tile_sz: Tile size for each format, it can be 32 or 64
  * @drm_fmt: DRM video framework equivalent fourcc code
  * @v4l2_fmt: Video 4 Linux framework equivalent fourcc code
  * @fmt_bitmask: Flag identifying this format in device-specific "enabled"
@@ -226,9 +235,10 @@ struct xilinx_frmbuf_format_desc {
 	u32 bpw;
 	u32 ppw;
 	u32 num_planes;
+	u32 tile_sz;
 	u32 drm_fmt;
 	u32 v4l2_fmt;
-	u32 fmt_bitmask;
+	u64 fmt_bitmask;
 };
 
 static LIST_HEAD(frmbuf_chan_list);
@@ -523,6 +533,270 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.v4l2_fmt = V4L2_PIX_FMT_X423,
 		.fmt_bitmask = BIT(26),
 	},
+	{
+		.dts_name = "y8_32t",
+		.id = XILINX_FRMBUF_FMT_Y8,
+		.bpw = 32,
+		.ppw = 4,
+		.num_planes = 1,
+		.tile_sz = 32,
+		.drm_fmt = DRM_FORMAT_T5M8,
+		.v4l2_fmt = V4L2_PIX_FMT_T5M8,
+		.fmt_bitmask = BIT(27),
+	},
+	{
+		.dts_name = "y8_64t",
+		.id = XILINX_FRMBUF_FMT_Y8,
+		.bpw = 32,
+		.ppw = 4,
+		.num_planes = 1,
+		.tile_sz = 64,
+		.drm_fmt = DRM_FORMAT_T6M8,
+		.v4l2_fmt = V4L2_PIX_FMT_T6M8,
+		.fmt_bitmask = BIT(28),
+	},
+	{
+		.dts_name = "y10_32t",
+		.id = XILINX_FRMBUF_FMT_Y10,
+		.bpw = 40,
+		.ppw = 4,
+		.num_planes = 1,
+		.tile_sz = 32,
+		.drm_fmt = DRM_FORMAT_T5MA,
+		.v4l2_fmt = V4L2_PIX_FMT_T5MA,
+		.fmt_bitmask = BIT(29),
+	},
+	{
+		.dts_name = "y10_64t",
+		.id = XILINX_FRMBUF_FMT_Y10,
+		.bpw = 40,
+		.ppw = 4,
+		.num_planes = 1,
+		.tile_sz = 64,
+		.drm_fmt = DRM_FORMAT_T6MA,
+		.v4l2_fmt = V4L2_PIX_FMT_T6MA,
+		.fmt_bitmask = BIT(30),
+	},
+	{
+		.dts_name = "y12_32t",
+		.id = XILINX_FRMBUF_FMT_Y12,
+		.bpw = 12,
+		.ppw = 1,
+		.num_planes = 1,
+		.tile_sz = 32,
+		.drm_fmt = DRM_FORMAT_T5MC,
+		.v4l2_fmt = V4L2_PIX_FMT_T5MC,
+		.fmt_bitmask = BIT(31),
+	},
+	{
+		.dts_name = "y12_64t",
+		.id = XILINX_FRMBUF_FMT_Y12,
+		.bpw = 12,
+		.ppw = 1,
+		.num_planes = 1,
+		.tile_sz = 64,
+		.drm_fmt = DRM_FORMAT_T6MC,
+		.v4l2_fmt = V4L2_PIX_FMT_T6MC,
+		.fmt_bitmask = BIT(32),
+	},
+	{
+		.dts_name = "nv12_32t",
+		.id = XILINX_FRMBUF_FMT_Y_UV8_420,
+		.bpw = 32,
+		.ppw = 4,
+		.num_planes = 2,
+		.tile_sz = 32,
+		.drm_fmt = DRM_FORMAT_T508,
+		.v4l2_fmt = V4L2_PIX_FMT_T508,
+		.fmt_bitmask = BIT(33),
+	},
+	{
+		.dts_name = "nv12_64t",
+		.id = XILINX_FRMBUF_FMT_Y_UV8_420,
+		.bpw = 32,
+		.ppw = 4,
+		.num_planes = 2,
+		.tile_sz = 64,
+		.drm_fmt = DRM_FORMAT_T608,
+		.v4l2_fmt = V4L2_PIX_FMT_T608,
+		.fmt_bitmask = BIT(34),
+	},
+	{
+		.dts_name = "y_uv10_420_32t",
+		.id = XILINX_FRMBUF_FMT_Y_UV10_420,
+		.bpw = 40,
+		.ppw = 4,
+		.num_planes = 2,
+		.tile_sz = 32,
+		.drm_fmt = DRM_FORMAT_T50A,
+		.v4l2_fmt = V4L2_PIX_FMT_T50A,
+		.fmt_bitmask = BIT(35),
+	},
+	{
+		.dts_name = "y_uv10_420_64t",
+		.id = XILINX_FRMBUF_FMT_Y_UV10_420,
+		.bpw = 40,
+		.ppw = 4,
+		.num_planes = 2,
+		.tile_sz = 64,
+		.drm_fmt = DRM_FORMAT_T60A,
+		.v4l2_fmt = V4L2_PIX_FMT_T60A,
+		.fmt_bitmask = BIT(36),
+	},
+	{
+		.dts_name = "y_uv12_420_32t",
+		.id = XILINX_FRMBUF_FMT_Y_UV12_420,
+		.bpw = 12,
+		.ppw = 1,
+		.num_planes = 2,
+		.tile_sz = 32,
+		.drm_fmt = DRM_FORMAT_T50C,
+		.v4l2_fmt = V4L2_PIX_FMT_T50C,
+		.fmt_bitmask = BIT(37),
+	},
+	{
+		.dts_name = "y_uv12_420_64t",
+		.id = XILINX_FRMBUF_FMT_Y_UV12_420,
+		.bpw = 12,
+		.ppw = 1,
+		.num_planes = 2,
+		.tile_sz = 64,
+		.drm_fmt = DRM_FORMAT_T60C,
+		.v4l2_fmt = V4L2_PIX_FMT_T60C,
+		.fmt_bitmask = BIT(38),
+	},
+	{
+		.dts_name = "nv16_32t",
+		.id = XILINX_FRMBUF_FMT_Y_UV8,
+		.bpw = 32,
+		.ppw = 4,
+		.num_planes = 2,
+		.tile_sz = 32,
+		.drm_fmt = DRM_FORMAT_T528,
+		.v4l2_fmt = V4L2_PIX_FMT_T528,
+		.fmt_bitmask = BIT(39),
+	},
+	{
+		.dts_name = "nv16_64t",
+		.id = XILINX_FRMBUF_FMT_Y_UV8,
+		.bpw = 32,
+		.ppw = 4,
+		.num_planes = 2,
+		.tile_sz = 64,
+		.drm_fmt = DRM_FORMAT_T628,
+		.v4l2_fmt = V4L2_PIX_FMT_T628,
+		.fmt_bitmask = BIT(40),
+	},
+	{
+		.dts_name = "y_uv10_32t",
+		.id = XILINX_FRMBUF_FMT_Y_UV10,
+		.bpw = 40,
+		.ppw = 4,
+		.num_planes = 2,
+		.tile_sz = 32,
+		.drm_fmt = DRM_FORMAT_T52A,
+		.v4l2_fmt = V4L2_PIX_FMT_T52A,
+		.fmt_bitmask = BIT(41),
+	},
+	{
+		.dts_name = "y_uv10_64t",
+		.id = XILINX_FRMBUF_FMT_Y_UV10,
+		.bpw = 40,
+		.ppw = 4,
+		.num_planes = 2,
+		.tile_sz = 64,
+		.drm_fmt = DRM_FORMAT_T62A,
+		.v4l2_fmt = V4L2_PIX_FMT_T62A,
+		.fmt_bitmask = BIT(42),
+	},
+	{
+		.dts_name = "y_uv12_32t",
+		.id = XILINX_FRMBUF_FMT_Y_UV12,
+		.bpw = 12,
+		.ppw = 1,
+		.num_planes = 2,
+		.tile_sz = 32,
+		.drm_fmt = DRM_FORMAT_T52C,
+		.v4l2_fmt = V4L2_PIX_FMT_T52C,
+		.fmt_bitmask = BIT(43),
+	},
+	{
+		.dts_name = "y_uv12_64t",
+		.id = XILINX_FRMBUF_FMT_Y_UV12,
+		.bpw = 12,
+		.ppw = 1,
+		.num_planes = 2,
+		.tile_sz = 64,
+		.drm_fmt = DRM_FORMAT_T62C,
+		.v4l2_fmt = V4L2_PIX_FMT_T62C,
+		.fmt_bitmask = BIT(44),
+	},
+	{
+		.dts_name = "y_u_v8_32t",
+		.id = XILINX_FRMBUF_FMT_Y_U_V8,
+		.bpw = 32,
+		.ppw = 4,
+		.num_planes = 3,
+		.tile_sz = 32,
+		.drm_fmt = DRM_FORMAT_T548,
+		.v4l2_fmt = V4L2_PIX_FMT_T548,
+		.fmt_bitmask = BIT(45),
+	},
+	{
+		.dts_name = "y_u_v8_64t",
+		.id = XILINX_FRMBUF_FMT_Y_U_V8,
+		.bpw = 32,
+		.ppw = 4,
+		.num_planes = 3,
+		.tile_sz = 64,
+		.drm_fmt = DRM_FORMAT_T648,
+		.v4l2_fmt = V4L2_PIX_FMT_T648,
+		.fmt_bitmask = BIT(46),
+	},
+	{
+		.dts_name = "y_u_v10_32t",
+		.id = XILINX_FRMBUF_FMT_Y_U_V10,
+		.bpw = 40,
+		.ppw = 4,
+		.num_planes = 3,
+		.tile_sz = 32,
+		.drm_fmt = DRM_FORMAT_T54A,
+		.v4l2_fmt = V4L2_PIX_FMT_T54A,
+		.fmt_bitmask = BIT(47),
+	},
+	{
+		.dts_name = "y_u_v10_64t",
+		.id = XILINX_FRMBUF_FMT_Y_U_V10,
+		.bpw = 40,
+		.ppw = 4,
+		.num_planes = 3,
+		.tile_sz = 64,
+		.drm_fmt = DRM_FORMAT_T64A,
+		.v4l2_fmt = V4L2_PIX_FMT_T64A,
+		.fmt_bitmask = BIT(48),
+	},
+	{
+		.dts_name = "y_u_v12_32t",
+		.id = XILINX_FRMBUF_FMT_Y_U_V12,
+		.bpw = 12,
+		.ppw = 1,
+		.num_planes = 3,
+		.tile_sz = 32,
+		.drm_fmt = DRM_FORMAT_T54C,
+		.v4l2_fmt = V4L2_PIX_FMT_T54C,
+		.fmt_bitmask = BIT(49),
+	},
+	{
+		.dts_name = "y_u_v12_64t",
+		.id = XILINX_FRMBUF_FMT_Y_U_V12,
+		.bpw = 12,
+		.ppw = 1,
+		.num_planes = 3,
+		.tile_sz = 64,
+		.drm_fmt = DRM_FORMAT_T64C,
+		.v4l2_fmt = V4L2_PIX_FMT_T64C,
+		.fmt_bitmask = BIT(50),
+	},
 };
 
 /**
@@ -552,6 +826,7 @@ struct xilinx_frmbuf_feature {
  * @max_height: Maximum number of lines supported in IP.
  * @ppc: Pixels per clock supported in IP.
  * @ap_clk: Video core clock
+ * @tile_fmt: Flag for tile formats
  */
 struct xilinx_frmbuf_device {
 	void __iomem *regs;
@@ -559,7 +834,7 @@ struct xilinx_frmbuf_device {
 	struct dma_device common;
 	struct xilinx_frmbuf_chan chan;
 	struct gpio_desc *rst_gpio;
-	u32 enabled_vid_fmts;
+	u64 enabled_vid_fmts;
 	u32 drm_memory_fmts[ARRAY_SIZE(xilinx_frmbuf_formats)];
 	u32 drm_fmt_cnt;
 	u32 v4l2_memory_fmts[ARRAY_SIZE(xilinx_frmbuf_formats)];
@@ -569,6 +844,7 @@ struct xilinx_frmbuf_device {
 	u32 max_height;
 	u32 ppc;
 	struct clk *ap_clk;
+	u32 tile_fmt;
 };
 
 static const struct xilinx_frmbuf_feature xlnx_fbwr_cfg_v20 = {
@@ -586,6 +862,14 @@ static const struct xilinx_frmbuf_feature xlnx_fbwr_cfg_v22 = {
 	.flags = XILINX_PPC_PROP | XILINX_FLUSH_PROP
 		| XILINX_FID_PROP | XILINX_CLK_PROP
 		| XILINX_THREE_PLANES_PROP,
+};
+
+static const struct xilinx_frmbuf_feature xlnx_fbwr_cfg_v30 = {
+	.direction = DMA_DEV_TO_MEM,
+	.flags = XILINX_PPC_PROP | XILINX_FLUSH_PROP
+		| XILINX_FID_PROP | XILINX_CLK_PROP
+		| XILINX_THREE_PLANES_PROP
+		| XILINX_TILE_FORMAT_PROP,
 };
 
 static const struct xilinx_frmbuf_feature xlnx_fbrd_cfg_v20 = {
@@ -606,6 +890,15 @@ static const struct xilinx_frmbuf_feature xlnx_fbrd_cfg_v22 = {
 		| XILINX_FID_ERR_DETECT_PROP,
 };
 
+static const struct xilinx_frmbuf_feature xlnx_fbrd_cfg_v30 = {
+	.direction = DMA_MEM_TO_DEV,
+	.flags = XILINX_PPC_PROP | XILINX_FLUSH_PROP
+		| XILINX_FID_PROP | XILINX_CLK_PROP
+		| XILINX_THREE_PLANES_PROP
+		| XILINX_FID_ERR_DETECT_PROP
+		| XILINX_TILE_FORMAT_PROP,
+};
+
 static const struct of_device_id xilinx_frmbuf_of_ids[] = {
 	{ .compatible = "xlnx,axi-frmbuf-wr-v2",
 		.data = (void *)&xlnx_fbwr_cfg_v20},
@@ -614,7 +907,7 @@ static const struct of_device_id xilinx_frmbuf_of_ids[] = {
 	{ .compatible = "xlnx,axi-frmbuf-wr-v2.2",
 		.data = (void *)&xlnx_fbwr_cfg_v22},
 	{ .compatible = "xlnx,v-frmbuf-wr-v3.0",
-		.data = (void *)&xlnx_fbwr_cfg_v22},
+		.data = (void *)&xlnx_fbwr_cfg_v30},
 	{ .compatible = "xlnx,axi-frmbuf-rd-v2",
 		.data = (void *)&xlnx_fbrd_cfg_v20},
 	{ .compatible = "xlnx,axi-frmbuf-rd-v2.1",
@@ -622,7 +915,7 @@ static const struct of_device_id xilinx_frmbuf_of_ids[] = {
 	{ .compatible = "xlnx,axi-frmbuf-rd-v2.2",
 		.data = (void *)&xlnx_fbrd_cfg_v22},
 	{ .compatible = "xlnx,v-frmbuf-rd-v3.0",
-		.data = (void *)&xlnx_fbrd_cfg_v22},
+		.data = (void *)&xlnx_fbrd_cfg_v30},
 	{/* end of list */}
 };
 
@@ -738,6 +1031,50 @@ static struct xilinx_frmbuf_device *frmbuf_find_dev(struct dma_chan *chan)
 	xdev = container_of(xchan, struct xilinx_frmbuf_device, chan);
 
 	return xdev;
+}
+
+static int xilinx_frmbuf_pitch_calc(u32 clr_fmt, u32 tile_size, u32 width)
+{
+	u32 depth, pitch_pixels, pitch_bytes;
+
+	switch (clr_fmt) {
+	case V4L2_PIX_FMT_T5M8:
+	case V4L2_PIX_FMT_T508:
+	case V4L2_PIX_FMT_T548:
+	case V4L2_PIX_FMT_T6M8:
+	case V4L2_PIX_FMT_T608:
+	case V4L2_PIX_FMT_T628:
+	case V4L2_PIX_FMT_T648:
+		depth = 8;
+		break;
+	case V4L2_PIX_FMT_T5MA:
+	case V4L2_PIX_FMT_T50A:
+	case V4L2_PIX_FMT_T52A:
+	case V4L2_PIX_FMT_T54A:
+	case V4L2_PIX_FMT_T6MA:
+	case V4L2_PIX_FMT_T60A:
+	case V4L2_PIX_FMT_T62A:
+	case V4L2_PIX_FMT_T64A:
+		depth = 10;
+		break;
+	case V4L2_PIX_FMT_T5MC:
+	case V4L2_PIX_FMT_T50C:
+	case V4L2_PIX_FMT_T52C:
+	case V4L2_PIX_FMT_T54C:
+	case V4L2_PIX_FMT_T6MC:
+	case V4L2_PIX_FMT_T60C:
+	case V4L2_PIX_FMT_T62C:
+	case V4L2_PIX_FMT_T64C:
+		depth = 12;
+		break;
+	default:
+		depth = 8;
+	}
+
+	pitch_pixels = ALIGN(width, tile_size);
+	pitch_bytes = (pitch_pixels * depth * XILINX_TILE_ROWS) / XILINX_BYTE_ALIGN;
+
+	return pitch_bytes;
 }
 
 static int frmbuf_verify_format(struct dma_chan *chan, u32 fourcc, u32 type)
@@ -1277,13 +1614,22 @@ static void xilinx_frmbuf_start_transfer(struct xilinx_frmbuf_chan *chan)
 
 	/* HW expects these parameters to be same for one transaction */
 	frmbuf_write(chan, XILINX_FRMBUF_WIDTH_OFFSET, desc->hw.hsize);
-	frmbuf_write(chan, XILINX_FRMBUF_STRIDE_OFFSET, desc->hw.stride);
+	if (chan->vid_fmt->tile_sz != 32 && chan->vid_fmt->tile_sz != 64)
+		frmbuf_write(chan, XILINX_FRMBUF_STRIDE_OFFSET, desc->hw.stride);
 	frmbuf_write(chan, XILINX_FRMBUF_HEIGHT_OFFSET, desc->hw.vsize);
 	frmbuf_write(chan, XILINX_FRMBUF_FMT_OFFSET, chan->vid_fmt->id);
 
 	/* If it is framebuffer read IP set the FID */
 	if (chan->direction == DMA_MEM_TO_DEV && chan->hw_fid)
 		frmbuf_write(chan, XILINX_FRMBUF_FID_OFFSET, desc->fid);
+
+	dev_dbg(xdev->dev, "fbid: %u, vsize: %u, stride: %u, hsize: %u\n",
+		chan->vid_fmt->id, desc->hw.vsize, desc->hw.stride, desc->hw.hsize);
+	dev_dbg(xdev->dev, "buffer addr 0 = 0x%08llx, 1 = 0x%08llx, 2 = 0x%08llx\n",
+		desc->hw.luma_plane_addr,
+		desc->hw.chroma_plane_addr[0],
+		desc->hw.chroma_plane_addr[1]);
+	dev_dbg(xdev->dev, "pitch = %u\n", frmbuf_read(chan, XILINX_FRMBUF_STRIDE_OFFSET));
 
 	/* Start the hardware */
 	xilinx_frmbuf_start(chan);
@@ -1473,6 +1819,11 @@ xilinx_frmbuf_dma_prep_interleaved(struct dma_chan *dchan,
 		goto error;
 	}
 
+	if (chan->xdev->ppc == 8 &&  chan->vid_fmt->tile_sz == 32) {
+		dev_err(chan->xdev->dev, "Unsupported configuration: ppc = 8 and tile size = 32\n");
+		return NULL;
+	}
+
 	desc = xilinx_frmbuf_alloc_tx_descriptor(chan);
 	if (!desc)
 		return NULL;
@@ -1487,9 +1838,22 @@ xilinx_frmbuf_dma_prep_interleaved(struct dma_chan *dchan,
 	hw->hsize = (xt->sgl[0].size * chan->vid_fmt->ppw * 8) /
 		     chan->vid_fmt->bpw;
 
+	dev_dbg(chan->xdev->dev, "hsize calc sgl[0].size = %lu, ppw = %u, bpw = %u hsize = %u\n",
+		xt->sgl[0].size, chan->vid_fmt->ppw, chan->vid_fmt->bpw, hw->hsize);
+
 	/* hsize calc should not have resulted in an odd number */
 	if (hw->hsize & 1)
 		hw->hsize++;
+
+	/* Write tile based pitch to the stride, only if tile format enabled */
+	if (chan->xdev->tile_fmt && (chan->xdev->cfg->flags & XILINX_TILE_FORMAT_PROP) &&
+	    (chan->vid_fmt->tile_sz == 32 || chan->vid_fmt->tile_sz == 64)) {
+		int pitch;
+
+		pitch = xilinx_frmbuf_pitch_calc(chan->vid_fmt->v4l2_fmt, chan->vid_fmt->tile_sz,
+						 hw->hsize);
+		frmbuf_write(chan, XILINX_FRMBUF_STRIDE_OFFSET, pitch);
+	}
 
 	if (chan->direction == DMA_MEM_TO_DEV) {
 		hw->luma_plane_addr = xt->src_start;
@@ -1819,6 +2183,11 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 		err = -EINVAL;
 		goto remove_chan;
 	}
+
+	/* check for tile format */
+	xdev->tile_fmt = of_property_read_bool(node, "xlnx,tile-formats");
+	if (xdev->tile_fmt && (xdev->cfg->flags & XILINX_TILE_FORMAT_PROP))
+		dev_dbg(&pdev->dev, "Tile video formats are enabled\n");
 
 	/* read supported video formats and update internal table */
 	hw_vid_fmt_cnt = of_property_count_strings(node, "xlnx,vid-formats");
