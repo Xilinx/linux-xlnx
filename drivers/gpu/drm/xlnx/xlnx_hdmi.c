@@ -3115,17 +3115,29 @@ color_formats xlnx_hdmi_find_media_bus(struct xlnx_hdmi *hdmi,
 	case DRM_FORMAT_VUY888:
 	case DRM_FORMAT_XVUY8888:
 	case DRM_FORMAT_Y8:
+	case DRM_FORMAT_T5M8:
+	case DRM_FORMAT_T6M8:
 	case DRM_FORMAT_YUV444:
+	case DRM_FORMAT_T548:
+	case DRM_FORMAT_T648:
 	case MEDIA_BUS_FMT_VUY8_1X24:
 		hdmi->xvidc_colordepth = HDMI_TX_BPC_8;
 		return HDMI_TX_CSF_YCRCB_444;
 	case DRM_FORMAT_XVUY2101010:
 	case DRM_FORMAT_Y10:
+	case DRM_FORMAT_T5MA:
+	case DRM_FORMAT_T6MA:
+	case DRM_FORMAT_T54A:
+	case DRM_FORMAT_T64A:
 	case DRM_FORMAT_X403:
 	case MEDIA_BUS_FMT_VUY10_1X30:
 		hdmi->xvidc_colordepth = HDMI_TX_BPC_10;
 		return HDMI_TX_CSF_YCRCB_444;
 	/* TODO: Fix using DRM and media formats in same switch case */
+	case DRM_FORMAT_T5MC:
+	case DRM_FORMAT_T6MC:
+	case DRM_FORMAT_T54C:
+	case DRM_FORMAT_T64C:
 	case DRM_FORMAT_X423:
 	case MEDIA_BUS_FMT_VUY12_1X36:
 		hdmi->xvidc_colordepth = HDMI_TX_BPC_12;
@@ -3133,18 +3145,38 @@ color_formats xlnx_hdmi_find_media_bus(struct xlnx_hdmi *hdmi,
 	case DRM_FORMAT_YUYV:
 	case DRM_FORMAT_UYVY:
 	case DRM_FORMAT_NV16:
+	case DRM_FORMAT_T528:
+	case DRM_FORMAT_T628:
 	case MEDIA_BUS_FMT_UYVY8_1X16:
 		hdmi->xvidc_colordepth = HDMI_TX_BPC_8;
 		return HDMI_TX_CSF_YCRCB_422;
+	case DRM_FORMAT_T52A:
+	case DRM_FORMAT_T62A:
 	case DRM_FORMAT_XV20:
+	case MEDIA_BUS_FMT_UYVY10_1X20:
 		hdmi->xvidc_colordepth = HDMI_TX_BPC_10;
 		return HDMI_TX_CSF_YCRCB_422;
+	case DRM_FORMAT_T52C:
+	case DRM_FORMAT_T62C:
+	case MEDIA_BUS_FMT_UYVY12_1X24:
+		hdmi->xvidc_colordepth = HDMI_TX_BPC_12;
+		return HDMI_TX_CSF_YCRCB_422;
 	case DRM_FORMAT_NV12:
+	case DRM_FORMAT_T508:
+	case DRM_FORMAT_T608:
 	case MEDIA_BUS_FMT_VYYUYY8_1X24:
 		hdmi->xvidc_colordepth = HDMI_TX_BPC_8;
 		return HDMI_TX_CSF_YCRCB_420;
 	case DRM_FORMAT_XV15:
+	case DRM_FORMAT_T50A:
+	case DRM_FORMAT_T60A:
+	case MEDIA_BUS_FMT_VYYUYY10_4X20:
 		hdmi->xvidc_colordepth = HDMI_TX_BPC_10;
+		return HDMI_TX_CSF_YCRCB_420;
+	case DRM_FORMAT_T50C:
+	case DRM_FORMAT_T60C:
+	case MEDIA_BUS_FMT_UYYVYY12_4X24:
+		hdmi->xvidc_colordepth = HDMI_TX_BPC_12;
 		return HDMI_TX_CSF_YCRCB_420;
 	default:
 		dev_err(hdmi->dev, "Unknown drm fmt: %d\n", drm_fourcc);
