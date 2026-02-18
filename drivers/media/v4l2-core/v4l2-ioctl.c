@@ -1512,6 +1512,30 @@ static void v4l_fill_fmtdesc(struct v4l2_fmtdesc *fmt)
 	case V4L2_META_FMT_GENERIC_CSI2_20:	descr = "8-bit Generic Meta, 20b CSI-2"; break;
 	case V4L2_META_FMT_GENERIC_CSI2_24:	descr = "8-bit Generic Meta, 24b CSI-2"; break;
 
+	case V4L2_PIX_FMT_T5M8:		descr = "8-bit Grayscale 32x4 tiles"; break;
+	case V4L2_PIX_FMT_T5MA:		descr = "10-bit Grayscale 32x4 tiles"; break;
+	case V4L2_PIX_FMT_T5MC:		descr = "12-bit Grayscale 32x4 tiles "; break;
+	case V4L2_PIX_FMT_T6M8:		descr = "8-bit Grayscale 64x4 tiles"; break;
+	case V4L2_PIX_FMT_T6MA:		descr = "10-bit Grayscale 64x4 tiles"; break;
+	case V4L2_PIX_FMT_T6MC:		descr = "12-bit Grayscale 64x4 tiles"; break;
+	case V4L2_PIX_FMT_T508:		descr = "Y/CbCr 4:2:0 8-bit 32x4 tiles"; break;
+	case V4L2_PIX_FMT_T50A:		descr = "Y/CbCr 4:2:0 10-bit 32x4 tiles"; break;
+	case V4L2_PIX_FMT_T50C:		descr = "Y/CbCr 4:2:0 12-bit 32x4 tiles"; break;
+	case V4L2_PIX_FMT_T608:		descr = "Y/CbCr 4:2:0 8-bit 64x4 tiles"; break;
+	case V4L2_PIX_FMT_T60A:		descr = "Y/CbCr 4:2:0 10-bit 64x4 tiles"; break;
+	case V4L2_PIX_FMT_T60C:		descr = "Y/CbCr 4:2:0 12-bit 64x4 tiles"; break;
+	case V4L2_PIX_FMT_T528:		descr = "Y/CbCr 4:2:2 8-bit 32x4 tiles"; break;
+	case V4L2_PIX_FMT_T52A:		descr = "Y/CbCr 4:2:2 10-bit 32x4 tiles"; break;
+	case V4L2_PIX_FMT_T52C:		descr = "Y/CbCr 4:2:2 12-bit 32x4 tiles"; break;
+	case V4L2_PIX_FMT_T628:		descr = "Y/CbCr 4:2:2 8-bit 64x4 tiles"; break;
+	case V4L2_PIX_FMT_T62A:		descr = "Y/CbCr 4:2:2 10-bit 64x4 tiles"; break;
+	case V4L2_PIX_FMT_T62C:		descr = "Y/CbCr 4:2:2 12-bit 64x4 tiles"; break;
+	case V4L2_PIX_FMT_T548:		descr = "Y/CbCr 4:4:4 8-bit 32x4 tiles"; break;
+	case V4L2_PIX_FMT_T54A:		descr = "Y/CbCr 4:4:4 10-bit 32x4 tiles"; break;
+	case V4L2_PIX_FMT_T54C:		descr = "Y/CbCr 4:4:4 12-bit 32x4 tiles"; break;
+	case V4L2_PIX_FMT_T648:		descr = "Y/CbCr 4:4:4 8-bit 64x4 tiles"; break;
+	case V4L2_PIX_FMT_T64A:		descr = "Y/CbCr 4:4:4 10-bit 64x4 tiles"; break;
+	case V4L2_PIX_FMT_T64C:		descr = "Y/CbCr 4:4:4 12-bit 64x4 tiles"; break;
 	default:
 		/* Compressed formats */
 		flags = V4L2_FMT_FLAG_COMPRESSED;
