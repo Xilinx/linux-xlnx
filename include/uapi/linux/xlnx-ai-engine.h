@@ -386,6 +386,19 @@ struct aie_dmabuf_bd_args {
 };
 
 /**
+ * struct aie_dmabuf_bd_cmd - AIE DMA buffer descriptor command
+ * @loc: tile location relative to the start of a partition
+ * @bd: DMA buffer descriptor register values
+ *
+ * - sqe->addr will be used as bd_id.
+ * - sqe->buf_index will be used for buffer fd.
+ */
+struct aie_dmabuf_bd_cmd {
+	struct aie_location loc;
+	u32 bd[18];
+};
+
+/**
  * struct aie_tiles_array - AIE tiles array
  * @locs: tiles locations array
  * @num_tiles: number of tiles in the tiles locations array
@@ -819,5 +832,6 @@ struct aie_rsc_user_stat_array {
 #define AIE_REG_WRITE_CMD		_IOW(AIE_IOCTL_BASE, 0x21, struct aie_reg_args)
 #define AIE_REG_BLOCKWRITE_CMD		_IOW(AIE_IOCTL_BASE, 0x22, struct aie_reg_args)
 #define AIE_REG_BLOCKSET_CMD		_IOW(AIE_IOCTL_BASE, 0x23, struct aie_reg_args)
+#define AIE_CONFIG_SHIMDMA_DMABUF_BD_CMD	_IOW(AIE_IOCTL_BASE, 0x24, struct aie_dmabuf_bd_cmd)
 
 #endif
