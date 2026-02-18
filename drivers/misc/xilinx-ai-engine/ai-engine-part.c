@@ -993,6 +993,56 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 	return ret;
 }
 
+static int aie_part_init_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags)
+{
+	struct aie_partition *apart = cmd->file->private_data;
+	struct aie_partition_init_args part_init_args;
+	const struct aie_partition_init_args *args;
+	struct aie_location *locs = NULL;
+	unsigned long locs_size;
+	int ret;
+
+	args = AIE_IO_URING_SQE128_CMD(cmd->sqe, struct aie_partition_init_args);
+
+	if (READ_ONCE(args->handshake))
+		return -EINVAL;
+
+	part_init_args.locs = READ_ONCE(args->locs);
+	part_init_args.num_tiles = READ_ONCE(args->num_tiles);
+	part_init_args.init_opts = READ_ONCE(args->init_opts);
+	part_init_args.ecc_scrub = READ_ONCE(args->ecc_scrub);
+
+	if (part_init_args.num_tiles && !part_init_args.locs)
+		return -EINVAL;
+
+	locs_size = part_init_args.num_tiles * sizeof(*locs);
+	if (part_init_args.num_tiles) {
+		u64 uaddr = (u64)part_init_args.locs;
+		struct iov_iter iter;
+		struct page *page[1], **pages = page;
+		size_t offset0, size;
+
+		ret = io_uring_cmd_import_fixed(uaddr, locs_size, READ, &iter, cmd, issue_flags);
+		if (ret < 0)
+			return ret;
+		size = iov_iter_extract_pages(&iter, &pages, locs_size, 1, 0, &offset0);
+		if (size != locs_size) {
+			dev_dbg(&apart->dev, "Failed to extract pages for locs, uaddr: %pK, size: %zu, expected size: %lu\n",
+				(void *)uaddr, size, locs_size);
+			return -EINVAL;
+		}
+		locs = page_to_virt(pages[0]) + offset0;
+	}
+
+	part_init_args.locs = locs;
+	if (apart->adev->ops->part_init)
+		ret = apart->adev->ops->part_init(apart, &part_init_args);
+	else
+		ret = -EINVAL;
+
+	return 0;
+}
+
 static int aie_part_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags)
 {
 	struct aie_partition *apart = cmd->file->private_data;
@@ -1004,6 +1054,9 @@ static int aie_part_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags
 		return -EINVAL;
 
 	switch (cmd->cmd_op) {
+	case AIE_PARTITION_INIT_IOCTL:
+		ret = aie_part_init_uring_cmd(cmd, issue_flags);
+		break;
 	case AIE_BLOCK_WRITE64_CMD:
 	{
 		const struct aie_block_write64 *args;
