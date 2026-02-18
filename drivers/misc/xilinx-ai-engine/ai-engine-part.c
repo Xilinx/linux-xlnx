@@ -1078,6 +1078,17 @@ static int aie_part_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags
 					     READ_ONCE(args->size), args->data);
 	}
 	break;
+	case AIE_REG_WRITE_CMD:
+	{
+		const struct aie_reg_args *args;
+		u32 val;
+
+		args = AIE_IO_URING_SQE128_CMD(cmd->sqe, struct aie_reg_args);
+		val = READ_ONCE(args->val);
+		ret = aie_part_write_register(apart, (size_t)READ_ONCE(args->offset),
+					      sizeof(args->val), &val, READ_ONCE(args->mask));
+	}
+	break;
 	default:
 		dev_err(&apart->dev, "Invalid/Unsupported command %u.\n", cmd->cmd_op);
 		ret = -EINVAL;
