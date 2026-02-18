@@ -38,7 +38,7 @@ TRACE_EVENT(aie_part_ioctl,
 		__entry->partition_id = apart->partition_id;
 		__entry->cmd = cmd;
 	),
-	TP_printk("id: %d cmd: %d", __entry->partition_id, __entry->cmd)
+	TP_printk("id: %d cmd: 0x%x", __entry->partition_id, __entry->cmd)
 );
 
 TRACE_EVENT(aie_part_access_reg,
@@ -439,7 +439,7 @@ TRACE_EVENT(xilinx_ai_engine_ioctl,
 		__assign_str(devname);
 		__entry->cmd = cmd;
 	),
-	TP_printk("%s: cmd: %d NR: %d",
+	TP_printk("%s: cmd: %d NR: 0x%x",
 		  __get_str(devname), __entry->cmd, _IOC_NR(__entry->cmd))
 );
 
