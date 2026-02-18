@@ -131,6 +131,7 @@ struct xvip_video_format {
 
 const struct xvip_video_format *xvip_get_format_by_code(unsigned int code);
 const struct xvip_video_format *xvip_get_format_by_fourcc(u32 fourcc);
+bool xvip_is_tile_format(u32 fourcc, u8 *tile_size);
 const struct xvip_video_format *xvip_of_get_format(struct device_node *node);
 void xvip_bpl_scaling_factor(u32 fourcc, u32 *numerator, u32 *denominator);
 void xvip_width_padding_factor(u32 fourcc, u32 *numerator, u32 *denominator);
