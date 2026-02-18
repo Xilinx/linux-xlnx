@@ -138,6 +138,54 @@ static const struct xvip_video_format xvip_video_formats[] = {
 	  2, 16, V4L2_PIX_FMT_SGBRG16, 1, 1, 1, 1 },
 	{ XVIP_VF_MONO_SENSOR, 16, "bggr", MEDIA_BUS_FMT_SBGGR16_1X16,
 	  2, 16, V4L2_PIX_FMT_SBGGR16, 1, 1, 1, 1 },
+	{ XVIP_VF_MONO_SENSOR, 8, NULL, MEDIA_BUS_FMT_Y8_1X8,
+	  1, 8, V4L2_PIX_FMT_T5M8, 1, 1, 1, 1 },
+	{ XVIP_VF_MONO_SENSOR, 10, NULL, MEDIA_BUS_FMT_Y10_1X10,
+	  1, 10, V4L2_PIX_FMT_T5MA, 1, 1, 1, 1 },
+	{ XVIP_VF_MONO_SENSOR, 12, NULL, MEDIA_BUS_FMT_Y12_1X12,
+	  1, 12, V4L2_PIX_FMT_T5MC, 1, 1, 1, 1 },
+	{ XVIP_VF_MONO_SENSOR, 8, NULL, MEDIA_BUS_FMT_Y8_1X8,
+	  1, 8, V4L2_PIX_FMT_T6M8, 1, 1, 1, 1 },
+	{ XVIP_VF_MONO_SENSOR, 10, NULL, MEDIA_BUS_FMT_Y10_1X10,
+	  1, 10, V4L2_PIX_FMT_T6MA, 1, 1, 1, 1 },
+	{ XVIP_VF_MONO_SENSOR, 12, NULL, MEDIA_BUS_FMT_Y12_1X12,
+	  1, 12, V4L2_PIX_FMT_T6MC, 1, 1, 1, 1 },
+	{ XVIP_VF_YUV_420, 8, NULL, MEDIA_BUS_FMT_VYYUYY8_1X24,
+	  1, 12, V4L2_PIX_FMT_T508, 2, 1, 1, 2 },
+	{ XVIP_VF_YUV_420, 10, NULL, MEDIA_BUS_FMT_VYYUYY10_4X20,
+	  1, 12, V4L2_PIX_FMT_T50A, 2, 1, 2, 2 },
+	{ XVIP_VF_YUV_420, 12, NULL, MEDIA_BUS_FMT_UYYVYY12_4X24,
+	  1, 12, V4L2_PIX_FMT_T50C, 2, 1, 2, 2 },
+	{ XVIP_VF_YUV_420, 8, NULL, MEDIA_BUS_FMT_VYYUYY8_1X24,
+	  1, 12, V4L2_PIX_FMT_T608, 2, 1, 1, 2 },
+	{ XVIP_VF_YUV_420, 10, NULL, MEDIA_BUS_FMT_VYYUYY10_4X20,
+	  1, 12, V4L2_PIX_FMT_T60A, 2, 1, 2, 2 },
+	{ XVIP_VF_YUV_420, 12, NULL, MEDIA_BUS_FMT_UYYVYY12_4X24,
+	  1, 12, V4L2_PIX_FMT_T60C, 2, 1, 2, 2 },
+	{ XVIP_VF_YUV_422, 8, NULL, MEDIA_BUS_FMT_UYVY8_1X16,
+	  1, 16, V4L2_PIX_FMT_T528, 2, 1, 1, 1 },
+	{ XVIP_VF_YUV_422, 10, NULL, MEDIA_BUS_FMT_UYVY10_1X20,
+	  1, 16, V4L2_PIX_FMT_T52A, 2, 1, 2, 1 },
+	{ XVIP_VF_YUV_422, 12, NULL, MEDIA_BUS_FMT_UYVY12_1X24,
+	  1, 16, V4L2_PIX_FMT_T52C, 2, 1, 2, 1 },
+	{ XVIP_VF_YUV_422, 8, NULL, MEDIA_BUS_FMT_UYVY8_1X16,
+	  1, 16, V4L2_PIX_FMT_T628, 2, 1, 1, 1 },
+	{ XVIP_VF_YUV_422, 10, NULL, MEDIA_BUS_FMT_UYVY10_1X20,
+	  1, 16, V4L2_PIX_FMT_T62A, 2, 1, 2, 1 },
+	{ XVIP_VF_YUV_422, 12, NULL, MEDIA_BUS_FMT_UYVY12_1X24,
+	  1, 16, V4L2_PIX_FMT_T62C, 2, 1, 2, 1 },
+	{ XVIP_VF_YUV_444, 8, NULL, MEDIA_BUS_FMT_VUY8_1X24,
+	  1, 24, V4L2_PIX_FMT_T548, 3, 1, 1, 1 },
+	{ XVIP_VF_YUV_444, 10, NULL, MEDIA_BUS_FMT_VUY10_1X30,
+	  1, 30, V4L2_PIX_FMT_T54A, 3, 1, 1, 1 },
+	{ XVIP_VF_YUV_444, 12, NULL, MEDIA_BUS_FMT_VUY12_1X36,
+	  1, 36, V4L2_PIX_FMT_T54C, 3, 1, 1, 1 },
+	{ XVIP_VF_YUV_444, 8, NULL, MEDIA_BUS_FMT_VUY8_1X24,
+	  1, 24, V4L2_PIX_FMT_T648, 3, 1, 1, 1 },
+	{ XVIP_VF_YUV_444, 10, NULL, MEDIA_BUS_FMT_VUY10_1X30,
+	  1, 30, V4L2_PIX_FMT_T64A, 3, 1, 1, 1 },
+	{ XVIP_VF_YUV_444, 12, NULL, MEDIA_BUS_FMT_VUY12_1X36,
+	  1, 36, V4L2_PIX_FMT_T64C, 3, 1, 1, 1 },
 };
 
 /**
@@ -187,6 +235,28 @@ const struct xvip_video_format *xvip_get_format_by_fourcc(u32 fourcc)
 EXPORT_SYMBOL_GPL(xvip_get_format_by_fourcc);
 
 /**
+ * xvip_is_tile_format - Check whether given 4CC code is Xilinx's tile format or not
+ * @fourcc: the format 4CC
+ * @tile_size: return tile's stride size in pixel
+ *
+ * Return: Return true if provided 4CC is one of Xilinx tile formats
+ */
+bool xvip_is_tile_format(u32 fourcc, u8 *tile_size)
+{
+	bool is_tile = false;
+
+	if ((fourcc & 0xFF) == 'T' && ((fourcc >> 8) & 0xFF) == '5') {
+		*tile_size = 32;
+		is_tile = true;
+	} else if ((fourcc & 0xFF) == 'T' && ((fourcc >> 8) & 0xFF) == '6') {
+		*tile_size = 64;
+		is_tile = true;
+	}
+	return is_tile;
+}
+EXPORT_SYMBOL_GPL(xvip_is_tile_format);
+
+/**
  * xvip_bpl_scaling_factor - Retrieve bpl scaling factor for a 4CC
  * @fourcc: the format 4CC
  * @numerator: returning numerator of scaling factor
@@ -197,6 +267,18 @@ EXPORT_SYMBOL_GPL(xvip_get_format_by_fourcc);
 void xvip_bpl_scaling_factor(u32 fourcc, u32 *numerator, u32 *denominator)
 {
 	switch (fourcc) {
+	/* Add 10bit tile formats in below case*/
+	case V4L2_PIX_FMT_T5MA:
+	case V4L2_PIX_FMT_T6MA:
+	case V4L2_PIX_FMT_T50A:
+	case V4L2_PIX_FMT_T60A:
+	case V4L2_PIX_FMT_T52A:
+	case V4L2_PIX_FMT_T62A:
+	case V4L2_PIX_FMT_T54A:
+	case V4L2_PIX_FMT_T64A:
+		*numerator = 5;
+		*denominator = 4;
+		break;
 	case V4L2_PIX_FMT_XY10:
 	case V4L2_PIX_FMT_XV15:
 	case V4L2_PIX_FMT_XV20:
@@ -217,6 +299,14 @@ void xvip_bpl_scaling_factor(u32 fourcc, u32 *numerator, u32 *denominator)
 	case V4L2_PIX_FMT_X412:
 	case V4L2_PIX_FMT_X412M:
 	case V4L2_PIX_FMT_X423:
+	case V4L2_PIX_FMT_T5MC:
+	case V4L2_PIX_FMT_T6MC:
+	case V4L2_PIX_FMT_T50C:
+	case V4L2_PIX_FMT_T60C:
+	case V4L2_PIX_FMT_T52C:
+	case V4L2_PIX_FMT_T62C:
+	case V4L2_PIX_FMT_T54C:
+	case V4L2_PIX_FMT_T64C:
 		*numerator = 12;
 		*denominator = 8;
 		break;
