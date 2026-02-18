@@ -11,6 +11,7 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/xlnx-ai-engine.h>
+#include <linux/io_uring/cmd.h>
 
 #include "ai-engine-trace.h"
 /**
@@ -131,6 +132,130 @@ int aie_part_release_tiles(struct aie_partition *apart, int num_tiles,
 	}
 
 	return apart->adev->ops->set_part_clocks(apart);
+}
+
+int aie_part_release_tiles_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags)
+{
+	struct aie_partition *apart = cmd->file->private_data;
+	const struct aie_tiles_array *args;
+	struct aie_location *locs = NULL;
+	u32 num_tiles;
+	int ret;
+
+	args = AIE_IO_URING_SQE128_CMD(cmd->sqe, struct aie_tiles_array);
+
+	num_tiles = READ_ONCE(args->num_tiles);
+
+	if (num_tiles) {
+		u64 uaddr = (u64)READ_ONCE(args->locs);
+		unsigned long locs_size = num_tiles * sizeof(*locs);
+		struct iov_iter iter;
+		struct page *page[1], **pages = page;
+		size_t offset0, size;
+		u32 i;
+
+		if (!uaddr)
+			return -EINVAL;
+
+		ret = io_uring_cmd_import_fixed(uaddr, locs_size, READ,
+						&iter, cmd, issue_flags);
+		if (ret < 0)
+			return ret;
+
+		size = iov_iter_extract_pages(&iter, &pages, locs_size, 1,
+					      0, &offset0);
+		if (size != locs_size) {
+			dev_dbg(&apart->dev,
+				"Failed to extract pages for locs, uaddr: %pK, size: %zu, expected size: %lu\n",
+				(void *)uaddr, size, locs_size);
+			return -EINVAL;
+		}
+
+		locs = page_to_virt(pages[0]) + offset0;
+
+		for (i = 0; i < num_tiles; i++) {
+			if (locs[i].col > apart->range.size.col ||
+			    locs[i].row > apart->range.size.row) {
+				dev_err(&apart->dev,
+					"failed to request tiles, invalid tile(%u,%u).\n",
+					locs[i].col, locs[i].row);
+				return -EINVAL;
+			}
+			locs[i].col += apart->range.start.col;
+			locs[i].row += apart->range.start.row;
+		}
+	}
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+
+	ret = aie_part_release_tiles(apart, num_tiles, locs);
+	mutex_unlock(&apart->mlock);
+
+	return ret;
+}
+
+int aie_part_request_tiles_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags)
+{
+	struct aie_partition *apart = cmd->file->private_data;
+	const struct aie_tiles_array *args;
+	struct aie_location *locs = NULL;
+	u32 num_tiles;
+	int ret;
+
+	args = AIE_IO_URING_SQE128_CMD(cmd->sqe, struct aie_tiles_array);
+
+	num_tiles = READ_ONCE(args->num_tiles);
+
+	if (num_tiles) {
+		u64 uaddr = (u64)READ_ONCE(args->locs);
+		unsigned long locs_size = num_tiles * sizeof(*locs);
+		struct iov_iter iter;
+		struct page *page[1], **pages = page;
+		size_t offset0, size;
+		u32 i;
+
+		if (!uaddr)
+			return -EINVAL;
+
+		ret = io_uring_cmd_import_fixed(uaddr, locs_size, READ,
+						&iter, cmd, issue_flags);
+		if (ret < 0)
+			return ret;
+
+		size = iov_iter_extract_pages(&iter, &pages, locs_size, 1,
+					      0, &offset0);
+		if (size != locs_size) {
+			dev_dbg(&apart->dev,
+				"Failed to extract pages for locs, uaddr: %pK, size: %zu, expected size: %lu\n",
+				(void *)uaddr, size, locs_size);
+			return -EINVAL;
+		}
+
+		locs = page_to_virt(pages[0]) + offset0;
+
+		for (i = 0; i < num_tiles; i++) {
+			if (locs[i].col > apart->range.size.col ||
+			    locs[i].row > apart->range.size.row) {
+				dev_err(&apart->dev,
+					"failed to request tiles, invalid tile(%u,%u).\n",
+					locs[i].col, locs[i].row);
+				return -EINVAL;
+			}
+			locs[i].col += apart->range.start.col;
+			locs[i].row += apart->range.start.row;
+		}
+	}
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+
+	ret = aie_part_request_tiles(apart, num_tiles, locs);
+	mutex_unlock(&apart->mlock);
+
+	return ret;
 }
 
 /**

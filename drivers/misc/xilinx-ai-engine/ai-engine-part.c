@@ -1157,6 +1157,12 @@ static int aie_part_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags
 	case AIE_UPDATE_SHIMDMA_DMABUF_BD_ADDR_IOCTL:
 		ret = aie_part_update_dmabuf_bd_cmd(cmd, issue_flags);
 		break;
+	case AIE_REQUEST_TILES_IOCTL:
+		ret = aie_part_request_tiles_cmd(cmd, issue_flags);
+		break;
+	case AIE_RELEASE_TILES_IOCTL:
+		ret = aie_part_release_tiles_cmd(cmd, issue_flags);
+		break;
 	default:
 		dev_err(&apart->dev, "Invalid/Unsupported command %u.\n", cmd->cmd_op);
 		ret = -EINVAL;
