@@ -319,15 +319,20 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 		switch (xtpg->formats[0].code) {
 		case MEDIA_BUS_FMT_VYYUYY8_1X24:
 		case MEDIA_BUS_FMT_VYYUYY10_4X20:
+		case MEDIA_BUS_FMT_UYYVYY12_4X24:
 			fmt = XTPG_HLS_COLOR_FORMAT_YUV_420;
 			break;
 		case MEDIA_BUS_FMT_UYVY8_1X16:
 		case MEDIA_BUS_FMT_UYVY10_1X20:
+		case MEDIA_BUS_FMT_UYVY12_1X24:
 			fmt = XTPG_HLS_COLOR_FORMAT_YUV_422;
 			break;
 		case MEDIA_BUS_FMT_VUY8_1X24:
 		case MEDIA_BUS_FMT_VUY10_1X30:
 		case MEDIA_BUS_FMT_VUY12_1X36:
+		case MEDIA_BUS_FMT_Y8_1X8:
+		case MEDIA_BUS_FMT_Y10_1X10:
+		case MEDIA_BUS_FMT_Y12_1X12:
 			/* TODO: Add Condition to check BPC set in the IP */
 			fmt = XTPG_HLS_COLOR_FORMAT_YUV_444;
 			break;
@@ -468,13 +473,18 @@ static int xtpg_set_format(struct v4l2_subdev *subdev,
 		switch (fmt->format.code) {
 		case MEDIA_BUS_FMT_VYYUYY8_1X24:
 		case MEDIA_BUS_FMT_VYYUYY10_4X20:
+		case MEDIA_BUS_FMT_UYYVYY12_4X24:
 		case MEDIA_BUS_FMT_UYVY8_1X16:
 		case MEDIA_BUS_FMT_UYVY10_1X20:
+		case MEDIA_BUS_FMT_UYVY12_1X24:
 		case MEDIA_BUS_FMT_VUY8_1X24:
 		case MEDIA_BUS_FMT_VUY10_1X30:
 		case MEDIA_BUS_FMT_VUY12_1X36:
 		case MEDIA_BUS_FMT_RBG888_1X24:
 		case MEDIA_BUS_FMT_RBG101010_1X30:
+		case MEDIA_BUS_FMT_Y8_1X8:
+		case MEDIA_BUS_FMT_Y10_1X10:
+		case MEDIA_BUS_FMT_Y12_1X12:
 			__format->code = fmt->format.code;
 			break;
 		default:
