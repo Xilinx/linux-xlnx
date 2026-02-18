@@ -723,6 +723,32 @@ struct v4l2_pix_format {
 #define V4L2_PIX_FMT_NV12_8L128       v4l2_fourcc('A', 'T', '1', '2') /* Y/CbCr 4:2:0 8x128 tiles */
 #define V4L2_PIX_FMT_NV12_10BE_8L128  v4l2_fourcc_be('A', 'X', '1', '2') /* Y/CbCr 4:2:0 10-bit 8x128 tiles */
 
+/* Tiled YUV formats, 32x4 and 64x4 packed */
+#define V4L2_PIX_FMT_T5M8  v4l2_fourcc('T', '5', 'M', '8') /* 8-bit Grayscale 32x4 tiles */
+#define V4L2_PIX_FMT_T5MA  v4l2_fourcc('T', '5', 'M', 'A') /* 10-bit Grayscale 32x4 tiles */
+#define V4L2_PIX_FMT_T5MC  v4l2_fourcc('T', '5', 'M', 'C') /* 12-bit Grayscale 32x4 tiles */
+#define V4L2_PIX_FMT_T6M8  v4l2_fourcc('T', '6', 'M', '8') /* 8-bit Grayscale 64x4 tiles */
+#define V4L2_PIX_FMT_T6MA  v4l2_fourcc('T', '6', 'M', 'A') /* 10-bit Grayscale 64x4 tiles */
+#define V4L2_PIX_FMT_T6MC  v4l2_fourcc('T', '6', 'M', 'C') /* 12-bit Grayscale 64x4 tiles */
+#define V4L2_PIX_FMT_T508  v4l2_fourcc('T', '5', '0', '8') /* Y/CbCr 4:2:0 8-bit 32x4 tiles */
+#define V4L2_PIX_FMT_T50A  v4l2_fourcc('T', '5', '0', 'A') /* Y/CbCr 4:2:0 10-bit 32x4 tiles */
+#define V4L2_PIX_FMT_T50C  v4l2_fourcc('T', '5', '0', 'C') /* Y/CbCr 4:2:0 12-bit 32x4 tiles */
+#define V4L2_PIX_FMT_T608  v4l2_fourcc('T', '6', '0', '8') /* Y/CbCr 4:2:0 8-bit 64x4 tiles */
+#define V4L2_PIX_FMT_T60A  v4l2_fourcc('T', '6', '0', 'A') /* Y/CbCr 4:2:0 10-bit 64x4 tiles */
+#define V4L2_PIX_FMT_T60C  v4l2_fourcc('T', '6', '0', 'C') /* Y/CbCr 4:2:0 12-bit 64x4 tiles */
+#define V4L2_PIX_FMT_T528  v4l2_fourcc('T', '5', '2', '8') /* Y/CbCr 4:2:2 8-bit 32x4 tiles */
+#define V4L2_PIX_FMT_T52A  v4l2_fourcc('T', '5', '2', 'A') /* Y/CbCr 4:2:2 10-bit 32x4 tiles */
+#define V4L2_PIX_FMT_T52C  v4l2_fourcc('T', '5', '2', 'C') /* Y/CbCr 4:2:2 12-bit 32x4 tiles */
+#define V4L2_PIX_FMT_T628  v4l2_fourcc('T', '6', '2', '8') /* Y/CbCr 4:2:2 8-bit 64x4 tiles */
+#define V4L2_PIX_FMT_T62A  v4l2_fourcc('T', '6', '2', 'A') /* Y/CbCr 4:2:2 10-bit 64x4 tiles */
+#define V4L2_PIX_FMT_T62C  v4l2_fourcc('T', '6', '2', 'C') /* Y/CbCr 4:2:2 12-bit 64x4 tiles */
+#define V4L2_PIX_FMT_T548  v4l2_fourcc('T', '5', '4', '8') /* Y/CbCr 4:4:4 8-bit 32x4 tiles */
+#define V4L2_PIX_FMT_T54A  v4l2_fourcc('T', '5', '4', 'A') /* Y/CbCr 4:4:4 10-bit 32x4 tiles */
+#define V4L2_PIX_FMT_T54C  v4l2_fourcc('T', '5', '4', 'C') /* Y/CbCr 4:4:4 12-bit 32x4 tiles */
+#define V4L2_PIX_FMT_T648  v4l2_fourcc('T', '6', '4', '8') /* Y/CbCr 4:4:4 8-bit 64x4 tiles */
+#define V4L2_PIX_FMT_T64A  v4l2_fourcc('T', '6', '4', 'A') /* Y/CbCr 4:4:4 10-bit 64x4 tiles */
+#define V4L2_PIX_FMT_T64C  v4l2_fourcc('T', '6', '4', 'C') /* Y/CbCr 4:4:4 12-bit 64x4 tiles */
+
 /* Tiled YUV formats, non contiguous planes */
 #define V4L2_PIX_FMT_NV12MT  v4l2_fourcc('T', 'M', '1', '2') /* 12  Y/CbCr 4:2:0 64x32 tiles */
 #define V4L2_PIX_FMT_NV12MT_16X16 v4l2_fourcc('V', 'M', '1', '2') /* 12  Y/CbCr 4:2:0 16x16 tiles */
