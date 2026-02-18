@@ -1698,7 +1698,8 @@ int aie_part_set_valid_bd(struct aie_partition *apart, struct aie_location loc,
 int aie_part_set_len_bd(struct aie_partition *apart, struct aie_location loc,
 			u32 *bd, size_t len);
 int aie_part_set_dmabuf_bd_kernel(struct aie_partition *apart,
-				  struct aie_dmabuf_bd_args *args);
+				  struct aie_dmabuf_bd_args *args,
+				  dma_addr_t dma_addr);
 long aie_part_set_bd_from_user(struct aie_partition *apart,
 					void __user *user_args);
 long aie_part_set_bd(struct aie_partition *apart,
