@@ -298,3 +298,4 @@ module_platform_driver(xilinx_ai_engine_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("Xilinx AI Engine UIO driver");
