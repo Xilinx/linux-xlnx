@@ -1163,6 +1163,23 @@ static int aie_part_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags
 	case AIE_RELEASE_TILES_IOCTL:
 		ret = aie_part_release_tiles_cmd(cmd, issue_flags);
 		break;
+	case AIE_SET_COLUMN_CLOCK_IOCTL:
+	{
+		struct aie_column_args args;
+		const struct aie_column_args *uargs;
+
+		if (!apart->adev->ops->set_column_clock) {
+			ret = -EINVAL;
+			break;
+		}
+		uargs = AIE_IO_URING_SQE128_CMD(cmd->sqe, struct aie_column_args);
+		args.start_col = READ_ONCE(uargs->start_col);
+		args.num_cols = READ_ONCE(uargs->num_cols);
+		args.enable = READ_ONCE(uargs->enable);
+
+		ret = apart->adev->ops->set_column_clock(apart, &args);
+		break;
+	}
 	default:
 		dev_err(&apart->dev, "Invalid/Unsupported command %u.\n", cmd->cmd_op);
 		ret = -EINVAL;
