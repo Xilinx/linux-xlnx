@@ -993,6 +993,38 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 	return ret;
 }
 
+static int aie_part_reg_blockwrite_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags)
+{
+	struct aie_partition *apart = cmd->file->private_data;
+	struct page *page[1], **pages = page;
+	size_t offset0, size, imported_size;
+	const struct aie_reg_args *args;
+	struct iov_iter iter;
+	void *data;
+	u64 uaddr;
+	int ret;
+
+	args = AIE_IO_URING_SQE128_CMD(cmd->sqe, struct aie_reg_args);
+	size = sizeof(u32) * READ_ONCE(args->len);
+	uaddr = (u64)READ_ONCE(args->dataptr);
+
+	ret = io_uring_cmd_import_fixed(uaddr, size, READ, &iter, cmd, issue_flags);
+	if (ret < 0) {
+		dev_dbg(&apart->dev, "Failed to import iov for blockwrite cmd, uaddr: 0x%pK, size: %zu\n",
+			(void *)uaddr, size);
+		return ret;
+	}
+	imported_size = iov_iter_extract_pages(&iter, &pages, size, 1, 0, &offset0);
+	if (imported_size != size) {
+		dev_dbg(&apart->dev, "Failed to extract pages for blockwrite cmd, uaddr: 0x%pK, size: %zu, imported size: %zu\n",
+			(void *)uaddr, size, imported_size);
+		return -EINVAL;
+	}
+	data = page_to_virt(pages[0]) + offset0;
+
+	return aie_part_write_register(apart, (size_t)READ_ONCE(args->offset), size, data, 0);
+}
+
 static int aie_part_init_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags)
 {
 	struct aie_partition *apart = cmd->file->private_data;
@@ -1089,6 +1121,9 @@ static int aie_part_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags
 					      sizeof(args->val), &val, READ_ONCE(args->mask));
 	}
 	break;
+	case AIE_REG_BLOCKWRITE_CMD:
+		ret = aie_part_reg_blockwrite_uring_cmd(cmd, issue_flags);
+		break;
 	default:
 		dev_err(&apart->dev, "Invalid/Unsupported command %u.\n", cmd->cmd_op);
 		ret = -EINVAL;
