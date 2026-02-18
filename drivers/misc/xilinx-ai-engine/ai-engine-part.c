@@ -1154,6 +1154,9 @@ static int aie_part_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags
 	case AIE_CONFIG_SHIMDMA_DMABUF_BD_CMD:
 		ret = aie_part_set_dmabuf_bd_cmd(cmd, issue_flags);
 		break;
+	case AIE_UPDATE_SHIMDMA_DMABUF_BD_ADDR_IOCTL:
+		ret = aie_part_update_dmabuf_bd_cmd(cmd, issue_flags);
+		break;
 	default:
 		dev_err(&apart->dev, "Invalid/Unsupported command %u.\n", cmd->cmd_op);
 		ret = -EINVAL;

@@ -711,6 +711,79 @@ long aie_part_set_dmabuf_bd_from_user(struct aie_partition *apart, void __user *
 	return ret;
 }
 
+int aie_part_update_dmabuf_bd_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags)
+{
+	struct aie_partition *apart = cmd->file->private_data;
+	struct aie_aperture *aperture = apart->aperture;
+	struct aie_device *adev = apart->adev;
+	const struct aie_dma_attr *shim_dma = adev->shim_dma;
+	const struct aie_dmabuf_bd_cmd *args;
+	struct aie_location loc, adjust_loc;
+	int ret, buf_fd, bd_id;
+	dma_addr_t addr;
+	u32 regval, len, laddr, haddr, off, intile_regoff;
+	void __iomem *va;
+
+	args = AIE_IO_URING_SQE128_CMD(cmd->sqe, struct aie_dmabuf_bd_cmd);
+
+	buf_fd = READ_ONCE(cmd->sqe->buf_index);
+	bd_id = READ_ONCE(cmd->sqe->addr);
+	loc = READ_ONCE(args->loc);
+	off = READ_ONCE(args->bd[0]);
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+
+	ret = aie_part_validate_bdloc(apart, loc, bd_id);
+	if (ret) {
+		dev_err(&apart->dev, "invalid SHIM DMA BD reg address.\n");
+		mutex_unlock(&apart->mlock);
+		return -EINVAL;
+	}
+
+	adjust_loc.col = loc.col + apart->range.start.col;
+	adjust_loc.row = loc.row + apart->range.start.row;
+	intile_regoff = shim_dma->bd_regoff + shim_dma->bd_len * bd_id;
+
+	/* Read current buffer length from hardware BD register */
+	va = aperture->base +
+	     aie_aperture_cal_regoff(aperture, adjust_loc,
+				     intile_regoff + shim_dma->buflen.regoff);
+	regval = ioread32(va);
+	len = aie_get_reg_field(&shim_dma->buflen, regval);
+
+	addr = aie_part_get_dmabuf_da_from_off(apart, buf_fd, off, len);
+	if (!addr) {
+		dev_err(&apart->dev, "invalid buffer 0x%x, 0x%x.\n", off, len);
+		mutex_unlock(&apart->mlock);
+		return -EINVAL;
+	}
+
+	/* Update low 32bit address */
+	laddr = lower_32_bits(addr);
+	va = aperture->base +
+	     aie_aperture_cal_regoff(aperture, adjust_loc,
+				     intile_regoff + shim_dma->laddr.regoff);
+	regval = ioread32(va);
+	regval &= ~shim_dma->laddr.mask;
+	regval |= aie_get_field_val(&shim_dma->laddr, laddr);
+	iowrite32(regval, va);
+
+	/* Update high 32bit address */
+	haddr = upper_32_bits(addr);
+	va = aperture->base +
+	     aie_aperture_cal_regoff(aperture, adjust_loc,
+				     intile_regoff + shim_dma->haddr.regoff);
+	regval = ioread32(va);
+	regval &= ~shim_dma->haddr.mask;
+	regval |= aie_get_field_val(&shim_dma->haddr, haddr);
+	iowrite32(regval, va);
+
+	mutex_unlock(&apart->mlock);
+	return 0;
+}
+
 /**
  * aie_part_update_dmabuf_bd_from_user() - Updates the AI engine SHIM DMA
  *					   address
