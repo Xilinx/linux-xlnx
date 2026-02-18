@@ -13,6 +13,8 @@
 #include <linux/slab.h>
 #include <linux/types.h>
 #include <linux/uaccess.h>
+#include <linux/io_uring.h>
+#include <linux/io_uring/cmd.h>
 
 #include "ai-engine-trace.h"
 /**
@@ -513,6 +515,94 @@ long aie_part_set_bd_from_user(struct aie_partition *apart, void __user *user_ar
 
 	mutex_unlock(&apart->mlock);
 	return ret;
+}
+
+int aie_part_set_dmabuf_bd_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags)
+{
+	struct aie_partition *apart = cmd->file->private_data;
+	struct aie_aperture *aperture = apart->aperture;
+	struct aie_device *adev = apart->adev;
+	const struct aie_dma_attr *shim_dma = adev->shim_dma;
+	const struct aie_dmabuf_bd_cmd *args;
+	struct aie_location loc, adjust_loc;
+	int ret, buf_fd, bd_id;
+	dma_addr_t addr;
+	const u32 *bd, *tmpbd;
+	u32 regval, len, laddr, haddr, laddr_regval, haddr_regval, intile_regoff, regoff, i;
+	u64 off;
+
+	args = AIE_IO_URING_SQE128_CMD(cmd->sqe, struct aie_dmabuf_bd_cmd);
+
+	buf_fd = READ_ONCE(cmd->sqe->buf_index);
+	bd_id = READ_ONCE(cmd->sqe->addr);
+	loc = READ_ONCE(args->loc);
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+	ret = aie_part_validate_bdloc(apart, loc, bd_id);
+	if (ret) {
+		dev_err(&apart->dev, "invalid SHIM DMA BD reg address.\n");
+		mutex_unlock(&apart->mlock);
+		return -EINVAL;
+	}
+
+	bd = args->bd;
+	regval = READ_ONCE(bd[shim_dma->buflen.regoff / sizeof(u32)]);
+	len = aie_get_reg_field(&shim_dma->buflen, regval);
+	if (!len) {
+		dev_err(&apart->dev, "no buf length from shim dma bd.\n");
+		mutex_unlock(&apart->mlock);
+		return -EINVAL;
+	}
+
+	/* Get low 32bit address offset */
+	tmpbd = (u32 *)((char *)bd + shim_dma->laddr.regoff);
+	laddr = READ_ONCE(*tmpbd) & shim_dma->laddr.mask;
+	/* Get high 32bit address offset */
+	tmpbd = (u32 *)((char *)bd + shim_dma->haddr.regoff);
+	haddr = READ_ONCE(*tmpbd) & shim_dma->haddr.mask;
+	off = laddr | ((u64)haddr << 32);
+
+	/* Get device address from offset */
+	addr = aie_part_get_dmabuf_da_from_off(apart, buf_fd, off, len);
+	if (!addr) {
+		dev_err(&apart->dev, "invalid buffer 0x%llx, 0x%x.\n",
+			off, len);
+		mutex_unlock(&apart->mlock);
+		return -EINVAL;
+	}
+
+	/* Set low 32bit address */
+	laddr = lower_32_bits(addr);
+	tmpbd = (u32 *)((char *)bd + shim_dma->laddr.regoff);
+	laddr_regval = READ_ONCE(*tmpbd);
+	laddr_regval &= ~shim_dma->laddr.mask;
+	laddr_regval |= aie_get_field_val(&shim_dma->laddr, laddr);
+
+	/* Set high 32bit address */
+	haddr = upper_32_bits(addr);
+	tmpbd = (u32 *)((char *)bd + shim_dma->haddr.regoff);
+	haddr_regval = READ_ONCE(*tmpbd);
+	haddr_regval &= ~shim_dma->haddr.mask;
+	haddr_regval |= aie_get_field_val(&shim_dma->haddr, haddr);
+
+	adjust_loc.col = loc.col + apart->range.start.col;
+	adjust_loc.row = loc.row + apart->range.start.row;
+	intile_regoff = shim_dma->bd_regoff + shim_dma->bd_len * bd_id;
+	regoff = aie_aperture_cal_regoff(aperture, adjust_loc, intile_regoff);
+	for (i = 0; i < shim_dma->num_bd_regs; i++, regoff += sizeof(u32)) {
+		regval = READ_ONCE(bd[i]);
+		if (i == shim_dma->laddr.regoff / sizeof(u32))
+			regval = laddr_regval;
+		else if (i == shim_dma->haddr.regoff / sizeof(u32))
+			regval = haddr_regval;
+		iowrite32(regval, aperture->base + regoff);
+		trace_aie_part_set_shimdma_bd(apart, loc, bd_id, regval, i);
+	}
+
+	mutex_unlock(&apart->mlock);
+	return 0;
 }
 
 /**
