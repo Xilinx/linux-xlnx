@@ -993,6 +993,30 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 	return ret;
 }
 
+static int aie_part_blockset_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags)
+{
+	struct aie_partition *apart = cmd->file->private_data;
+	const struct aie_reg_args *args;
+	u32 val, mask, len, i;
+	size_t offset;
+	int ret;
+
+	args = AIE_IO_URING_SQE128_CMD(cmd->sqe, struct aie_reg_args);
+	offset = (size_t)READ_ONCE(args->offset);
+	val = READ_ONCE(args->val);
+	mask = READ_ONCE(args->mask);
+	len = READ_ONCE(args->len);
+
+	for (i = 0; i < len; i++) {
+		ret = aie_part_write_register(apart, offset + i * sizeof(u32),
+					      sizeof(val), &val, mask);
+		if (ret < 0)
+			return ret;
+	}
+
+	return 0;
+}
+
 static int aie_part_reg_blockwrite_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags)
 {
 	struct aie_partition *apart = cmd->file->private_data;
@@ -1123,6 +1147,9 @@ static int aie_part_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags
 	break;
 	case AIE_REG_BLOCKWRITE_CMD:
 		ret = aie_part_reg_blockwrite_uring_cmd(cmd, issue_flags);
+		break;
+	case AIE_REG_BLOCKSET_CMD:
+		ret = aie_part_blockset_uring_cmd(cmd, issue_flags);
 		break;
 	default:
 		dev_err(&apart->dev, "Invalid/Unsupported command %u.\n", cmd->cmd_op);
