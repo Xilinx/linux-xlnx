@@ -30,55 +30,6 @@ struct aie_dmabuf {
 };
 
 /**
- * aie_part_find_dmabuf() - find a attached dmabuf
- * @apart: AI engine partition
- * @dmabuf: pointer to dmabuf
- * @return: pointer to AI engine dmabuf struct of the found dmabuf, if dmabuf
- *	    is not found, returns NULL.
- *
- * This function scans all the attached dmabufs to see the input dmabuf is
- * in the list. if it is attached, return the corresponding struct aie_dmabuf
- * pointer.
- */
-static struct aie_dmabuf *
-aie_part_find_dmabuf(struct aie_partition *apart, struct dma_buf *dmabuf)
-{
-	struct aie_dmabuf *adbuf;
-
-	list_for_each_entry(adbuf, &apart->dbufs, node) {
-		if (dmabuf == adbuf->attach->dmabuf)
-			return adbuf;
-	}
-
-	return NULL;
-}
-
-/**
- * aie_part_find_dmabuf_from_file() - find a attached dmabuf from file
- * @apart: AI engine partition
- * @file: file which belongs to a dmabuf
- * @return: pointer to AI engine dmabuf struct of the found dmabuf, if dmabuf
- *	    is not found, returns NULL.
- *
- * This function scans all the attached dmabufs of the AI engine partition,
- * it checks the file with the attached dmabufs, if it founds a match, it
- * returns the aie_dmabuf pointer.
- */
-static struct aie_dmabuf *
-aie_part_find_dmabuf_from_file(struct aie_partition *apart,
-			       const struct file *file)
-{
-	struct aie_dmabuf *adbuf;
-
-	list_for_each_entry(adbuf, &apart->dbufs, node) {
-		if (file == adbuf->attach->dmabuf->file)
-			return adbuf;
-	}
-
-	return NULL;
-}
-
-/**
  * aie_part_get_dmabuf_da() -  get DMA address from the va
  * @apart: AI engine partition
  * @va: virtual address
@@ -91,44 +42,29 @@ aie_part_find_dmabuf_from_file(struct aie_partition *apart,
 static dma_addr_t aie_part_get_dmabuf_da(struct aie_partition *apart,
 					 void *va, size_t len)
 {
-	struct vm_area_struct *vma;
-	struct aie_dmabuf *adbuf;
-	unsigned long va_start, va_off;
+	unsigned long va_off;
+	unsigned long va_end;
+	struct aie_dmabuf_xa *entry;
+	unsigned long fd;
 
-	va_start = (unsigned long)((uintptr_t)va);
-	if (!current->mm) {
-		dev_err(&apart->dev,
-			"failed to get dma address from va, no process mm.\n");
+	lockdep_assert_held(&apart->mlock);
+
+	if (check_add_overflow((unsigned long)va, len, &va_end)) {
+		dev_dbg(&apart->dev, "Invalid len: 0x%zx for va %pK.\n", len, va);
 		return 0;
 	}
 
-	vma = find_vma(current->mm, va_start);
-	if (!vma) {
-		dev_err(&apart->dev, "failed to find vma for %p, 0x%zx.\n",
-			va, len);
-		return 0;
+	xa_for_each(&apart->dbuf_xa, fd, entry) {
+		if ((unsigned long)va >= entry->vm_start &&
+		    va_end <= entry->vm_end) {
+			va_off = (unsigned long)va - entry->vm_start;
+			return sg_dma_address(entry->sgt->sgl) + va_off;
+		}
 	}
 
-	adbuf = aie_part_find_dmabuf_from_file(apart, vma->vm_file);
-	if (!adbuf) {
-		dev_err(&apart->dev,
-			"failed to get dma address for %p, no dma buf is found.\n",
-			va);
-		return 0;
-	}
-
-	va_off = va_start - vma->vm_start;
-	/*
-	 * As we only support continuous DMA memory which is guaranteed from
-	 * dmabuf attachment, we will compared with the size of the dmabuf only
-	 */
-	if (va_off + len >= adbuf->attach->dmabuf->size) {
-		dev_err(&apart->dev,
-			"failed to get dma address for %p, 0x%zx.\n", va, len);
-		return 0;
-	}
-
-	return sg_dma_address(adbuf->sgt->sgl) + va_off;
+	dev_dbg(&apart->dev,
+		"failed to get dma address from va %pK, 0x%zx.\n", va, len);
+	return 0;
 }
 
 /**
@@ -147,33 +83,33 @@ static dma_addr_t
 aie_part_get_dmabuf_da_from_off(struct aie_partition *apart, int dmabuf_fd,
 				u64 off, size_t len)
 {
-	struct dma_buf *dbuf = dma_buf_get(dmabuf_fd);
-	struct aie_dmabuf *adbuf;
+	struct aie_dmabuf_xa *dma_buf_xa;
+	size_t end;
 
-	if (IS_ERR(dbuf)) {
-		dev_err(&apart->dev,
-			"failed to get dma address, not able to get dmabuf from %d.\n",
+	lockdep_assert_held(&apart->mlock);
+
+	dma_buf_xa = xa_load(&apart->dbuf_xa, dmabuf_fd);
+	if (!dma_buf_xa) {
+		dev_dbg(&apart->dev,
+			"failed to get dma address, no dma buf found for fd %d.\n",
 			dmabuf_fd);
 		return 0;
 	}
-
-	adbuf = aie_part_find_dmabuf(apart, dbuf);
-	dma_buf_put(dbuf);
-	if (!adbuf) {
-		dev_err(&apart->dev,
-			"failed to get dma address, dmabuf %d not attached.\n",
-			dmabuf_fd);
+	if (off >= dma_buf_xa->size) {
+		dev_dbg(&apart->dev,
+			"failed to get dma address from buf %d, off=0x%llx, len=0x%zx.\n",
+			dmabuf_fd, off, len);
 		return 0;
 	}
-
-	if (off >= dbuf->size || off + len >= dbuf->size) {
-		dev_err(&apart->dev,
+	if (check_add_overflow(off, len, &end) ||
+	    end > dma_buf_xa->size) {
+		dev_dbg(&apart->dev,
 			"failed to get dma address from buf %d, off=0x%llx, len=0x%zx.\n",
 			dmabuf_fd, off, len);
 		return 0;
 	}
 
-	return sg_dma_address(adbuf->sgt->sgl) + off;
+	return sg_dma_address(dma_buf_xa->sgt->sgl) + off;
 }
 
 /**
@@ -254,118 +190,12 @@ static int aie_part_validate_bdloc(struct aie_partition *apart,
 }
 
 /**
- * aie_part_attach_dmabuf() - Attach dmabuf to an AI engine
- * @apart: AI engine partition
- * @dbuf: pointer to the DMA buffer to attach
- * @return: pointer to AI engine dmabuf structure for success, or error value
- *	    for failure
- *
- * This function attaches a dmabuf to the specified AI engine partition.
- */
-static struct aie_dmabuf *aie_part_attach_dmabuf(struct aie_partition *apart,
-						 struct dma_buf *dbuf)
-{
-	struct aie_dmabuf *adbuf;
-	struct dma_buf_attachment *attach;
-	struct sg_table *sgt;
-
-	attach = dma_buf_attach(dbuf, &apart->dev);
-	if (IS_ERR(attach)) {
-		dev_err(&apart->dev, "failed to attach dmabuf\n");
-		return ERR_CAST(attach);
-	}
-
-	sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
-	if (IS_ERR(sgt)) {
-		dev_err(&apart->dev, "failed to map dmabuf attachment\n");
-		dma_buf_detach(dbuf, attach);
-		return ERR_CAST(sgt);
-	}
-
-	if (sgt->nents != 1) {
-		dma_addr_t next_sg_addr = sg_dma_address(sgt->sgl);
-		struct scatterlist *s;
-		unsigned int i;
-
-		for_each_sg(sgt->sgl, s, sgt->nents, i) {
-			if (sg_dma_address(s) != next_sg_addr) {
-				dev_err(&apart->dev,
-					"dmabuf not contiguous\n");
-				dma_buf_unmap_attachment(attach, sgt,
-							 DMA_BIDIRECTIONAL);
-				dma_buf_detach(dbuf, attach);
-				return ERR_PTR(-EINVAL);
-			}
-
-			next_sg_addr = sg_dma_address(s) + sg_dma_len(s);
-		}
-	}
-
-	adbuf = kmem_cache_alloc(apart->dbufs_cache, GFP_KERNEL);
-	if (!adbuf) {
-		dma_buf_unmap_attachment(attach, sgt, DMA_BIDIRECTIONAL);
-		dma_buf_detach(dbuf, attach);
-		return ERR_PTR(-ENOMEM);
-	}
-
-	adbuf->attach = attach;
-	/*
-	 * dmabuf attachment doesn't always include the sgt, store it in
-	 * AI engine dma buf structure.
-	 */
-	adbuf->sgt = sgt;
-
-	refcount_set(&adbuf->refs, 1);
-
-	list_add(&adbuf->node, &apart->dbufs);
-	return adbuf;
-}
-
-/**
- * aie_part_dmabuf_attach_get() - Get reference to an dmabuf attachment
- * @adbuf: AI engine partition attached dmabuf
- *
- * This call will increase the reference count by 1
- */
-static void aie_part_dmabuf_attach_get(struct aie_dmabuf *adbuf)
-{
-	refcount_inc(&adbuf->refs);
-}
-
-/**
- * aie_part_dmabuf_attach_put() - Put reference to an dmabuf attachment
- * @adbuf: AI engine partition attached dmabuf
- *
- * This call will decrease the reference count by 1. If the refcount reaches
- * 0, it will detach the dmabuf.
- */
-static void aie_part_dmabuf_attach_put(struct aie_dmabuf *adbuf)
-{
-	struct dma_buf *dbuf;
-	struct aie_partition *apart;
-
-	if (!refcount_dec_and_test(&adbuf->refs))
-		return;
-
-	apart = dev_to_aiepart(adbuf->attach->dev);
-	dbuf = adbuf->attach->dmabuf;
-	dma_buf_unmap_attachment(adbuf->attach, adbuf->sgt, DMA_BIDIRECTIONAL);
-	dma_buf_detach(dbuf, adbuf->attach);
-	dma_buf_put(dbuf);
-	list_del(&adbuf->node);
-	kmem_cache_free(apart->dbufs_cache, adbuf);
-}
-
-/**
  * aie_part_release_dmabufs() - detach all the attached dmabufs from partition
  * @apart: AI engine partition
  */
 void aie_part_release_dmabufs(struct aie_partition *apart)
 {
-	struct aie_dma_mem *dma_mem, *tmpdmem;
-	struct aie_dmabuf *adbuf, *tmpadbuf;
-	struct aie_part_mem *mems, *pmem;
-	struct dma_buf *dbuf;
+	struct aie_part_mem *mems;
 	int num_mems;
 
 	num_mems = apart->adev->ops->get_mem_info(apart->adev, &apart->range,
@@ -382,234 +212,24 @@ void aie_part_release_dmabufs(struct aie_partition *apart)
 			dma_buf_put(mems->dbuf);
 	}
 
-	list_for_each_entry_safe(adbuf, tmpadbuf, &apart->dbufs, node) {
-		dbuf = adbuf->attach->dmabuf;
-
-		dma_buf_unmap_attachment(adbuf->attach, adbuf->sgt,
-					 DMA_BIDIRECTIONAL);
-		dma_buf_detach(dbuf, adbuf->attach);
-		dma_buf_put(dbuf);
-		list_del(&adbuf->node);
-		kmem_cache_free(apart->dbufs_cache, adbuf);
-	}
-
-	list_for_each_entry_safe(dma_mem, tmpdmem, &apart->dma_mem, node) {
-		pmem = &dma_mem->pmem;
-		dma_free_coherent(&apart->dev, pmem->mem.size,
-				  (void *)pmem->mem.offset,
-				  dma_mem->dma_addr);
-		list_del(&dma_mem->node);
-		dma_buf_put(pmem->dbuf);
-	}
 }
 
-/**
- * aie_dma_begin_cpu_access() - syncs the scatter gather list for cpu
- * @dmabuf: dma buffer structure
- * @direction: direction to sync scatter gather list.
- *
- * @return: 0 for success, negative value for failure.
- */
-int aie_dma_begin_cpu_access(struct dma_buf *dmabuf,
-			     enum dma_data_direction direction)
+int aie_dma_begin_cpu_access_xa(struct dma_buf *dmabuf, enum dma_data_direction direction)
 {
-	struct aie_partition *apart;
-	struct aie_part_mem *pmem;
-	struct aie_dmabuf *adbuf;
-	struct sg_table *table;
-	int ret;
+	struct aie_dmabuf_xa *dma_buf_xa = (struct aie_dmabuf_xa *)dmabuf->priv;
 
-	pmem = (struct aie_part_mem *)dmabuf->priv;
-	if (!pmem)
-		return -EINVAL;
-
-	apart = pmem->apart;
-	if (!apart)
-		return -EINVAL;
-
-	ret = mutex_lock_interruptible(&apart->mlock);
-	if (ret)
-		return ret;
-
-	adbuf = aie_part_find_dmabuf(apart, dmabuf);
-	if (!adbuf)
-		return -EINVAL;
-
-	table = adbuf->sgt;
-
-	dma_sync_sg_for_cpu(&apart->dev, table->sgl, table->nents, direction);
-	mutex_unlock(&apart->mlock);
-
+	dma_sync_sg_for_cpu(&dma_buf_xa->apart->dev, dma_buf_xa->sgt->sgl,
+			    dma_buf_xa->sgt->nents, direction);
 	return 0;
 }
 
-/**
- * aie_dma_end_cpu_access() - syncs the scatter gather list for device
- * @dmabuf: dma buffer structure
- * @direction: direction to sync scatter gather list.
- *
- * @return: 0 for success, negative value for failure.
- */
-int aie_dma_end_cpu_access(struct dma_buf *dmabuf,
-			   enum dma_data_direction direction)
+int aie_dma_end_cpu_access_xa(struct dma_buf *dmabuf, enum dma_data_direction direction)
 {
-	struct aie_partition *apart;
-	struct aie_part_mem *pmem;
-	struct aie_dmabuf *adbuf;
-	struct sg_table *table;
-	int ret;
+	struct aie_dmabuf_xa *dma_buf_xa = (struct aie_dmabuf_xa *)dmabuf->priv;
 
-	pmem = (struct aie_part_mem *)dmabuf->priv;
-	apart = pmem->apart;
-
-	ret = mutex_lock_interruptible(&apart->mlock);
-	if (ret)
-		return ret;
-
-	adbuf = aie_part_find_dmabuf(apart, dmabuf);
-	if (!adbuf)
-		return -EINVAL;
-
-	table = adbuf->sgt;
-
-	dma_sync_sg_for_device(&apart->dev, table->sgl, table->nents, direction);
-	mutex_unlock(&apart->mlock);
-
+	dma_sync_sg_for_device(&dma_buf_xa->apart->dev, dma_buf_xa->sgt->sgl,
+			       dma_buf_xa->sgt->nents, direction);
 	return 0;
-}
-
-/**
- * aie_part_attach_dmabuf_fd() - Handle attaching dmabuf to an AI engine
- *				 partition for given dmabuf file descriptor
- * @apart: AI engine partition
- * @dmabuf_fd: DMABUF file descriptor
- *
- * @return: 0 for success, negative value for failure
- *
- * This function attaches a dmabuf to the specified AI engine partition and map
- * the attachment. It checks if the dmabuf is already attached, if it is not
- * attached, attach it.
- */
-long aie_part_attach_dmabuf_fd(struct aie_partition *apart, int dmabuf_fd)
-{
-	struct aie_dmabuf *adbuf;
-	struct dma_buf *dbuf;
-	long ret;
-
-	dbuf = dma_buf_get(dmabuf_fd);
-	if (IS_ERR(dbuf)) {
-		dev_err(&apart->dev, "failed to get dmabuf from %d", dmabuf_fd);
-		return PTR_ERR(dbuf);
-	}
-
-	ret = mutex_lock_interruptible(&apart->mlock);
-	if (ret) {
-		dma_buf_put(dbuf);
-		return ret;
-	}
-
-	adbuf = aie_part_find_dmabuf(apart, dbuf);
-	if (!adbuf)
-		adbuf = aie_part_attach_dmabuf(apart, dbuf);
-	else
-		aie_part_dmabuf_attach_get(adbuf);
-
-	mutex_unlock(&apart->mlock);
-
-	if (IS_ERR(adbuf)) {
-		dev_err(&apart->dev, "failed to attach dmabuf");
-		dma_buf_put(dbuf);
-		return PTR_ERR(adbuf);
-	}
-
-	return 0;
-}
-
-/**
- * aie_part_attach_dmabuf_req() - Handle attaching dmabuf to an AI engine
- *				  partition request
- * @apart: AI engine partition
- * @user_args: user AI engine dmabuf argument
- *
- * @return: 0 for success, negative value for failure
- *
- * This function attaches a dmabuf to the specified AI engine partition and map
- * the attachment. It checks if the dmabuf is already attached, if it is not
- * attached, attach it. It returns the number of entries of the attachment to
- * the AI engine dmabuf user argument. If user wants to know the sg list, it
- * can use AI engine get sg ioctl.
- */
-long aie_part_attach_dmabuf_req(struct aie_partition *apart,
-				void __user *user_args)
-{
-	int dmabuf_fd = (int)(uintptr_t)user_args;
-
-	trace_aie_part_attach_dmabuf_req(apart, dmabuf_fd);
-	return aie_part_attach_dmabuf_fd(apart, dmabuf_fd);
-}
-
-/**
- * aie_part_detach_dmabuf_fd() - Handle detaching dmabuf from an AI engine
- *				 partition given a file descriptor
- * @apart: AI engine partition
- * @dmabuf_fd: DMABUF file descriptor
- *
- * @return: 0 for success, negative value for failure
- *
- * This function unmaps and detaches a dmabuf from the specified AI engine
- * partition.
- */
-long aie_part_detach_dmabuf_fd(struct aie_partition *apart, int dmabuf_fd)
-{
-	struct aie_dmabuf *adbuf;
-	struct dma_buf *dbuf;
-	int ret;
-
-	dbuf = dma_buf_get(dmabuf_fd);
-	if (IS_ERR(dbuf)) {
-		dev_err(&apart->dev, "failed to get dmabuf %d", dmabuf_fd);
-		return PTR_ERR(dbuf);
-	}
-
-	ret = mutex_lock_interruptible(&apart->mlock);
-	if (ret) {
-		dma_buf_put(dbuf);
-		return ret;
-	}
-
-	adbuf = aie_part_find_dmabuf(apart, dbuf);
-	dma_buf_put(dbuf);
-	if (!adbuf) {
-		dev_err(&apart->dev, "failed to find dmabuf %d", dmabuf_fd);
-		mutex_unlock(&apart->mlock);
-		return -EINVAL;
-	}
-
-	aie_part_dmabuf_attach_put(adbuf);
-
-	mutex_unlock(&apart->mlock);
-
-	return 0;
-}
-
-/**
- * aie_part_detach_dmabuf_req() - Handle detaching dmabuf from an AI engine
- *				  partition request
- * @apart: AI engine partition
- * @user_args: user AI engine dmabuf argument
- *
- * @return: 0 for success, negative value for failure
- *
- * This function unmaps and detaches a dmabuf from the specified AI engine
- * partition.
- */
-long aie_part_detach_dmabuf_req(struct aie_partition *apart,
-				void __user *user_args)
-{
-	int dmabuf_fd = (int)(uintptr_t)user_args;
-
-	trace_aie_part_detach_dmabuf_req(apart, dmabuf_fd);
-	return aie_part_detach_dmabuf_fd(apart, dmabuf_fd);
 }
 
 /**
@@ -916,6 +536,7 @@ long aie_part_set_dmabuf_bd(struct aie_partition *apart,
 	dma_addr_t addr;
 	int ret;
 
+	lockdep_assert_held(&apart->mlock);
 	ret = aie_part_validate_bdloc(apart, args->loc, args->bd_id);
 	if (ret) {
 		dev_err(&apart->dev, "invalid SHIM DMA BD reg address.\n");
