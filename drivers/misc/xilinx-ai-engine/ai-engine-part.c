@@ -1096,7 +1096,7 @@ static int aie_part_init_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_
 	else
 		ret = -EINVAL;
 
-	return 0;
+	return ret;
 }
 
 static int aie_part_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags)
