@@ -223,7 +223,7 @@ static const u32 xcsi2dt_mbus_lut[][2] = {
  */
 struct xcsi2rxss_state {
 	struct v4l2_subdev subdev;
-	struct v4l2_mbus_framefmt format;
+	struct v4l2_mbus_framefmt format[XCSI_MEDIA_PADS];
 	struct v4l2_mbus_framefmt default_format;
 	u32 events[XCSI_NUM_EVENTS];
 	u32 vcx_events[XCSI_VCX_NUM_EVENTS];
@@ -670,7 +670,7 @@ __xcsi2rxss_get_pad_format(struct xcsi2rxss_state *xcsi2rxss,
 		get_fmt = v4l2_subdev_state_get_format(sd_state, pad);
 		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
-		get_fmt = &xcsi2rxss->format;
+		get_fmt = &xcsi2rxss->format[pad];
 		break;
 	default:
 		get_fmt = NULL;
@@ -748,10 +748,10 @@ unlock_get_format:
  * @sd_state: Pointer to sub device state structure
  * @fmt: Pointer to pad level media bus format
  *
- * This function is used to set the pad format. Since the pad format is fixed
- * in hardware, it can't be modified on run time. So when a format set is
- * requested by application, all parameters except the format type is saved
- * for the pad and the original pad format is sent back to the application.
+ * This function is used to set the pad format for the CSI-2 Rx subsystem.
+ * The source pad format is fixed in hardware and cannot be modified on run time.
+ * For the sink pad, the function validates the requested format code against the
+ * hardware's configured datatype and applies the requested format.
  *
  * Return: 0 on success
  */
@@ -790,6 +790,11 @@ static int xcsi2rxss_set_format(struct v4l2_subdev *sd,
 	 * other RAW, YUV422 8/10 or RGB888, set appropriate media bus format.
 	 */
 	dt = xcsi2rxss_get_dt(fmt->format.code);
+	if (dt == xcsi2rxss->datatype && fmt->pad == XVIP_PAD_SINK) {
+		*__format = fmt->format;
+		goto unlock_set_format;
+	}
+
 	if (dt != xcsi2rxss->datatype && dt != MIPI_CSI2_DT_RAW8) {
 		dev_dbg(xcsi2rxss->dev, "Unsupported media bus format");
 		/* set the default format for the data type */
@@ -1045,7 +1050,8 @@ static int xcsi2rxss_probe(struct platform_device *pdev)
 	xcsi2rxss->default_format.colorspace = V4L2_COLORSPACE_SRGB;
 	xcsi2rxss->default_format.width = XCSI_DEFAULT_WIDTH;
 	xcsi2rxss->default_format.height = XCSI_DEFAULT_HEIGHT;
-	xcsi2rxss->format = xcsi2rxss->default_format;
+	xcsi2rxss->format[XVIP_PAD_SINK] = xcsi2rxss->default_format;
+	xcsi2rxss->format[XVIP_PAD_SOURCE] = xcsi2rxss->default_format;
 
 	/* Initialize V4L2 subdevice and media entity */
 	subdev = &xcsi2rxss->subdev;
