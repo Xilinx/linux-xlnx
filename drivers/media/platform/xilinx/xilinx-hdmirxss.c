@@ -404,6 +404,7 @@ struct xhdmi_aux {
  * @hdcp2x_timer_irq: HDCP2X timer interrupt
  * @edid_blocks_max: Max number of EDID blocks
  * @edid_ram_size: EDID RAM size in IP configuration
+ * @vid_interface: Video interface mode from IP configuration
  * @hdcp1x_key: HDCP 1.4 Key
  * @max_ppc: Maximum input pixels per clock from IP configuration
  * @max_bpc: Maximum bit per component from IP configuration
