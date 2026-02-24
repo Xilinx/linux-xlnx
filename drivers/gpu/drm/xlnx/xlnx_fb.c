@@ -43,6 +43,7 @@ static struct drm_framebuffer_funcs xlnx_fb_funcs = {
  * xlnx_fb_create - (struct drm_mode_config_funcs *)->fb_create callback
  * @drm: DRM device
  * @file_priv: drm file private data
+ * @info: format information for the framebuffer
  * @mode_cmd: mode command for fb creation
  *
  * This functions creates a drm_framebuffer with xlnx_fb_funcs for given mode
