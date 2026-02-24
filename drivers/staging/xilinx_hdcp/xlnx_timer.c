@@ -10,6 +10,7 @@
  */
 
 #include <linux/io.h>
+#include <linux/export.h>
 #include <linux/xlnx/xlnx_timer.h>
 
 /*
