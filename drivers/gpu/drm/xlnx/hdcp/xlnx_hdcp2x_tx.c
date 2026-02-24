@@ -18,6 +18,7 @@
  */
 
 #include <linux/io.h>
+#include <linux/slab.h>
 #include <linux/xlnx/xlnx_hdcp_common.h>
 #include <linux/xlnx/xlnx_hdcp2x_cipher.h>
 #include <linux/xlnx/xlnx_hdcp_rng.h>
