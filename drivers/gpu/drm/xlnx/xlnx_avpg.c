@@ -889,12 +889,24 @@ static int xlnx_avpg_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed to get avpg en gpio: %d\n", ret);
 		return ret;
 	}
+	ret = gpiod_direction_output(avpg->gpio_en_avpg, 0);
+	if (ret < 0) {
+		dev_err(&pdev->dev,
+			"failed to set avpg en gpio direction: %d\n", ret);
+		return ret;
+	}
 
 	avpg->gpio_en_vtc = devm_gpiod_get_index(&pdev->dev, "clk-enable", 1,
 						 GPIOD_ASIS);
 	if (IS_ERR(avpg->gpio_en_vtc)) {
 		ret = PTR_ERR(avpg->gpio_en_vtc);
 		dev_err(&pdev->dev, "failed to get vtc en gpio: %d\n", ret);
+		return ret;
+	}
+	ret = gpiod_direction_output(avpg->gpio_en_vtc, 0);
+	if (ret < 0) {
+		dev_err(&pdev->dev,
+			"failed to set vtc en gpio direction: %d\n", ret);
 		return ret;
 	}
 
