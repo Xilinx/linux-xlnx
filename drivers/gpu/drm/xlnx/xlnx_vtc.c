@@ -221,7 +221,7 @@ static int xlnx_vtc_set_timing(struct xlnx_bridge *bridge,
 	vactive = vm->vactive;
 
 	hsync_start = vm->hactive + vm->hfront_porch;
-	vsync_start = vm->vactive + vm->vfront_porch;
+	vsync_start = vm->vactive + vm->vfront_porch - 1;
 
 	hbackporch_start = hsync_start + vm->hsync_len;
 	vbackporch_start = vsync_start + vm->vsync_len;
