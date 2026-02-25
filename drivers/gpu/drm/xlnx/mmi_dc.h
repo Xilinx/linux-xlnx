@@ -8,14 +8,18 @@
 #ifndef __MMI_DC_H__
 #define __MMI_DC_H__
 
+#include "mmi_dc_bridge.h"
+
 #include <linux/device.h>
 #include <drm/drm_modes.h>
 
+#define MMI_DC_MAX_BRIDGES		(4)
 #define MMI_DC_NUM_PLANES		(3)
 #define MMI_DC_NUM_CC			(3)
 #define MMI_DC_CURSOR_WIDTH		(128)
 #define MMI_DC_CURSOR_HEIGHT		(128)
 #define MMI_DC_STC_CLK_RATE		(27000000U)
+#define MMI_DC_DPTX_PORT_0		(12)
 /*
  * The MMI PLL clock range is 187 MHz to 3 GHz.
  * But only multiples of 27 MHz matter for AV Sync.
@@ -78,6 +82,7 @@ struct mmi_audio;
  * struct mmi_dc - MMI DC device
  * @dev: generic device
  * @drm: MMI DC specific DRM data
+ * @bridges: DC bridges (bypass mode, one per input stream)
  * @planes: DC planes
  * @dma_align: DMA alignment
  * @reconfig_hw: reset and reconfig HW in crtc flush callback
@@ -99,6 +104,7 @@ struct mmi_dc {
 	struct device		*dev;
 	struct mmi_dc_drm	*drm;
 
+	struct mmi_dc_bridge	*bridges[MMI_DC_MAX_BRIDGES];
 	struct mmi_dc_plane	*planes[MMI_DC_NUM_PLANES];
 	unsigned int		dma_align;
 	bool			reconfig_hw;
@@ -143,13 +149,19 @@ DEFINE_REGISTER_OPS(irq);
  * @MMIDC_PL_CLK : PL pixel clock source
  * @MMIDC_VID_CLK_SRC_COUNT : Count of video clock source enums
  */
-
 enum mmi_dc_vid_clk_src {
 	MMIDC_AUX0_REF_CLK,
 	MMIDC_PL_CLK,
 	MMIDC_VID_CLK_SRC_COUNT
 };
 
+enum mmi_dc_operating_mode {
+	MMI_DC_FUNCTIONAL_MODE = 0,
+	MMI_DC_BYPASS_MODE = 1,
+};
+
+int mmi_dc_check_operating_mode(struct mmi_dc *dc,
+				enum mmi_dc_operating_mode *mode);
 void mmi_dc_set_global_alpha(struct mmi_dc *dc, u8 alpha, bool enable);
 void mmi_dc_enable_vblank(struct mmi_dc *dc);
 void mmi_dc_disable_vblank(struct mmi_dc *dc);

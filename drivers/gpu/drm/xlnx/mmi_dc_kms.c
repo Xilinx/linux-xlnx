@@ -35,7 +35,6 @@
 #include "mmi_dc_plane.h"
 
 #define MMI_DC_VBLANKS			(3)
-#define MMI_DC_DPTX_PORT_0		(12)
 #define MMI_DC_MAX_WIDTH		(4096)
 #define MMI_DC_MAX_HEIGHT		(4096)
 
@@ -659,6 +658,7 @@ static int mmi_dc_drm_init(struct mmi_dc *dc)
 static int mmi_dc_probe(struct platform_device *pdev)
 {
 	struct mmi_dc *dc;
+	enum mmi_dc_operating_mode mode;
 	int ret;
 
 	dc = devm_kzalloc(&pdev->dev, sizeof(*dc), GFP_KERNEL);
@@ -667,6 +667,14 @@ static int mmi_dc_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, dc);
 	dc->dev = &pdev->dev;
+
+	ret = mmi_dc_check_operating_mode(dc, &mode);
+	if (ret < 0)
+		return ret;
+
+	/* Nothing else to do in bypass mode */
+	if (mode == MMI_DC_BYPASS_MODE)
+		return mmi_dc_init(dc, NULL);
 
 	ret = dma_set_mask_and_coherent(dc->dev, DMA_BIT_MASK(48));
 	if (ret < 0)
