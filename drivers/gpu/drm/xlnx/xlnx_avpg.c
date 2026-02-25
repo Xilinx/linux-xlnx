@@ -202,6 +202,7 @@ struct xlnx_avpg_format_map {
 	u32 bus_format;
 	enum xlnx_avpg_pixel_format pixel_format;
 	enum xlnx_avpg_bpc bpc;
+	enum xlnx_avpg_ppc ppc;
 };
 
 /**
@@ -210,25 +211,77 @@ struct xlnx_avpg_format_map {
  *
  * @pixel_format: AVPG pixel format
  * @bpc: bits per color component
+ * @ppc: pixels per clock
  *
  * Return: Media bus format that matches @pixel_format and @bpc or 0 if given
  * pixel format and bpc combo is not supported
  */
 static u32 xlnx_avpg_find_bus_format(enum xlnx_avpg_pixel_format pixel_format,
-				     enum xlnx_avpg_bpc bpc)
+				     enum xlnx_avpg_bpc bpc,
+				     enum xlnx_avpg_ppc ppc)
 {
 	static const struct xlnx_avpg_format_map format_map[] = {
+		{
+			.bus_format = MEDIA_BUS_FMT_RGB888_1X24,
+			.pixel_format = XLNX_AVPG_FMT_RGB,
+			.bpc = XLNX_AVPG_8BPC,
+			.ppc = XLNX_AVPG_1PPC,
+		},
+		{
+			.bus_format = MEDIA_BUS_FMT_RGB101010_1X30,
+			.pixel_format = XLNX_AVPG_FMT_RGB,
+			.bpc = XLNX_AVPG_10BPC,
+			.ppc = XLNX_AVPG_1PPC,
+		},
 		{
 			.bus_format = MEDIA_BUS_FMT_RGB121212_1X36,
 			.pixel_format = XLNX_AVPG_FMT_RGB,
 			.bpc = XLNX_AVPG_12BPC,
+			.ppc = XLNX_AVPG_1PPC,
+		},
+		{
+			.bus_format = MEDIA_BUS_FMT_RGB888_0_5X48,
+			.pixel_format = XLNX_AVPG_FMT_RGB,
+			.bpc = XLNX_AVPG_8BPC,
+			.ppc = XLNX_AVPG_2PPC,
+		},
+		{
+			.bus_format = MEDIA_BUS_FMT_RGB101010_0_5X60,
+			.pixel_format = XLNX_AVPG_FMT_RGB,
+			.bpc = XLNX_AVPG_10BPC,
+			.ppc = XLNX_AVPG_2PPC,
+		},
+		{
+			.bus_format = MEDIA_BUS_FMT_RGB121212_0_5X72,
+			.pixel_format = XLNX_AVPG_FMT_RGB,
+			.bpc = XLNX_AVPG_12BPC,
+			.ppc = XLNX_AVPG_2PPC,
+		},
+		{
+			.bus_format = MEDIA_BUS_FMT_RGB888_0_25X96,
+			.pixel_format = XLNX_AVPG_FMT_RGB,
+			.bpc = XLNX_AVPG_8BPC,
+			.ppc = XLNX_AVPG_4PPC,
+		},
+		{
+			.bus_format = MEDIA_BUS_FMT_RGB101010_0_25X120,
+			.pixel_format = XLNX_AVPG_FMT_RGB,
+			.bpc = XLNX_AVPG_10BPC,
+			.ppc = XLNX_AVPG_4PPC,
+		},
+		{
+			.bus_format = MEDIA_BUS_FMT_RGB121212_0_25X144,
+			.pixel_format = XLNX_AVPG_FMT_RGB,
+			.bpc = XLNX_AVPG_12BPC,
+			.ppc = XLNX_AVPG_4PPC,
 		},
 	};
 	unsigned int i;
 
 	for (i = 0; i < ARRAY_SIZE(format_map); ++i) {
 		if (format_map[i].pixel_format == pixel_format &&
-		    format_map[i].bpc == bpc)
+		    format_map[i].bpc == bpc &&
+		    format_map[i].ppc == ppc)
 			return format_map[i].bus_format;
 	}
 
@@ -469,6 +522,7 @@ static void xlnx_avpg_crtc_enable(struct drm_crtc *crtc,
 	struct videomode vm;
 	struct drm_display_mode *mode = &crtc->state->adjusted_mode;
 	struct xlnx_avpg *avpg = crtc_to_avpg(crtc);
+	unsigned long pixel_clk = mode->clock * 1000;
 	int ret;
 
 	pm_runtime_get_sync(&avpg->pdev->dev);
@@ -479,8 +533,27 @@ static void xlnx_avpg_crtc_enable(struct drm_crtc *crtc,
 			"failed to enable video clock: %d\n", ret);
 		return;
 	}
+	if (avpg->pixels_per_clock)
+		pixel_clk /= avpg->pixels_per_clock;
+	ret = clk_set_rate(avpg->video_clk, pixel_clk);
+	if (ret < 0) {
+		dev_err(&avpg->pdev->dev,
+			"failed to set video clock rate of %lu: %d\n",
+			pixel_clk, ret);
+		clk_disable_unprepare(avpg->video_clk);
+		return;
+	}
 
 	drm_display_mode_to_videomode(mode, &vm);
+
+	/*
+	 * Override sync signals' polarity to match MMI DC output signal.
+	 * FIXME: Although most of the DP enabled displays can detect sync
+	 * signals polarity automatically, some of them still sensitive to
+	 * proper polarity. So, ideally, we need to set the polarity based on
+	 * the display's requirements across all bridges and crtcs.
+	 */
+	vm.flags |= DISPLAY_FLAGS_VSYNC_HIGH | DISPLAY_FLAGS_HSYNC_HIGH;
 
 	gpiod_set_value_cansleep(avpg->gpio_en_vtc, 1);
 	if (avpg->vtc) {
@@ -879,7 +952,8 @@ static int xlnx_avpg_probe(struct platform_device *pdev)
 	}
 	avpg->output_bus_format =
 		xlnx_avpg_find_bus_format(avpg->pixel_format,
-					  avpg->bits_per_component);
+					  avpg->bits_per_component,
+					  avpg->pixels_per_clock);
 	if (!avpg->output_bus_format) {
 		dev_err(&pdev->dev, "unsupported format / bpc combo\n");
 		return -EINVAL;
