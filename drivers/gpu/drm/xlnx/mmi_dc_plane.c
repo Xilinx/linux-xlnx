@@ -143,8 +143,9 @@ int mmi_dc_create_planes(struct mmi_dc *dc, struct drm_device *drm)
 		} else if (!of_property_match_string(node, live_prop, "V02")) {
 			factory[MMI_DC_PLANE1] = mmi_dc_create_planector;
 		} else {
-			dev_err(dc->dev, "malformed %s property\n", live_prop);
-			return -EINVAL;
+			return dev_err_probe(dc->dev, -EINVAL,
+					     "malformed %s property\n",
+					     live_prop);
 		}
 	}
 
@@ -153,8 +154,7 @@ int mmi_dc_create_planes(struct mmi_dc *dc, struct drm_device *drm)
 
 		if (IS_ERR(plane))
 			return dev_err_probe(dc->dev, PTR_ERR(plane),
-					     "failed to create plane\n");
-
+					     "failed to create plane %d\n", i);
 		dc->planes[i] = plane;
 	}
 

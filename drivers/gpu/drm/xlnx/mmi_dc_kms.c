@@ -410,10 +410,8 @@ static int mmi_dc_create_crtc(struct mmi_dc *dc)
 	/* TODO cursor plane */
 	ret = drm_crtc_init_with_planes(&dc->drm->drm, crtc, primary, cursor,
 					&mmi_dc_dpsub_crtc_funcs, NULL);
-	if (ret < 0) {
-		dev_err(dc->dev, "failed to init DRM CRTC: %d\n", ret);
-		return ret;
-	}
+	if (ret < 0)
+		return dev_err_probe(dc->dev, ret, "failed to init crtc\n");
 
 	drm_crtc_helper_add(crtc, &mmi_dc_crtc_helper_funcs);
 
@@ -421,13 +419,15 @@ static int mmi_dc_create_crtc(struct mmi_dc *dc)
 
 	/* create the dc_vid_clk_src property */
 	if (dc->ps_pixel_clk && dc->pl_pixel_clk) {
-		dc_drm->vid_clk_src_prop = mmi_dc_create_vid_clk_property(dc, "dc_vid_clk_src");
+		dc_drm->vid_clk_src_prop =
+			mmi_dc_create_vid_clk_property(dc, "dc_vid_clk_src");
 		if (!dc_drm->vid_clk_src_prop) {
 			dev_err(dc->dev, "failed to create crtc property\n");
 			drm_crtc_cleanup(crtc);
 			return -ENOMEM;
 		}
-		drm_object_attach_property(obj, dc_drm->vid_clk_src_prop, MMIDC_AUX0_REF_CLK);
+		drm_object_attach_property(obj, dc_drm->vid_clk_src_prop,
+					   MMIDC_AUX0_REF_CLK);
 	}
 
 	return 0;
@@ -454,10 +454,8 @@ static int mmi_create_encoder(struct mmi_dc *dc)
 
 	encoder->possible_crtcs |= drm_crtc_mask(&dc_drm->crtc);
 	ret = drm_simple_encoder_init(drm, encoder, DRM_MODE_ENCODER_NONE);
-	if (ret < 0) {
-		dev_err(dc->dev, "failed to init encoder: %d\n", ret);
-		return ret;
-	}
+	if (ret < 0)
+		return dev_err_probe(dc->dev, ret, "failed to init encoder\n");
 
 	dc_drm->bridge = devm_drm_of_get_bridge(dc->dev,
 						dc->dev->of_node,
@@ -472,10 +470,8 @@ static int mmi_create_encoder(struct mmi_dc *dc)
 		attach_flags = DRM_BRIDGE_ATTACH_NO_CONNECTOR;
 
 	ret = drm_bridge_attach(encoder, bridge, NULL, attach_flags);
-	if (ret < 0) {
-		dev_err(dc->dev, "failed to attach bridge: %d\n", ret);
-		return ret;
-	}
+	if (ret < 0)
+		return dev_err_probe(dc->dev, ret, "failed to attach bridge\n");
 
 	return 0;
 }
@@ -497,7 +493,6 @@ static int mmi_dc_setup_connector(struct mmi_dc *dc)
 	struct drm_encoder *encoder = &dc_drm->encoder;
 	struct drm_connector *connector;
 	struct drm_connector_list_iter iter;
-	int ret;
 
 	if (wb) {
 		drm_connector_list_iter_begin(drm, &iter);
@@ -512,11 +507,9 @@ static int mmi_dc_setup_connector(struct mmi_dc *dc)
 	}
 
 	connector = drm_bridge_connector_init(drm, encoder);
-	if (IS_ERR(connector)) {
-		ret = PTR_ERR(connector);
-		dev_err(dc->dev, "failed to init connector: %d\n", ret);
-		return ret;
-	}
+	if (IS_ERR(connector))
+		return dev_err_probe(dc->dev, PTR_ERR(connector),
+				     "failed to init connector\n");
 
 	return drm_connector_attach_encoder(connector, encoder);
 }
@@ -606,10 +599,9 @@ static int mmi_dc_drm_pipeline_init(struct mmi_dc *dc)
 	drm_mode_config_reset(drm);
 
 	ret = drm_dev_register(drm, 0);
-	if (ret < 0) {
-		dev_err(dc->dev, "failed to register DRM device: %d\n", ret);
-		return ret;
-	}
+	if (ret < 0)
+		return dev_err_probe(dc->dev, ret,
+				     "failed to register drm device\n");
 
 	return 0;
 }
@@ -628,21 +620,18 @@ static int mmi_dc_drm_init(struct mmi_dc *dc)
 
 	dc_drm = devm_drm_dev_alloc(dc->dev, &mmi_dc_drm_driver,
 				    struct mmi_dc_drm, drm);
-	if (IS_ERR(dc_drm)) {
-		ret = PTR_ERR(dc_drm);
-		dev_err(dc->dev, "failed to allocate DRM: %d\n", ret);
-		return ret;
-	}
+	if (IS_ERR(dc_drm))
+		return dev_err_probe(dc->dev, PTR_ERR(dc_drm),
+				     "failed to allocate DRM\n");
 	drm = &dc_drm->drm;
 
 	dc_drm->dc = dc;
 	dc->drm = dc_drm;
 
 	ret = drmm_mode_config_init(drm);
-	if (ret < 0) {
-		dev_err(dc->dev, "failed to init mode config: %d\n", ret);
-		return ret;
-	}
+	if (ret < 0)
+		return dev_err_probe(dc->dev, ret,
+				     "failed to init mode config\n");
 
 	drm->mode_config.funcs = &mmi_dc_mode_config_funcs;
 	drm->mode_config.min_width = 0;
@@ -653,10 +642,8 @@ static int mmi_dc_drm_init(struct mmi_dc *dc)
 	drm->mode_config.cursor_height = MMI_DC_CURSOR_HEIGHT;
 
 	ret = drm_vblank_init(drm, 1);
-	if (ret < 0) {
-		dev_err(dc->dev, "failed to init vblank: %d\n", ret);
-		return ret;
-	}
+	if (ret < 0)
+		return dev_err_probe(dc->dev, ret, "failed to init vblank\n");
 
 	drm_kms_helper_poll_init(drm);
 
@@ -682,10 +669,8 @@ static int mmi_dc_probe(struct platform_device *pdev)
 	dc->dev = &pdev->dev;
 
 	ret = dma_set_mask_and_coherent(dc->dev, DMA_BIT_MASK(48));
-	if (ret < 0) {
-		dev_err(dc->dev, "failed to set DMA mask %d\n", ret);
-		return ret;
-	}
+	if (ret < 0)
+		return dev_err_probe(dc->dev, ret, "failed to set DMA mask\n");
 
 	ret = mmi_dc_drm_init(dc);
 	if (ret < 0)
