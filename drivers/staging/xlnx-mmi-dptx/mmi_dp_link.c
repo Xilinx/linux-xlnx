@@ -6,7 +6,10 @@
  */
 
 #include <drm/display/drm_dp_helper.h>
+#include <drm/drm_atomic.h>
 #include <drm/drm_fixed.h>
+
+#include <linux/media-bus-format.h>
 
 #include "mmi_dp.h"
 
@@ -278,6 +281,10 @@ static int mmi_dp_config_ctrl_video_mode(struct dptx *dptx)
 
 	mmi_dp_write_mask(dptx, VIDEO_CONFIG5, INIT_THRESHOLD_MASK,
 			  vparams->init_threshold);
+
+	dptx_err(dptx, "Config Video Mode: TU=%d, TU_FRAC=%d, INIT_THRESHOLD=%d\n",
+		 vparams->aver_bytes_per_tu, vparams->aver_bytes_per_tu_frac,
+		 vparams->init_threshold);
 
 	if (dptx->rx_caps.enhanced_frame_cap)
 		mmi_dp_write_mask(dptx, CCTL, CCTL_ENHANCE_FRAMING_EN, 1);
@@ -971,9 +978,24 @@ static int mmi_dp_check_allowed_link_configs(struct dptx *dptx)
 	return 0;
 }
 
+static struct drm_bridge_state *mmi_dp_get_bridge_state(struct dptx *dptx)
+{
+	if (!dptx->bridge.base.state)
+		return NULL;
+
+	return drm_priv_to_bridge_state(dptx->bridge.base.state);
+}
+
 int mmi_dp_full_link_training(struct dptx *dptx)
 {
+	static const struct dptx_format_map default_format = {
+		.media_bus_format	= MEDIA_BUS_FMT_RGB888_1X24,
+		.bits_per_component	= 8,
+		.pixels_per_sample	= 1,
+	};
 	int ret, retval;
+	struct drm_bridge_state *bridge_state = mmi_dp_get_bridge_state(dptx);
+	const struct dptx_format_map *input_format = NULL;
 
 	/* Guarantee lanes and rates are supported by Source and Sink */
 	mmi_dp_check_allowed_link_configs(dptx);
@@ -1056,14 +1078,31 @@ int mmi_dp_full_link_training(struct dptx *dptx)
 	mmi_dp_write_dpcd(dptx, DP_TRAINING_PATTERN_SET, DP_TRAINING_PATTERN_DISABLE);
 
 	if (ret == LT_DONE) {
+		if (bridge_state) {
+			u32 bus_format = bridge_state->input_bus_cfg.format;
+
+			input_format = mmi_dp_get_input_format(bus_format);
+		}
+		if (!input_format)
+			input_format = &default_format;
+
+		dptx_dbg(dptx, "negotiated bus format: %x bpc: %d pps: %d",
+			 input_format->media_bus_format,
+			 input_format->bits_per_component,
+			 input_format->pixels_per_sample);
+
 		/* dptx_phy_enable_xmit(dptx, dptx->link.lanes, true); */
 		dptx->link.trained = true;
 		dptx_info(dptx, "Successful Link Training - Rate: %d Lanes: %d",
 			  dptx->link.rate, dptx->link.lanes);
-		dptx->multipixel = DPTX_MP_SINGLE_PIXEL;
+		dptx->multipixel = input_format->pixels_per_sample >> 1;
 		mmi_dp_set_video_dynamic_range(dptx, 1);
 		mmi_dp_set_video_colorimetry(dptx, 1); /* for 601 */
 
+		/*
+		 * FIXME: we should set input_format->bits_per_component here
+		 * but it is not working properly, at least for 12 bpc.
+		 */
 		retval = mmi_dp_set_bpc(dptx, COLOR_DEPTH_8);
 		if (retval)
 			dptx_info(dptx, "mmi_dp_set_bpc failed");
