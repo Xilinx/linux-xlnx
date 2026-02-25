@@ -24,7 +24,87 @@
 /* TODO: more formats */
 static const struct mmi_dc_format live_video_formats[] = {
 	{
+		.mbus_format		= MEDIA_BUS_FMT_RGB888_1X24,
+		.buf_format		= MMI_DC_LIVE_VID_BPC8 |
+					  MMI_DC_FORMAT_RGB <<
+					  MMI_DC_LIVE_VID_FORMAT_SHIFT,
+		.format_flags		= MMI_DC_FMT_LIVE,
+		.csc_matrix		= csc_identity_matrix,
+		.csc_offsets		= csc_zero_offsets,
+		.csc_scaling_factors	= csc_scaling_factors_888,
+	},
+	{
+		.mbus_format		= MEDIA_BUS_FMT_RGB888_0_5X48,
+		.buf_format		= MMI_DC_LIVE_VID_BPC8 |
+					  MMI_DC_FORMAT_RGB <<
+					  MMI_DC_LIVE_VID_FORMAT_SHIFT,
+		.format_flags		= MMI_DC_FMT_LIVE,
+		.csc_matrix		= csc_identity_matrix,
+		.csc_offsets		= csc_zero_offsets,
+		.csc_scaling_factors	= csc_scaling_factors_888,
+	},
+	{
+		.mbus_format		= MEDIA_BUS_FMT_RGB888_0_25X96,
+		.buf_format		= MMI_DC_LIVE_VID_BPC8 |
+					  MMI_DC_FORMAT_RGB <<
+					  MMI_DC_LIVE_VID_FORMAT_SHIFT,
+		.format_flags		= MMI_DC_FMT_LIVE,
+		.csc_matrix		= csc_identity_matrix,
+		.csc_offsets		= csc_zero_offsets,
+		.csc_scaling_factors	= csc_scaling_factors_888,
+	},
+	{
+		.mbus_format		= MEDIA_BUS_FMT_RGB101010_1X30,
+		.buf_format		= MMI_DC_LIVE_VID_BPC10 |
+					  MMI_DC_FORMAT_RGB <<
+					  MMI_DC_LIVE_VID_FORMAT_SHIFT,
+		.format_flags		= MMI_DC_FMT_LIVE,
+		.csc_matrix		= csc_identity_matrix,
+		.csc_offsets		= csc_zero_offsets,
+		.csc_scaling_factors	= csc_scaling_factors_101010,
+	},
+	{
+		.mbus_format		= MEDIA_BUS_FMT_RGB101010_0_5X60,
+		.buf_format		= MMI_DC_LIVE_VID_BPC10 |
+					  MMI_DC_FORMAT_RGB <<
+					  MMI_DC_LIVE_VID_FORMAT_SHIFT,
+		.format_flags		= MMI_DC_FMT_LIVE,
+		.csc_matrix		= csc_identity_matrix,
+		.csc_offsets		= csc_zero_offsets,
+		.csc_scaling_factors	= csc_scaling_factors_101010,
+	},
+	{
+		.mbus_format		= MEDIA_BUS_FMT_RGB101010_0_25X120,
+		.buf_format		= MMI_DC_LIVE_VID_BPC10 |
+					  MMI_DC_FORMAT_RGB <<
+					  MMI_DC_LIVE_VID_FORMAT_SHIFT,
+		.format_flags		= MMI_DC_FMT_LIVE,
+		.csc_matrix		= csc_identity_matrix,
+		.csc_offsets		= csc_zero_offsets,
+		.csc_scaling_factors	= csc_scaling_factors_101010,
+	},
+	{
 		.mbus_format		= MEDIA_BUS_FMT_RGB121212_1X36,
+		.buf_format		= MMI_DC_LIVE_VID_BPC12 |
+					  MMI_DC_FORMAT_RGB <<
+					  MMI_DC_LIVE_VID_FORMAT_SHIFT,
+		.format_flags		= MMI_DC_FMT_LIVE,
+		.csc_matrix		= csc_identity_matrix,
+		.csc_offsets		= csc_zero_offsets,
+		.csc_scaling_factors	= csc_scaling_factors_121212,
+	},
+	{
+		.mbus_format		= MEDIA_BUS_FMT_RGB121212_0_5X72,
+		.buf_format		= MMI_DC_LIVE_VID_BPC12 |
+					  MMI_DC_FORMAT_RGB <<
+					  MMI_DC_LIVE_VID_FORMAT_SHIFT,
+		.format_flags		= MMI_DC_FMT_LIVE,
+		.csc_matrix		= csc_identity_matrix,
+		.csc_offsets		= csc_zero_offsets,
+		.csc_scaling_factors	= csc_scaling_factors_121212,
+	},
+	{
+		.mbus_format		= MEDIA_BUS_FMT_RGB121212_0_25X144,
 		.buf_format		= MMI_DC_LIVE_VID_BPC12 |
 					  MMI_DC_FORMAT_RGB <<
 					  MMI_DC_LIVE_VID_FORMAT_SHIFT,
@@ -81,6 +161,45 @@ static const struct mmi_dc_format *mmi_dc_find_live_format(u32 mbus_format)
 	return NULL;
 }
 
+/**
+ * mmi_dc_attach_bypass_bridge - Create and attach downstream bridge chain
+ * @bridge: MMI DC bridge instance operating in bypass mode (no plane)
+ * @encoder: DRM encoder to attach the chain to
+ * @flags: DRM bridge attach flags from the core
+ *
+ * Bypass mode does not expose a local connector. Instead, the MMI DC bridge
+ * acts as an upstream element and dynamically discovers the next bridge from
+ * the device tree using the DP Tx port derived from @bridge->mst_id. The next
+ * bridge is then attached to @encoder.
+ *
+ * Return: 0 on success, -EINVAL if a connector was requested, or a negative
+ * errno if bridge discovery/attach fails.
+ */
+static int mmi_dc_attach_bypass_bridge(struct mmi_dc_bridge *bridge,
+				       struct drm_encoder *encoder,
+				       enum drm_bridge_attach_flags flags)
+{
+	struct mmi_dc *dc = bridge->dc;
+	struct drm_bridge *next_bridge;
+	u32 dptx_port = MMI_DC_DPTX_PORT_0 + bridge->mst_id;
+	int ret;
+
+	/* We don't want to host a connector for the bypass bridge */
+	if (!(flags & DRM_BRIDGE_ATTACH_NO_CONNECTOR))
+		return -EINVAL;
+
+	/* Build the bridge chain */
+	next_bridge = devm_drm_of_get_bridge(dc->dev, dc->dev->of_node,
+					     dptx_port, 0);
+	if (IS_ERR(next_bridge)) {
+		ret = PTR_ERR(next_bridge);
+		dev_err(dc->dev, "failed to find dptx bridge: %d\n", ret);
+		return ret;
+	}
+
+	return drm_bridge_attach(encoder, next_bridge, &bridge->base, flags);
+}
+
 static int mmi_dc_bridge_attach(struct drm_bridge *drm_bridge,
 				struct drm_encoder *encoder,
 				enum drm_bridge_attach_flags flags)
@@ -89,12 +208,11 @@ static int mmi_dc_bridge_attach(struct drm_bridge *drm_bridge,
 	struct mmi_dc_bridge *bridge = to_mmi_dc_bridge(drm_bridge);
 	int ret;
 
+	if (!bridge->plane)
+		return mmi_dc_attach_bypass_bridge(bridge, encoder, flags);
+
 	if (flags & DRM_BRIDGE_ATTACH_NO_CONNECTOR)
 		return 0;
-
-	/* We don't want to host a connector for the bypass bridge */
-	if (!bridge->plane)
-		return -EINVAL;
 
 	connector = drm_bridge_connector_init(drm_bridge->dev, encoder);
 	if (IS_ERR(connector))
@@ -124,7 +242,7 @@ static void mmi_dc_bridge_enable(struct drm_bridge *drm_bridge,
 
 	mmi_dc_compositor_enable(bridge->plane, format);
 	/* TODO: enable external timing source here */
-	mmi_dc_set_video_timing_source(bridge->plane->dc, MMI_DC_VT_INTERNAL);
+	mmi_dc_set_video_timing_source(bridge->dc, MMI_DC_VT_INTERNAL);
 }
 
 static void mmi_dc_bridge_disable(struct drm_bridge *drm_bridge,
@@ -137,7 +255,7 @@ static void mmi_dc_bridge_disable(struct drm_bridge *drm_bridge,
 
 	mmi_dc_compositor_disable(bridge->plane);
 	/* TODO: this should be ref counted for 2 live video case */
-	mmi_dc_set_video_timing_source(bridge->plane->dc, MMI_DC_VT_INTERNAL);
+	mmi_dc_set_video_timing_source(bridge->dc, MMI_DC_VT_INTERNAL);
 }
 
 static enum drm_connector_status
@@ -157,12 +275,11 @@ static int mmi_dc_bridge_get_modes(struct drm_bridge *drm_bridge,
 {
 	struct mmi_dc_bridge *bridge = to_mmi_dc_bridge(drm_bridge);
 	struct drm_display_mode *mode;
-	struct mmi_dc *dc;
+	struct mmi_dc *dc = bridge->dc;
 
 	if (WARN_ON(!bridge->plane))
 		return 0;
 
-	dc = bridge->plane->dc;
 	mode = drm_mode_create(drm_bridge->dev);
 
 	if (mode) {
@@ -186,20 +303,60 @@ mmi_dc_bridge_get_input_bus_fmts(struct drm_bridge *drm_bridge,
 				 u32 output_fmt,
 				 unsigned int *num_input_fmts)
 {
-	u32 *input_fmts = kcalloc(ARRAY_SIZE(live_video_formats), sizeof(u32),
-				  GFP_KERNEL);
+	struct mmi_dc_bridge *bridge = to_mmi_dc_bridge(drm_bridge);
+	bool can_transcode = !!bridge->plane;
+	u32 *input_fmts;
 	unsigned int i;
 
+	*num_input_fmts = can_transcode ? ARRAY_SIZE(live_video_formats) : 1;
+	input_fmts = kcalloc(*num_input_fmts, sizeof(*input_fmts), GFP_KERNEL);
 	if (!input_fmts) {
 		*num_input_fmts = 0;
 		return input_fmts;
 	}
 
-	for (i = 0; i < ARRAY_SIZE(live_video_formats); ++i)
-		input_fmts[i] = live_video_formats[i].mbus_format;
-	*num_input_fmts = ARRAY_SIZE(live_video_formats);
+	if (can_transcode) {
+		/* TODO: should we validate input format ppc? */
+		for (i = 0; i < *num_input_fmts; ++i)
+			input_fmts[i] = live_video_formats[i].mbus_format;
+	} else {
+		for (i = 0; i < ARRAY_SIZE(live_video_formats); ++i)
+			if (live_video_formats[i].mbus_format == output_fmt)
+				break;
+
+		if (i == ARRAY_SIZE(live_video_formats)) {
+			kfree(input_fmts);
+			*num_input_fmts = 0;
+			input_fmts = NULL;
+		} else {
+			input_fmts[0] = output_fmt;
+		}
+	}
 
 	return input_fmts;
+}
+
+static u32 *
+mmi_dc_bridge_get_output_bus_fmts(struct drm_bridge *drm_bridge,
+				  struct drm_bridge_state *bridge_state,
+				  struct drm_crtc_state *crtc_state,
+				  struct drm_connector_state *conn_state,
+				  unsigned int *num_output_fmts)
+{
+	u32 *output_fmts = kcalloc(ARRAY_SIZE(live_video_formats),
+				   sizeof(*output_fmts), GFP_KERNEL);
+	unsigned int i;
+
+	if (!output_fmts) {
+		*num_output_fmts = 0;
+		return output_fmts;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(live_video_formats); ++i)
+		output_fmts[i] = live_video_formats[i].mbus_format;
+	*num_output_fmts = ARRAY_SIZE(live_video_formats);
+
+	return output_fmts;
 }
 
 static const struct drm_bridge_funcs mmi_dc_bridge_funcs = {
@@ -209,6 +366,7 @@ static const struct drm_bridge_funcs mmi_dc_bridge_funcs = {
 	.detect				= mmi_dc_bridge_detect,
 	.get_modes			= mmi_dc_bridge_get_modes,
 	.atomic_get_input_bus_fmts	= mmi_dc_bridge_get_input_bus_fmts,
+	.atomic_get_output_bus_fmts	= mmi_dc_bridge_get_output_bus_fmts,
 
 	.atomic_duplicate_state	= drm_atomic_helper_bridge_duplicate_state,
 	.atomic_destroy_state	= drm_atomic_helper_bridge_destroy_state,

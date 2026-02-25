@@ -7,6 +7,7 @@
 
 #include <linux/clk.h>
 #include <linux/delay.h>
+#include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/interrupt.h>
@@ -57,6 +58,7 @@
 #define MMI_DC_AV_BUF_12BIT_SF			(0x00010000)
 
 /* Misc Registers */
+#define MMI_DC_MISC_BYPASS			(0x0c4c)
 #define MMI_DC_MISC_VID_CLK			(0x0c5c)
 #define MMI_DC_MISC_WPROTS			(0x0c70)
 #define MMI_DC_VIDEO_FRAME_SWITCH		(0x0d80)
@@ -511,9 +513,9 @@ static int mmi_dc_init_clocks(struct mmi_dc *dc)
 
 	/* Set video clock source */
 	if (dc->pl_pixel_clk)
-		dc_write_misc(dc, MMI_DC_MISC_VID_CLK, MMI_DC_MISC_VID_CLK_PL);
+		mmi_dc_set_vid_clk_src(dc, MMIDC_PL_CLK);
 	else
-		dc_write_misc(dc, MMI_DC_MISC_VID_CLK, MMI_DC_MISC_VID_CLK_PS);
+		mmi_dc_set_vid_clk_src(dc, MMIDC_AUX0_REF_CLK);
 
 	mmi_dc_set_video_timing_source(dc, MMI_DC_VT_INTERNAL);
 
@@ -551,6 +553,92 @@ static int mmi_dc_setup_irq(struct mmi_dc *dc)
 	return 0;
 }
 
+static const char *mode_prop = "xlnx,dc-operating-mode";
+static const char *stream_count_prop = "xlnx,dc-streams";
+
+/**
+ * mmi_dc_init_bridges - Initialize input stream bridges in bypass mode
+ * @dc: Display controller instance to initialize
+ *
+ * In bypass mode the controller exposes one DRM bridge per input stream. This
+ * helper validates the required device-tree properties, reads the number of
+ * input streams (bridges), initializes each bridge instance, and finally
+ * switches the controller into bypass operating mode.
+ *
+ * Return: 0 on success or a negative error code if DT validation, property
+ * parsing, or bridge registration fails.
+ */
+static int mmi_dc_init_bridges(struct mmi_dc *dc)
+{
+	struct device_node *np = dc->dev->of_node;
+	u32 bridge, num_bridges;
+	int ret;
+
+	/* Sanity check */
+	if (!of_property_present(np, mode_prop) ||
+	    of_property_match_string(np, mode_prop, "DC_Bypass") ||
+	    !of_property_present(np, stream_count_prop))
+		return dev_err_probe(dc->dev, -EINVAL,
+				     "inconsistent dt properties\n");
+
+	ret = of_property_read_u32(np, stream_count_prop, &num_bridges);
+	if (ret < 0)
+		return dev_err_probe(dc->dev, ret,
+				     "failed to read %s property\n",
+				     stream_count_prop);
+
+	if (num_bridges > MMI_DC_MAX_BRIDGES)
+		return dev_err_probe(dc->dev, -EINVAL,
+				     "too many input streams\n");
+
+	for (bridge = 0; bridge < num_bridges; ++bridge) {
+		dc->bridges[bridge] = mmi_dc_bridge_init(dc->dev, NULL);
+		if (IS_ERR(dc->bridges[bridge]))
+			return dev_err_probe(dc->dev, PTR_ERR(dc->bridges[bridge]),
+					     "failed to init bridge %d\n",
+					     bridge);
+		dc->bridges[bridge]->dc = dc;
+		dc->bridges[bridge]->mst_id = bridge;
+	}
+
+	/* All bridges initialized successfully - set the operating mode */
+	dc_write_misc(dc, MMI_DC_MISC_BYPASS, MMI_DC_BYPASS_MODE);
+
+	return 0;
+}
+
+/**
+ * mmi_dc_check_operating_mode - Parse DC operating mode from device tree
+ * @dc: Display controller instance
+ * @mode: Returned operating mode parsed from %mode_prop
+ *
+ * Validates and parses the %mode_prop DT property ("xlnx,dc-operating-mode")
+ * and translates it into a driver enum. The property must be present and have
+ * a supported value.
+ *
+ * Return: 0 on success or a negative error code if the property is missing or
+ * malformed.
+ */
+int mmi_dc_check_operating_mode(struct mmi_dc *dc,
+				enum mmi_dc_operating_mode *mode)
+{
+	struct device_node *np = dc->dev->of_node;
+
+	if (!of_property_present(np, "xlnx,dc-operating-mode"))
+		return dev_err_probe(dc->dev, -EINVAL,
+				     "missing %s property\n", mode_prop);
+
+	if (!of_property_match_string(np, mode_prop, "DC_Functional"))
+		*mode = MMI_DC_FUNCTIONAL_MODE;
+	else if (!of_property_match_string(np, mode_prop, "DC_Bypass"))
+		*mode = MMI_DC_BYPASS_MODE;
+	else
+		return dev_err_probe(dc->dev, -EINVAL,
+				     "malformed %s property\n", mode_prop);
+
+	return 0;
+}
+
 /**
  * mmi_dc_init - Initialize MMI DC hardware
  * @dc: MMI DC device
@@ -566,20 +654,26 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
 	if (ret < 0)
 		return ret;
 
-	dc->rst = devm_reset_control_get(dc->dev, NULL);
-	if (IS_ERR(dc->rst))
-		return dev_err_probe(dc->dev, PTR_ERR(dc->rst),
-				     "failed to get reset control\n");
+	dc_write_misc(dc, MMI_DC_MISC_WPROTS, 0);
+	dc_write_misc(dc, MMI_DC_VIDEO_FRAME_SWITCH,
+		      MMI_DC_VIDEO_FRAME_SWITCH_EN_ALL);
 
 	ret = mmi_dc_init_clocks(dc);
 	if (ret < 0)
 		return ret;
 
+	/* No DRM device provided - we're in bypass mode */
+	if (!drm)
+		return mmi_dc_init_bridges(dc);
+
+	dc->rst = devm_reset_control_get(dc->dev, NULL);
+	if (IS_ERR(dc->rst))
+		return dev_err_probe(dc->dev, PTR_ERR(dc->rst),
+				     "failed to get reset control\n");
+
 	mmi_dc_reset_hw(dc);
 
-	dc_write_misc(dc, MMI_DC_MISC_WPROTS, 0);
-	dc_write_misc(dc, MMI_DC_VIDEO_FRAME_SWITCH,
-		      MMI_DC_VIDEO_FRAME_SWITCH_EN_ALL);
+	dc_write_misc(dc, MMI_DC_MISC_BYPASS, MMI_DC_FUNCTIONAL_MODE);
 
 	ret = mmi_dc_create_planes(dc, drm);
 	if (ret < 0) {

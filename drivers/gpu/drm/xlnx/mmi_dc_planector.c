@@ -123,6 +123,7 @@ struct mmi_dc_plane *mmi_dc_create_planector(struct mmi_dc *dc,
 	planector->bridge = mmi_dc_bridge_init(dc->dev, &planector->base);
 	if (IS_ERR(planector->bridge))
 		return ERR_CAST(planector->bridge);
+	planector->bridge->dc = dc;
 
 	return &planector->base;
 }
