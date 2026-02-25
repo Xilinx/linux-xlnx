@@ -438,71 +438,76 @@ static struct clk *mmi_dc_init_clk(struct mmi_dc *dc, const char *clk_name)
 }
 
 /**
- * mmi_dc_init - Initialize MMI DC hardware
- * @dc: MMI DC device
- * @drm: DRM device
+ * mmi_dc_map_resources - Map MMIO regions for the display controller
+ * @dc: Display controller instance to initialize
  *
- * Return: 0 on success or error code otherwise.
+ * Requests all named register regions (dp, blend, avbuf, misc, irq) from the
+ * platform device and stores the mapped pointers inside @dc. The resources are
+ * acquired with devm_ioremap helpers so they are released automatically.
+ *
+ * Return: 0 on success or a negative error code when any mapping fails.
  */
-int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
+static int mmi_dc_map_resources(struct mmi_dc *dc)
 {
 	struct platform_device *pdev = to_platform_device(dc->dev);
-	int ret;
 
 	dc->dp = devm_platform_ioremap_resource_byname(pdev, "dp");
 	if (IS_ERR(dc->dp))
-		return PTR_ERR(dc->dp);
+		return dev_err_probe(dc->dev, PTR_ERR(dc->dp),
+				     "failed to map dp resource\n");
 
 	dc->blend = devm_platform_ioremap_resource_byname(pdev, "blend");
 	if (IS_ERR(dc->blend))
-		return PTR_ERR(dc->blend);
+		return dev_err_probe(dc->dev, PTR_ERR(dc->blend),
+				     "failed to map blend resource\n");
 
 	dc->avbuf = devm_platform_ioremap_resource_byname(pdev, "avbuf");
 	if (IS_ERR(dc->avbuf))
-		return PTR_ERR(dc->avbuf);
+		return dev_err_probe(dc->dev, PTR_ERR(dc->avbuf),
+				     "failed to map avbuf resource\n");
 
 	dc->misc = devm_platform_ioremap_resource_byname(pdev, "misc");
 	if (IS_ERR(dc->misc))
-		return PTR_ERR(dc->misc);
+		return dev_err_probe(dc->dev, PTR_ERR(dc->misc),
+				     "failed to map misc resource\n");
 
 	dc->irq = devm_platform_ioremap_resource_byname(pdev, "irq");
 	if (IS_ERR(dc->irq))
-		return PTR_ERR(dc->irq);
+		return dev_err_probe(dc->dev, PTR_ERR(dc->irq),
+				     "failed to map irq resource\n");
 
-	dc->rst = devm_reset_control_get(dc->dev, NULL);
-	if (IS_ERR(dc->rst))
-		return dev_err_probe(dc->dev, PTR_ERR(dc->rst),
-				     "failed to get reset control\n");
+	return 0;
+}
 
+/**
+ * mmi_dc_init_clocks - Fetch and configure controller clock sources
+ * @dc: Display controller instance whose clocks are being initialized
+ *
+ * Obtains all required pixel, PLL, STC reference, and audio clocks from the
+ * device tree. At least one pixel clock (PS or PL) must be available; the
+ * selected clock determines the video clock source programmed. Finally, the
+ * video timing source is locked to the internal source.
+ *
+ * Return: 0 on success or a negative error code if clock acquisition fails.
+ */
+static int mmi_dc_init_clocks(struct mmi_dc *dc)
+{
 	/* Get all the video clocks */
 	dc->pl_pixel_clk = mmi_dc_init_clk(dc, "pl_vid_func_clk");
 	dc->ps_pixel_clk = mmi_dc_init_clk(dc, "ps_vid_clk");
 
-	if (!dc->ps_pixel_clk && !dc->pl_pixel_clk) {
-		dev_err(dc->dev, "at least one pixel clock is needed!\n");
-		return -EINVAL;
-	}
+	if (!dc->ps_pixel_clk && !dc->pl_pixel_clk)
+		return dev_err_probe(dc->dev, -EINVAL,
+				     "at least one pixel clock is needed!\n");
 
 	dc->mmi_pll_clk = mmi_dc_init_clk(dc, "mmi_pll");
 	dc->stc_ref_clk = mmi_dc_init_clk(dc, "stc_ref_clk");
 
-	mmi_dc_reset_hw(dc);
-
-	dc_write_misc(dc, MMI_DC_MISC_WPROTS, 0);
-	dc_write_misc(dc, MMI_DC_VIDEO_FRAME_SWITCH,
-		      MMI_DC_VIDEO_FRAME_SWITCH_EN_ALL);
-
-	dc->irq_num = platform_get_irq(pdev, 0);
-	if (dc->irq_num < 0)
-		return dc->irq_num;
-
-	ret = mmi_dc_create_planes(dc, drm);
-	if (ret < 0) {
-		mmi_dc_destroy_planes(dc);
-		return ret;
+	dc->aud_clk = devm_clk_get(dc->dev, "pl_aud_clk");
+	if (IS_ERR(dc->aud_clk)) {
+		dev_warn(dc->dev, "PL audio clock is unavailable\n");
+		dc->aud_clk = NULL;
 	}
-
-	mmi_dc_set_dma_align(dc);
 
 	/* Set video clock source */
 	if (dc->pl_pixel_clk)
@@ -511,6 +516,78 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
 		dc_write_misc(dc, MMI_DC_MISC_VID_CLK, MMI_DC_MISC_VID_CLK_PS);
 
 	mmi_dc_set_video_timing_source(dc, MMI_DC_VT_INTERNAL);
+
+	return 0;
+}
+
+/**
+ * mmi_dc_setup_irq - Register threaded interrupt handler for the controller
+ * @dc: Display controller instance needing IRQ setup
+ *
+ * Retrieves the primary IRQ from the platform device and wires it to the
+ * controller's handler.
+ *
+ * Return: 0 on success or a negative errno from IRQ allocation or
+ * registration.
+ */
+static int mmi_dc_setup_irq(struct mmi_dc *dc)
+{
+	struct platform_device *pdev = to_platform_device(dc->dev);
+	int ret;
+
+	dc->irq_num = platform_get_irq(pdev, 0);
+	if (dc->irq_num < 0)
+		return dev_err_probe(dc->dev, dc->irq_num,
+				     "failed to allocate irq number\n");
+
+	ret = devm_request_threaded_irq(dc->dev, dc->irq_num, NULL,
+					mmi_dc_irq_handler,
+					IRQF_ONESHOT | IRQF_SHARED,
+					dev_name(dc->dev), dc);
+	if (ret < 0)
+		return dev_err_probe(dc->dev, ret,
+				     "failed to setup irq handler\n");
+
+	return 0;
+}
+
+/**
+ * mmi_dc_init - Initialize MMI DC hardware
+ * @dc: MMI DC device
+ * @drm: DRM device
+ *
+ * Return: 0 on success or error code otherwise.
+ */
+int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
+{
+	int ret;
+
+	ret = mmi_dc_map_resources(dc);
+	if (ret < 0)
+		return ret;
+
+	dc->rst = devm_reset_control_get(dc->dev, NULL);
+	if (IS_ERR(dc->rst))
+		return dev_err_probe(dc->dev, PTR_ERR(dc->rst),
+				     "failed to get reset control\n");
+
+	ret = mmi_dc_init_clocks(dc);
+	if (ret < 0)
+		return ret;
+
+	mmi_dc_reset_hw(dc);
+
+	dc_write_misc(dc, MMI_DC_MISC_WPROTS, 0);
+	dc_write_misc(dc, MMI_DC_VIDEO_FRAME_SWITCH,
+		      MMI_DC_VIDEO_FRAME_SWITCH_EN_ALL);
+
+	ret = mmi_dc_create_planes(dc, drm);
+	if (ret < 0) {
+		mmi_dc_destroy_planes(dc);
+		return ret;
+	}
+
+	mmi_dc_set_dma_align(dc);
 
 	mmi_dc_reset(dc, true);
 	msleep(MMI_DC_MSLEEP_50MS);
@@ -525,28 +602,21 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
 	mmi_dc_blend_set_bg_color(dc, MMI_BG_CLR_MIN, MMI_BG_CLR_MIN,
 				  MMI_BG_CLR_MAX);
 	/*
-	 * TODO: Audio driver initialization and audio clock to be handled separately
-	 * ensuring that if audio driver fails, video pipeline shouldn't be affected.
+	 * TODO: Audio driver initialization to be handled separately ensuring
+	 * that if audio driver fails, video pipeline shouldn't be affected.
 	 */
-
-	/* Set the aud_clk and initialize the audio driver */
-	dc->aud_clk = devm_clk_get(dc->dev, "pl_aud_clk");
-	if (IS_ERR(dc->aud_clk)) {
-		dev_warn(dc->dev, "PL audio clock is unavailable\n");
-	} else {
+	if (dc->aud_clk) {
 		ret = mmi_dc_audio_init(dc);
 		if (ret < 0) {
-			dev_err(dc->dev, "failed to initialize Audio Driver: %d\n", ret);
-			return ret;
+			mmi_dc_destroy_planes(dc);
+			return dev_err_probe(dc->dev, ret,
+					     "failed to initialize audio\n");
 		}
 	}
 
-	ret = devm_request_threaded_irq(dc->dev, dc->irq_num, NULL,
-					mmi_dc_irq_handler,
-					IRQF_ONESHOT | IRQF_SHARED,
-					dev_name(dc->dev), dc);
+	ret = mmi_dc_setup_irq(dc);
 	if (ret < 0) {
-		dev_err(dc->dev, "failed to setup irq handler: %d\n", ret);
+		mmi_dc_destroy_planes(dc);
 		return ret;
 	}
 
