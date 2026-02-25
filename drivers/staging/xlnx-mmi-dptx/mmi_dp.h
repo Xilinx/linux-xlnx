@@ -315,6 +315,18 @@ struct dptx {
 	struct dptx_link link;
 };
 
+/**
+ * Media bus format to BPC and PPS mapping structure
+ * @media_bus_format: Media bus format
+ * @bits_per_component: Bits per color
+ * @pixels_per_sample: Pixels per sample (pixels per clock)
+ */
+struct dptx_format_map {
+	u32 media_bus_format;
+	u32 bits_per_component;
+	u32 pixels_per_sample;
+};
+
 /* DP Registers Accessors */
 
 /**
@@ -448,6 +460,7 @@ int mmi_dp_disable_datapath_phy(struct dptx *dptx);
 u32 mmi_dp_set_field(u32 data, u32 mask, u32 value);
 u8 mmi_dp_set8_field(u8 data, u8 mask, u8 value);
 void mmi_dp_write_mask(struct dptx *dptx, u32 addr, u32 mask, u32 data);
+const struct dptx_format_map *mmi_dp_get_input_format(u32 media_bus_format);
 
 /* Debug */
 #define dptx_dbg(_dp, _fmt...) dev_dbg((_dp)->dev, _fmt)

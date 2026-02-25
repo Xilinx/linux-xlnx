@@ -859,11 +859,71 @@ static u32 *mmi_dp_bridge_get_output_bus_fmts(struct drm_bridge *bridge,
 		return NULL;
 	}
 
-	/* TODO - Add more formats */
 	*num_output_formats = 1;
 	out_bus_formats[0] = MEDIA_BUS_FMT_FIXED;
 
 	return out_bus_formats;
+}
+
+static const struct dptx_format_map dptx_input_format_map[] = {
+	{
+		.media_bus_format	= MEDIA_BUS_FMT_RGB888_1X24,
+		.bits_per_component	= 8,
+		.pixels_per_sample	= 1,
+	},
+	{
+		.media_bus_format	= MEDIA_BUS_FMT_RGB888_0_5X48,
+		.bits_per_component	= 8,
+		.pixels_per_sample	= 2,
+	},
+	{
+		.media_bus_format	= MEDIA_BUS_FMT_RGB888_0_25X96,
+		.bits_per_component	= 8,
+		.pixels_per_sample	= 4,
+	},
+	{
+		.media_bus_format	= MEDIA_BUS_FMT_RGB101010_1X30,
+		.bits_per_component	= 10,
+		.pixels_per_sample	= 1,
+	},
+	{
+		.media_bus_format	= MEDIA_BUS_FMT_RGB101010_0_5X60,
+		.bits_per_component	= 10,
+		.pixels_per_sample	= 2,
+	},
+	{
+		.media_bus_format	= MEDIA_BUS_FMT_RGB101010_0_25X120,
+		.bits_per_component	= 10,
+		.pixels_per_sample	= 4,
+	},
+		{
+		.media_bus_format	= MEDIA_BUS_FMT_RGB121212_1X36,
+		.bits_per_component	= 12,
+		.pixels_per_sample	= 1,
+	},
+	{
+		.media_bus_format	= MEDIA_BUS_FMT_RGB121212_0_5X72,
+		.bits_per_component	= 12,
+		.pixels_per_sample	= 2,
+	},
+	{
+		.media_bus_format	= MEDIA_BUS_FMT_RGB121212_0_25X144,
+		.bits_per_component	= 12,
+		.pixels_per_sample	= 4,
+	},
+};
+
+const struct dptx_format_map *mmi_dp_get_input_format(u32 media_bus_format)
+{
+	u32 i = 0;
+
+	for (i = 0; i < ARRAY_SIZE(dptx_input_format_map); i++) {
+		if (dptx_input_format_map[i].media_bus_format ==
+		    media_bus_format)
+			return &dptx_input_format_map[i];
+	}
+
+	return NULL;
 }
 
 static u32 *mmi_dp_bridge_get_input_bus_fmts(struct drm_bridge *bridge,
@@ -873,17 +933,18 @@ static u32 *mmi_dp_bridge_get_input_bus_fmts(struct drm_bridge *bridge,
 					     u32 output_format,
 					     unsigned int *num_input_formats)
 {
-	u32 *in_bus_formats;
+	u32 *in_bus_formats, i;
 
-	in_bus_formats = kmalloc(sizeof(*in_bus_formats), GFP_KERNEL);
+	in_bus_formats = kcalloc(ARRAY_SIZE(dptx_input_format_map),
+				 sizeof(*in_bus_formats), GFP_KERNEL);
 	if (!in_bus_formats) {
 		*num_input_formats = 0;
 		return NULL;
 	}
 
-	/* TODO - Add more formats */
-	*num_input_formats = 1;
-	in_bus_formats[0] = MEDIA_BUS_FMT_FIXED;
+	for (i = 0; i < ARRAY_SIZE(dptx_input_format_map); ++i)
+		in_bus_formats[i] = dptx_input_format_map[i].media_bus_format;
+	*num_input_formats = ARRAY_SIZE(dptx_input_format_map);
 
 	return in_bus_formats;
 }
