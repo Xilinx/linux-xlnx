@@ -396,7 +396,7 @@ static int xlnx_avpg_plane_atomic_check(struct drm_plane *plane,
 	crtc_state = drm_atomic_get_new_crtc_state(state, &avpg->drm->crtc);
 
 	/* Force CRTC shutdown when the plane is detached */
-	if (crtc_state->enable && !plane_state->crtc)
+	if (crtc_state && crtc_state->enable && !plane_state->crtc)
 		return -EINVAL;
 
 	return drm_atomic_helper_check_plane_state(plane_state, crtc_state,
