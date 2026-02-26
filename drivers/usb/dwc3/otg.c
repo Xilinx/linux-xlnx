@@ -2141,7 +2141,7 @@ void dwc3_otg_init(struct dwc3 *dwc)
 		goto exit_free_phy;
 	}
 
-	otg->irq = platform_get_irq(to_platform_device(otg->dev), 1);
+	otg->irq = platform_get_irq_byname(to_platform_device(otg->dev), "otg");
 	if (otg->irq < 0)
 		goto exit_remove_phy;
 
