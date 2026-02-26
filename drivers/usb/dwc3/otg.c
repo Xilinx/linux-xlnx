@@ -2104,10 +2104,8 @@ void dwc3_otg_init(struct dwc3 *dwc)
 	}
 
 	otg = kzalloc(sizeof(*otg), GFP_KERNEL);
-	if (!otg) {
-		dev_err(otg->dev, "failed to allocate memroy\n");
+	if (!otg)
 		return;
-	}
 
 	dwc->otg = otg;
 	otg->dev = dwc->dev;
@@ -2115,6 +2113,9 @@ void dwc3_otg_init(struct dwc3 *dwc)
 
 	otg->regs = dwc->regs - DWC3_GLOBALS_REGS_START;
 	otg->otg.usb_phy = kzalloc(sizeof(struct usb_phy), GFP_KERNEL);
+	if (!otg->otg.usb_phy)
+		goto exit_free_otg;
+
 	otg->otg.usb_phy->dev = otg->dev;
 	otg->otg.usb_phy->label = "dwc3_otg";
 	otg->otg.state = OTG_STATE_UNDEFINED;
@@ -2137,19 +2138,25 @@ void dwc3_otg_init(struct dwc3 *dwc)
 	if (err) {
 		dev_err(otg->dev, "can't register transceiver, err: %d\n",
 			err);
-		goto exit;
+		goto exit_free_phy;
 	}
 
 	otg->irq = platform_get_irq(to_platform_device(otg->dev), 1);
+	if (otg->irq < 0)
+		goto exit_remove_phy;
 
-	dwc3_otg_create_dev_files(otg->dev);
+	err = dwc3_otg_create_dev_files(otg->dev);
+	if (err) {
+		dev_err(otg->dev, "failed to create device files, err: %d\n", err);
+		goto exit_remove_phy;
+	}
 
 	/* Set irq handler */
 	err = request_irq(otg->irq, dwc3_otg_irq, IRQF_SHARED, "dwc3_otg", otg);
 	if (err) {
 		dev_err(otg->otg.usb_phy->dev, "failed to request irq #%d --> %d\n",
 				otg->irq, err);
-		goto exit;
+		goto exit_remove_dev_files;
 	}
 
 	dwc3_otg_enable_irq(otg);
@@ -2159,7 +2166,7 @@ void dwc3_otg_init(struct dwc3 *dwc)
 		if (err != -EPROBE_DEFER)
 			dev_err(otg->otg.usb_phy->dev,
 				"failed to initialize gadget\n");
-		goto exit;
+		goto exit_free_irq;
 	}
 
 	err = dwc3_host_init(dwc);
@@ -2167,14 +2174,25 @@ void dwc3_otg_init(struct dwc3 *dwc)
 		if (err != -EPROBE_DEFER)
 			dev_err(otg->otg.usb_phy->dev,
 				"failed to initialize host\n");
-		goto exit;
+		goto exit_gadget;
 	}
 
 	return;
 
-exit:
+exit_gadget:
+	dwc3_gadget_exit(dwc);
+exit_free_irq:
+	free_irq(otg->irq, otg);
+exit_remove_dev_files:
+	dwc_usb3_remove_dev_files(otg->dev);
+exit_remove_phy:
+	usb_remove_phy(otg->otg.usb_phy);
+exit_free_phy:
 	kfree(otg->otg.usb_phy);
+exit_free_otg:
+	dwc->otg = NULL;
 	kfree(otg);
+	return;
 }
 
 void dwc3_otg_exit(struct dwc3 *dwc)
