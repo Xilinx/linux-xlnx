@@ -2390,6 +2390,20 @@ int dwc3_core_probe(const struct dwc3_probe_data *data)
 
 	dwc3_get_software_properties(dwc);
 
+	/*
+	 * DWC3 controller has a Power Management Unit(PMU) module
+	 * which requests the power controller for entering into
+	 * D3/D0 state. Try getting the regulator.
+	 */
+	dwc->dwc3_pmu = devm_regulator_get(dev, dev->parent->of_node->full_name);
+	if (!IS_ERR(dwc->dwc3_pmu)) {
+		ret = regulator_enable(dwc->dwc3_pmu);
+		if (ret) {
+			dev_err(dev, "Failed to enable dwc3_pmu supply\n");
+			return ret;
+		}
+	}
+
 	dwc->usb_psy = dwc3_get_usb_power_supply(dwc);
 	if (IS_ERR(dwc->usb_psy))
 		return dev_err_probe(dev, PTR_ERR(dwc->usb_psy), "couldn't get usb power supply\n");
@@ -2485,21 +2499,6 @@ int dwc3_core_probe(const struct dwc3_probe_data *data)
 	if (ret)
 		goto err_exit_debugfs;
 
-	/*
-	 * DWC3 controller has a Power Management Unit(PMU) module
-	 * which requests the power controller for entering into
-	 * D3/D0 state. Try getting the regulator.
-	 */
-	dwc->dwc3_pmu = devm_regulator_get(dev,
-					   dev->parent->of_node->full_name);
-	if (!IS_ERR(dwc->dwc3_pmu)) {
-		ret = regulator_enable(dwc->dwc3_pmu);
-		if (ret) {
-			dev_err(dev, "Failed to enable dwc3_pmu supply\n");
-			goto err_exit_debugfs;
-		}
-	}
-
 	pm_runtime_put(dev);
 
 	dma_set_max_seg_size(dev, UINT_MAX);
@@ -2561,6 +2560,9 @@ static int dwc3_probe(struct platform_device *pdev)
 
 void dwc3_core_remove(struct dwc3 *dwc)
 {
+	u32 reg;
+	int i;
+
 	pm_runtime_get_sync(dwc->dev);
 
 #ifdef CONFIG_PM_SLEEP
@@ -2582,6 +2584,18 @@ void dwc3_core_remove(struct dwc3 *dwc)
 	dwc3_ulpi_exit(dwc);
 
 	pm_runtime_allow(dwc->dev);
+
+	/* Let controller to suspend HSPHY before PHY driver suspends */
+	if (dwc->dis_u2_susphy_quirk || dwc->dis_enblslpm_quirk) {
+		for (i = 0; i < dwc->num_usb2_ports; i++) {
+			reg = dwc3_readl(dwc->regs, DWC3_GUSB2PHYCFG(i));
+			reg |= DWC3_GUSB2PHYCFG_ENBLSLPM | DWC3_GUSB2PHYCFG_SUSPHY;
+			dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(i), reg);
+		}
+
+		/* Give some time for USB2 PHY to suspend */
+		usleep_range(5000, 6000);
+	}
 
 	if (dwc->dwc3_pmu)
 		regulator_disable(dwc->dwc3_pmu);
