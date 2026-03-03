@@ -221,7 +221,8 @@ EXPORT_SYMBOL(xlnx_bridge_get_output_fmts);
  * Return: 0 on success. -ENOENT if no callback, -EFAULT if in error state,
  * or return code from callback.
  */
-int xlnx_bridge_set_timing(struct xlnx_bridge *bridge, struct videomode *vm)
+int xlnx_bridge_set_timing(struct xlnx_bridge *bridge,
+			   const struct videomode *vm)
 {
 	if (!bridge)
 		return 0;

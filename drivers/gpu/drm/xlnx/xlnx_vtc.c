@@ -192,10 +192,11 @@ static void xlnx_vtc_disable(struct xlnx_bridge *bridge)
  * structure passed from the CRTC and configures the VTC.
  */
 static int xlnx_vtc_set_timing(struct xlnx_bridge *bridge,
-			       struct videomode *vm)
+			       const struct videomode *vm)
 {
 	u32 reg;
-	u32 htotal, hactive, hsync_start, hbackporch_start;
+	u32 htotal, hactive, hfront_porch, hback_porch, hsync_len, hsync_start;
+	u32 hbackporch_start;
 	u32 vtotal, vactive, vsync_start, vbackporch_start;
 	struct xlnx_vtc *vtc = bridge_to_vtc(bridge);
 	int ret;
@@ -207,23 +208,21 @@ static int xlnx_vtc_set_timing(struct xlnx_bridge *bridge,
 	if (ret < 0)
 		dev_err(vtc->dev, "failed to set pixel clock rate: %d\n", ret);
 
-	vm->hactive /= vtc->htiming_div_fact;
-	vm->hfront_porch /= vtc->htiming_div_fact;
-	vm->hback_porch /= vtc->htiming_div_fact;
-	vm->hsync_len /= vtc->htiming_div_fact;
+	hactive = vm->hactive / vtc->htiming_div_fact;
+	hfront_porch = vm->hfront_porch / vtc->htiming_div_fact;
+	hback_porch = vm->hback_porch / vtc->htiming_div_fact;
+	hsync_len = vm->hsync_len / vtc->htiming_div_fact;
 
-	htotal = vm->hactive + vm->hfront_porch + vm->hsync_len +
-		 vm->hback_porch;
+	htotal = hactive + hfront_porch + hsync_len + hback_porch;
 	vtotal = vm->vactive + vm->vfront_porch + vm->vsync_len +
 		 vm->vback_porch;
 
-	hactive = vm->hactive;
 	vactive = vm->vactive;
 
-	hsync_start = vm->hactive + vm->hfront_porch;
+	hsync_start = hactive + hfront_porch;
 	vsync_start = vm->vactive + vm->vfront_porch - 1;
 
-	hbackporch_start = hsync_start + vm->hsync_len;
+	hbackporch_start = hsync_start + hsync_len;
 	vbackporch_start = vsync_start + vm->vsync_len;
 
 	dev_dbg(vtc->dev, "ha: %d, va: %d\n", hactive, vactive);
