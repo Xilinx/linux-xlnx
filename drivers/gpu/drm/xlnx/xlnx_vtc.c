@@ -98,21 +98,15 @@
  * @bridge: xilinx bridge structure
  * @dev: device structure
  * @base: base addr
- * @ppc: pixels per clock
  * @axi_clk: AXI Lite clock
  * @vid_clk: Video clock
- * @htiming_div_fact: factor used in calculating htimings
- * @enable_arbitrary_res: arbitrary video resolutions enable
  */
 struct xlnx_vtc {
 	struct xlnx_bridge bridge;
 	struct device *dev;
 	void __iomem *base;
-	u32 ppc;
 	struct clk *axi_clk;
 	struct clk *vid_clk;
-	u8 htiming_div_fact;
-	bool enable_arbitrary_res;
 };
 
 static inline void xlnx_vtc_writel(void __iomem *base, int offset, u32 val)
@@ -195,34 +189,30 @@ static int xlnx_vtc_set_timing(struct xlnx_bridge *bridge,
 			       const struct videomode *vm)
 {
 	u32 reg;
-	u32 htotal, hactive, hfront_porch, hback_porch, hsync_len, hsync_start;
-	u32 hbackporch_start;
+	u32 htotal, hactive, hsync_start, hbackporch_start;
 	u32 vtotal, vactive, vsync_start, vbackporch_start;
 	struct xlnx_vtc *vtc = bridge_to_vtc(bridge);
 	int ret;
 
-	reg = xlnx_vtc_readl(vtc->base, XVTC_CTL);
-	xlnx_vtc_writel(vtc->base, XVTC_CTL, reg & ~XVTC_CTL_RU);
-
-	ret = clk_set_rate(vtc->vid_clk, vm->pixelclock / vtc->ppc);
+	ret = clk_set_rate(vtc->vid_clk, vm->pixelclock);
 	if (ret < 0)
 		dev_err(vtc->dev, "failed to set pixel clock rate: %d\n", ret);
 
-	hactive = vm->hactive / vtc->htiming_div_fact;
-	hfront_porch = vm->hfront_porch / vtc->htiming_div_fact;
-	hback_porch = vm->hback_porch / vtc->htiming_div_fact;
-	hsync_len = vm->hsync_len / vtc->htiming_div_fact;
+	reg = xlnx_vtc_readl(vtc->base, XVTC_CTL);
+	xlnx_vtc_writel(vtc->base, XVTC_CTL, reg & ~XVTC_CTL_RU);
 
-	htotal = hactive + hfront_porch + hsync_len + hback_porch;
+	htotal = vm->hactive + vm->hfront_porch + vm->hsync_len +
+		 vm->hback_porch;
 	vtotal = vm->vactive + vm->vfront_porch + vm->vsync_len +
 		 vm->vback_porch;
 
+	hactive = vm->hactive;
 	vactive = vm->vactive;
 
-	hsync_start = hactive + hfront_porch;
+	hsync_start = vm->hactive + vm->hfront_porch;
 	vsync_start = vm->vactive + vm->vfront_porch - 1;
 
-	hbackporch_start = hsync_start + hsync_len;
+	hbackporch_start = hsync_start + vm->hsync_len;
 	vbackporch_start = vsync_start + vm->vsync_len;
 
 	dev_dbg(vtc->dev, "ha: %d, va: %d\n", hactive, vactive);
@@ -361,21 +351,6 @@ static int xlnx_vtc_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, vtc);
-
-	ret = of_property_read_u32(dev->of_node, "xlnx,pixels-per-clock",
-				   &vtc->ppc);
-	if (ret || (vtc->ppc != 1 && vtc->ppc != 2 && vtc->ppc != 4)) {
-		dev_err(dev, "failed to get ppc\n");
-		return ret;
-	}
-	dev_info(dev, "vtc ppc = %d\n", vtc->ppc);
-
-	vtc->enable_arbitrary_res = of_property_read_bool(dev->of_node,
-							  "xlnx,arbitrary-res-en");
-	if (vtc->enable_arbitrary_res)
-		vtc->htiming_div_fact = 1;
-	else
-		vtc->htiming_div_fact = vtc->ppc;
 
 	vtc->axi_clk = devm_clk_get(vtc->dev, "s_axi_aclk");
 	if (IS_ERR(vtc->axi_clk)) {
