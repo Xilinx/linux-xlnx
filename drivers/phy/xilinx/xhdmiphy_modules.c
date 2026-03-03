@@ -218,8 +218,8 @@ u32 xhdmiphy_get_dru_refclk(struct xhdmiphy_dev *inst)
 		    dru_freq < XHDMIPHY_HDMI_GTYE5_DRU_REFCLK1_MAX) {
 			return XHDMIPHY_HDMI_GTYE5_DRU_REFCLK1;
 		}
-		if (dru_freq > XHDMIPHY_HDMI_GTYE5_DRU_REFCLK2_MIN &&
-		    dru_freq < XHDMIPHY_HDMI_GTYE5_DRU_REFCLK2_MAX) {
+		if (dru_freq > inst->conf.dru_refclk2_min_hz &&
+		    dru_freq < inst->conf.dru_refclk2_max_hz) {
 			return XHDMIPHY_HDMI_GTYE5_DRU_REFCLK2;
 		}
 	}
