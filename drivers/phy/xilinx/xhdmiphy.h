@@ -1034,6 +1034,8 @@ struct xhdmiphy_conf {
 	enum sysclk_data_sel rx_pllclk_sel;	/* rx sysclk selectino. */
 	u8 dru_present;
 	enum refclk_sel dru_refclk_sel;		/* DRU REFCLK selection. */
+	u32 dru_refclk2_min_hz;			/* DRU REFCLK2 min tolerance in Hz. */
+	u32 dru_refclk2_max_hz;			/* DRU REFCLK2 max tolerance in Hz. */
 	enum ppc ppc;
 	u8 tx_buff_bypass;
 	u8 fast_switch;

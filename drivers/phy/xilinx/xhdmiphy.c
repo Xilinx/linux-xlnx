@@ -424,6 +424,22 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 		return -EINVAL;
 	}
 	xgtphycfg->gt_type = val;
+	xgtphycfg->dru_refclk2_min_hz = XHDMIPHY_HDMI_GTYE5_DRU_REFCLK2_MIN;
+	xgtphycfg->dru_refclk2_max_hz = XHDMIPHY_HDMI_GTYE5_DRU_REFCLK2_MAX;
+
+	if (!of_property_read_u32(node, "xlnx,dru-refclk2-min-hz", &val))
+		xgtphycfg->dru_refclk2_min_hz = val;
+
+	if (!of_property_read_u32(node, "xlnx,dru-refclk2-max-hz", &val))
+		xgtphycfg->dru_refclk2_max_hz = val;
+
+	if (xgtphycfg->dru_refclk2_min_hz >= xgtphycfg->dru_refclk2_max_hz) {
+		dev_err(priv->dev,
+			"dt DRU refclk2 tolerance range is invalid (%u >= %u)\n",
+			xgtphycfg->dru_refclk2_min_hz,
+			xgtphycfg->dru_refclk2_max_hz);
+		return -EINVAL;
+	}
 
 	rc = of_property_read_u32(node, "xlnx,input-pixels-per-clock", &val);
 	if (rc < 0) {
