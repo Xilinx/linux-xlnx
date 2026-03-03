@@ -38,20 +38,15 @@ properties:
       - const: s_axi_aclk
       - const: clk
 
-  xlnx,pixels-per-clock:
-    description: This denotes pixels per clock of the stream.
-    $ref: /schemas/types.yaml#/definitions/uint32
-    enum: [1, 2, 4]
-
   xlnx,arbitrary-res-en:
     description: Enable arbitrary resolution mode.
     type: boolean
 
 required:
+  - compatible
   - reg
   - clocks
   - clock-names
-  - xlnx,pixels-per-clock
 
 additionalProperties: false
 
@@ -62,6 +57,5 @@ examples:
             reg = <0x80030000 0x10000>;
             clock-names = "s_axi_aclk", "clk";
             clocks = <&misc_clk_0>, <&misc_clk_1>;
-            xlnx,pixels-per-clock = <2>;
             xlnx,arbitrary-res-en;
         };
