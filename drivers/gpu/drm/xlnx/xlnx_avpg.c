@@ -91,12 +91,6 @@ static const struct drm_prop_enum_list xlnx_avpg_pattern_list[] = {
 	{ XLNX_AVPG_PAT_SOLID_YELLOW, "yellow" },
 };
 
-enum xlnx_avpg_ppc {
-	XLNX_AVPG_1PPC = 0,
-	XLNX_AVPG_2PPC,
-	XLNX_AVPG_4PPC,
-};
-
 struct xlnx_avpg;
 
 /**
@@ -152,7 +146,7 @@ struct xlnx_avpg {
 	struct clk			*video_clk;
 	u32				output_bus_format;
 	enum xlnx_avpg_pixel_format	pixel_format;
-	enum xlnx_avpg_ppc		pixels_per_clock;
+	u32				pixels_per_clock;
 	enum xlnx_avpg_bpc		bits_per_component;
 	enum xlnx_avpg_pattern		pattern;
 	/* Poor man's VBLANK */
@@ -202,7 +196,7 @@ struct xlnx_avpg_format_map {
 	u32 bus_format;
 	enum xlnx_avpg_pixel_format pixel_format;
 	enum xlnx_avpg_bpc bpc;
-	enum xlnx_avpg_ppc ppc;
+	u32 ppc;
 };
 
 /**
@@ -217,63 +211,62 @@ struct xlnx_avpg_format_map {
  * pixel format and bpc combo is not supported
  */
 static u32 xlnx_avpg_find_bus_format(enum xlnx_avpg_pixel_format pixel_format,
-				     enum xlnx_avpg_bpc bpc,
-				     enum xlnx_avpg_ppc ppc)
+				     enum xlnx_avpg_bpc bpc, u32 ppc)
 {
 	static const struct xlnx_avpg_format_map format_map[] = {
 		{
 			.bus_format = MEDIA_BUS_FMT_RGB888_1X24,
 			.pixel_format = XLNX_AVPG_FMT_RGB,
 			.bpc = XLNX_AVPG_8BPC,
-			.ppc = XLNX_AVPG_1PPC,
+			.ppc = 1,
 		},
 		{
 			.bus_format = MEDIA_BUS_FMT_RGB101010_1X30,
 			.pixel_format = XLNX_AVPG_FMT_RGB,
 			.bpc = XLNX_AVPG_10BPC,
-			.ppc = XLNX_AVPG_1PPC,
+			.ppc = 1,
 		},
 		{
 			.bus_format = MEDIA_BUS_FMT_RGB121212_1X36,
 			.pixel_format = XLNX_AVPG_FMT_RGB,
 			.bpc = XLNX_AVPG_12BPC,
-			.ppc = XLNX_AVPG_1PPC,
+			.ppc = 1,
 		},
 		{
 			.bus_format = MEDIA_BUS_FMT_RGB888_0_5X48,
 			.pixel_format = XLNX_AVPG_FMT_RGB,
 			.bpc = XLNX_AVPG_8BPC,
-			.ppc = XLNX_AVPG_2PPC,
+			.ppc = 2,
 		},
 		{
 			.bus_format = MEDIA_BUS_FMT_RGB101010_0_5X60,
 			.pixel_format = XLNX_AVPG_FMT_RGB,
 			.bpc = XLNX_AVPG_10BPC,
-			.ppc = XLNX_AVPG_2PPC,
+			.ppc = 2,
 		},
 		{
 			.bus_format = MEDIA_BUS_FMT_RGB121212_0_5X72,
 			.pixel_format = XLNX_AVPG_FMT_RGB,
 			.bpc = XLNX_AVPG_12BPC,
-			.ppc = XLNX_AVPG_2PPC,
+			.ppc = 2,
 		},
 		{
 			.bus_format = MEDIA_BUS_FMT_RGB888_0_25X96,
 			.pixel_format = XLNX_AVPG_FMT_RGB,
 			.bpc = XLNX_AVPG_8BPC,
-			.ppc = XLNX_AVPG_4PPC,
+			.ppc = 4,
 		},
 		{
 			.bus_format = MEDIA_BUS_FMT_RGB101010_0_25X120,
 			.pixel_format = XLNX_AVPG_FMT_RGB,
 			.bpc = XLNX_AVPG_10BPC,
-			.ppc = XLNX_AVPG_4PPC,
+			.ppc = 4,
 		},
 		{
 			.bus_format = MEDIA_BUS_FMT_RGB121212_0_25X144,
 			.pixel_format = XLNX_AVPG_FMT_RGB,
 			.bpc = XLNX_AVPG_12BPC,
-			.ppc = XLNX_AVPG_4PPC,
+			.ppc = 4,
 		},
 	};
 	unsigned int i;
@@ -339,7 +332,7 @@ static void xlnx_avpg_set_format(struct xlnx_avpg *avpg)
 
 	reg_val = xlnx_avpg_read(avpg, XLNX_AVPG_MISC2);
 	reg_val &= ~XLNX_AVPG_PPC_MASK;
-	reg_val |= FIELD_PREP(XLNX_AVPG_PPC_MASK, avpg->pixels_per_clock);
+	reg_val |= FIELD_PREP(XLNX_AVPG_PPC_MASK, avpg->pixels_per_clock >> 1);
 	xlnx_avpg_write(avpg, XLNX_AVPG_MISC2, reg_val);
 }
 
@@ -533,8 +526,14 @@ static void xlnx_avpg_crtc_enable(struct drm_crtc *crtc,
 			"failed to enable video clock: %d\n", ret);
 		return;
 	}
-	if (avpg->pixels_per_clock)
-		pixel_clk /= avpg->pixels_per_clock;
+	/*
+	 * We use /2 clock output from clock wizard as the pixel clock, so we
+	 * should set double the pixel clock rate.
+	 */
+	if (avpg->pixels_per_clock > 1)
+		pixel_clk /= avpg->pixels_per_clock >> 1;
+	else
+		pixel_clk *= 2;
 	ret = clk_set_rate(avpg->video_clk, pixel_clk);
 	if (ret < 0) {
 		dev_err(&avpg->pdev->dev,
@@ -545,6 +544,11 @@ static void xlnx_avpg_crtc_enable(struct drm_crtc *crtc,
 	}
 
 	drm_display_mode_to_videomode(mode, &vm);
+	vm.pixelclock /= avpg->pixels_per_clock;
+	vm.hactive /= avpg->pixels_per_clock;
+	vm.hfront_porch /= avpg->pixels_per_clock;
+	vm.hback_porch /= avpg->pixels_per_clock;
+	vm.hsync_len /= avpg->pixels_per_clock;
 
 	/*
 	 * Override sync signals' polarity to match MMI DC output signal.
@@ -850,7 +854,7 @@ static int xlnx_avpg_probe(struct platform_device *pdev)
 {
 	struct xlnx_avpg *avpg;
 	struct device_node *node, *vtc_node;
-	u32 ppc, bpc;
+	u32 bpc;
 	int ret;
 
 	avpg = devm_kzalloc(&pdev->dev, sizeof(*avpg), GFP_KERNEL);
@@ -910,23 +914,16 @@ static int xlnx_avpg_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	ret = of_property_read_u32(node, "xlnx,ppc", &ppc);
+	ret = of_property_read_u32(node, "xlnx,ppc", &avpg->pixels_per_clock);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "required ppc property is missing\n");
 		return ret;
 	}
-	switch (ppc) {
-	case 1:
-		avpg->pixels_per_clock = XLNX_AVPG_1PPC;
-		break;
-	case 2:
-		avpg->pixels_per_clock = XLNX_AVPG_2PPC;
-		break;
-	case 4:
-		avpg->pixels_per_clock = XLNX_AVPG_4PPC;
-		break;
-	default:
-		dev_err(&pdev->dev, "%d ppc not supported\n", ppc);
+
+	if (avpg->pixels_per_clock != 1 && avpg->pixels_per_clock != 2 &&
+	    avpg->pixels_per_clock != 4) {
+		dev_err(&pdev->dev, "%d ppc not supported\n",
+			avpg->pixels_per_clock);
 		return -EINVAL;
 	}
 
