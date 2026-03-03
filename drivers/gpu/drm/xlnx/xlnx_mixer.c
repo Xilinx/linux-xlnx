@@ -2890,6 +2890,11 @@ static void xlnx_mix_crtc_dpms(struct drm_crtc *base_crtc, int dpms)
 
 		if (mixer->vtc_bridge) {
 			drm_display_mode_to_videomode(mode, &vm);
+			vm.pixelclock /= mixer->mixer_hw.ppc;
+			vm.hactive /= mixer->mixer_hw.ppc;
+			vm.hfront_porch /= mixer->mixer_hw.ppc;
+			vm.hback_porch /= mixer->mixer_hw.ppc;
+			vm.hsync_len /= mixer->mixer_hw.ppc;
 			xlnx_bridge_set_timing(mixer->vtc_bridge, &vm);
 			xlnx_bridge_enable(mixer->vtc_bridge);
 		}
