@@ -27,6 +27,7 @@ properties:
     items:
       - enum:
           - xlnx,versal-sysmon
+          - xlnx,versal-sysmon-remote
 
   reg:
     description: Sysmon Registers
@@ -120,10 +121,32 @@ patternProperties:
 
     additionalProperties: false
 
+allOf:
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: xlnx,versal-sysmon
+    then:
+      required:
+        - xlnx,numchannels
+
+    else:
+      properties:
+        interrupts: false
+        '#address-cells': false
+        '#size-cells': false
+        '#io-channel-cells': false
+        xlnx,numchannels: false
+        xlnx,nodeid: false
+        xlnx,hbm: false
+      patternProperties:
+        "^supply@([0-9]{1,2}|1[0-5][0-9])$": false
+        "^temp@([1-9]|[1-5][0-9]|6[0-4])$": false
+
 required:
   - compatible
   - reg
-  - xlnx,numchannels
 
 additionalProperties: false
 
