@@ -54,6 +54,7 @@ static const struct sysmon_ops direct_access = {
 	.read_reg = sysmon_direct_read_reg,
 	.write_reg = sysmon_direct_write_reg,
 	.update_reg = sysmon_direct_update_reg,
+	.setup_channels = sysmon_parse_dt,
 };
 
 static inline int sysmon_secure_read_reg(struct sysmon *sysmon, u32 offset, u32 *data)
@@ -80,6 +81,7 @@ static const struct sysmon_ops secure_access = {
 	.read_reg = sysmon_secure_read_reg,
 	.write_reg = sysmon_secure_write_reg,
 	.update_reg = sysmon_secure_update_reg,
+	.setup_channels = sysmon_parse_dt,
 };
 
 /**
@@ -212,7 +214,7 @@ static int sysmon_probe(struct platform_device *pdev)
 		sysmon->irq = platform_get_irq_optional(pdev, 0);
 	}
 
-	ret = sysmon_parse_dt(indio_dev, &pdev->dev);
+	ret = sysmon->ops->setup_channels(indio_dev, &pdev->dev);
 	if (ret)
 		return ret;
 

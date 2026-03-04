@@ -85,6 +85,7 @@ static const struct sysmon_ops i2c_access = {
 	.read_reg = sysmon_i2c_read_reg,
 	.write_reg = sysmon_i2c_write_reg,
 	.update_reg = sysmon_i2c_update_reg,
+	.setup_channels = sysmon_parse_dt,
 };
 
 static int sysmon_i2c_temp_read(struct sysmon *sysmon, int offset)
@@ -128,7 +129,7 @@ static int sysmon_i2c_probe(struct i2c_client *client)
 	sysmon_write_reg(sysmon, SYSMON_IDR, SYSMON_INTR_ALL_MASK);
 	sysmon->master_slr = true;
 
-	ret = sysmon_parse_dt(indio_dev, &client->dev);
+	ret = sysmon->ops->setup_channels(indio_dev, &client->dev);
 	if (ret)
 		return ret;
 
