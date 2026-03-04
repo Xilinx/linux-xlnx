@@ -81,11 +81,82 @@ static inline void sysmon_i2c_update_reg(struct sysmon *sysmon, u32 offset, u32 
 	sysmon_i2c_write_reg(sysmon, offset, (u32)((val & ~mask) | (mask & data)));
 }
 
+/* Temperature channels for remote chip monitoring */
+static const struct iio_chan_spec remote_temp_channels[] = {
+	SYSMON_CHAN_TEMP(TEMP_MAX, "temp"),
+};
+
+/* Fixed supply names for remote chip */
+static const char * const supply_names[] = {
+	"vccaux", "vccaux_pmc", "vcc_pmc", "vcc_psfp",
+	"vcc_pslp", "vcc_soc", "vp_vn"
+};
+
+static int sysmon_remote_setup_channels(struct iio_dev *indio_dev, struct device *dev)
+{
+	u32 chan_size = sizeof(struct iio_chan_spec);
+	struct iio_chan_spec *sysmon_channels;
+	struct sysmon *sysmon;
+	u32 total_channels, i;
+
+	sysmon = iio_priv(indio_dev);
+
+	/* Remote chip supports fixed voltage supplies + temperature channels */
+	sysmon->num_supply_chan = ARRAY_SIZE(supply_names);
+	sysmon->num_aie_temp_chan = 0;
+	total_channels = sysmon->num_supply_chan + ARRAY_SIZE(remote_temp_channels);
+
+	INIT_LIST_HEAD(&sysmon->region_list);
+
+	/* Initialize buffer for channel specification */
+	sysmon_channels = devm_kzalloc(dev, chan_size * total_channels, GFP_KERNEL);
+	if (!sysmon_channels)
+		return -ENOMEM;
+
+	/* Configure fixed voltage supply channels for remote monitoring */
+	for (i = 0; i < sysmon->num_supply_chan; i++) {
+		sysmon_channels[i].type = IIO_VOLTAGE;
+		sysmon_channels[i].indexed = 1;
+		sysmon_channels[i].address = i;
+		sysmon_channels[i].channel = i;
+		sysmon_channels[i].info_mask_separate =
+			BIT(IIO_CHAN_INFO_RAW) | BIT(IIO_CHAN_INFO_PROCESSED);
+		sysmon_channels[i].scan_index = i;
+		sysmon_channels[i].scan_type.realbits = 19;
+		sysmon_channels[i].scan_type.storagebits = 32;
+		sysmon_channels[i].scan_type.endianness = IIO_CPU;
+		sysmon_channels[i].scan_type.sign = 'u';
+		sysmon_channels[i].extend_name = supply_names[i];
+	}
+
+	/* Copy temperature channels after voltage channels */
+	memcpy(sysmon_channels + sysmon->num_supply_chan, remote_temp_channels,
+	       sizeof(remote_temp_channels));
+
+	/* Reset oversampling fields for temperature channels */
+	for (i = sysmon->num_supply_chan; i < total_channels; i++) {
+		sysmon_channels[i].info_mask_shared_by_type = 0;
+		sysmon_channels[i].info_mask_shared_by_type_available = 0;
+	}
+
+	indio_dev->num_channels = total_channels;
+	indio_dev->channels = sysmon_channels;
+
+	return 0;
+}
+
 static const struct sysmon_ops i2c_access = {
 	.read_reg = sysmon_i2c_read_reg,
 	.write_reg = sysmon_i2c_write_reg,
 	.update_reg = sysmon_i2c_update_reg,
 	.setup_channels = sysmon_parse_dt,
+};
+
+static const struct sysmon_ops remote_i2c_access = {
+	.read_reg = sysmon_i2c_read_reg,
+	.write_reg = sysmon_i2c_write_reg,
+	.update_reg = sysmon_i2c_update_reg,
+	.setup_channels = sysmon_remote_setup_channels,
 };
 
 static int sysmon_i2c_temp_read(struct sysmon *sysmon, int offset)
@@ -150,6 +221,10 @@ static const struct of_device_id sysmon_i2c_of_match_table[] = {
 	{
 		.compatible = "xlnx,versal-sysmon",
 		.data = &i2c_access,
+	},
+	{
+		.compatible = "xlnx,versal-sysmon-remote",
+		.data = &remote_i2c_access
 	},
 	{}
 };
