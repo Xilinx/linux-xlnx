@@ -262,6 +262,7 @@ struct sysmon_ops {
 	void (*write_reg)(struct sysmon *sysmon, u32 offset, u32 data);
 	void (*update_reg)(struct sysmon *sysmon, u32 offset,
 			   u32 mask, u32 data);
+	int (*setup_channels)(struct iio_dev *indio_dev, struct device *dev);
 };
 
 int sysmon_register_temp_ops(void (*cb)(void *data, struct regional_node *node),
