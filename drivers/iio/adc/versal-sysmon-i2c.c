@@ -13,6 +13,7 @@
 #include <linux/bitfield.h>
 #include <linux/device.h>
 #include <linux/i2c.h>
+#include <linux/property.h>
 
 #include "versal-sysmon.h"
 
@@ -80,7 +81,7 @@ static inline void sysmon_i2c_update_reg(struct sysmon *sysmon, u32 offset, u32 
 	sysmon_i2c_write_reg(sysmon, offset, (u32)((val & ~mask) | (mask & data)));
 }
 
-static struct sysmon_ops i2c_access = {
+static const struct sysmon_ops i2c_access = {
 	.read_reg = sysmon_i2c_read_reg,
 	.write_reg = sysmon_i2c_write_reg,
 	.update_reg = sysmon_i2c_update_reg,
@@ -122,7 +123,7 @@ static int sysmon_i2c_probe(struct i2c_client *client)
 
 	i2c_set_clientdata(client, sysmon);
 	sysmon->client = client;
-	sysmon->ops = &i2c_access;
+	sysmon->ops = device_get_match_data(&client->dev);
 	sysmon_write_reg(sysmon, SYSMON_NPI_LOCK, NPI_UNLOCK);
 	sysmon_write_reg(sysmon, SYSMON_IDR, SYSMON_INTR_ALL_MASK);
 	sysmon->master_slr = true;
@@ -145,7 +146,10 @@ static void sysmon_i2c_remove(struct i2c_client *client)
 }
 
 static const struct of_device_id sysmon_i2c_of_match_table[] = {
-	{ .compatible = "xlnx,versal-sysmon" },
+	{
+		.compatible = "xlnx,versal-sysmon",
+		.data = &i2c_access,
+	},
 	{}
 };
 MODULE_DEVICE_TABLE(of, sysmon_i2c_of_match_table);

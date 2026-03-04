@@ -240,7 +240,7 @@ struct sysmon {
 	unsigned int temp_mask;
 	struct delayed_work sysmon_unmask_work;
 	struct delayed_work sysmon_events_work;
-	struct sysmon_ops *ops;
+	const struct sysmon_ops *ops;
 	u32 pm_info;
 	bool master_slr;
 	bool hbm_slr;

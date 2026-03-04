@@ -50,7 +50,7 @@ static inline void sysmon_direct_update_reg(struct sysmon *sysmon, u32 offset,
 	sysmon_direct_write_reg(sysmon, offset, (val & ~mask) | (mask & data));
 }
 
-static struct sysmon_ops direct_access = {
+static const struct sysmon_ops direct_access = {
 	.read_reg = sysmon_direct_read_reg,
 	.write_reg = sysmon_direct_write_reg,
 	.update_reg = sysmon_direct_update_reg,
@@ -76,7 +76,7 @@ static inline void sysmon_secure_update_reg(struct sysmon *sysmon, u32 offset,
 				     (val & ~mask) | (mask & data));
 }
 
-static struct sysmon_ops secure_access = {
+static const struct sysmon_ops secure_access = {
 	.read_reg = sysmon_secure_read_reg,
 	.write_reg = sysmon_secure_write_reg,
 	.update_reg = sysmon_secure_update_reg,
