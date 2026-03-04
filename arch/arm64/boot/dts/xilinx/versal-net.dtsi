@@ -1018,7 +1018,7 @@
 		qspi: spi@f1030000 {
 			compatible = "xlnx,versal-qspi-1.0";
 			status = "disabled";
-			reg = <0 0xf1030000 0 0x1000>; /* missing one more reg range - checking with Sai */
+			reg = <0 0xf1030000 0 0x1000>;
 			interrupts = <0 183 4>;
 			clock-names = "ref_clk", "pclk";
 			/* iommus = <&smmu 0x244>; */
