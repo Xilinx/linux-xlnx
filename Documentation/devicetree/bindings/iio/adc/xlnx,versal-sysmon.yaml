@@ -129,12 +129,13 @@ additionalProperties: false
 
 examples:
   - |
-    #include <dt-bindings/power/xlnx-versal-regnode.h>
     bus {
         #address-cells = <2>;
         #size-cells = <2>;
 
         sysmon@f1270000 {
+            #define PM_REGNODE_SYSMON_ROOT_0 0x18224055
+
             compatible = "xlnx,versal-sysmon";
             reg = <0 0xf1270000 0 0x4000>;
             interrupts = <0 0x90 0x4>;
