@@ -47,6 +47,8 @@ struct ath12k_peer {
 
 	/* protected by ab->data_lock */
 	bool dp_setup_done;
+
+	bool ucast_ra_only;
 };
 
 void ath12k_peer_unmap_event(struct ath12k_base *ab, u16 peer_id);

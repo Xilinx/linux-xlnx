@@ -331,6 +331,9 @@ void pci_bus_add_device(struct pci_dev *dev)
 	struct device_node *dn = dev->dev.of_node;
 	int retval;
 
+	/* Save config space for error recoverability */
+	pci_save_state(dev);
+
 	/*
 	 * Can not put in pci_device_add yet because resources
 	 * are not assigned yet for some devices.
