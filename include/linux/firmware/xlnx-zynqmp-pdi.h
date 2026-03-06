@@ -24,7 +24,6 @@ int zynqmp_pm_get_uid_info(const u64 address, const u32 size, u32 *count);
 int zynqmp_pm_get_meta_header(const u64 src, const u64 dst,
 			      const u32 size, u32 *count);
 int zynqmp_pm_load_pdi(const u32 src, const u64 address);
-int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags);
 #else
 static inline int zynqmp_pm_load_pdi(const u32 src, const u64 address)
 {
@@ -33,12 +32,6 @@ static inline int zynqmp_pm_load_pdi(const u32 src, const u64 address)
 
 static inline int zynqmp_pm_get_uid_info(const u64 address, const u32 size,
 					 u32 *count)
-{
-	return -ENODEV;
-}
-
-static inline int zynqmp_pm_rsa(const u64 address, const u32 size,
-				const u32 flags)
 {
 	return -ENODEV;
 }
