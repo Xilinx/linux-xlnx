@@ -51,6 +51,7 @@ enum xsecure_aeskeysize {
 void *xlnx_get_crypto_dev_data(struct xlnx_feature *feature_map);
 int zynqmp_pm_secure_load(const u64 src_addr, u64 key_addr, u64 *dst);
 int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags);
+int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags);
 int versal_pm_puf_registration(const u64 in_addr);
 int versal_pm_puf_regeneration(const u64 in_addr);
 int versal_pm_puf_clear_id(void);
@@ -83,6 +84,12 @@ static inline int zynqmp_pm_secure_load(const u64 src_addr, u64 key_addr, u64 *d
 
 static inline int zynqmp_pm_sha_hash(const u64 address, const u32 size,
 				     const u32 flags)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_rsa(const u64 address, const u32 size,
+				const u32 flags)
 {
 	return -ENODEV;
 }
