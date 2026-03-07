@@ -57,7 +57,12 @@
 #include "xilinx_axienet_eoe.h"
 
 /* Descriptors defines for Tx and Rx DMA */
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+#define RX_BD_NUM_DEFAULT		128
+#else
 #define RX_BD_NUM_DEFAULT		1024
+#endif
+
 #define TX_BD_NUM_MIN			(MAX_SKB_FRAGS + 1)
 #define TX_BD_NUM_MAX			4096
 #define RX_BD_NUM_MAX			4096
