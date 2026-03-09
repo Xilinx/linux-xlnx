@@ -3754,7 +3754,16 @@ static int spi_nor_init(struct spi_nor *nor)
 	    nor->info->id->bytes[0] == CFI_MFR_INTEL ||
 	    nor->info->id->bytes[0] == CFI_MFR_SST ||
 	    nor->info->id->bytes[0] & SNOR_F_HAS_LOCK) {
-		spi_nor_write_enable(nor);
+		if (nor->flags & SNOR_F_HAS_PARALLEL) {
+			/*
+			 * In parallel mode both chip selects i.e., CS0 &
+			 * CS1 need to be asserted simultaneously.
+			 */
+			nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_MULTI_CS;
+		} else {
+			/* Select the CS index issuing the command. */
+			nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_CS0;
+		}
 		nor->bouncebuf[0] = 0;
 		spi_nor_write_sr(nor, nor->bouncebuf, 1);
 	}
