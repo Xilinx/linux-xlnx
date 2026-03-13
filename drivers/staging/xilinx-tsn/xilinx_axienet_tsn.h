@@ -194,6 +194,7 @@
 #define XAE_RCW1_OFFSET		0x00000404 /* Rx Configuration Word 1 */
 #define XAE_TC_OFFSET		0x00000408 /* Tx Configuration */
 #define XAE_FCC_OFFSET		0x0000040C /* Flow Control Configuration */
+#define XAE_Q_TYPE_OFFSET	0x000004F4 /* Queue type info */
 #define XAE_ID_OFFSET		0x000004F8 /* Identification register */
 #define XAE_EMMC_OFFSET		0x00000410 /* MAC speed configuration */
 #define XAE_RMFC_OFFSET		0x00000414 /* RX Max Frame Configuration */
@@ -812,6 +813,12 @@ struct axienet_tsn_txq {
  * @qbv_enabled: Bitmask of the QBV enabled queues
  * @devlink: devlink instance currently used to set scheduled PTP parameters
  * @tsn_has_preemption: Preemption configuration status
+ * @cbs_queue_map: Maps queue number to CBS hardware instance index.
+ *                 CBS-enabled queues are assigned sequential CBS instance
+ *                 indices (0, 1, 2...) based on hardware configuration.
+ *                 Example: If Q4 has CBS -> cbs_queue_map[4] = 0 (CBS instance 0)
+ *                          If Q5 has CBS -> cbs_queue_map[5] = 1 (CBS instance 1)
+ *                 Value is -1 if the queue does not have CBS enabled in hardware.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -941,6 +948,7 @@ struct axienet_local {
 	u32 qbv_enabled;
 	struct devlink *devlink;
 	bool tsn_has_preemption;
+	int cbs_queue_map[XAE_MAX_TSN_TC];
 };
 
 /**
@@ -1272,6 +1280,7 @@ int axienet_qbv_init(struct net_device *ndev);
 int axienet_set_schedule(struct net_device *ndev, void __user *useraddr);
 int axienet_get_schedule(struct net_device *ndev, void __user *useraddr);
 int axienet_tsn_shaper_tc(struct net_device *dev, enum tc_setup_type type, void *type_data);
+void axienet_cbs_init(struct net_device *ndev);
 int axienet_qbv_enabled(struct axienet_local *lp);
 #endif
 

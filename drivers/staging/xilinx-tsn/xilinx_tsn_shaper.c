@@ -366,6 +366,166 @@ static int tsn_setup_shaper_tc_taprio(struct net_device *ndev, void *type_data)
 	return ret;
 }
 
+/**
+ * axienet_cbs_init - Initialize CBS queue tracking by reading hardware config
+ * @ndev: Pointer to net_device structure
+ *
+ * Reads the hardware queue configuration register (Q_TYPE) to detect
+ * which queues have CBS (Credit-Based Shaper) enabled. Each queue uses 4 bits:
+ *   0000 (0) = BE  - Best Effort
+ *   0001 (1) = RES - Reserved/CBS (Credit-Based Shaper)
+ *   0010 (2) = ST  - Scheduled Traffic (Time-aware Shaper)
+ *
+ * Builds the CBS queue mapping where CBS enabled queues are assigned
+ * sequential CBS hardware instance indices (0, 1, 2...).
+ * Should be called during driver probe/initialization.
+ */
+void axienet_cbs_init(struct net_device *ndev)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	int queue, cbs_index = 0;
+	u32 queue_config;
+	u8 queue_type;
+
+	for (queue = 0; queue < XAE_MAX_TSN_TC; queue++)
+		lp->cbs_queue_map[queue] = -1;
+
+	/* CBS is not supported in the 2-queue design */
+	if (lp->num_tc <= XAE_MIN_LEGACY_TSN_TC)
+		goto out;
+	/* In the 3-queue design, CBS is supported only on Queue 1 */
+	if (lp->num_tc == XAE_MAX_LEGACY_TSN_TC) {
+		lp->cbs_queue_map[1] = cbs_index;
+		cbs_index++;
+		goto out;
+	}
+
+	queue_config = axienet_ior(lp, XAE_Q_TYPE_OFFSET);
+	/* Parse queue configuration - 4 bits per queue */
+	for (queue = 0; queue < lp->num_tc; queue++) {
+		/* Extract 4-bit queue type for this queue */
+		queue_type = (queue_config >> (queue * 4)) & 0xF;
+		if (queue_type == HW_QUEUE_TYPE_RES) {
+			lp->cbs_queue_map[queue] = cbs_index;
+			cbs_index++;
+		}
+	}
+out:
+	dev_dbg(&ndev->dev, "CBS: Initialized %d CBS-enabled queues from hardware\n",
+		cbs_index);
+}
+
+static int xlnx_cbs_add(struct net_device *ndev,
+			struct tc_cbs_qopt_offload *qopt)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	struct phy_device *phydev = ndev->phydev;
+	u32 idleslope_offset, sendslope_offset;
+	u32 hw_idleslope, hw_sendslope;
+	int queue = qopt->queue;
+	u32 link_speed_kbps;
+	int cbs_index;
+
+	if (queue < 0 || queue >= XAE_MAX_TSN_TC)
+		return -EINVAL;
+
+	/* Check if this queue has CBS enabled in hardware */
+	if (lp->cbs_queue_map[queue] < 0) {
+		netdev_err(ndev, "Queue %d does not have CBS enabled in hardware\n", queue);
+		return -EINVAL;
+	}
+
+	/* Get current link speed */
+	if (!phydev || phydev->speed == SPEED_UNKNOWN) {
+		netdev_err(ndev, "Link speed unknown, cannot configure CBS\n");
+		return -EINVAL;
+	}
+
+	if (phydev->speed != SPEED_1000 && phydev->speed != SPEED_100) {
+		netdev_err(ndev, "CBS unsupported link speed %d Mbps\n",
+			   phydev->speed);
+		return -EOPNOTSUPP;
+	}
+
+	/* Convert link speed from Mbps to kbps */
+	link_speed_kbps = phydev->speed * 1000;
+
+	/* Check for invalid CBS parameters */
+	if ((qopt->idleslope <= 0 || qopt->sendslope >= 0) ||
+	    ((u32)(qopt->idleslope - qopt->sendslope) != link_speed_kbps)) {
+		netdev_err(ndev, "Invalid CBS parameters: idleslope=%d sendslope=%d\n",
+			   qopt->idleslope, qopt->sendslope);
+		return -EINVAL;
+	}
+
+	/*
+	 * Check minimum idleslope based on link speed
+	 * 1 Gbps: minimum CBS_MIN_IDLESLOPE_1G kbps
+	 * 100 Mbps: minimum CBS_MIN_IDLESLOPE_100M kbps
+	 */
+	if (phydev->speed == SPEED_1000 && qopt->idleslope < CBS_MIN_IDLESLOPE_1G) {
+		netdev_err(ndev, "CBS Q%d: idleslope %d kbps is less than minimum %d kbps for 1 Gbps link\n",
+			   queue, qopt->idleslope, CBS_MIN_IDLESLOPE_1G);
+		return -EOPNOTSUPP;
+	} else if (phydev->speed == SPEED_100 && qopt->idleslope < CBS_MIN_IDLESLOPE_100M) {
+		/* Using CBS_MIN_IDLESLOPE_100M kbps as minimum for 100 Mbps (12.5 rounded up) */
+		netdev_err(ndev, "CBS Q%d: idleslope %d kbps is less than minimum %d kbps for 100 Mbps link\n",
+			   queue, qopt->idleslope, CBS_MIN_IDLESLOPE_100M);
+		return -EOPNOTSUPP;
+	}
+
+	/*
+	 * Hardware uses CBS_HW_BW_MAX (8192) as 100% bandwidth representation
+	 * Calculate hardware values based on link speed
+	 */
+	hw_idleslope = ((u64)qopt->idleslope * CBS_HW_BW_MAX) / link_speed_kbps;
+	hw_sendslope = CBS_HW_BW_MAX - hw_idleslope;
+
+	/* Get CBS index from hardware-detected mapping */
+	cbs_index = lp->cbs_queue_map[queue];
+
+	/* Calculate hardware register offsets based on CBS index */
+	sendslope_offset = CBS_SENDSLOPE_OFFSET(cbs_index);
+	idleslope_offset = CBS_IDLESLOPE_OFFSET(cbs_index);
+
+	/* Configure hardware CBS registers */
+	axienet_iow(lp, idleslope_offset, hw_idleslope);
+	axienet_iow(lp, sendslope_offset, hw_sendslope);
+	netdev_dbg(ndev, "CBS enabled on Q%d\n", queue);
+
+	return 0;
+}
+
+static int xlnx_cbs_del(struct net_device *ndev,
+			struct tc_cbs_qopt_offload *qopt)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	u32 idleslope_offset, sendslope_offset;
+	int queue = qopt->queue;
+	int cbs_index;
+
+	cbs_index = lp->cbs_queue_map[queue];
+
+	/* Calculate hardware register offsets */
+	sendslope_offset = CBS_SENDSLOPE_OFFSET(cbs_index);
+	idleslope_offset = CBS_IDLESLOPE_OFFSET(cbs_index);
+
+	/* Clear hardware CBS registers (set to default) */
+	axienet_iow(lp, sendslope_offset, CBS_SENDSLOPE_DEF_VALUE);
+	axienet_iow(lp, idleslope_offset, CBS_IDLESLOPE_DEF_VALUE);
+	netdev_dbg(ndev, "CBS disabled on Q%d\n", queue);
+
+	return 0;
+}
+
+static int tsn_setup_shaper_tc_cbs(struct net_device *ndev, void *type_data)
+{
+	struct tc_cbs_qopt_offload *qopt = type_data;
+
+	return qopt->enable ? xlnx_cbs_add(ndev, qopt) :
+			      xlnx_cbs_del(ndev, qopt);
+}
+
 int axienet_tsn_shaper_tc(struct net_device *dev, enum tc_setup_type type, void *type_data)
 {
 	switch (type) {
@@ -373,6 +533,8 @@ int axienet_tsn_shaper_tc(struct net_device *dev, enum tc_setup_type type, void 
 		return tsn_setup_shaper_tc_taprio(dev, type_data);
 	case TC_SETUP_QDISC_MQPRIO:
 		return tsn_setup_shaper_tc_mqprio(dev, type_data);
+	case TC_SETUP_QDISC_CBS:
+		return tsn_setup_shaper_tc_cbs(dev, type_data);
 	default:
 		return -EOPNOTSUPP;
 	}

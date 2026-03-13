@@ -111,6 +111,34 @@
 #define RES_XMIT_OVERRUN_COUNT		0x74
 #define ST_XMIT_OVERRUN_COUNT		0x7c
 
+/* CBS (Credit-Based Shaper) Register Offsets
+ * Base offset for CBS configuration registers
+ * Each CBS-enabled queue gets an index (0, 1, 2...) based on sorted order
+ * Offset calculation: BASE + (cbs_index * 0x100)
+ */
+#define CBS_BASE_OFFSET			0x12000
+#define CBS_REG_STRIDE			0x100
+#define CBS_SENDSLOPE_OFFSET_REG	0x0C
+#define CBS_IDLESLOPE_OFFSET_REG	0x10
+#define CBS_SENDSLOPE_DEF_VALUE		0x800
+#define CBS_IDLESLOPE_DEF_VALUE		0x1800
+
+/* CBS Configuration Constants */
+#define CBS_HW_BW_MAX			8192  /* Hardware represents 100% bandwidth as 8192 */
+#define CBS_MIN_IDLESLOPE_1G		125   /* Minimum idleslope for 1 Gbps link (kbps) */
+#define CBS_MIN_IDLESLOPE_100M		13    /* Minimum idleslope for 100 Mbps link (kbps) */
+
+/* Queue type definitions from hardware Q_TYPE register (4-bit values per queue) */
+#define HW_QUEUE_TYPE_BE		0  /* Best Effort */
+#define HW_QUEUE_TYPE_RES		1  /* Reserved/CBS - Credit Based Shaper */
+#define HW_QUEUE_TYPE_ST		2  /* Scheduled Traffic (Time-aware) */
+
+/* Calculate CBS register offset for a given CBS index */
+#define CBS_SENDSLOPE_OFFSET(cbs_idx) \
+	(CBS_BASE_OFFSET + ((cbs_idx) * CBS_REG_STRIDE) + CBS_SENDSLOPE_OFFSET_REG)
+#define CBS_IDLESLOPE_OFFSET(cbs_idx) \
+	(CBS_BASE_OFFSET + ((cbs_idx) * CBS_REG_STRIDE) + CBS_IDLESLOPE_OFFSET_REG)
+
 /* internally hw deals with queues only,
  * in 3q system ST acl bitmap would be would 1 << 2
  * in 2q system ST acl bitmap would be 1 << 1

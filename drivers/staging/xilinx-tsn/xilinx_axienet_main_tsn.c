@@ -2190,6 +2190,8 @@ static int axienet_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_clear_sysfs;
 
+	axienet_cbs_init(lp->ndev);
+
 	ret = register_netdev(lp->ndev);
 	if (ret) {
 		dev_err(lp->dev, "register_netdev() error (%i)\n", ret);
