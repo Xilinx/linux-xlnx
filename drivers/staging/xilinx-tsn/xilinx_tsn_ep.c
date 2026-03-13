@@ -264,23 +264,22 @@ static int tsn_ep_ioctl(struct net_device *dev, struct ifreq *rq, void __user *d
 u16 axienet_tsn_pcp_to_queue(struct net_device *ndev, struct sk_buff *skb)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
-	struct ethhdr *hdr = (struct ethhdr *)skb->data;
-	u16 ether_type = ntohs(hdr->h_proto);
+	struct vlan_ethhdr *veth;
 	u16 vlan_tci;
 	u8 pcp = 0;
 
-	if (unlikely(ether_type == ETH_P_8021Q)) {
-		struct vlan_ethhdr *vhdr = (struct vlan_ethhdr *)skb->data;
-
-		/* ether_type = ntohs(vhdr->h_vlan_encapsulated_proto); */
-
-		vlan_tci = ntohs(vhdr->h_vlan_TCI);
-
-		pcp = (vlan_tci & VLAN_PRIO_MASK) >> VLAN_PRIO_SHIFT;
-		return lp->pcpmap[pcp];
+	if (skb_vlan_tag_present(skb)) {
+		vlan_tci = skb_vlan_tag_get(skb);
+	} else if (skb->protocol == htons(ETH_P_8021Q)) {
+		veth = skb_vlan_eth_hdr(skb);
+		vlan_tci = ntohs(veth->h_vlan_TCI);
+	} else {
+		return BE_QUEUE_NUMBER;
 	}
 
-	return BE_QUEUE_NUMBER;
+	pcp = (vlan_tci & VLAN_PRIO_MASK) >> VLAN_PRIO_SHIFT;
+
+	return lp->pcpmap[pcp];
 }
 
 static u16 axienet_tsn_ep_select_queue(struct net_device *ndev, struct sk_buff *skb,
