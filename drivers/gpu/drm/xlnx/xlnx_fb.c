@@ -123,13 +123,16 @@ xlnx_fb_gem_fb_alloc(struct drm_device *drm,
 		     const struct drm_framebuffer_funcs *funcs)
 {
 	struct drm_framebuffer *fb;
+	const struct drm_format_info *info;
 	int ret, i;
 
 	fb = kzalloc(sizeof(*fb), GFP_KERNEL);
 	if (!fb)
 		return ERR_PTR(-ENOMEM);
 
-	drm_helper_mode_fill_fb_struct(drm, fb, NULL, mode_cmd);
+	info = drm_get_format_info(drm, mode_cmd->pixel_format, mode_cmd->modifier[0]);
+
+	drm_helper_mode_fill_fb_struct(drm, fb, info, mode_cmd);
 
 	for (i = 0; i < num_planes; i++)
 		fb->obj[i] = obj[i];
