@@ -133,6 +133,13 @@ static const struct of_device_id tsnswitch_of_match[] = {
 
 MODULE_DEVICE_TABLE(of, tsnswitch_of_match);
 
+bool xlnx_switch_per_mac_preemption_enabled(void)
+{
+	u32 reg = axienet_ior(&lp, EIGHT_QUEUE_MODE_ABILITY_OFFSET);
+
+	return !!(reg & PER_MAC_PREEMPTION_QUEUE_MAP_EN);
+}
+
 u8 xlnx_switch_get_ptp_rel_prio(u8 switch_prt)
 {
 	u32 shift;
