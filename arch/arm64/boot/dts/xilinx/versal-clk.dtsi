@@ -342,3 +342,43 @@
 &sysmon3 {
 	xlnx,nodeid = <PM_REGNODE_SYSMON_ROOT_3>;
 };
+
+&fpd_funnel {
+	clocks = <&versal_clk LPD_LSBUS>;
+};
+
+&fpd_etf {
+	clocks = <&versal_clk LPD_LSBUS>;
+};
+
+&replicator {
+	clocks = <&versal_clk LPD_LSBUS>;
+};
+
+&etr {
+	clocks = <&versal_clk LPD_LSBUS>;
+};
+
+&apu_funnel {
+	clocks = <&versal_clk LPD_LSBUS>;
+};
+
+&apu_etf {
+	clocks = <&versal_clk LPD_LSBUS>;
+};
+
+&cpu0_debug {
+	clocks = <&versal_clk LPD_LSBUS>;
+};
+
+&etm0 {
+	clocks = <&versal_clk LPD_LSBUS>;
+};
+
+&cpu1_debug {
+	clocks = <&versal_clk LPD_LSBUS>;
+};
+
+&etm1 {
+	clocks = <&versal_clk LPD_LSBUS>;
+};
