@@ -250,10 +250,14 @@ static int xlnx_taprio_replace(struct net_device *ndev,
 	if (err)
 		return err;
 
+	err = tsn_setup_shaper_tc_mqprio(ndev, &offload->mqprio);
+	if (err)
+		return err;
+
 	err = xlnx_disable_queues(ndev, offload);
 	if (err) {
 		dev_err(&ndev->dev, "Failed to disable unused queues\n");
-		return err;
+		goto mqprio_destroy;
 	}
 
 	/* write admin cycle time */
@@ -298,6 +302,11 @@ static int xlnx_taprio_replace(struct net_device *ndev,
 	axienet_qbv_iow(lp, CONFIG_CHANGE, u_config_change);
 
 	return 0;
+
+mqprio_destroy:
+	tsn_reset_tc_mqprio(ndev);
+
+	return err;
 }
 
 static void xlnx_enable_queues(struct net_device *ndev)
@@ -335,6 +344,7 @@ static void xlnx_taprio_destroy(struct net_device *ndev)
 	u_config_change |= CC_ADMIN_GATE_STATE_MASK;
 	axienet_qbv_iow(lp, CONFIG_CHANGE, u_config_change);
 	xlnx_enable_queues(ndev);
+	tsn_reset_tc_mqprio(ndev);
 }
 
 static int tsn_setup_shaper_tc_taprio(struct net_device *ndev, void *type_data)
