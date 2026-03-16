@@ -154,7 +154,8 @@ static int xlnx_taprio_replace(struct net_device *ndev,
 	struct axienet_local *lp = netdev_priv(ndev);
 	unsigned int u_config_change = 0;
 	struct timespec64 ts;
-	u16 i, err = 0;
+	int err = 0;
+	u16 i;
 
 	err = validate_taprio_qopt(ndev, offload);
 	if (err)
