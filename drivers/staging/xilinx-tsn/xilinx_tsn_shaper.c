@@ -51,6 +51,95 @@ static inline int axienet_map_gs_to_hw(struct axienet_local *lp, u32 gs)
 	return acl_bit_map;
 }
 
+static int validate_tsn_preemption(struct net_device *ndev,
+				   struct tc_mqprio_qopt_offload *mqprio)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+
+	if (!mqprio->preemptible_tcs)
+		return 0;
+
+	if (!(lp->abl_reg & TSN_FRAME_PREEMPTION_EN)) {
+		netdev_err(ndev, "Preemption not enabled in hardware ability 0x%x\n",
+			   lp->abl_reg);
+		return -EOPNOTSUPP;
+	}
+
+	if (mqprio->qopt.num_tc <= XAE_MAX_LEGACY_TSN_TC) {
+		netdev_err(ndev, "Preemption needs num_tc > %d\n",
+			   XAE_MAX_LEGACY_TSN_TC);
+		return -EOPNOTSUPP;
+	}
+
+	if (!xlnx_switch_per_mac_preemption_enabled()) {
+		netdev_err(ndev, "Per-MAC preemption not supported\n");
+		return -EOPNOTSUPP;
+	}
+
+	if (mqprio->qopt.num_tc > lp->num_tc) {
+		netdev_err(ndev, "Requested number of TCs exceeds supported limit %d\n",
+			   lp->num_tc);
+		return -EINVAL;
+	}
+
+	if (mqprio->preemptible_tcs & ~GENMASK(lp->num_tc - 1, 0)) {
+		netdev_err(ndev, "preemptible_tcs has bits set above num_tc\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static void tsn_reset_tc_mqprio(struct net_device *ndev)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+
+	netdev_reset_tc(ndev);
+
+	if (lp->tsn_has_preemption) {
+		axienet_iow(lp, XAE_QBU_USER_QUEUE_MAP_OFFSET, XAE_QBU_RESET_VALUE);
+		lp->tsn_has_preemption = false;
+	}
+}
+
+static int tsn_setup_shaper_tc_mqprio(struct net_device *ndev,
+				      void *type_data)
+{
+	struct tc_mqprio_qopt_offload *mqprio = type_data;
+	struct axienet_local *lp = netdev_priv(ndev);
+	int err;
+	u8 i;
+
+	if (!mqprio->qopt.num_tc) {
+		tsn_reset_tc_mqprio(ndev);
+		return 0;
+	}
+
+	err = validate_tsn_preemption(ndev, mqprio);
+	if (err)
+		return err;
+
+	err = netdev_set_num_tc(ndev, mqprio->qopt.num_tc);
+	if (err)
+		return err;
+
+	for (i = 0; i < mqprio->qopt.num_tc; ++i) {
+		err = netdev_set_tc_queue(ndev, i, 1, i);
+		if (err) {
+			netdev_reset_tc(ndev);
+			return err;
+		}
+	}
+
+	if (mqprio->preemptible_tcs) {
+		axienet_iow(lp, XAE_QBU_USER_QUEUE_MAP_OFFSET,
+			    (u32)mqprio->preemptible_tcs);
+		lp->tsn_has_preemption = true;
+	}
+
+	return 0;
+}
+
 static int validate_taprio_qopt(struct net_device *ndev,
 				struct tc_taprio_qopt_offload *qopt)
 {
@@ -272,6 +361,8 @@ int axienet_tsn_shaper_tc(struct net_device *dev, enum tc_setup_type type, void 
 	switch (type) {
 	case TC_SETUP_QDISC_TAPRIO:
 		return tsn_setup_shaper_tc_taprio(dev, type_data);
+	case TC_SETUP_QDISC_MQPRIO:
+		return tsn_setup_shaper_tc_mqprio(dev, type_data);
 	default:
 		return -EOPNOTSUPP;
 	}

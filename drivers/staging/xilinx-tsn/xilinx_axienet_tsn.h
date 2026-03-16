@@ -197,6 +197,7 @@
 #define XAE_ID_OFFSET		0x000004F8 /* Identification register */
 #define XAE_EMMC_OFFSET		0x00000410 /* MAC speed configuration */
 #define XAE_RMFC_OFFSET		0x00000414 /* RX Max Frame Configuration */
+#define XAE_QBU_USER_QUEUE_MAP_OFFSET	0x00000454 /* Preemptible queue map register */
 #define XAE_TSN_ABL_OFFSET	0x000004FC /* Ability Register */
 #define XAE_MDIO_MC_OFFSET	0x00000500 /* MDIO Setup */
 #define XAE_MDIO_MCR_OFFSET	0x00000504 /* MDIO Control */
@@ -224,6 +225,9 @@
 #define XAE_TX_VLAN_DATA_OFFSET 0x00004000 /* TX VLAN data table address */
 #define XAE_RX_VLAN_DATA_OFFSET 0x00008000 /* RX VLAN data table address */
 #define XAE_MCAST_TABLE_OFFSET	0x00020000 /* Multicast table address */
+
+/* QBU register values */
+#define XAE_QBU_RESET_VALUE	0 /* Reset preemption register */
 
 /* Bit Masks for Axi Ethernet RAF register */
 /* Reject receive multicast destination address */
@@ -660,6 +664,8 @@ struct aximcdma_bd {
 
 #define TSN_BRIDGEEP_EPONLY	BIT(29)
 
+#define TSN_FRAME_PREEMPTION_EN		BIT(15)
+
 #if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
 #define TADMA_MAX_NO_STREAM	128
 struct axitadma_bd {
@@ -805,6 +811,7 @@ struct axienet_tsn_txq {
  * @pcpmap: PCP to queues mapping information
  * @qbv_enabled: Bitmask of the QBV enabled queues
  * @devlink: devlink instance currently used to set scheduled PTP parameters
+ * @tsn_has_preemption: Preemption configuration status
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -933,6 +940,7 @@ struct axienet_local {
 	u8 pcpmap[XAE_MAX_TSN_TC];
 	u32 qbv_enabled;
 	struct devlink *devlink;
+	bool tsn_has_preemption;
 };
 
 /**
@@ -1356,5 +1364,12 @@ int tsn_switch_get_port_parent_id(struct net_device *dev,
 bool xlnx_is_port_ep_netdev(const struct net_device *ndev);
 bool xlnx_is_port_temac_netdev(const struct net_device *ndev);
 bool xlnx_is_port_ep_ex_netdev(const struct net_device *ndev);
+
+#if IS_ENABLED(CONFIG_XILINX_TSN_SWITCH)
+bool xlnx_switch_per_mac_preemption_enabled(void);
+#else
+static inline bool xlnx_switch_per_mac_preemption_enabled(void)
+{ return false; }
+#endif
 
 #endif /* XILINX_AXI_ENET_TSN_H */
