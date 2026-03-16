@@ -772,5 +772,186 @@
 			status = "disabled";
 			reg = <0x0 0xf2014050 0x0 0xc4>;
 		};
+
+		fpd_funnel: fpd-funnel@f0b20000 {
+			compatible = "arm,coresight-dynamic-funnel", "arm,primecell";
+			reg = <0 0xf0b20000 0 0x1000>;
+			clock-names = "apb_pclk";
+			status = "disabled";
+			in-ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				/* Port 1 is for APU ETF */
+				port@1 {
+					reg = <1>;
+					fpd_funnel_in_port1: endpoint {
+						remote-endpoint = <&apu_etf_out_port>;
+					};
+				};
+			};
+			out-ports {
+				port {
+					fpd_funnel_out_port: endpoint {
+						remote-endpoint = <&fpd_etf_in_port>;
+					};
+				};
+			};
+		};
+
+		fpd_etf: fpd-etf@f0b30000 {
+			compatible = "arm,coresight-tmc", "arm,primecell";
+			reg = <0 0xf0b30000 0 0x1000>;
+			clock-names = "apb_pclk";
+			status = "disabled";
+			in-ports {
+				port {
+					fpd_etf_in_port: endpoint {
+						remote-endpoint = <&fpd_funnel_out_port>;
+					};
+				};
+			};
+			out-ports {
+				port {
+					fpd_etf_out_port: endpoint {
+						remote-endpoint = <&replicator_in_port>;
+					};
+				};
+			};
+		};
+
+		replicator: replicator@f0b40000 {
+			compatible = "arm,coresight-dynamic-replicator", "arm,primecell";
+			reg = <0 0xf0b40000 0 0x1000>;
+			clock-names = "apb_pclk";
+			status = "disabled";
+			in-ports {
+				port {
+					replicator_in_port: endpoint {
+						remote-endpoint = <&fpd_etf_out_port>;
+					};
+				};
+			};
+			out-ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				port@0 {
+					reg = <0>;
+					replicator_out_port0: endpoint {
+						remote-endpoint = <&etr_in_port>;
+					};
+				};
+			};
+		};
+
+		etr: etr@f0b50000 {
+			compatible = "arm,coresight-tmc", "arm,primecell";
+			reg = <0 0xf0b50000 0 0x1000>;
+			clock-names = "apb_pclk";
+			status = "disabled";
+			in-ports {
+				port {
+					etr_in_port: endpoint {
+						remote-endpoint = <&replicator_out_port0>;
+					};
+				};
+			};
+		};
+
+		apu_funnel: funnel@f0c20000 {
+			compatible = "arm,coresight-dynamic-funnel", "arm,primecell";
+			reg = <0 0xf0c20000 0 0x1000>;
+			clock-names = "apb_pclk";
+			status = "disabled";
+			in-ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				port@0 {
+					reg = <0>;
+					funnel_in_port0: endpoint {
+						remote-endpoint = <&etm0_out_port>;
+					};
+				};
+				port@1 {
+					reg = <1>;
+					funnel_in_port1: endpoint {
+						remote-endpoint = <&etm1_out_port>;
+					};
+				};
+			};
+			out-ports {
+				port {
+					funnel_out_port: endpoint {
+						remote-endpoint = <&etf_in_port>;
+					};
+				};
+			};
+		};
+
+		apu_etf: etf@f0c30000 {
+			compatible = "arm,coresight-tmc", "arm,primecell";
+			reg = <0 0xf0c30000 0 0x1000>;
+			clock-names = "apb_pclk";
+			status = "disabled";
+			in-ports {
+				port {
+					etf_in_port: endpoint {
+						remote-endpoint = <&funnel_out_port>;
+					};
+				};
+			};
+			out-ports {
+				port {
+					apu_etf_out_port: endpoint {
+						remote-endpoint = <&fpd_funnel_in_port1>;
+					};
+				};
+			};
+		};
+
+		cpu0_debug: cpu0-debug@f0d00000 {
+			compatible = "arm,coresight-cpu-debug", "arm,primecell";
+			reg = <0 0xf0d00000 0 0x1000>;
+			clock-names = "apb_pclk";
+			cpu = <&cpu0>;
+			status = "disabled";
+		};
+
+		etm0: etm@f0d30000 {
+			compatible = "arm,coresight-etm4x", "arm,primecell";
+			reg = <0 0xf0d30000 0 0x1000>;
+			clock-names = "apb_pclk";
+			cpu = <&cpu0>;
+			status = "disabled";
+			out-ports {
+				port {
+					etm0_out_port: endpoint {
+						remote-endpoint = <&funnel_in_port0>;
+					};
+				};
+			};
+		};
+
+		cpu1_debug: cpu1-debug@f0d40000 {
+			compatible = "arm,coresight-cpu-debug", "arm,primecell";
+			reg = <0 0xf0d40000 0 0x1000>;
+			clock-names = "apb_pclk";
+			cpu = <&cpu1>;
+			status = "disabled";
+		};
+
+		etm1: etm@f0d70000 {
+			compatible = "arm,coresight-etm4x", "arm,primecell";
+			reg = <0 0xf0d70000 0 0x1000>;
+			clock-names = "apb_pclk";
+			cpu = <&cpu1>;
+			status = "disabled";
+			out-ports {
+				port {
+					etm1_out_port: endpoint {
+						remote-endpoint = <&funnel_in_port1>;
+					};
+				};
+			};
+		};
 	};
 };
