@@ -765,9 +765,9 @@ static void macb_mac_link_up(struct phylink_config *config,
 	struct net_device *ndev = to_net_dev(config->dev);
 	struct macb *bp = netdev_priv(ndev);
 	struct macb_queue *queue;
+	u32 ctrl, rx_watermark;
 	unsigned long flags;
 	unsigned int q;
-	u32 ctrl;
 
 	spin_lock_irqsave(&bp->lock, flags);
 
@@ -793,6 +793,19 @@ static void macb_mac_link_up(struct phylink_config *config,
 				ctrl |= (GEM_BIT(PAE) | GEM_BIT(DCPF));
 			else
 				ctrl &= ~(GEM_BIT(PAE) | GEM_BIT(DCPF));
+
+			if (tx_pause) {
+				if (bp->caps & MACB_CAPS_GEM_HAS_RXWMARK) {
+					rx_watermark = GEM_BF(RXWMARK_LOW, bp->rx_watermark_low) |
+						       GEM_BF(RXWMARK_HIGH, bp->rx_watermark_high);
+					gem_writel(bp, RXWMARK, rx_watermark);
+				}
+				gem_writel(bp, TXPAUSE, bp->pause_quantum);
+			} else {
+				if (bp->caps & MACB_CAPS_GEM_HAS_RXWMARK)
+					gem_writel(bp, RXWMARK, 0);
+				gem_writel(bp, TXPAUSE, GEM_TXPAUSEQUANTUM_DEFAULT);
+			}
 		} else {
 			if (rx_pause)
 				ctrl |= MACB_BIT(PAE);
@@ -5324,6 +5337,17 @@ err_out_phy_exit:
 	return ret;
 }
 
+static void macb_init_rx_watermark(struct macb *bp, const struct macb_config *macb_config)
+{
+	u16 rx_pbuf_addr_width;
+	u32 total_words;
+
+	rx_pbuf_addr_width = GEM_BFEXT(RX_PBUF_ADDR, gem_readl(bp, DCFG2));
+	total_words = 1U << rx_pbuf_addr_width;
+	bp->rx_watermark_high = (total_words * macb_config->rx_watermark_high_percent) / 100;
+	bp->rx_watermark_low = (total_words * macb_config->rx_watermark_low_percent) / 100;
+}
+
 static const struct macb_usrio_config sama7g5_usrio = {
 	.mii = 0,
 	.rmii = 1,
@@ -5470,12 +5494,15 @@ static const struct macb_config versal_config = {
 	.caps = MACB_CAPS_GIGABIT_MODE_AVAILABLE | MACB_CAPS_JUMBO |
 		MACB_CAPS_GEM_HAS_PTP | MACB_CAPS_BD_RD_PREFETCH |
 		MACB_CAPS_NEED_TSUCLK | MACB_CAPS_QUEUE_DISABLE |
-		MACB_CAPS_QBV,
+		MACB_CAPS_QBV | MACB_CAPS_GEM_HAS_RXWMARK,
 	.dma_burst_length = 16,
 	.clk_init = macb_clk_init,
 	.init = init_reset_optional,
 	.jumbo_max_len = 10240,
 	.usrio = &macb_default_usrio,
+	.txpause_quantum = 0x7FFF,
+	.rx_watermark_high_percent = 90,
+	.rx_watermark_low_percent = 50,
 };
 
 static const struct macb_config versal2_10gbe_config = {
@@ -5658,6 +5685,12 @@ static int macb_probe(struct platform_device *pdev)
 
 	/* setup capabilities */
 	macb_configure_caps(bp, macb_config);
+	if (bp->caps & MACB_CAPS_GEM_HAS_RXWMARK)
+		macb_init_rx_watermark(bp, macb_config);
+
+	bp->pause_quantum = macb_config->txpause_quantum;
+	if (!bp->pause_quantum)
+		bp->pause_quantum = GEM_TXPAUSEQUANTUM_DEFAULT;
 
 #ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
 	if (GEM_BFEXT(DAW64, gem_readl(bp, DCFG6))) {
