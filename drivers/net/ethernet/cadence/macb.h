@@ -83,9 +83,11 @@
 #define GEM_NCFGR		0x0004 /* Network Config */
 #define GEM_USRIO		0x000c /* User IO */
 #define GEM_DMACFG		0x0010 /* DMA Configuration */
+#define GEM_TXPAUSE		0x003C /* Transmit Pause Quantum */
 #define GEM_PBUFRXCUT		0x0044 /* RX Partial Store and Forward */
 #define GEM_JML			0x0048 /* Jumbo Max Length */
 #define GEM_HS_MAC_CONFIG	0x0050 /* GEM high speed config */
+#define GEM_RXWMARK		0x007C /* RXFIFO Watermark Levels for Pause Frames */
 #define GEM_HRB			0x0080 /* Hash Bottom */
 #define GEM_HRT			0x0084 /* Hash Top */
 #define GEM_SA1B		0x0088 /* Specific1 Bottom */
@@ -489,6 +491,15 @@
 #define MACB_CLKEN_OFFSET			1
 #define MACB_CLKEN_SIZE				1
 
+/* Bitfields in RXWMARK */
+#define GEM_RXWMARK_HIGH_OFFSET			0
+#define GEM_RXWMARK_HIGH_SIZE			16
+#define GEM_RXWMARK_LOW_OFFSET			16
+#define GEM_RXWMARK_LOW_SIZE			16
+
+/* Default Transmit Pause Quantum value */
+#define GEM_TXPAUSEQUANTUM_DEFAULT		0xFFFF
+
 /* Bitfields in WOL */
 #define MACB_IP_OFFSET				0
 #define MACB_IP_SIZE				16
@@ -777,6 +788,7 @@
 #define MACB_CAPS_NEED_TSUCLK			0x00000400
 #define MACB_CAPS_QUEUE_DISABLE			0x00000800
 #define MACB_CAPS_QBV				0x00001000
+#define MACB_CAPS_GEM_HAS_RXWMARK		0x00002000
 #define MACB_CAPS_PCS				0x01000000
 #define MACB_CAPS_HIGH_SPEED			0x02000000
 #define MACB_CAPS_CLK_HW_CHG			0x04000000
@@ -1237,6 +1249,9 @@ struct macb_config {
 	unsigned int		max_tx_length;
 	int	jumbo_max_len;
 	const struct macb_usrio_config *usrio;
+	u16	txpause_quantum;
+	u16	rx_watermark_high_percent;
+	u16	rx_watermark_low_percent;
 };
 
 struct tsu_incr {
@@ -1382,6 +1397,9 @@ struct macb {
 
 	struct macb_pm_data pm_data;
 	const struct macb_usrio_config *usrio;
+	u16	rx_watermark_low;
+	u16	rx_watermark_high;
+	u16	pause_quantum;
 };
 
 #ifdef CONFIG_MACB_USE_HWSTAMP
