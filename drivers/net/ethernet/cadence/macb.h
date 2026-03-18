@@ -315,12 +315,14 @@
 #define GEM_GBE_SIZE		1
 #define GEM_PCSSEL_OFFSET	11
 #define GEM_PCSSEL_SIZE		1
-#define GEM_PAE_OFFSET		13 /* Pause enable */
+#define GEM_PAE_OFFSET		13 /* Pause Frame Reception enable */
 #define GEM_PAE_SIZE		1
 #define GEM_CLK_OFFSET		18 /* MDC clock division */
 #define GEM_CLK_SIZE		3
 #define GEM_DBW_OFFSET		21 /* Data bus width */
 #define GEM_DBW_SIZE		2
+#define GEM_DCPF_OFFSET		23 /* Disable Copy of Pause Frames to Memory */
+#define GEM_DCPF_SIZE		1
 #define GEM_RXCOEN_OFFSET	24
 #define GEM_RXCOEN_SIZE		1
 #define GEM_SGMIIEN_OFFSET	27

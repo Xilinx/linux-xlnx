@@ -788,11 +788,15 @@ static void macb_mac_link_up(struct phylink_config *config,
 
 			if (speed == SPEED_1000)
 				ctrl |= GEM_BIT(GBE);
+
+			if (rx_pause)
+				ctrl |= (GEM_BIT(PAE) | GEM_BIT(DCPF));
+			else
+				ctrl &= ~(GEM_BIT(PAE) | GEM_BIT(DCPF));
+		} else {
+			if (rx_pause)
+				ctrl |= MACB_BIT(PAE);
 		}
-
-		if (rx_pause)
-			ctrl |= MACB_BIT(PAE);
-
 		/* Initialize rings & buffers as clearing MACB_BIT(TE) in link down
 		 * cleared the pipeline and control registers.
 		 */
@@ -917,6 +921,8 @@ static int macb_mii_probe(struct net_device *dev)
 
 	bp->phylink_config.mac_capabilities = MAC_ASYM_PAUSE |
 		MAC_10 | MAC_100;
+	if (macb_is_gem(bp))
+		bp->phylink_config.mac_capabilities |= MAC_SYM_PAUSE;
 
 	__set_bit(PHY_INTERFACE_MODE_MII,
 		  bp->phylink_config.supported_interfaces);
@@ -3635,6 +3641,26 @@ static int macb_set_ringparam(struct net_device *netdev,
 	return 0;
 }
 
+static void macb_get_pauseparam(struct net_device *netdev, struct ethtool_pauseparam *pause)
+{
+	struct macb *bp = netdev_priv(netdev);
+
+	if (!bp->phylink)
+		return;
+
+	phylink_ethtool_get_pauseparam(bp->phylink, pause);
+}
+
+static int macb_set_pauseparam(struct net_device *netdev, struct ethtool_pauseparam *pause)
+{
+	struct macb *bp = netdev_priv(netdev);
+
+	if (!bp->phylink)
+		return -EOPNOTSUPP;
+
+	return phylink_ethtool_set_pauseparam(bp->phylink, pause);
+}
+
 #ifdef CONFIG_MACB_USE_HWSTAMP
 static unsigned int gem_get_tsu_rate(struct macb *bp)
 {
@@ -4054,6 +4080,8 @@ static const struct ethtool_ops gem_ethtool_ops = {
 	.set_ringparam		= macb_set_ringparam,
 	.get_rxnfc			= gem_get_rxnfc,
 	.set_rxnfc			= gem_set_rxnfc,
+	.get_pauseparam		= macb_get_pauseparam,
+	.set_pauseparam		= macb_set_pauseparam,
 };
 
 static int macb_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
