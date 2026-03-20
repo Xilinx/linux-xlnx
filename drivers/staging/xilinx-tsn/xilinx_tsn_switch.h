@@ -94,6 +94,9 @@
 #define XAS_MNG_Q_SIDEBAND_EN_SHIFT		(3)
 #define XAS_MNG_Q_EPPKSW_MULI_EN_SHIFT		6
 
+#define XAS_ABILITY_OFFSET			0x01500
+#define XAS_ABILITY_GPTP_EN			BIT(14)
+
 #define XAS_MAC1_MNG_Q_OPTION_OFFSET		0x00058
 #define XAS_PRI7_MAX_FRAME_SIZE_OFFSET		0x00060
 #define XAS_PRI6_MAX_FRAME_SIZE_OFFSET		0x00064
@@ -508,8 +511,14 @@ void xlnx_switch_set_ptp_gates(u8 switch_prt, u8 value);
 u32 xlnx_switch_get_pqmr(void);
 #if IS_ENABLED(CONFIG_XILINX_TSN_SWITCH)
 bool xlnx_switch_probed(void);
+bool xlnx_switch_has_second_ptp_domain(void);
 #else
 static inline bool xlnx_switch_probed(void)
+{
+	return false;
+}
+
+static inline bool xlnx_switch_has_second_ptp_domain(void)
 {
 	return false;
 }

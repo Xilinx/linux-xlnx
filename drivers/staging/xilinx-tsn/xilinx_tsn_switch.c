@@ -227,6 +227,19 @@ bool xlnx_switch_probed(void)
 	return smp_load_acquire(&switch_probed);
 }
 
+/* The switch ability register is used solely to determine whether the gPTP
+ * time domain feature is enabled. The RTC clocks that underpin free-running
+ * clock operation and the QBV scheduling support are located in MAC1, not
+ * in the switch.
+ */
+bool xlnx_switch_has_second_ptp_domain(void)
+{
+	if (!xlnx_switch_probed())
+		return false;
+
+	return !!(axienet_ior(&lp, XAS_ABILITY_OFFSET) & XAS_ABILITY_GPTP_EN);
+}
+
 static void tsn_switch_set_fp_map(struct platform_device *pdev, u16 num_tc)
 {
 	u32 fp_value = 0;
