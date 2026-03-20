@@ -219,16 +219,6 @@ static irqreturn_t xlnx_ptp_timer_isr(int irq, void *priv)
 	return IRQ_HANDLED;
 }
 
-int axienet_get_phc_index(void *priv)
-{
-	struct xlnx_ptp_timer *timer = (struct xlnx_ptp_timer *)priv;
-
-	if (timer->ptp_clock)
-		return ptp_clock_index(timer->ptp_clock);
-	else
-		return -1;
-}
-
 static void tsn_ptp_unregister(void *ptp)
 {
 	ptp_clock_unregister((struct ptp_clock *)ptp);
