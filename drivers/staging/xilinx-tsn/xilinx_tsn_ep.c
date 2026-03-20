@@ -88,6 +88,7 @@ int tsn_data_path_open(struct net_device *ndev)
 	for_each_rx_dma_queue(lp, i) {
 		q = lp->dq[i];
 
+		napi_enable(&lp->napi[i]);
 		ret = axienet_mcdma_rx_q_init_tsn(ndev, q);
 		/* Enable interrupts for Axi MCDMA Rx
 		 */
@@ -101,7 +102,6 @@ int tsn_data_path_open(struct net_device *ndev)
 		tasklet_init(&lp->dma_err_tasklet[i],
 			     axienet_mcdma_err_handler_tsn,
 			     (unsigned long)lp->dq[i]);
-		napi_enable(&lp->napi[i]);
 		irq_cnt++;
 	}
 
