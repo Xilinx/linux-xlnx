@@ -64,5 +64,4 @@ extern int axienet_phc_index;
 
 int axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev,
 			    int irq, const char *irqname, int *phc_index);
-int axienet_get_phc_index(void *priv);
 #endif

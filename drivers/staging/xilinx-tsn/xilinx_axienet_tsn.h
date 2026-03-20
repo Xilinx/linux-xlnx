@@ -732,7 +732,6 @@ struct axienet_tsn_txq {
  * @ex_ep:	extended end point
  * @packet_switch: packet switching parameter
  * @switch_prt: Switch port number
- * @timer_priv: PTP timer private data pointer
  * @ptp_tx_irq: PTP tx irq
  * @ptp_rx_irq: PTP rx irq
  * @rtc_irq:	PTP RTC irq
@@ -853,7 +852,6 @@ struct axienet_local {
 	u8	packet_switch;
 	u8      switch_prt;	/* port on the switch */
 #if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
-	void *timer_priv;
 	int ptp_tx_irq;
 	int ptp_rx_irq;
 	int rtc_irq;
