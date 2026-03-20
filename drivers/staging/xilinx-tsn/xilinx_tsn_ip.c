@@ -171,6 +171,12 @@ int axienet_tsn_probe(struct platform_device *pdev,
 	struct device_node *ep_node;
 	struct axienet_local *ep_lp;
 
+	lp->abl_reg = axienet_ior(lp, XAE_TSN_ABL_OFFSET);
+
+	if (!(lp->abl_reg & TSN_BRIDGEEP_EPONLY) && !xlnx_switch_probed())
+		return dev_err_probe(&pdev->dev, -EPROBE_DEFER,
+				     "switch is not probed yet\n");
+
 	slave = of_property_read_bool(pdev->dev.of_node,
 				      "xlnx,tsn-slave");
 	if (slave) {
@@ -211,8 +217,6 @@ int axienet_tsn_probe(struct platform_device *pdev,
 
 	/* get the ep device */
 	ep_node = of_parse_phandle(pdev->dev.of_node, "tsn,endpoint", 0);
-
-	lp->abl_reg = axienet_ior(lp, XAE_TSN_ABL_OFFSET);
 
 	/* in switch-mode, get the endpoint network device. in ep-only mode,
 	 * the endpoint driver frees itself

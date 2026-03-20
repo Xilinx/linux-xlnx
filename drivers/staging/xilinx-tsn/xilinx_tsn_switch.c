@@ -35,6 +35,7 @@ struct axienet_local lp;
 static struct axienet_local *ep_lp;
 static u8 en_hw_addr_learning;
 static u8 sw_mac_addr[ETH_ALEN];
+static bool switch_probed;
 
 #define DELAY_OF_FIVE_MILLISEC			(5 * DELAY_OF_ONE_MILLISEC)
 
@@ -215,6 +216,15 @@ void xlnx_switch_set_ptp_gates(u8 switch_prt, u8 value)
 u32 xlnx_switch_get_pqmr(void)
 {
 	return axienet_ior(&lp, XAS_PREEMPTION_QUEUE_MAP_OFFSET);
+}
+
+bool xlnx_switch_probed(void)
+{
+	/* Pairs with smp_store_release() in switch probe. Ensures that all
+	 * writes to lp (including lp.regs) made before the release store are
+	 * visible to the caller before it accesses any switch state.
+	 */
+	return smp_load_acquire(&switch_probed);
 }
 
 static void tsn_switch_set_fp_map(struct platform_device *pdev, u16 num_tc)
@@ -2009,6 +2019,11 @@ static int tsnswitch_probe(struct platform_device *pdev)
 	}
 
 	of_node_put(ep_node);
+	/* Pairs with smp_load_acquire() in xlnx_switch_probed(). Ensures that
+	 * all switch initialisation, including lp.regs mapping, is visible to
+	 * other CPUs before they observe switch_probed as true.
+	 */
+	smp_store_release(&switch_probed, true);
 	return ret;
 err:
 	if (!inband_mgmt_tag)
@@ -2020,6 +2035,11 @@ err:
 
 static void tsnswitch_remove(struct platform_device *pdev)
 {
+	/* Pairs with smp_load_acquire() in xlnx_switch_probed(). Ensures that
+	 * callers observing switch_probed as false do not subsequently access
+	 * switch state that is about to be torn down.
+	 */
+	smp_store_release(&switch_probed, false);
 	misc_deregister(&switch_dev);
 	xlnx_switchdev_remove();
 }
