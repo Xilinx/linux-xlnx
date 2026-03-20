@@ -234,7 +234,8 @@ static void tsn_ptp_unregister(void *ptp)
 	ptp_clock_unregister((struct ptp_clock *)ptp);
 }
 
-void *axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev)
+int axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev,
+			    int irq, const char *irqname, int *phc_index)
 {
 	struct xlnx_ptp_timer *timer;
 	struct timespec64 ts;
@@ -242,21 +243,12 @@ void *axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev)
 
 	timer = devm_kzalloc(&pdev->dev, sizeof(*timer), GFP_KERNEL);
 	if (!timer)
-		return ERR_PTR(-ENOMEM);
+		return -ENOMEM;
 
 	timer->baseaddr = base;
 
-	timer->irq = platform_get_irq_byname(pdev, "interrupt_ptp_timer");
+	timer->irq = irq;
 
-	if (timer->irq < 0) {
-		timer->irq = platform_get_irq_byname(pdev, "rtc_irq");
-		if (timer->irq > 0) {
-			pr_err("ptp timer interrupt name 'rtc_irq' is deprecated\n");
-		} else {
-			pr_err("ptp timer interrupt not found\n");
-			return ERR_PTR(-EINVAL);
-		}
-	}
 	spin_lock_init(&timer->reg_lock);
 
 	timer->ptp_clock_info = xlnx_ptp_clock_info;
@@ -265,18 +257,18 @@ void *axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev)
 					      &pdev->dev);
 	if (IS_ERR(timer->ptp_clock)) {
 		err = PTR_ERR(timer->ptp_clock);
-		pr_debug("Failed to register ptp clock\n");
+		dev_err(&pdev->dev, "Failed to register ptp clock\n");
 		goto out;
 	}
+
 	err = devm_add_action_or_reset(&pdev->dev,
 				       tsn_ptp_unregister,
 				       timer->ptp_clock);
 	if (err) {
-		pr_debug("Failed to add PTP clock unregister action\n");
+		dev_err(&pdev->dev,
+			"Failed to add PTP clock unregister action\n");
 		goto out;
 	}
-
-	axienet_phc_index = ptp_clock_index(timer->ptp_clock);
 
 	ts = ktime_to_timespec64(ktime_get_real());
 
@@ -296,16 +288,17 @@ void *axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev)
 	err = devm_request_irq(&pdev->dev, timer->irq,
 			       xlnx_ptp_timer_isr,
 			       0,
-			       "ptp_rtc",
+			       irqname,
 			       (void *)timer);
 	if (err) {
-		pr_err("Failed to request IRQ: %d\n", err);
-		ptp_clock_unregister(timer->ptp_clock);
+		dev_err(&pdev->dev, "Failed to request IRQ: %d\n", err);
 		goto out;
 	}
 
-	return timer;
+	if (phc_index)
+		*phc_index = ptp_clock_index(timer->ptp_clock);
+
+	return 0;
 out:
-	timer->ptp_clock = NULL;
-	return ERR_PTR(err);
+	return err;
 }

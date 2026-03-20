@@ -207,8 +207,60 @@ int axienet_tsn_probe(struct platform_device *pdev,
 	spin_lock_init(&lp->ptp_tx_lock);
 
 #if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
-	if (temac_no == XAE_TEMAC1)
-		lp->timer_priv = axienet_ptp_timer_probe((lp->regs + XAE_RTC1_OFFSET), pdev);
+	if (temac_no == XAE_TEMAC1) {
+		int timer1_irq;
+
+		ret = platform_get_irq_byname(pdev, "interrupt_ptp_timer");
+		if (ret < 0) {
+			ret = platform_get_irq_byname(pdev, "rtc_irq");
+			if (ret > 0) {
+				dev_warn(&pdev->dev, "ptp timer interrupt name 'rtc_irq' is deprecated\n");
+			} else {
+				dev_err(&pdev->dev,
+					"ptp timer interrupt not found: %d\n",
+					ret);
+				return ret;
+			}
+		}
+		timer1_irq = ret;
+
+		if (xlnx_switch_has_second_ptp_domain()) {
+			int timer2_irq = platform_get_irq_byname(pdev, "interrupt_ptp_timer_2");
+
+			if (timer2_irq < 0)
+				return timer2_irq;
+
+			ret = axienet_ptp_timer_probe(lp->regs + XAE_RTC2_OFFSET,
+						      pdev, timer2_irq,
+						      "ptp_ts_rtc",
+						      &axienet_phc_index);
+			if (ret) {
+				dev_err(&pdev->dev, "Failed to probe time stamping PTP timer: %d\n",
+					ret);
+				return ret;
+			}
+
+			ret = axienet_ptp_timer_probe(lp->regs + XAE_RTC1_OFFSET,
+						      pdev, timer1_irq,
+						      "ptp_sched_rtc", NULL);
+			if (ret) {
+				dev_err(&pdev->dev, "Failed to probe QBV/TADMA PTP timer: %d\n",
+					ret);
+				axienet_phc_index = -1;
+				return ret;
+			}
+		} else {
+			ret = axienet_ptp_timer_probe(lp->regs + XAE_RTC1_OFFSET,
+						      pdev, timer1_irq,
+						      "ptp_rtc",
+						      &axienet_phc_index);
+			if (ret) {
+				dev_err(&pdev->dev,
+					"Failed to probe PTP timer: %d\n", ret);
+				return ret;
+			}
+		}
+	}
 #endif
 
 	/* enable VLAN */

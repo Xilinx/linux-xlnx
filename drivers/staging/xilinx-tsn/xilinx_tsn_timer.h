@@ -23,6 +23,7 @@
 #include <linux/units.h>
 
 #define XAE_RTC1_OFFSET			0x12800
+#define XAE_RTC2_OFFSET			0x12900
 /* RTC Nanoseconds Field Offset Register */
 #define XTIMER1588_RTC_OFFSET_NS	0x00000
 /* RTC Seconds Field Offset Register - Low */
@@ -61,7 +62,7 @@
 /* The tsn ptp module will set this variable */
 extern int axienet_phc_index;
 
-void *axienet_ptp_timer_probe(void __iomem *base,
-			      struct platform_device *pdev);
+int axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev,
+			    int irq, const char *irqname, int *phc_index);
 int axienet_get_phc_index(void *priv);
 #endif
