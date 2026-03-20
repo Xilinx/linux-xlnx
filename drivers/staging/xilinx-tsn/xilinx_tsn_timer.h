@@ -22,7 +22,7 @@
 #include <linux/platform_device.h>
 #include <linux/units.h>
 
-#define XAE_RTC_OFFSET			0x12800
+#define XAE_RTC1_OFFSET			0x12800
 /* RTC Nanoseconds Field Offset Register */
 #define XTIMER1588_RTC_OFFSET_NS	0x00000
 /* RTC Seconds Field Offset Register - Low */

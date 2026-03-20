@@ -202,7 +202,7 @@ int axienet_tsn_probe(struct platform_device *pdev,
 
 #if IS_ENABLED(CONFIG_XILINX_TSN_PTP)
 	if (temac_no == XAE_TEMAC1)
-		lp->timer_priv = axienet_ptp_timer_probe((lp->regs + XAE_RTC_OFFSET), pdev);
+		lp->timer_priv = axienet_ptp_timer_probe((lp->regs + XAE_RTC1_OFFSET), pdev);
 #endif
 
 	/* enable VLAN */
