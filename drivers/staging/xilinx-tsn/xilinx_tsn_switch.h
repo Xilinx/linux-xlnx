@@ -506,5 +506,13 @@ u8 xlnx_switch_get_ptp_gates(u8 switch_prt);
 void xlnx_switch_set_ptp_rel_prio(u8 switch_prt, u8 value);
 void xlnx_switch_set_ptp_gates(u8 switch_prt, u8 value);
 u32 xlnx_switch_get_pqmr(void);
+#if IS_ENABLED(CONFIG_XILINX_TSN_SWITCH)
+bool xlnx_switch_probed(void);
+#else
+static inline bool xlnx_switch_probed(void)
+{
+	return false;
+}
+#endif
 
 #endif /* XILINX_TSN_SWITCH_H */
