@@ -90,6 +90,8 @@ int tsn_data_path_open(struct net_device *ndev)
 
 		napi_enable(&lp->napi[i]);
 		ret = axienet_mcdma_rx_q_init_tsn(ndev, q);
+		if (ret)
+			goto err_dma_rx_irq;
 		/* Enable interrupts for Axi MCDMA Rx
 		 */
 		snprintf(irq_name[irq_cnt], sizeof(irq_name[irq_cnt]),
@@ -109,13 +111,15 @@ int tsn_data_path_open(struct net_device *ndev)
 		q = lp->dq[i];
 
 		ret = axienet_mcdma_tx_q_init_tsn(ndev, q);
+		if (ret)
+			goto err_dma_tx_init;
 		/* Enable interrupts for Axi MCDMA Tx */
 		snprintf(irq_name[irq_cnt], sizeof(irq_name[irq_cnt]),
 			 "%s_mcdma_tx_%d", ndev->name, i + 1);
 		ret = request_irq(q->tx_irq, axienet_mcdma_tx_irq_tsn,
 				  IRQF_SHARED, irq_name[irq_cnt], ndev);
 		if (ret)
-			goto err_dma_tx_irq;
+			goto err_dma_tx_init;
 		irq_cnt++;
 	}
 #if IS_ENABLED(CONFIG_AXIENET_HAS_TADMA)
@@ -149,13 +153,26 @@ err_tadma:
 		q = lp->dq[i];
 		free_irq(q->tx_irq, ndev);
 	}
+	goto err_dma_tx_irq;
 #endif
+err_dma_tx_init:
+	for (i--; i >= 0; i--)
+		free_irq(lp->dq[i]->tx_irq, ndev);
 err_dma_tx_irq:
-	for_each_rx_dma_queue(lp, i) {
+	for (i = lp->num_rx_queues - 1; i >= 0; i--) {
 		q = lp->dq[i];
+		napi_disable(&lp->napi[i]);
+		tasklet_kill(&lp->dma_err_tasklet[i]);
 		free_irq(q->rx_irq, ndev);
 	}
+	return ret;
 err_dma_rx_irq:
+	napi_disable(&lp->napi[i]);
+	for (i--; i >= 0; i--) {
+		napi_disable(&lp->napi[i]);
+		tasklet_kill(&lp->dma_err_tasklet[i]);
+		free_irq(lp->dq[i]->rx_irq, ndev);
+	}
 	return ret;
 }
 
