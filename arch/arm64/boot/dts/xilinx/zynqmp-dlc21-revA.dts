@@ -90,6 +90,9 @@
 	status = "okay";
 	phy-handle = <&phy0>;
 	phy-mode = "sgmii"; /* DTG generates this properly  1512 */
+	nvmem-cells = <&eth_mac>;
+	nvmem-cell-names = "mac-address";
+
 	mdio: mdio {
 		#address-cells = <1>;
 		#size-cells = <0>;
@@ -153,6 +156,12 @@
 	eeprom: eeprom@50 { /* u46 */
 		compatible = "atmel,24c32";
 		reg = <0x50>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		eth_mac: mac-address@20 {
+			reg = <0x20 0x6>;
+		};
 	};
 	/* u138 - TUSB320IRWBR - for USB-C */
 };
