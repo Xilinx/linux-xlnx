@@ -103,6 +103,15 @@ xlnx_fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
 	return 0;
 }
 
+static int xlnx_fb_mmap(struct fb_info *info, struct vm_area_struct *vma)
+{
+	struct drm_fb_helper *helper = info->par;
+	struct drm_framebuffer *fb = helper->fb;
+	struct drm_gem_object *bo = drm_gem_fb_get_obj(fb, 0);
+
+	return drm_gem_prime_mmap(bo, vma);
+}
+
 static struct fb_ops xlnx_fbdev_ops = {
 	.owner		= THIS_MODULE,
 	.fb_fillrect	= sys_fillrect,
@@ -114,6 +123,8 @@ static struct fb_ops xlnx_fbdev_ops = {
 	.fb_pan_display	= drm_fb_helper_pan_display,
 	.fb_setcmap	= drm_fb_helper_setcmap,
 	.fb_ioctl	= xlnx_fb_ioctl,
+	.fb_mmap	= xlnx_fb_mmap,
+	__FB_DEFAULT_DMAMEM_OPS_RDWR,
 };
 
 static struct drm_framebuffer *
