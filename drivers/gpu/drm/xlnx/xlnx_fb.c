@@ -265,6 +265,7 @@ int xlnx_fbdev_probe(struct drm_fb_helper *fb_helper,
 	fbi->fix.smem_start = (unsigned long)(obj->dma_addr + offset);
 	fbi->screen_size = bytes;
 	fbi->fix.smem_len = bytes;
+	fbi->flags |= FBINFO_VIRTFB;
 
 	return 0;
 
