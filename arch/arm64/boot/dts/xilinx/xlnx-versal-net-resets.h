@@ -10,6 +10,14 @@
 #include "xlnx-versal-resets.h"
 
 #define VERSAL_RST_USB_1			(0xC1040C6U)
+#define VERSAL_RST_ADMA_0			(0xC10412DU)
+#define VERSAL_RST_ADMA_1			(0xC10412EU)
+#define VERSAL_RST_ADMA_2			(0xC10412FU)
+#define VERSAL_RST_ADMA_3			(0xC104130U)
+#define VERSAL_RST_ADMA_4			(0xC104131U)
+#define VERSAL_RST_ADMA_5			(0xC104132U)
+#define VERSAL_RST_ADMA_6			(0xC104133U)
+#define VERSAL_RST_ADMA_7			(0xC104134U)
 
 /* Remove Versal specific reset IDs */
 #undef VERSAL_RST_ACPU_0_POR
