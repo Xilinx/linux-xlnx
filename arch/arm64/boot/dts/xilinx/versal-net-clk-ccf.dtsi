@@ -3,7 +3,7 @@
  * dts file for Xilinx Versal with PM
  *
  * Copyright (C) 2022, Xilinx, Inc.
- * Copyright (C) 2022 - 2025, Advanced Micro Devices, Inc.
+ * Copyright (C) 2022 - 2026, Advanced Micro Devices, Inc.
  *
  * Michal Simek <michal.simek@amd.com>
  */
@@ -279,41 +279,49 @@
 &adma0 {
 	clocks = <&versal_net_clk ADMA>, <&versal_net_clk LPD_LSBUS>;
 	power-domains = <&versal_net_firmware PM_DEV_ADMA_0>;
+	resets = <&versal_net_reset VERSAL_RST_ADMA_0>;
 };
 
 &adma1 {
 	clocks = <&versal_net_clk ADMA>, <&versal_net_clk LPD_LSBUS>;
 	power-domains = <&versal_net_firmware PM_DEV_ADMA_1>;
+	resets = <&versal_net_reset VERSAL_RST_ADMA_1>;
 };
 
 &adma2 {
 	clocks = <&versal_net_clk ADMA>, <&versal_net_clk LPD_LSBUS>;
 	power-domains = <&versal_net_firmware PM_DEV_ADMA_2>;
+	resets = <&versal_net_reset VERSAL_RST_ADMA_2>;
 };
 
 &adma3 {
 	clocks = <&versal_net_clk ADMA>, <&versal_net_clk LPD_LSBUS>;
 	power-domains = <&versal_net_firmware PM_DEV_ADMA_3>;
+	resets = <&versal_net_reset VERSAL_RST_ADMA_3>;
 };
 
 &adma4 {
 	clocks = <&versal_net_clk ADMA>, <&versal_net_clk LPD_LSBUS>;
 	power-domains = <&versal_net_firmware PM_DEV_ADMA_4>;
+	resets = <&versal_net_reset VERSAL_RST_ADMA_4>;
 };
 
 &adma5 {
 	clocks = <&versal_net_clk ADMA>, <&versal_net_clk LPD_LSBUS>;
 	power-domains = <&versal_net_firmware PM_DEV_ADMA_5>;
+	resets = <&versal_net_reset VERSAL_RST_ADMA_5>;
 };
 
 &adma6 {
 	clocks = <&versal_net_clk ADMA>, <&versal_net_clk LPD_LSBUS>;
 	power-domains = <&versal_net_firmware PM_DEV_ADMA_6>;
+	resets = <&versal_net_reset VERSAL_RST_ADMA_6>;
 };
 
 &adma7 {
 	clocks = <&versal_net_clk ADMA>, <&versal_net_clk LPD_LSBUS>;
 	power-domains = <&versal_net_firmware PM_DEV_ADMA_7>;
+	resets = <&versal_net_reset VERSAL_RST_ADMA_7>;
 };
 
 &qspi {
