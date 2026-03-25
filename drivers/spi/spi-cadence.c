@@ -110,6 +110,8 @@
  * @tx_bytes:		Number of bytes left to transfer
  * @rx_bytes:		Number of bytes requested
  * @dev_busy:		Device busy flag
+ * @fifo_depth:		Total FIFO size in bytes
+ * @fifo_width:		FIFO width in bytes
  * @is_decoded_cs:	Flag for decoder property set or not
  * @tx_fifo_depth:	Depth of the TX FIFO
  * @rstc:		Optional reset control for SPI controller
@@ -125,6 +127,8 @@ struct cdns_spi {
 	int tx_bytes;
 	int rx_bytes;
 	u8 dev_busy;
+	u32 fifo_depth;
+	u32 fifo_width;
 	u32 is_decoded_cs;
 	unsigned int tx_fifo_depth;
 	struct reset_control *rstc;
@@ -313,6 +317,10 @@ static int cdns_spi_setup_transfer(struct spi_device *spi,
  */
 static void cdns_spi_process_fifo(struct cdns_spi *xspi, int ntx, int nrx)
 {
+	int bytes_per_entry;
+	__le32 le_word;
+	u32 word;
+
 	ntx = clamp(ntx, 0, xspi->tx_bytes);
 	nrx = clamp(nrx, 0, xspi->rx_bytes);
 
@@ -321,21 +329,28 @@ static void cdns_spi_process_fifo(struct cdns_spi *xspi, int ntx, int nrx)
 
 	while (ntx || nrx) {
 		if (nrx) {
-			u8 data = cdns_spi_read(xspi, CDNS_SPI_RXD);
+			bytes_per_entry = min_t(int, nrx, xspi->fifo_width);
+			word = cdns_spi_read(xspi, CDNS_SPI_RXD);
 
-			if (xspi->rxbuf)
-				*xspi->rxbuf++ = data;
-
-			nrx--;
+			if (xspi->rxbuf) {
+				le_word = cpu_to_le32(word);
+				memcpy(xspi->rxbuf, &le_word, bytes_per_entry);
+				xspi->rxbuf += bytes_per_entry;
+			}
+			nrx -= bytes_per_entry;
 		}
 
 		if (ntx) {
-			if (xspi->txbuf)
-				cdns_spi_write(xspi, CDNS_SPI_TXD, *xspi->txbuf++);
-			else
-				cdns_spi_write(xspi, CDNS_SPI_TXD, 0);
+			bytes_per_entry = min_t(int, ntx, xspi->fifo_width);
+			le_word = 0;
 
-			ntx--;
+			if (xspi->txbuf) {
+				memcpy(&le_word, xspi->txbuf, bytes_per_entry);
+				xspi->txbuf += bytes_per_entry;
+			}
+			word = le32_to_cpu(le_word);
+			cdns_spi_write(xspi, CDNS_SPI_TXD, word);
+			ntx -= bytes_per_entry;
 		}
 
 	}
@@ -379,12 +394,12 @@ static irqreturn_t cdns_spi_irq(int irq, void *dev_id)
 		int trans_cnt = xspi->rx_bytes - xspi->tx_bytes;
 
 		if (threshold > 1)
-			trans_cnt -= threshold;
+			trans_cnt -= threshold * xspi->fifo_width;
 
 		/* Set threshold to one if number of pending are
 		 * less than half fifo
 		 */
-		if (xspi->tx_bytes < xspi->tx_fifo_depth >> 1)
+		if (xspi->tx_bytes < (xspi->fifo_depth >> 1))
 			cdns_spi_write(xspi, CDNS_SPI_THLD, 1);
 
 		if (xspi->tx_bytes) {
@@ -444,7 +459,7 @@ static int cdns_transfer_one(struct spi_controller *ctlr,
 		/* Set TX empty threshold to half of FIFO depth
 		 * only if TX bytes are more than FIFO depth.
 		 */
-		if (xspi->tx_bytes > xspi->tx_fifo_depth)
+		if (xspi->tx_bytes > xspi->fifo_depth)
 			cdns_spi_write(xspi, CDNS_SPI_THLD, xspi->tx_fifo_depth >> 1);
 	}
 
@@ -454,7 +469,7 @@ static int cdns_transfer_one(struct spi_controller *ctlr,
 	if (cdns_spi_read(xspi, CDNS_SPI_ISR) & CDNS_SPI_IXR_TXFULL)
 		udelay(10);
 
-	cdns_spi_process_fifo(xspi, xspi->tx_fifo_depth, 0);
+	cdns_spi_process_fifo(xspi, xspi->fifo_depth, 0);
 
 	cdns_spi_write(xspi, CDNS_SPI_IER, CDNS_SPI_IXR_DEFAULT);
 	return transfer->len;
@@ -628,6 +643,22 @@ static int cdns_spi_probe(struct platform_device *pdev)
 	}
 
 	cdns_spi_detect_fifo_depth(xspi);
+
+	ret = device_property_read_u32(&pdev->dev, "fifo-depth",
+				       &xspi->fifo_depth);
+	if (ret < 0)
+		xspi->fifo_depth = xspi->tx_fifo_depth;
+
+	xspi->fifo_width = xspi->fifo_depth / xspi->tx_fifo_depth;
+
+	if (xspi->fifo_depth < xspi->tx_fifo_depth ||
+	    xspi->fifo_depth % xspi->tx_fifo_depth != 0 ||
+	    xspi->fifo_width > sizeof(u32)) {
+		dev_err(&pdev->dev, "Invalid FIFO depth %u, TX depth %u\n",
+			xspi->fifo_depth, xspi->tx_fifo_depth);
+		ret = -EINVAL;
+		goto clk_dis_all;
+	}
 
 	/* SPI controller initializations */
 	cdns_spi_init_hw(xspi, spi_controller_is_target(ctlr));
