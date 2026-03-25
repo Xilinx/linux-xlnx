@@ -3150,6 +3150,7 @@ color_formats xlnx_hdmi_find_media_bus(struct xlnx_hdmi *hdmi,
 	case MEDIA_BUS_FMT_UYVY8_1X16:
 		hdmi->xvidc_colordepth = HDMI_TX_BPC_8;
 		return HDMI_TX_CSF_YCRCB_422;
+	case DRM_FORMAT_P210:
 	case DRM_FORMAT_T52A:
 	case DRM_FORMAT_T62A:
 	case DRM_FORMAT_XV20:
@@ -3167,19 +3168,21 @@ color_formats xlnx_hdmi_find_media_bus(struct xlnx_hdmi *hdmi,
 	case MEDIA_BUS_FMT_VYYUYY8_1X24:
 		hdmi->xvidc_colordepth = HDMI_TX_BPC_8;
 		return HDMI_TX_CSF_YCRCB_420;
+	case DRM_FORMAT_P010:
 	case DRM_FORMAT_XV15:
 	case DRM_FORMAT_T50A:
 	case DRM_FORMAT_T60A:
 	case MEDIA_BUS_FMT_VYYUYY10_4X20:
 		hdmi->xvidc_colordepth = HDMI_TX_BPC_10;
 		return HDMI_TX_CSF_YCRCB_420;
+	case DRM_FORMAT_P012:
 	case DRM_FORMAT_T50C:
 	case DRM_FORMAT_T60C:
 	case MEDIA_BUS_FMT_UYYVYY12_4X24:
 		hdmi->xvidc_colordepth = HDMI_TX_BPC_12;
 		return HDMI_TX_CSF_YCRCB_420;
 	default:
-		dev_err(hdmi->dev, "Unknown drm fmt: %d\n", drm_fourcc);
+		dev_err(hdmi->dev, "Unknown drm fmt: %p4cc\n", &drm_fourcc);
 		hdmi->xvidc_colordepth = HDMI_TX_BPC_8;
 		return HDMI_TX_CSF_RGB;
 	}
