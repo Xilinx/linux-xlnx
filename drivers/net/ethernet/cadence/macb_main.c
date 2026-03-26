@@ -4396,17 +4396,7 @@ static void macb_taprio_destroy(struct net_device *ndev)
 static int macb_setup_taprio(struct net_device *ndev,
 			     struct tc_taprio_qopt_offload *taprio)
 {
-	struct macb *bp = netdev_priv(ndev);
 	int err = 0;
-
-	if (unlikely(!(ndev->hw_features & NETIF_F_HW_TC)))
-		return -EOPNOTSUPP;
-
-	/* Check if Device is in runtime suspend */
-	if (unlikely(pm_runtime_suspended(&bp->pdev->dev))) {
-		netdev_err(ndev, "Device is in runtime suspend\n");
-		return -EOPNOTSUPP;
-	}
 
 	switch (taprio->cmd) {
 	case TAPRIO_CMD_REPLACE:
@@ -4425,8 +4415,21 @@ static int macb_setup_taprio(struct net_device *ndev,
 static int macb_setup_tc(struct net_device *dev, enum tc_setup_type type,
 			 void *type_data)
 {
+	struct macb *bp;
+
 	if (!dev || !type_data)
 		return -EINVAL;
+
+	bp = netdev_priv(dev);
+
+	if (unlikely(!(dev->hw_features & NETIF_F_HW_TC)))
+		return -EOPNOTSUPP;
+
+	/* Check if Device is in runtime suspend */
+	if (unlikely(pm_runtime_suspended(&bp->pdev->dev))) {
+		netdev_err(dev, "Device is in runtime suspend\n");
+		return -EOPNOTSUPP;
+	}
 
 	switch (type) {
 	case TC_SETUP_QDISC_TAPRIO:
