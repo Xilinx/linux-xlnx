@@ -1,0 +1,123 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/perf/amd,noc-pmu.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: AMD Network-on-Chip (NoC) Performance Monitor Unit
+
+maintainers:
+  - Sai Krishna Potthuri <sai.krishna.potthuri@amd.com>
+
+description:
+  The AMD NoC PMU provides performance monitoring capabilities for
+  Network-on-Chip traffic on AMD Versal ACAP devices. It monitors
+  NMU (Network Master Unit) and DDRMC-NSU (DDR Memory Controller
+  Network Slave Unit) components.
+
+properties:
+  compatible:
+    const: amd,noc-pmu
+
+  '#address-cells':
+    enum: [ 1, 2 ]
+
+  '#size-cells':
+    enum: [ 1, 2 ]
+
+  ranges: true
+
+patternProperties:
+  '^nmu@[0-9a-f]+$':
+    type: object
+    description: Network Master Unit component
+    properties:
+      reg:
+        maxItems: 1
+        description: Base address and size of the NMU register space
+
+      amd,nmu-id:
+        $ref: /schemas/types.yaml#/definitions/uint32
+        description: Unique identifier for this NMU component
+
+      label:
+        description: Human-readable label for the NMU component
+
+    required:
+      - reg
+      - amd,nmu-id
+
+    additionalProperties: false
+
+  '^ddrmc-nsu@[0-9a-f]+$':
+    type: object
+    description: DDR Memory Controller Network Slave Unit component
+    properties:
+      reg:
+        maxItems: 1
+        description: Base address and size of the DDRMC register space
+
+      amd,ddrmc-id:
+        $ref: /schemas/types.yaml#/definitions/uint32
+        description: Unique identifier for this DDRMC component
+
+      amd,nsu-ports:
+        $ref: /schemas/types.yaml#/definitions/uint32-array
+        minItems: 1
+        maxItems: 4
+        description: List of NSU port numbers available on this DDRMC
+        items:
+          minimum: 0
+          maximum: 3
+
+      label:
+        description: Human-readable label for the DDRMC component
+
+    required:
+      - reg
+      - amd,ddrmc-id
+      - amd,nsu-ports
+
+    additionalProperties: false
+
+required:
+  - compatible
+  - '#address-cells'
+  - '#size-cells'
+  - ranges
+
+additionalProperties: false
+
+examples:
+  - |
+    pmu {
+      compatible = "amd,noc-pmu";
+      #address-cells = <1>;
+      #size-cells = <1>;
+      ranges;
+
+      nmu@f6012000 {
+        reg = <0xf6012000 0x1000>;
+        amd,nmu-id = <1>;
+        label = "nmu";
+      };
+
+      nmu@f6016000 {
+        reg = <0xf6016000 0x1000>;
+        amd,nmu-id = <3>;
+        label = "pmc_nmu";
+      };
+
+      ddrmc-nsu@f6070000 {
+        reg = <0xf6070000 0x1000>;
+        amd,ddrmc-id = <0>;
+        amd,nsu-ports = <0 1 2 3>;
+        label = "ddrmc";
+      };
+
+      ddrmc-nsu@f6210000 {
+        reg = <0xf6210000 0x1000>;
+        amd,ddrmc-id = <1>;
+        amd,nsu-ports = <0>;
+      };
+    };
