@@ -4412,6 +4412,49 @@ static int macb_setup_taprio(struct net_device *ndev,
 	return err;
 }
 
+static int macb_setup_mqprio(struct net_device *ndev,
+			     struct tc_mqprio_qopt_offload *mqprio)
+{
+	struct tc_mqprio_qopt *qopt = &mqprio->qopt;
+	u8 num_tc = qopt->num_tc;
+	u8 i;
+
+	/* Handle reset case early */
+	if (!num_tc) {
+		netdev_reset_tc(ndev);
+		return 0;
+	}
+
+	/* Configure traffic classes */
+	qopt->hw = TC_MQPRIO_HW_OFFLOAD_TCS;
+	netdev_set_num_tc(ndev, num_tc);
+
+	for (i = 0; i < num_tc; i++) {
+		netdev_set_tc_queue(ndev, i, qopt->count[i],
+				    qopt->offset[i]);
+		netdev_dbg(ndev, "MQPRIO: TC%d -> queue %u (count=%u)\n",
+			   i, qopt->offset[i], qopt->count[i]);
+	}
+
+	return 0;
+}
+
+static int macb_tc_query_caps(struct net_device *dev,
+			      struct tc_query_caps_base *base)
+{
+	switch (base->type) {
+	case TC_SETUP_QDISC_MQPRIO: {
+		struct tc_mqprio_caps *caps = base->caps;
+
+		caps->validate_queue_counts = true;
+
+		return 0;
+	}
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
 static int macb_setup_tc(struct net_device *dev, enum tc_setup_type type,
 			 void *type_data)
 {
@@ -4419,6 +4462,9 @@ static int macb_setup_tc(struct net_device *dev, enum tc_setup_type type,
 
 	if (!dev || !type_data)
 		return -EINVAL;
+
+	if (type == TC_QUERY_CAPS)
+		return macb_tc_query_caps(dev, type_data);
 
 	bp = netdev_priv(dev);
 
@@ -4432,6 +4478,8 @@ static int macb_setup_tc(struct net_device *dev, enum tc_setup_type type,
 	}
 
 	switch (type) {
+	case TC_SETUP_QDISC_MQPRIO:
+		return macb_setup_mqprio(dev, type_data);
 	case TC_SETUP_QDISC_TAPRIO:
 		return macb_setup_taprio(dev, type_data);
 	default:
