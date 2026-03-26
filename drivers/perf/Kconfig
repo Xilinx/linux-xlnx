@@ -311,4 +311,16 @@ config MARVELL_PEM_PMU
 	  Enable support for PCIe Interface performance monitoring
 	  on Marvell platform.
 
+config AMD_NOC_PMU
+	tristate "Enable Performance Monitoring Unit for AMD NoC"
+	depends on ARCH_ZYNQMP
+	help
+	  Provides support for the AMD Network-on-Chip (NoC) Performance
+	  Monitor Unit (PMU) on Versal ACAP devices. The driver monitors
+	  NoC traffic through NMU (Network Master Unit) and DDRMC-NSU
+	  (DDR Memory Controller Network Slave Unit) components.
+
+	  Say Y or M to enable NoC performance monitoring on AMD Versal
+	  SoC. If unsure, say N.
+
 endmenu

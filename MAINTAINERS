@@ -1194,6 +1194,12 @@ L:	linux-i2c@vger.kernel.org
 S:	Supported
 F:	drivers/i2c/busses/i2c-amd-asf-plat.c
 
+AMD NOC PMU DRIVER
+M:	Sai Krishna Potthuri <sai.krishna.potthuri@amd.com>
+S:	Supported
+F:	Documentation/devicetree/bindings/perf/amd,noc-pmu.yaml
+F:	drivers/perf/amd_noc_perf.c
+
 AMD NODE DRIVER
 M:	Mario Limonciello <mario.limonciello@amd.com>
 M:	Yazen Ghannam <yazen.ghannam@amd.com>
