@@ -56,6 +56,10 @@ properties:
   iommus:
     maxItems: 1
 
+  resets:
+    description: DMA reset
+    maxItems: 1
+
   power-domains:
     maxItems: 1
 
