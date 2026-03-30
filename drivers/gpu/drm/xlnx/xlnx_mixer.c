@@ -2906,7 +2906,7 @@ static int xlnx_mix_of_init_layer(struct device *dev, struct device_node *node,
 		}
 
 		if (layer->hw_config.max_width > max_width) {
-			dev_err(dev, "Illlegal Mixer layer %d width %d\n",
+			dev_err(dev, "Illegal Mixer layer %d width %d\n",
 				layer->id, layer->hw_config.max_width);
 			ret = -EINVAL;
 			goto err;
