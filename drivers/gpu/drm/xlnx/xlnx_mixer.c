@@ -37,7 +37,6 @@
 #include <linux/dmaengine.h>
 #include <linux/dma-mapping.h>
 #include <video/videomode.h>
-#include <linux/media-bus-format.h>
 #include "xlnx_bridge.h"
 #include "xlnx_crtc.h"
 #include "xlnx_drv.h"
