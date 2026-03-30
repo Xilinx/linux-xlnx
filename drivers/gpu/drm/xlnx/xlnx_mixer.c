@@ -2255,6 +2255,7 @@ static int xlnx_mix_parse_dt_bg_video_fmt(struct device_node *node,
 	struct device_node *layer_node;
 	struct xlnx_mix_layer_data *layer;
 	const char *vformat;
+	int ret;
 
 	layer_node = of_get_child_by_name(node, "layer_0");
 	layer = &mixer_hw->layer_data[XVMIX_MASTER_LAYER_IDX];
@@ -2267,23 +2268,28 @@ static int xlnx_mix_parse_dt_bg_video_fmt(struct device_node *node,
 
 	if (of_property_count_u8_elems(layer_node, "xlnx,vformat") != sizeof(u32) + 1) {
 		DRM_ERROR("xlnx,vformat property missing or invalid\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 
 	if (of_property_read_string(layer_node, "xlnx,vformat", &vformat)) {
 		DRM_ERROR("No xlnx,vformat value for layer 0 in dts\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 
 	layer->hw_config.vid_fmt = fourcc_code(vformat[0], vformat[1], vformat[2], vformat[3]);
-	if (!drm_format_info(layer->hw_config.vid_fmt))
-		return -EINVAL;
+	if (!drm_format_info(layer->hw_config.vid_fmt)) {
+		ret = -EINVAL;
+		goto out;
+	}
 
 	layer->hw_config.is_streaming =
 		of_property_read_bool(layer_node, "xlnx,layer-streaming");
 	if (of_property_read_u32(node, "xlnx,bpc", &mixer_hw->bg_layer_bpc)) {
 		DRM_ERROR("Failed to get bits per component (bpc) prop\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 
 	/* set only when 3 Plane video formats are selected */
@@ -2292,28 +2298,35 @@ static int xlnx_mix_parse_dt_bg_video_fmt(struct device_node *node,
 	if (of_property_read_u32(layer_node, "xlnx,layer-max-width",
 				 &layer->hw_config.max_width)) {
 		DRM_ERROR("Failed to get screen width prop\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	} else if (layer->hw_config.max_width > XVMIX_DISP_MAX_WIDTH ||
 		   layer->hw_config.max_width < XVMIX_DISP_MIN_WIDTH) {
 		DRM_ERROR("Invalid width in dt");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 
 	mixer_hw->max_layer_width = layer->hw_config.max_width;
 	if (of_property_read_u32(layer_node, "xlnx,layer-max-height",
 				 &layer->hw_config.max_height)) {
 		DRM_ERROR("Failed to get screen height prop\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	} else if (layer->hw_config.max_height > XVMIX_DISP_MAX_HEIGHT ||
 		   layer->hw_config.max_height < XVMIX_DISP_MIN_HEIGHT) {
 		DRM_ERROR("Invalid height in dt");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 
 	mixer_hw->max_layer_height = layer->hw_config.max_height;
 	layer->id = XVMIX_LAYER_MASTER;
+	ret = 0;
 
-	return 0;
+out:
+	of_node_put(layer_node);
+	return ret;
 }
 
 static int xlnx_mix_parse_dt_logo_data(struct device_node *node,
