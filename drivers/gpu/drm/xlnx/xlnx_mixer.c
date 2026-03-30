@@ -252,6 +252,24 @@ static const u32 color_table[] = {
 	DRM_FORMAT_YUV444,
 	DRM_FORMAT_X403,
 	DRM_FORMAT_X423,
+	DRM_FORMAT_T508,
+	DRM_FORMAT_T50A,
+	DRM_FORMAT_T50C,
+	DRM_FORMAT_T608,
+	DRM_FORMAT_T60A,
+	DRM_FORMAT_T60C,
+	DRM_FORMAT_T528,
+	DRM_FORMAT_T52A,
+	DRM_FORMAT_T52C,
+	DRM_FORMAT_T628,
+	DRM_FORMAT_T62A,
+	DRM_FORMAT_T62C,
+	DRM_FORMAT_T548,
+	DRM_FORMAT_T54A,
+	DRM_FORMAT_T54C,
+	DRM_FORMAT_T648,
+	DRM_FORMAT_T64A,
+	DRM_FORMAT_T64C,
 };
 
 static bool xlnx_mixer_primary_enable = true;
@@ -384,6 +402,7 @@ struct xlnx_mix_layer_data {
  * @logo_layer_en: Indicates logo layer is enabled in hardware
  * @logo_pixel_alpha_enabled: Indicates that per-pixel alpha supported for logo
  *  layer
+ * @tile_fmt: Enables tile format support for memory layers when set
  * @csc_enabled: Indicates that colorimetry coefficients are programmable
  * @max_layer_width: Max possible width for any layer on this Mixer
  * @max_layer_height: Max possible height for any layer on this Mixer
@@ -418,6 +437,7 @@ struct xlnx_mix_hw {
 	bool                logo_layer_en;
 	bool                logo_pixel_alpha_enabled;
 	bool                three_planes_prop;
+	bool                tile_fmt;
 	u32		    csc_enabled;
 	u32                 max_layer_width;
 	u32                 max_layer_height;
@@ -549,6 +569,73 @@ static inline void reg_writeq(void __iomem *base, int offset, u64 val)
 static inline u32 reg_readl(void __iomem *base, int offset)
 {
 	return readl(base + offset);
+}
+
+/**
+ * xlnx_mix_is_tile_fourcc - Check whether a DRM fourcc is a tiled format
+ * @format: DRM pixel format fourcc
+ *
+ * Return: true if @format encodes a tiled format, false otherwise.
+ */
+static bool xlnx_mix_is_tile_fourcc(u32 format)
+{
+	u8 byte[4];
+
+	byte[0] = (format >> 0) & 0xFF;
+	byte[1] = (format >> 8) & 0xFF;
+	byte[2] = (format >> 16) & 0xFF;
+	byte[3] = (format >> 24) & 0xFF;
+
+	return (byte[0] == 'T') &&
+	       (byte[1] == '5' || byte[1] == '6') &&
+	       (byte[2] == '4' || byte[2] == '2' || byte[2] == '0') &&
+	       (byte[3] == '8' || byte[3] == 'A' || byte[3] == 'C');
+}
+
+/**
+ * xlnx_mix_is_tile_info - Check if format info describes a tiled format
+ * @info: DRM format metadata
+ *
+ * Return: true if @info is non-NULL and contains valid tile block geometry,
+ * and the format fourcc corresponds to a tile format.
+ */
+static bool xlnx_mix_is_tile_info(const struct drm_format_info *info)
+{
+	return info && xlnx_mix_is_tile_fourcc(info->format) &&
+	       info->block_w[0] && info->block_h[0] &&
+	       info->char_per_block[0];
+}
+
+/**
+ * xlnx_mix_is_t5xx_tile_fourcc - Check whether a tile fourcc is 32-wide (T5xx)
+ * @format: DRM pixel format fourcc
+ *
+ * When tile mode is enabled, xlnx,vformat in the DT must list the 32-wide
+ * format (T5xx) first; T6xx is derived via xlnx_mix_tile_pair().
+ *
+ * Return: true if @format is a tile fourcc with byte[1] == '5' (32-wide).
+ */
+static bool xlnx_mix_is_t5xx_tile_fourcc(u32 format)
+{
+	return xlnx_mix_is_tile_fourcc(format) && ((format >> 8) & 0xFF) == '5';
+}
+
+/**
+ * xlnx_mix_tile_pair - Derive the 64-wide paired tile format from a 32-wide one
+ * @fmt: a validated tile DRM fourcc (T5xx, 32-wide)
+ *
+ * The DT must list the 32-wide tile format (T5xx) first; overlay layer init
+ * enforces this. Given that fourcc, return the corresponding 64-wide pair
+ * (T6xx) by replacing byte[1] '5' with '6'.
+ *
+ * Return: the paired T6xx fourcc, or 0 if @fmt is not a T5xx tile.
+ */
+static u32 xlnx_mix_tile_pair(u32 fmt)
+{
+	if (((fmt >> 8) & 0xFF) != '5')
+		return 0;
+
+	return (fmt & ~(u32)0xFF00) | ((u32)'6' << 8);
 }
 
 static u32 xlnx_mix_get_bus_fmt(struct xlnx_mix *mixer)
@@ -1916,6 +2003,20 @@ static int xlnx_mix_set_plane(struct xlnx_mix_plane *plane,
 	mixer = plane->mixer;
 	mixer_hw = &mixer->mixer_hw;
 	layer_id = plane->mixer_layer->id;
+
+	/* Override stride for tile formats in memory-mode scanout. */
+	if (!plane->mixer_layer->hw_config.is_streaming && mixer_hw->tile_fmt &&
+	    xlnx_mix_is_tile_info(info)) {
+		u32 tile_rows = info->block_h[0];
+
+		luma_stride = fb->pitches[0] * tile_rows;
+
+		DRM_DEBUG_KMS("tile fmt=0x%08x bw=%u bh=%u cpb=%u src=%ux%u fb_pitch=%u\n",
+			      info->format, info->block_w[0], info->block_h[0],
+			      info->char_per_block[0], src_w, src_h, fb->pitches[0]);
+		DRM_DEBUG_KMS("stride=%u plane=%d\n", luma_stride, layer_id);
+	}
+
 	active_area_width =
 		mixer->drm_primary_layer->mixer_layer->layer_regs.width;
 	active_area_height =
@@ -2100,6 +2201,54 @@ static int xlnx_mix_plane_atomic_check(struct drm_plane *plane,
 		return -EINVAL;
 	}
 
+	/*
+	 * Validate requested format against per-layer supported list.
+	 * Apply tile alignment constraints.
+	 */
+	if (state->fb) {
+		u32 fmt = state->fb->format->format;
+		bool ok = false;
+
+		if (mixer_hw->tile_fmt &&
+		    !mix_plane->mixer_layer->hw_config.is_streaming &&
+		    mix_plane->mixer_layer->id != XVMIX_LAYER_MASTER &&
+		    mix_plane->mixer_layer->id != mixer_hw->logo_layer_id) {
+			u32 tile = mix_plane->mixer_layer->hw_config.vid_fmt;
+
+			if (fmt == tile || fmt == xlnx_mix_tile_pair(tile))
+				ok = true;
+		} else {
+			ok = (fmt == mix_plane->mixer_layer->hw_config.vid_fmt);
+		}
+
+		if (!ok) {
+			DRM_DEBUG_KMS("Unsupported format 0x%08x for layer %u (tile %s)\n",
+				      fmt, mix_plane->mixer_layer->id,
+				      mixer_hw->tile_fmt ? "enabled" : "disabled");
+			return -EINVAL;
+		}
+
+		if (xlnx_mix_is_tile_info(state->fb->format)) {
+			/* src_w/src_h are 16.16 fixed point; >> 16 gives pixel dimensions */
+			u32 block_w = state->fb->format->block_w[0];
+			u32 block_h = state->fb->format->block_h[0];
+			u32 src_w_px = state->src_w >> 16;
+			u32 src_h_px = state->src_h >> 16;
+
+			if (src_w_px % block_w) {
+				DRM_DEBUG_KMS("width must be multiple of %u for tile format\n",
+					      block_w);
+				return -EINVAL;
+			}
+
+			if (src_h_px % block_h) {
+				DRM_DEBUG_KMS("height must be multiple of %u for tile format\n",
+					      block_h);
+				return -EINVAL;
+			}
+		}
+	}
+
 	if (is_window_valid(mixer_hw, state->crtc_x, state->crtc_y,
 			    state->src_w >> 16, state->src_h >> 16, scale))
 		return 0;
@@ -2110,8 +2259,9 @@ static int xlnx_mix_plane_atomic_check(struct drm_plane *plane,
 static void xlnx_mix_plane_atomic_update(struct drm_plane *plane,
 					 struct drm_atomic_state *state)
 {
-	int ret;
 	struct drm_plane_state *old_state = drm_atomic_get_old_plane_state(state, plane);
+	struct xlnx_mix_plane *mix_plane = to_xlnx_plane(plane);
+	int ret;
 
 	if (!plane->state->crtc || !plane->state->fb)
 		return;
@@ -2133,6 +2283,9 @@ static void xlnx_mix_plane_atomic_update(struct drm_plane *plane,
 		DRM_ERROR("failed to mode-set a plane\n");
 		return;
 	}
+	/* synchronize plane->format with the current FB's format for DMA config */
+	mix_plane->format = plane->state->fb->format->format;
+
 	/* apply the new fb addr */
 	xlnx_mix_plane_commit(plane);
 	/* make sure a plane is on */
@@ -2185,6 +2338,55 @@ static const struct drm_plane_helper_funcs xlnx_mix_plane_helper_funcs = {
 	.atomic_async_update = xlnx_mix_plane_atomic_async_update,
 };
 
+/**
+ * xlnx_mix_register_plane - Register a mixer plane with DRM
+ * @mixer: mixer instance
+ * @plane: plane to register (format comes from layer vid_fmt / tile pairing)
+ * @poss_crtcs: CRTCs this plane can be attached to
+ * @type: DRM plane type (primary, overlay, cursor)
+ *
+ * When tile formats are enabled, memory (non-streaming) overlay planes may
+ * advertise the layer's T5xx fourcc plus the paired T6xx format from
+ * xlnx_mix_tile_pair(); otherwise a single format is used.
+ *
+ * Return: 0 on success or a negative errno from drm_universal_plane_init().
+ */
+static int xlnx_mix_register_plane(struct xlnx_mix *mixer,
+				   struct xlnx_mix_plane *plane,
+				   unsigned int poss_crtcs,
+				   enum drm_plane_type type)
+{
+	const u32 *fmts = &plane->format;
+	unsigned int nfmts = 1;
+	u32 tile_fmts[2];
+
+	/*
+	 * Only advertise multiple formats when tile support is
+	 * enabled and this is a memory layer.
+	 * In tile mode, each memory plane must support exactly
+	 * two tile formats: the one stored in tile_fmt and its
+	 * derived pair.
+	 * Apply only to overlay layers (exclude master and logo).
+	 */
+	if (mixer->mixer_hw.tile_fmt &&
+	    !plane->mixer_layer->hw_config.is_streaming &&
+	    plane->mixer_layer->id != XVMIX_LAYER_MASTER &&
+	    plane->mixer_layer->id != mixer->mixer_hw.logo_layer_id) {
+		u32 pair = xlnx_mix_tile_pair(plane->mixer_layer->hw_config.vid_fmt);
+
+		tile_fmts[0] = plane->mixer_layer->hw_config.vid_fmt;
+		if (pair) {
+			tile_fmts[1] = pair;
+			fmts = tile_fmts;
+			nfmts = 2;
+		}
+	}
+
+	return drm_universal_plane_init(mixer->drm, &plane->base,
+					poss_crtcs, &xlnx_mix_plane_funcs,
+					fmts, nfmts, NULL, type, NULL);
+}
+
 static int xlnx_mix_init_plane(struct xlnx_mix_plane *plane,
 			       unsigned int poss_crtcs,
 			       struct device_node *layer_node)
@@ -2224,10 +2426,7 @@ static int xlnx_mix_init_plane(struct xlnx_mix_plane *plane,
 		type = DRM_PLANE_TYPE_PRIMARY;
 
 	/* initialize drm plane */
-	ret = drm_universal_plane_init(mixer->drm, &plane->base,
-				       poss_crtcs, &xlnx_mix_plane_funcs,
-				       &plane->format,
-				       1, NULL, type, NULL);
+	ret = xlnx_mix_register_plane(mixer, plane, poss_crtcs, type);
 
 	if (ret) {
 		DRM_ERROR("failed to initialize plane\n");
@@ -2514,17 +2713,22 @@ static int xlnx_mix_dt_parse(struct device *dev, struct xlnx_mix *mixer)
 		dev_err(dev, "Failed to map io mem space for mixer\n");
 		return PTR_ERR(mixer_hw->base);
 	}
+	/* Enable tile video formats for v-mix 6.0+ when described in DT */
+	mixer_hw->tile_fmt = of_device_is_compatible(dev->of_node, "xlnx,v-mix-6.0") &&
+			     of_property_read_bool(node, "xlnx,tile-formats");
 
 	if (of_device_is_compatible(dev->of_node, "xlnx,mixer-3.0") ||
 	    of_device_is_compatible(dev->of_node, "xlnx,mixer-4.0"))
 		dev_warn(dev, "xlnx,mixer-3.0/4.0 are deprecated.\n");
 
-	if (of_device_is_compatible(dev->of_node, "xlnx,v-mix-5.3"))
+	if (of_device_is_compatible(dev->of_node, "xlnx,v-mix-5.3") ||
+	    of_device_is_compatible(dev->of_node, "xlnx,v-mix-6.0"))
 		mixer_hw->three_planes_prop = true;
 
 	if (of_device_is_compatible(dev->of_node, "xlnx,mixer-4.0") ||
 	    of_device_is_compatible(dev->of_node, "xlnx,mixer-5.0") ||
-	    of_device_is_compatible(dev->of_node, "xlnx,v-mix-5.3")) {
+	    of_device_is_compatible(dev->of_node, "xlnx,v-mix-5.3") ||
+	    of_device_is_compatible(dev->of_node, "xlnx,v-mix-6.0")) {
 		mixer_hw->max_layers = 18;
 		mixer_hw->logo_en_mask = BIT(23);
 		mixer_hw->enable_all_mask = (GENMASK(16, 0) |
@@ -2631,6 +2835,7 @@ static int xlnx_mix_of_init_layer(struct device *dev, struct device_node *node,
 {
 	struct device_node *layer_node;
 	const struct drm_format_info *info;
+	const char *vformat;
 	char layer_name[32];
 	int ret;
 
@@ -2662,10 +2867,28 @@ static int xlnx_mix_of_init_layer(struct device *dev, struct device_node *node,
 	}
 
 	snprintf(layer_name, sizeof(layer_name), "overlay layer %u", layer->id);
-	ret = xlnx_mix_parse_dt_vformat(layer_node, layer, layer_name, NULL,
+	ret = xlnx_mix_parse_dt_vformat(layer_node, layer, layer_name, &vformat,
 					&info);
 	if (ret)
 		goto err;
+
+	layer->hw_config.is_streaming =
+		of_property_read_bool(layer_node, "xlnx,layer-streaming");
+
+	/*
+	 * When tile formats are enabled in the IP, every memory overlay layer
+	 * must use a tile format (32-wide T5xx).  Raster formats are invalid;
+	 * T6xx must not be listed first in xlnx,vformat (the pair is derived).
+	 */
+	if (mixer->mixer_hw.tile_fmt && !layer->hw_config.is_streaming) {
+		if (!xlnx_mix_is_t5xx_tile_fourcc(layer->hw_config.vid_fmt)) {
+			dev_err(dev,
+				"layer %u: tile format must be 32-wide (T5xx) in xlnx,vformat, not '%s'\n",
+				layer->id, vformat);
+			ret = -EINVAL;
+			goto err;
+		}
+	}
 
 	/* Set flag only for 3 planar video formats */
 	if (info->num_planes == 3)
@@ -2691,8 +2914,6 @@ static int xlnx_mix_of_init_layer(struct device *dev, struct device_node *node,
 	}
 	layer->hw_config.can_alpha =
 		    of_property_read_bool(layer_node, "xlnx,layer-alpha");
-	layer->hw_config.is_streaming =
-		    of_property_read_bool(layer_node, "xlnx,layer-streaming");
 	if (of_property_read_bool(layer_node, "xlnx,layer-primary")) {
 		if (mixer->drm_primary_layer) {
 			dev_err(dev,
@@ -3421,6 +3642,7 @@ static const struct of_device_id xlnx_mix_of_match[] = {
 	{ .compatible = "xlnx,mixer-4.0", },
 	{ .compatible = "xlnx,mixer-5.0", },
 	{ .compatible = "xlnx,v-mix-5.3", },
+	{ .compatible = "xlnx,v-mix-6.0", },
 	{ /* end of table */ },
 };
 MODULE_DEVICE_TABLE(of, xlnx_mix_of_match);
