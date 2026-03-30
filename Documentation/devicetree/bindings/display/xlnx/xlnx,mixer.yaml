@@ -16,6 +16,7 @@ description:
 properties:
   compatible:
     oneOf:
+      - const: xlnx,v-mix-6.0
       - const: xlnx,v-mix-5.3
       - const: xlnx,mixer-5.0
       - const: xlnx,mixer-4.0
@@ -53,6 +54,12 @@ properties:
 
   xlnx,logo-layer:
     description: Denotes logo layer is enabled.
+    type: boolean
+
+  xlnx,tile-formats:
+    description:
+      Enables the tiled memory framebuffer datapath for non-streaming memory
+      overlays on v-mix-6.0.
     type: boolean
 
   xlnx,num-layers:
@@ -195,8 +202,32 @@ patternProperties:
           XVUY8888              "XV24"
           XV15                  "XV15"
           XV20                  "XV20"
-        $ref: /schemas/types.yaml#/definitions/string
-        uniqueItems: true
+          T508                  "T508"
+          T50A                  "T50A"
+          T50C                  "T50C"
+          T608                  "T608"
+          T60A                  "T60A"
+          T60C                  "T60C"
+          T528                  "T528"
+          T52A                  "T52A"
+          T52C                  "T52C"
+          T628                  "T628"
+          T62A                  "T62A"
+          T62C                  "T62C"
+          T548                  "T548"
+          T54A                  "T54A"
+          T54C                  "T54C"
+          T648                  "T648"
+          T64A                  "T64A"
+          T64C                  "T64C"
+        oneOf:
+          - $ref: /schemas/types.yaml#/definitions/string
+          - type: array
+            items:
+              $ref: /schemas/types.yaml#/definitions/string
+            minItems: 1
+            maxItems: 2
+            uniqueItems: true
 
     required:
       - xlnx,layer-id
@@ -216,6 +247,131 @@ required:
 
 additionalProperties: false
 
+$defs:
+  xlnx-mixer-raster-vformat-string:
+    type: string
+    enum:
+      - RG24
+      - BG24
+      - XB30
+      - XR24
+      - RA24
+      - AB24
+      - AR24
+      - XB24
+      - YUYV
+      - UYVY
+      - AYUV
+      - NV12
+      - GREY
+      - "Y10 "
+      - XV30
+      - VU24
+      - XV24
+      - XV15
+      - XV20
+
+  xlnx-mixer-raster-vfmt-str-or-1elem:
+    oneOf:
+      - $ref: '#/$defs/xlnx-mixer-raster-vformat-string'
+      - type: array
+        items:
+          $ref: '#/$defs/xlnx-mixer-raster-vformat-string'
+        minItems: 1
+        maxItems: 1
+
+  xlnx-mixer-tile-vformat-single-memory:
+    type: string
+    enum:
+      - T508
+      - T50A
+      - T50C
+      - T528
+      - T52A
+      - T52C
+      - T548
+      - T54A
+      - T54C
+
+  xlnx-mixer-tile-pair-t508:
+    type: array
+    minItems: 2
+    maxItems: 2
+    items:
+      - const: T508
+      - const: T608
+  xlnx-mixer-tile-pair-t50a:
+    type: array
+    minItems: 2
+    maxItems: 2
+    items:
+      - const: T50A
+      - const: T60A
+  xlnx-mixer-tile-pair-t50c:
+    type: array
+    minItems: 2
+    maxItems: 2
+    items:
+      - const: T50C
+      - const: T60C
+  xlnx-mixer-tile-pair-t528:
+    type: array
+    minItems: 2
+    maxItems: 2
+    items:
+      - const: T528
+      - const: T628
+  xlnx-mixer-tile-pair-t52a:
+    type: array
+    minItems: 2
+    maxItems: 2
+    items:
+      - const: T52A
+      - const: T62A
+  xlnx-mixer-tile-pair-t52c:
+    type: array
+    minItems: 2
+    maxItems: 2
+    items:
+      - const: T52C
+      - const: T62C
+  xlnx-mixer-tile-pair-t548:
+    type: array
+    minItems: 2
+    maxItems: 2
+    items:
+      - const: T548
+      - const: T648
+  xlnx-mixer-tile-pair-t54a:
+    type: array
+    minItems: 2
+    maxItems: 2
+    items:
+      - const: T54A
+      - const: T64A
+  xlnx-mixer-tile-pair-t54c:
+    type: array
+    minItems: 2
+    maxItems: 2
+    items:
+      - const: T54C
+      - const: T64C
+
+  xlnx-mixer-tile-vformat-memory:
+    description:
+      Non-streaming memory overlay on the tiled DMA framebuffer path.
+    oneOf:
+      - $ref: '#/$defs/xlnx-mixer-tile-vformat-single-memory'
+      - $ref: '#/$defs/xlnx-mixer-tile-pair-t508'
+      - $ref: '#/$defs/xlnx-mixer-tile-pair-t50a'
+      - $ref: '#/$defs/xlnx-mixer-tile-pair-t50c'
+      - $ref: '#/$defs/xlnx-mixer-tile-pair-t528'
+      - $ref: '#/$defs/xlnx-mixer-tile-pair-t52a'
+      - $ref: '#/$defs/xlnx-mixer-tile-pair-t52c'
+      - $ref: '#/$defs/xlnx-mixer-tile-pair-t548'
+      - $ref: '#/$defs/xlnx-mixer-tile-pair-t54a'
+      - $ref: '#/$defs/xlnx-mixer-tile-pair-t54c'
+
 allOf:
   - if:
       properties:
@@ -234,6 +390,7 @@ allOf:
               - xlnx,mixer-4.0
               - xlnx,mixer-5.0
               - xlnx,v-mix-5.3
+              - xlnx,v-mix-6.0
     then:
       properties:
         xlnx,num-layers:
@@ -245,9 +402,68 @@ allOf:
             enum:
               - xlnx,mixer-5.0
               - xlnx,v-mix-5.3
+              - xlnx,v-mix-6.0
     then:
       required:
         - xlnx,enable-csc-coefficient-register
+  # xlnx,tile-formats is only valid for v-mix-6.0; forbid it for older
+  # compatibles.
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: xlnx,v-mix-6.0
+    then: true
+    else:
+      properties:
+        xlnx,tile-formats: false
+  - if:
+      required:
+        - xlnx,tile-formats
+    then:
+      patternProperties:
+        # layer_0: raster string only (no tiled tokens, no string array).
+        "^layer_0$":
+          properties:
+            xlnx,vformat:
+              $ref: '#/$defs/xlnx-mixer-raster-vformat-string'
+        "^layer_([1-9]|1[0-6])$":
+          allOf:
+            - if:
+                properties:
+                  xlnx,layer-streaming:
+                    const: true
+                required:
+                  - xlnx,layer-streaming
+              then:
+                properties:
+                  xlnx,vformat:
+                    $ref: '#/$defs/xlnx-mixer-raster-vfmt-str-or-1elem'
+            - if:
+                not:
+                  properties:
+                    xlnx,layer-streaming:
+                      const: true
+                  required:
+                    - xlnx,layer-streaming
+              then:
+                properties:
+                  xlnx,vformat:
+                    $ref: '#/$defs/xlnx-mixer-tile-vformat-memory'
+  - if:
+      not:
+        required:
+          - xlnx,tile-formats
+    then:
+      patternProperties:
+        "^layer_0$":
+          properties:
+            xlnx,vformat:
+              $ref: '#/$defs/xlnx-mixer-raster-vformat-string'
+        "^layer_([1-9]|1[0-6])$":
+          properties:
+            xlnx,vformat:
+              $ref: '#/$defs/xlnx-mixer-raster-vfmt-str-or-1elem'
 
 examples:
   - |
@@ -463,6 +679,70 @@ examples:
         layer_2 {
           xlnx,layer-id = <2>;
           xlnx,vformat = "YUYV";
+          xlnx,layer-alpha;
+          xlnx,layer-scale;
+          xlnx,layer-max-width = <1920>;
+        };
+        logo {
+            xlnx,layer-id = <3>;
+            xlnx,logo-height = <64>;
+            xlnx,logo-width = <64>;
+        };
+    };
+
+  # Example for systems where Mixer IP supports tiled formats (v-mix-6.0+).
+  - |
+    #include <dt-bindings/interrupt-controller/arm-gic.h>
+
+    /* xlnx,tile-formats enables the tiled memory datapath for non-streaming
+     * overlays (layer_1+). layer_0 is always the hardware master streaming
+     * path and uses a raster xlnx,vformat string only. Tiled buffer layout
+     * (32x4 / 64x4 classes) and valid xlnx,vformat tokens follow the binding
+     * schema.
+     */
+    v_mix@80300000 {
+        compatible = "xlnx,v-mix-6.0";
+        reg = <0x80300000 0x10000>;
+        interrupts = <GIC_SPI 95 IRQ_TYPE_LEVEL_HIGH>;
+        reset-gpios = <&gpio 98 1>;
+        xlnx,bpc = <8>;
+        xlnx,dma-addr-width = <64>;
+        xlnx,num-layers = <4>;
+        xlnx,ppc = <2>;
+        xlnx,video-format = <0>;
+        xlnx,tile-formats;
+        xlnx,enable-csc-coefficient-register;
+        xlnx,bridge = <&v_tc_0>;
+        port {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            mix_out_tile: endpoint@0 {
+                reg = <0>;
+                remote-endpoint = <&hdmi_output_v_mix_0>;
+            };
+        };
+        layer_0 {
+          dma-names = "dma0";
+          dmas = <&hdmi_output_v_frmbuf_rd_0 0>;
+          xlnx,layer-id = <0>;
+          xlnx,layer-max-height = <2160>;
+          xlnx,layer-max-width = <3840>;
+          xlnx,layer-primary;
+          /* layer_0 is always a raster path, regardless of xlnx,tile-formats */
+          xlnx,vformat = "YUYV";
+          xlnx,layer-streaming;
+        };
+        layer_1 {
+          xlnx,layer-id = <1>;
+          /* T548+T648 pair (same effect as lone T548 for driver) */
+          xlnx,vformat = "T548", "T648";
+          xlnx,layer-alpha;
+          xlnx,layer-scale;
+          xlnx,layer-max-width = <1920>;
+        };
+        layer_2 {
+          xlnx,layer-id = <2>;
+          xlnx,vformat = "T528", "T628";
           xlnx,layer-alpha;
           xlnx,layer-scale;
           xlnx,layer-max-width = <1920>;
