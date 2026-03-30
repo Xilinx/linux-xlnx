@@ -2531,7 +2531,7 @@ static int xlnx_mix_parse_dt_bg_video_fmt(struct device_node *node,
 		goto out;
 	} else if (layer->hw_config.max_width > XVMIX_DISP_MAX_WIDTH ||
 		   layer->hw_config.max_width < XVMIX_DISP_MIN_WIDTH) {
-		DRM_ERROR("Invalid width in dt");
+		DRM_ERROR("Invalid width in dt\n");
 		ret = -EINVAL;
 		goto out;
 	}
@@ -2544,7 +2544,7 @@ static int xlnx_mix_parse_dt_bg_video_fmt(struct device_node *node,
 		goto out;
 	} else if (layer->hw_config.max_height > XVMIX_DISP_MAX_HEIGHT ||
 		   layer->hw_config.max_height < XVMIX_DISP_MIN_HEIGHT) {
-		DRM_ERROR("Invalid height in dt");
+		DRM_ERROR("Invalid height in dt\n");
 		ret = -EINVAL;
 		goto out;
 	}
@@ -2924,7 +2924,7 @@ static int xlnx_mix_of_init_layer(struct device *dev, struct device_node *node,
 	}
 	ret = xlnx_mix_init_plane(&mixer->planes[id], 1, layer_node);
 	if (ret)
-		dev_err(dev, "Unable to init drm mixer plane id = %u", id);
+		dev_err(dev, "Unable to init drm mixer plane id = %u\n", id);
 
 	return ret;
 err:
