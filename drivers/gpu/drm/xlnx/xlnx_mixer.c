@@ -2621,29 +2621,33 @@ static int xlnx_mix_of_init_layer(struct device *dev, struct device_node *node,
 	ret = of_property_read_u32(layer_node, "xlnx,layer-id", &layer->id);
 	if (ret) {
 		dev_err(dev, "xlnx,layer-id property not found\n");
-		return ret;
+		goto err;
 	}
 	if (layer->id < 1 || layer->id >= mixer->mixer_hw.max_layers) {
 		dev_err(dev, "Mixer layer id %u in dts is out of legal range\n",
 			layer->id);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto err;
 	}
 
 	if (of_property_count_u8_elems(layer_node, "xlnx,vformat") != sizeof(u32) + 1) {
 		DRM_ERROR("xlnx,vformat property missing or invalid\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto err;
 	}
 
 	if (of_property_read_string(layer_node, "xlnx,vformat", &vformat)) {
 		DRM_ERROR("No xlnx,vformat value for layer 0 in dts\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto err;
 	}
 
 	layer->hw_config.vid_fmt = fourcc_code(vformat[0], vformat[1], vformat[2], vformat[3]);
 	info = drm_format_info(layer->hw_config.vid_fmt);
 	if (!info) {
 		DRM_ERROR("No DRM info, Invalid fourcc code\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto err;
 	}
 
 	/* Set flag only for 3 planar video formats */
@@ -2658,13 +2662,14 @@ static int xlnx_mix_of_init_layer(struct device *dev, struct device_node *node,
 		if (ret) {
 			dev_err(dev, "Mixer layer %d dts missing width prop.\n",
 				layer->id);
-			return ret;
+			goto err;
 		}
 
 		if (layer->hw_config.max_width > max_width) {
 			dev_err(dev, "Illlegal Mixer layer %d width %d\n",
 				layer->id, layer->hw_config.max_width);
-			return -EINVAL;
+			ret = -EINVAL;
+			goto err;
 		}
 	}
 	layer->hw_config.can_alpha =
@@ -2675,7 +2680,8 @@ static int xlnx_mix_of_init_layer(struct device *dev, struct device_node *node,
 		if (mixer->drm_primary_layer) {
 			dev_err(dev,
 				"More than one primary layer in mixer dts\n");
-			return -EINVAL;
+			ret = -EINVAL;
+			goto err;
 		}
 		mixer->drm_primary_layer = &mixer->planes[id];
 	}
@@ -2683,6 +2689,9 @@ static int xlnx_mix_of_init_layer(struct device *dev, struct device_node *node,
 	if (ret)
 		dev_err(dev, "Unable to init drm mixer plane id = %u", id);
 
+	return ret;
+err:
+	of_node_put(layer_node);
 	return ret;
 }
 
