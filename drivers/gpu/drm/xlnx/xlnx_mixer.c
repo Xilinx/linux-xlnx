@@ -2249,12 +2249,56 @@ err_dma:
 	return ret;
 }
 
+/**
+ * xlnx_mix_parse_dt_vformat - Read and validate xlnx,vformat for a layer
+ * @layer_node: DT node of the layer (e.g. layer_0 or layer_N)
+ * @layer: layer data to fill vid_fmt into
+ * @layer_name: name for error messages (e.g. "master layer" or "overlay layer N")
+ * @out_vformat: optional pointer to receive the parsed DT string
+ * @out_fmt_info: optional; on success, set to drm_format_info(vid_fmt) (single lookup)
+ *
+ * of_property_read_string_index(..., 0, &vformat) handles both a single
+ * string and a string array.
+ *
+ * Return: 0 on success, -EINVAL on parse/validation error.
+ */
+static int xlnx_mix_parse_dt_vformat(struct device_node *layer_node,
+				     struct xlnx_mix_layer_data *layer,
+				     const char *layer_name,
+				     const char **out_vformat,
+				     const struct drm_format_info **out_fmt_info)
+{
+	const struct drm_format_info *fmt_info;
+	const char *vformat;
+
+	if (of_property_read_string_index(layer_node, "xlnx,vformat", 0, &vformat)) {
+		DRM_ERROR("Failed to read xlnx,vformat for %s\n", layer_name);
+		return -EINVAL;
+	}
+	if (strlen(vformat) < 4) {
+		DRM_ERROR("xlnx,vformat for %s must be at least a 4-character format string\n",
+			  layer_name);
+		return -EINVAL;
+	}
+	layer->hw_config.vid_fmt = fourcc_code(vformat[0], vformat[1], vformat[2], vformat[3]);
+	fmt_info = drm_format_info(layer->hw_config.vid_fmt);
+	if (!fmt_info) {
+		DRM_ERROR("Invalid %s fourcc parsed from xlnx,vformat\n", layer_name);
+		return -EINVAL;
+	}
+	if (out_vformat)
+		*out_vformat = vformat;
+	if (out_fmt_info)
+		*out_fmt_info = fmt_info;
+
+	return 0;
+}
+
 static int xlnx_mix_parse_dt_bg_video_fmt(struct device_node *node,
 					  struct xlnx_mix_hw *mixer_hw)
 {
 	struct device_node *layer_node;
 	struct xlnx_mix_layer_data *layer;
-	const char *vformat;
 	int ret;
 
 	layer_node = of_get_child_by_name(node, "layer_0");
@@ -2266,23 +2310,10 @@ static int xlnx_mix_parse_dt_bg_video_fmt(struct device_node *node,
 	layer->hw_config.min_width = XVMIX_LAYER_WIDTH_MIN;
 	layer->hw_config.min_height = XVMIX_LAYER_HEIGHT_MIN;
 
-	if (of_property_count_u8_elems(layer_node, "xlnx,vformat") != sizeof(u32) + 1) {
-		DRM_ERROR("xlnx,vformat property missing or invalid\n");
-		ret = -EINVAL;
+	ret = xlnx_mix_parse_dt_vformat(layer_node, layer, "master layer", NULL,
+					NULL);
+	if (ret)
 		goto out;
-	}
-
-	if (of_property_read_string(layer_node, "xlnx,vformat", &vformat)) {
-		DRM_ERROR("No xlnx,vformat value for layer 0 in dts\n");
-		ret = -EINVAL;
-		goto out;
-	}
-
-	layer->hw_config.vid_fmt = fourcc_code(vformat[0], vformat[1], vformat[2], vformat[3]);
-	if (!drm_format_info(layer->hw_config.vid_fmt)) {
-		ret = -EINVAL;
-		goto out;
-	}
 
 	layer->hw_config.is_streaming =
 		of_property_read_bool(layer_node, "xlnx,layer-streaming");
@@ -2600,7 +2631,7 @@ static int xlnx_mix_of_init_layer(struct device *dev, struct device_node *node,
 {
 	struct device_node *layer_node;
 	const struct drm_format_info *info;
-	const char *vformat;
+	char layer_name[32];
 	int ret;
 
 	layer_node = of_get_child_by_name(node, name);
@@ -2630,25 +2661,11 @@ static int xlnx_mix_of_init_layer(struct device *dev, struct device_node *node,
 		goto err;
 	}
 
-	if (of_property_count_u8_elems(layer_node, "xlnx,vformat") != sizeof(u32) + 1) {
-		DRM_ERROR("xlnx,vformat property missing or invalid\n");
-		ret = -EINVAL;
+	snprintf(layer_name, sizeof(layer_name), "overlay layer %u", layer->id);
+	ret = xlnx_mix_parse_dt_vformat(layer_node, layer, layer_name, NULL,
+					&info);
+	if (ret)
 		goto err;
-	}
-
-	if (of_property_read_string(layer_node, "xlnx,vformat", &vformat)) {
-		DRM_ERROR("No xlnx,vformat value for layer 0 in dts\n");
-		ret = -EINVAL;
-		goto err;
-	}
-
-	layer->hw_config.vid_fmt = fourcc_code(vformat[0], vformat[1], vformat[2], vformat[3]);
-	info = drm_format_info(layer->hw_config.vid_fmt);
-	if (!info) {
-		DRM_ERROR("No DRM info, Invalid fourcc code\n");
-		ret = -EINVAL;
-		goto err;
-	}
 
 	/* Set flag only for 3 planar video formats */
 	if (info->num_planes == 3)
