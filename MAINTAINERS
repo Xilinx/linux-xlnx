@@ -9903,7 +9903,7 @@ F:	include/uapi/video/
 F:	include/video/
 
 XILINX FRMBUF DRIVER
-M:	Kunal Rane <kunal.rane@amd.com>
+M:	Asif Ikbal <asif.ikbal@amd.com>
 R:	Vishal Sagar <vishal.sagar@amd.com>
 L:	git@amd.com
 S:	Maintained
@@ -28258,7 +28258,8 @@ F:	Documentation/devicetree/bindings/net/can/xilinx,can.yaml
 F:	drivers/net/can/xilinx_can.c
 
 XILINX DEMOSAIC DRIVER
-M:	Kunal Rane <kunal.rane@amd.com>
+M:	Asif Ikbal <asif.ikbal@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
 L:	git@amd.com
 S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-demosaic.yaml
@@ -28318,7 +28319,8 @@ F:	drivers/firmware/xilinx/zynqmp-sem.c
 F:	include/linux/firmware/xlnx-zynqmp-sem.h
 
 XILINX GAMMA DRIVER
-M:	Kunal Rane <kunal.rane@amd.com>
+M:	Asif Ikbal <asif.ikbal@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
 L:	git@amd.com
 S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-gamma-lut.yaml
@@ -28516,7 +28518,8 @@ S:	Maintained
 F:	drivers/crypto/xilinx/xilinx-trng.c
 
 XILINX TPG DRIVER
-M:	Kunal Rane <kunal.rane@amd.com>
+M:	Asif Ikbal <asif.ikbal@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
 L:	git@amd.com
 S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-tpg.yaml
@@ -28530,28 +28533,32 @@ F:	Documentation/devicetree/bindings/clock/xlnx,vcu.yaml
 F:	drivers/clk/xilinx/xlnx_vcu.c
 
 XILINX VPSS SCALER DRIVER
-M:	Kunal Rane <kunal.rane@amd.com>
+M:	Asif Ikbal <asif.ikbal@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
 L:	git@amd.com
 S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-vpss-scaler.yaml
 F:	drivers/media/platform/xilinx/xilinx-vpss-scaler.c
 
 XILINX VPSS CSC DRIVER
-M:	Kunal Rane <kunal.rane@amd.com>
+M:	Asif Ikbal <asif.ikbal@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
 L:	git@amd.com
 S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-vpss-csc.yaml
 F:	drivers/media/platform/xilinx/xilinx-vpss-csc.c
 
 XILINX VPSS BRIDGE CSC DRIVER
-M:	Kunal Rane <kunal.rane@amd.com>
+M:	Asif Ikbal <asif.ikbal@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
 L:	git@amd.com
 S:	Maintained
 F:	Documentation/devicetree/bindings/display/xlnx/xlnx,vpss-csc.yaml
 F:	drivers/gpu/drm/xlnx/xlnx_csc.c
 
 XILINX VPSS BRIDGE SCALER DRIVER
-M:	Kunal Rane <kunal.rane@amd.com>
+M:	Asif Ikbal <asif.ikbal@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
 L:	git@amd.com
 S:	Maintained
 F:	Documentation/devicetree/bindings/display/xlnx/xlnx,vpss-scaler.yaml
