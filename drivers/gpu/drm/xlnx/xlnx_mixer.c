@@ -241,6 +241,9 @@ static const u32 color_table[] = {
 	DRM_FORMAT_AYUV,
 	DRM_FORMAT_NV12,
 	DRM_FORMAT_NV16,
+	DRM_FORMAT_P010,
+	DRM_FORMAT_P012,
+	DRM_FORMAT_P210,
 	DRM_FORMAT_Y8,
 	DRM_FORMAT_Y10,
 	DRM_FORMAT_XVUY2101010,
@@ -665,6 +668,8 @@ static u32 xlnx_mix_get_bus_fmt(struct xlnx_mix *mixer)
 		return MEDIA_BUS_FMT_VUY8_1X24;
 	case DRM_FORMAT_NV12:
 		return MEDIA_BUS_FMT_VYYUYY8_1X24;
+	case DRM_FORMAT_P012:
+		return MEDIA_BUS_FMT_UYYVYY12_4X24;
 	case DRM_FORMAT_Y8:
 		return MEDIA_BUS_FMT_Y8_1X8;
 	case DRM_FORMAT_Y10:
@@ -673,14 +678,16 @@ static u32 xlnx_mix_get_bus_fmt(struct xlnx_mix *mixer)
 	case DRM_FORMAT_X403:
 		return MEDIA_BUS_FMT_VUY10_1X30;
 	case DRM_FORMAT_XV15:
+	case DRM_FORMAT_P010:
 		return MEDIA_BUS_FMT_VYYUYY10_4X20;
 	case DRM_FORMAT_XV20:
+	case DRM_FORMAT_P210:
 		return MEDIA_BUS_FMT_UYVY10_1X20;
 	case DRM_FORMAT_X423:
 		return MEDIA_BUS_FMT_YUV12_1X36;
 	default:
-		DRM_DEBUG_KMS("invalid layer format: %d\n",
-			      master->hw_config.vid_fmt);
+		DRM_DEBUG_KMS("invalid layer format: %p4cc\n",
+			      &master->hw_config.vid_fmt);
 		return 0;
 	}
 }
