@@ -574,7 +574,7 @@ static int mmi_dc_init_bridges(struct mmi_dc *dc)
 	u32 bridge, num_bridges;
 	int ret;
 
-	/* Sanity check */
+	/* Sanity check - expect xlnx,dc-operating-mode to be defined */
 	if (!of_property_present(np, mode_prop) ||
 	    of_property_match_string(np, mode_prop, "DC_Bypass") ||
 	    !of_property_present(np, stream_count_prop))
@@ -613,20 +613,23 @@ static int mmi_dc_init_bridges(struct mmi_dc *dc)
  * @mode: Returned operating mode parsed from %mode_prop
  *
  * Validates and parses the %mode_prop DT property ("xlnx,dc-operating-mode")
- * and translates it into a driver enum. The property must be present and have
- * a supported value.
+ * and translates it into a driver enum. This property is optional;
+ * when missing, assumes functional mode.
  *
- * Return: 0 on success or a negative error code if the property is missing or
- * malformed.
+ * Return: 0 on success or a negative error code if the property is malformed.
  */
 int mmi_dc_check_operating_mode(struct mmi_dc *dc,
 				enum mmi_dc_operating_mode *mode)
 {
 	struct device_node *np = dc->dev->of_node;
 
-	if (!of_property_present(np, "xlnx,dc-operating-mode"))
-		return dev_err_probe(dc->dev, -EINVAL,
-				     "missing %s property\n", mode_prop);
+	if (!of_property_present(np, mode_prop)) {
+		dev_dbg(dc->dev,
+			"%s property is missing, assuming functional mode\n",
+			mode_prop);
+		*mode = MMI_DC_FUNCTIONAL_MODE;
+		return 0;
+	}
 
 	if (!of_property_match_string(np, mode_prop, "DC_Functional"))
 		*mode = MMI_DC_FUNCTIONAL_MODE;
