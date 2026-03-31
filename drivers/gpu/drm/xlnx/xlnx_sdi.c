@@ -18,6 +18,7 @@
 #include <linux/component.h>
 #include <linux/device.h>
 #include <linux/gpio/consumer.h>
+#include <linux/io.h>
 #include <linux/of_device.h>
 #include <linux/of_graph.h>
 #include <linux/phy/phy.h>
