@@ -1561,8 +1561,8 @@ static void axienet_rx_hwtstamp(struct axienet_local *lp,
  * @first_bd:	Index of first descriptor to clean up
  * @nr_bds:	Max number of descriptors to clean up
  * @force:	Whether to clean descriptors even if not complete
- * @sizep:	Pointer to a u32 filled with the total sum of all bytes
- *		in all cleaned-up descriptors. Ignored if NULL.
+ * @sizep:	Pointer to a u32 accumulating the total byte count of
+ *		completed packets (using skb->len). Ignored if NULL.
  * @budget:	NAPI budget (use 0 when not called from NAPI poll)
  *
  * Would either be called after a successful transmit operation, or after
@@ -1623,6 +1623,8 @@ static int axienet_free_tx_chain(struct axienet_dma_q *q, u32 first_bd,
 					 DMA_TO_DEVICE);
 
 		if (cur_p->tx_skb && (status & XAXIDMA_BD_STS_COMPLETE_MASK)) {
+			if (sizep)
+				*sizep += cur_p->tx_skb->len;
 			napi_consume_skb((struct sk_buff *)cur_p->tx_skb, budget);
 			packets++;
 		}
@@ -1640,8 +1642,6 @@ static int axienet_free_tx_chain(struct axienet_dma_q *q, u32 first_bd,
 		cur_p->sband_stats = 0;
 #endif
 		cur_p->status = 0;
-		if (sizep)
-			*sizep += status & XAXIDMA_BD_STS_ACTUAL_LEN_MASK;
 	}
 
 	if (!force) {
