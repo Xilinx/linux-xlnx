@@ -205,7 +205,7 @@ int aie_part_maskpoll_register(struct aie_partition *apart, u32 offset, u32 data
 		value = ioread32(apart->aperture->base + offset);
 		if ((value & mask) == data)
 			return 0;
-		udelay(usleep_time);
+		usleep_range(usleep_time, usleep_time + 10);
 	}
 
 	value = ioread32(apart->aperture->base + offset);
