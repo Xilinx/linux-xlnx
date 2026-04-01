@@ -1126,6 +1126,43 @@ TRACE_EVENT(aie_part_get_dmabuf_da,
 		  (unsigned long long)__entry->dma_addr)
 );
 
+TRACE_EVENT(aie_part_attach_external_dmabuf,
+	TP_PROTO(struct aie_partition *apart, void *vaddr, dma_addr_t dma_addr,
+		 size_t size, int fd),
+	TP_ARGS(apart, vaddr, dma_addr, size, fd),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(void *, vaddr)
+		__field(dma_addr_t, dma_addr)
+		__field(size_t, size)
+		__field(int, fd)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->vaddr = vaddr;
+		__entry->dma_addr = dma_addr;
+		__entry->size = size;
+		__entry->fd = fd;
+	),
+	TP_printk("id: %d vaddr: %pK dma_addr: 0x%llx size: %zx fd: %d",
+		  __entry->partition_id, __entry->vaddr,
+		  (unsigned long long)__entry->dma_addr, __entry->size, __entry->fd)
+);
+
+TRACE_EVENT(aie_part_detach_external_dmabuf,
+	TP_PROTO(struct aie_partition *apart, int fd),
+	TP_ARGS(apart, fd),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(int, fd)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->fd = fd;
+	),
+	TP_printk("id: %d fd: %d", __entry->partition_id, __entry->fd)
+);
+
 #endif /* _AI_ENGINE_TRACE_H_ */
 
 #undef TRACE_INCLUDE_PATH
