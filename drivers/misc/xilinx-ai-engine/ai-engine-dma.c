@@ -44,9 +44,11 @@ struct aie_dmabuf {
 static dma_addr_t aie_part_get_dmabuf_da(struct aie_partition *apart,
 					 void *va, size_t len)
 {
+	struct aie_dmabuf_xa *entry;
+	struct vm_area_struct *vma;
+	dma_addr_t dma_addr = 0;
 	unsigned long va_off;
 	unsigned long va_end;
-	struct aie_dmabuf_xa *entry;
 	unsigned long fd;
 
 	lockdep_assert_held(&apart->mlock);
@@ -57,6 +59,8 @@ static dma_addr_t aie_part_get_dmabuf_da(struct aie_partition *apart,
 	}
 
 	xa_for_each(&apart->dbuf_xa, fd, entry) {
+		if (!entry->vm_start || !entry->vm_end)
+			continue;
 		if ((unsigned long)va >= entry->vm_start &&
 		    va_end <= entry->vm_end) {
 			va_off = (unsigned long)va - entry->vm_start;
@@ -65,9 +69,27 @@ static dma_addr_t aie_part_get_dmabuf_da(struct aie_partition *apart,
 		}
 	}
 
+	mmap_read_lock(current->mm);
+	vma = find_vma(current->mm, (unsigned long)va);
+	if (!vma || (unsigned long)va < vma->vm_start || va_end > vma->vm_end) {
+		dev_dbg(&apart->dev, "failed to find vma for va %pK, 0x%zx\n", va, len);
+		goto mmap_unlock;
+	}
+	xa_for_each(&apart->dbuf_xa, fd, entry) {
+		if (entry->dmabuf->file == vma->vm_file) {
+			entry->vm_start = vma->vm_start;
+			entry->vm_end = vma->vm_end;
+			va_off = (unsigned long)va - entry->vm_start;
+			dma_addr = entry->dma_addr + va_off;
+			trace_aie_part_get_dmabuf_da(apart, va, len, dma_addr);
+			goto mmap_unlock;
+		}
+	}
 	dev_dbg(&apart->dev,
-		"failed to get dma address from va %pK, 0x%zx.\n", va, len);
-	return 0;
+		"failed to get dma address from va %pK, 0x%zx\n", va, len);
+mmap_unlock:
+	mmap_read_unlock(current->mm);
+	return dma_addr;
 }
 
 /**
