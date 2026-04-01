@@ -304,6 +304,150 @@ static const struct dma_buf_ops aie_mem_dma_buf_ops_xa = {
 	.release = aie_mem_dmabuf_release_xa,
 };
 
+int aie_dma_mem_attach_xa_from_user(struct aie_partition *apart, int fd)
+{
+	struct dma_buf_attachment *attach;
+	struct aie_dmabuf_xa *dma_mem_xa;
+	struct dma_buf *dmabuf;
+	struct sg_table *sgt;
+	int ret;
+
+	mutex_lock(&apart->mlock);
+	dma_mem_xa = xa_load(&apart->dbuf_xa, fd);
+	if (dma_mem_xa) {
+		struct dma_buf *source = dma_buf_get(fd);
+
+		if (IS_ERR(source)) {
+			dev_err(&apart->dev, "failed to get dma buf for fd %d\n", fd);
+			ret = -EINVAL;
+			goto unlock_mutex;
+		}
+		/* Legacy code calls MEM_ALLOC and MEM_ATTACH separately. For backward
+		 * compatibility, if the same fd is already attached, we will allow it and return
+		 * success.
+		 */
+		if (source->priv == dma_mem_xa) {
+			dma_buf_put(source);
+			ret = 0;
+			goto unlock_mutex;
+		}
+		dev_err(&apart->dev, "dma buf with fd %d already attached but not the same dma buf\n",
+			fd);
+		dma_buf_put(source);
+		ret = -EEXIST;
+		goto unlock_mutex;
+	}
+	dma_mem_xa = kzalloc(sizeof(*dma_mem_xa), GFP_KERNEL);
+	if (!dma_mem_xa) {
+		ret = -ENOMEM;
+		goto unlock_mutex;
+	}
+	dma_mem_xa->fd = fd;
+	dma_mem_xa->apart = apart;
+	dmabuf = dma_buf_get(fd);
+	if (IS_ERR(dmabuf)) {
+		dev_err(&apart->dev, "failed to get dma buf for fd %d\n", fd);
+		ret = PTR_ERR(dmabuf);
+		goto free_dma_mem_xa;
+	}
+	dma_mem_xa->dmabuf = dmabuf;
+	attach = dma_buf_attach(dmabuf, &apart->dev);
+	if (IS_ERR(attach)) {
+		dev_err(&apart->dev, "failed to attach dma buf for fd %d\n", fd);
+		ret = PTR_ERR(attach);
+		goto put_dmabuf;
+	}
+	dma_mem_xa->attach = attach;
+	sgt = dma_buf_map_attachment(dma_mem_xa->attach, DMA_BIDIRECTIONAL);
+	if (IS_ERR(sgt)) {
+		dev_err(&apart->dev, "failed to map dma buf attachment for fd %d\n", fd);
+		ret = PTR_ERR(sgt);
+		goto dma_buf_detach;
+	}
+	dma_mem_xa->sgt = sgt;
+	if (sgt->nents != 1) {
+		dma_addr_t next_sg_addr = sg_dma_address(sgt->sgl);
+		struct scatterlist *s;
+		unsigned int i;
+
+		for_each_sg(sgt->sgl, s, sgt->nents, i) {
+			if (sg_dma_address(s) != next_sg_addr) {
+				dev_err(&apart->dev, "dmabuf not contiguous\n");
+				ret = -EINVAL;
+				goto dma_unmap_attachment;
+			}
+			next_sg_addr = sg_dma_address(s) + sg_dma_len(s);
+			dma_mem_xa->size += sg_dma_len(s);
+		}
+	} else {
+		dma_mem_xa->size = sg_dma_len(sgt->sgl);
+	}
+	dma_mem_xa->dma_addr = sg_dma_address(sgt->sgl);
+
+	ret = xa_err(xa_store(&apart->dbuf_xa, dma_mem_xa->fd, dma_mem_xa, GFP_KERNEL));
+	if (ret) {
+		dev_err(&apart->dev, "failed to store dma buf in xa for fd %d\n", fd);
+		goto dma_unmap_attachment;
+	}
+
+	trace_aie_part_attach_external_dmabuf(apart, NULL, dma_mem_xa->dma_addr,
+					      dma_mem_xa->size, fd);
+
+	goto unlock_mutex;
+
+dma_unmap_attachment:
+	dma_buf_unmap_attachment(attach, sgt, DMA_BIDIRECTIONAL);
+dma_buf_detach:
+	dma_buf_detach(dmabuf, attach);
+put_dmabuf:
+	dma_buf_put(dmabuf);
+free_dma_mem_xa:
+	kfree(dma_mem_xa);
+unlock_mutex:
+	mutex_unlock(&apart->mlock);
+	return ret;
+}
+
+int aie_dma_mem_detach_xa_from_user(struct aie_partition *apart, int fd)
+{
+	struct aie_dmabuf_xa *dma_mem_xa;
+	struct dma_buf *source;
+
+	mutex_lock(&apart->mlock);
+	dma_mem_xa = xa_load(&apart->dbuf_xa, fd);
+	if (!dma_mem_xa) {
+		dev_err(&apart->dev, "failed to find dma buf in xa for fd %d\n", fd);
+		mutex_unlock(&apart->mlock);
+		return -ENOENT;
+	}
+
+	source = dma_buf_get(fd);
+	if (IS_ERR(source)) {
+		dev_err(&apart->dev, "failed to get dma buf for fd %d\n", fd);
+		mutex_unlock(&apart->mlock);
+		return -EINVAL;
+	}
+	/* Legacy code calls MEM_FREE and MEM_DETACH separately. For backward
+	 * compatibility, if the same fd is already attached, we will return, it will be detached
+	 * in MEM_FREE.
+	 */
+	if (source->priv == dma_mem_xa) {
+		dma_buf_put(source);
+		mutex_unlock(&apart->mlock);
+		return 0;
+	}
+	dma_buf_put(source);
+	xa_erase(&apart->dbuf_xa, fd);
+	mutex_unlock(&apart->mlock);
+	trace_aie_part_detach_external_dmabuf(apart, fd);
+	dma_buf_unmap_attachment(dma_mem_xa->attach, dma_mem_xa->sgt, DMA_BIDIRECTIONAL);
+	dma_buf_detach(dma_mem_xa->dmabuf, dma_mem_xa->attach);
+	dma_buf_put(dma_mem_xa->dmabuf);
+	kfree(dma_mem_xa);
+
+	return 0;
+}
+
 int aie_dma_mem_alloc_xa(struct aie_partition *apart, __kernel_size_t size)
 {
 	struct aie_dmabuf_xa *dma_mem_xa;
