@@ -939,14 +939,11 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		return ret;
 	}
 	case AIE_DMA_MEM_FREE_IOCTL:
-		/* NOP. Resources freed in close_fd() */
-		fallthrough;
-	case AIE_ATTACH_DMABUF_IOCTL:
-		/* Attached in MemAlloc */
-		fallthrough;
-	case AIE_DETACH_DMABUF_IOCTL:
-		/* Detached in close_fd() */
 		return 0;
+	case AIE_ATTACH_DMABUF_IOCTL:
+		return aie_dma_mem_attach_xa_from_user(apart, (int)(uintptr_t)argp);
+	case AIE_DETACH_DMABUF_IOCTL:
+		return aie_dma_mem_detach_xa_from_user(apart, (int)(uintptr_t)argp);
 	case AIE_UPDATE_SHIMDMA_DMABUF_BD_ADDR_IOCTL:
 		return aie_part_update_dmabuf_bd_from_user(apart, argp);
 	case AIE_SET_SHIMDMA_BD_IOCTL:

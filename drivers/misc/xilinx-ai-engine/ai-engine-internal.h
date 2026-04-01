@@ -1881,6 +1881,8 @@ u32 aie_get_core_lr(struct aie_partition *apart,
 		    struct aie_location *loc);
 u32 aie_get_core_sp(struct aie_partition *apart,
 		    struct aie_location *loc);
+int aie_dma_mem_attach_xa_from_user(struct aie_partition *apart, int fd);
+int aie_dma_mem_detach_xa_from_user(struct aie_partition *apart, int fd);
 int aie_dma_mem_alloc_xa(struct aie_partition *apart, __kernel_size_t size);
 int aie_dma_begin_cpu_access_xa(struct dma_buf *dmabuf, enum dma_data_direction direction);
 int aie_dma_end_cpu_access_xa(struct dma_buf *dmabuf, enum dma_data_direction direction);
