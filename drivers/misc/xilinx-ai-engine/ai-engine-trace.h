@@ -1163,6 +1163,121 @@ TRACE_EVENT(aie_part_detach_external_dmabuf,
 	TP_printk("id: %d fd: %d", __entry->partition_id, __entry->fd)
 );
 
+TRACE_EVENT(aie_mem_unmap_dma_buf_xa,
+	TP_PROTO(struct aie_partition *apart, size_t size, int fd),
+	TP_ARGS(apart, size, fd),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(size_t, size)
+		__field(int, fd)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->size = size;
+		__entry->fd = fd;
+	),
+	TP_printk("id: %d size: 0x%zx fd: %d",
+		  __entry->partition_id, __entry->size, __entry->fd)
+);
+
+TRACE_EVENT(aie_mem_mmap_xa,
+	TP_PROTO(struct aie_partition *apart, int fd, size_t size,
+		 dma_addr_t dma_addr, unsigned long vm_start,
+		 unsigned long vm_end),
+	TP_ARGS(apart, fd, size, dma_addr, vm_start, vm_end),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(int, fd)
+		__field(size_t, size)
+		__field(dma_addr_t, dma_addr)
+		__field(unsigned long, vm_start)
+		__field(unsigned long, vm_end)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->fd = fd;
+		__entry->size = size;
+		__entry->dma_addr = dma_addr;
+		__entry->vm_start = vm_start;
+		__entry->vm_end = vm_end;
+	),
+	TP_printk("id: %d fd: %d size: 0x%zx dma_addr: 0x%llx vm_start: 0x%lx vm_end: 0x%lx",
+		  __entry->partition_id, __entry->fd, __entry->size,
+		  (unsigned long long)__entry->dma_addr,
+		  __entry->vm_start, __entry->vm_end)
+);
+
+TRACE_EVENT(aie_mem_mmap,
+	TP_PROTO(struct aie_partition *apart, unsigned long vm_start,
+		 unsigned long vm_end, unsigned long offset, size_t size),
+	TP_ARGS(apart, vm_start, vm_end, offset, size),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(unsigned long, vm_start)
+		__field(unsigned long, vm_end)
+		__field(unsigned long, offset)
+		__field(size_t, size)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->vm_start = vm_start;
+		__entry->vm_end = vm_end;
+		__entry->offset = offset;
+		__entry->size = size;
+	),
+	TP_printk("id: %d vm_start: 0x%lx vm_end: 0x%lx offset: 0x%lx size: 0x%zx",
+		  __entry->partition_id, __entry->vm_start, __entry->vm_end,
+		  __entry->offset, __entry->size)
+);
+
+TRACE_EVENT(aie_mem_dmabuf_release_xa,
+	TP_PROTO(struct aie_partition *apart, size_t size,
+		 dma_addr_t dma_addr, void *vaddr, int fd),
+	TP_ARGS(apart, size, dma_addr, vaddr, fd),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(size_t, size)
+		__field(dma_addr_t, dma_addr)
+		__field(void *, vaddr)
+		__field(int, fd)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->size = size;
+		__entry->dma_addr = dma_addr;
+		__entry->vaddr = vaddr;
+		__entry->fd = fd;
+	),
+	TP_printk("id: %d size: 0x%zx dma_addr: 0x%llx vaddr: %pK fd: %d",
+		  __entry->partition_id, __entry->size,
+		  (unsigned long long)__entry->dma_addr, __entry->vaddr,
+		  __entry->fd)
+);
+
+TRACE_EVENT(aie_dma_mem_alloc_xa,
+	TP_PROTO(struct aie_partition *apart, size_t size,
+		 dma_addr_t dma_addr, void *vaddr, int fd),
+	TP_ARGS(apart, size, dma_addr, vaddr, fd),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(size_t, size)
+		__field(dma_addr_t, dma_addr)
+		__field(void *, vaddr)
+		__field(int, fd)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->size = size;
+		__entry->dma_addr = dma_addr;
+		__entry->vaddr = vaddr;
+		__entry->fd = fd;
+	),
+	TP_printk("id: %d size: 0x%zx dma_addr: 0x%llx vaddr: %pK fd: %d",
+		  __entry->partition_id, __entry->size,
+		  (unsigned long long)__entry->dma_addr, __entry->vaddr,
+		  __entry->fd)
+);
+
 #endif /* _AI_ENGINE_TRACE_H_ */
 
 #undef TRACE_INCLUDE_PATH

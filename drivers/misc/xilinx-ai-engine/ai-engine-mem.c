@@ -86,6 +86,9 @@ static void aie_mem_unmap_dma_buf_xa(struct dma_buf_attachment *attachment,
 {
 	struct aie_dmabuf_xa *dma_buf_xa = (struct aie_dmabuf_xa *)attachment->dmabuf->priv;
 
+	trace_aie_mem_unmap_dma_buf_xa(dma_buf_xa->apart, dma_buf_xa->size,
+				       dma_buf_xa->fd);
+
 	sg_free_table(sgt);
 	kfree(sgt);
 	dma_buf_xa->sgt = NULL;
@@ -104,6 +107,10 @@ static int aie_mem_mmap_xa(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 	unsigned long addr = vma->vm_start;
 	unsigned long offset = vma->vm_pgoff * PAGE_SIZE;
 	int ret;
+
+	trace_aie_mem_mmap_xa(apart, dma_buf_xa->fd, dma_buf_xa->size,
+			      dma_buf_xa->dma_addr, vma->vm_start,
+			      vma->vm_end);
 
 	if (dma_buf_xa->size != (vma->vm_end - vma->vm_start)) {
 		dev_dbg(&apart->dev, "mmap size mismatch, requested 0x%lx, actual %lu.\n",
@@ -146,6 +153,9 @@ static int aie_mem_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 	size_t msize = mem->size;
 	u32 rstart_col = mem->range.start.col - aperture->range.start.col;
 	int ret;
+
+	trace_aie_mem_mmap(apart, vma->vm_start, vma->vm_end, offset,
+			   pmem->size);
 
 	if (remainder + offset > pmem->size)
 		return -EINVAL;
@@ -205,6 +215,10 @@ static void aie_mem_dmabuf_release_xa(struct dma_buf *dmabuf)
 {
 	struct aie_dmabuf_xa *dma_buf_xa = (struct aie_dmabuf_xa *)dmabuf->priv;
 	struct aie_partition *apart = dma_buf_xa->apart;
+
+	trace_aie_mem_dmabuf_release_xa(apart, dma_buf_xa->size,
+					dma_buf_xa->dma_addr,
+					dma_buf_xa->vaddr, dma_buf_xa->fd);
 
 	mutex_lock(&apart->mlock);
 	xa_erase(&apart->dbuf_xa, dma_buf_xa->fd);
@@ -360,6 +374,9 @@ int aie_dma_mem_alloc_xa(struct aie_partition *apart, __kernel_size_t size)
 		dev_dbg(&apart->dev, "failed to store dma buf in xa for fd %d.", dma_mem_xa->fd);
 		goto close_fd;
 	}
+
+	trace_aie_dma_mem_alloc_xa(apart, size, dma_mem_xa->dma_addr,
+				   dma_mem_xa->vaddr, dma_mem_xa->fd);
 
 	return dma_mem_xa->fd;
 
