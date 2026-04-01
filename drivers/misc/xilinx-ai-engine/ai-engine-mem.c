@@ -220,8 +220,10 @@ static void aie_mem_dmabuf_release_xa(struct dma_buf *dmabuf)
 	mutex_lock(&apart->mlock);
 	xa_erase(&apart->dbuf_xa, dma_buf_xa->fd);
 	mutex_unlock(&apart->mlock);
-	dma_buf_unmap_attachment(dma_buf_xa->attach, dma_buf_xa->sgt, DMA_BIDIRECTIONAL);
-	dma_buf_detach(dma_buf_xa->dmabuf, dma_buf_xa->attach);
+	if (dma_buf_xa->attach && dma_buf_xa->sgt)
+		dma_buf_unmap_attachment(dma_buf_xa->attach, dma_buf_xa->sgt, DMA_BIDIRECTIONAL);
+	if (dma_buf_xa->attach)
+		dma_buf_detach(dma_buf_xa->dmabuf, dma_buf_xa->attach);
 	dma_free_coherent(&apart->dev, dma_buf_xa->size, dma_buf_xa->vaddr,
 			  dma_buf_xa->dma_addr);
 	kfree(dma_buf_xa);
