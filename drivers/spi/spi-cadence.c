@@ -318,8 +318,8 @@ static int cdns_spi_setup_transfer(struct spi_device *spi,
 static void cdns_spi_process_fifo(struct cdns_spi *xspi, int ntx, int nrx)
 {
 	int bytes_per_entry;
-	__le32 le_word;
 	u32 word;
+	int i;
 
 	ntx = clamp(ntx, 0, xspi->tx_bytes);
 	nrx = clamp(nrx, 0, xspi->rx_bytes);
@@ -333,8 +333,8 @@ static void cdns_spi_process_fifo(struct cdns_spi *xspi, int ntx, int nrx)
 			word = cdns_spi_read(xspi, CDNS_SPI_RXD);
 
 			if (xspi->rxbuf) {
-				le_word = cpu_to_le32(word);
-				memcpy(xspi->rxbuf, &le_word, bytes_per_entry);
+				for (i = 0; i < bytes_per_entry; i++)
+					xspi->rxbuf[i] = word >> (8 * (xspi->fifo_width - 1 - i));
 				xspi->rxbuf += bytes_per_entry;
 			}
 			nrx -= bytes_per_entry;
@@ -342,13 +342,14 @@ static void cdns_spi_process_fifo(struct cdns_spi *xspi, int ntx, int nrx)
 
 		if (ntx) {
 			bytes_per_entry = min_t(int, ntx, xspi->fifo_width);
-			le_word = 0;
+			word = 0;
 
 			if (xspi->txbuf) {
-				memcpy(&le_word, xspi->txbuf, bytes_per_entry);
+				for (i = 0; i < bytes_per_entry; i++)
+					word |= (u32)xspi->txbuf[i] <<
+						(8 * (xspi->fifo_width - 1 - i));
 				xspi->txbuf += bytes_per_entry;
 			}
-			word = le32_to_cpu(le_word);
 			cdns_spi_write(xspi, CDNS_SPI_TXD, word);
 			ntx -= bytes_per_entry;
 		}
