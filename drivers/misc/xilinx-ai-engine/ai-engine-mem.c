@@ -119,9 +119,6 @@ static int aie_mem_mmap_xa(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 	}
 	dma_buf_xa->vm_start = vma->vm_start;
 	dma_buf_xa->vm_end = vma->vm_end;
-	dev_err(&apart->dev,
-		"mmap dma buffer fd %d, vm_start: 0x%lx, vm_end: 0x%lx.\n",
-		dma_buf_xa->fd, dma_buf_xa->vm_start, dma_buf_xa->vm_end);
 
 	if (offset) {
 		dev_dbg(&apart->dev, "mmap offset is not zero, offset: 0x%lx.\n", offset);
