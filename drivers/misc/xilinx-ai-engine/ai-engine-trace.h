@@ -41,6 +41,23 @@ TRACE_EVENT(aie_part_ioctl,
 	TP_printk("id: %d cmd: 0x%x", __entry->partition_id, __entry->cmd)
 );
 
+TRACE_EVENT(aie_part_uring_cmd,
+	TP_PROTO(struct aie_partition *apart, __u32 cmd, unsigned int issue_flags),
+	TP_ARGS(apart, cmd, issue_flags),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(__u32, cmd)
+		__field(unsigned int, issue_flags)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->cmd = cmd;
+		__entry->issue_flags = issue_flags;
+	),
+	TP_printk("id: %d cmd: 0x%x issue_flags: 0x%x",
+		  __entry->partition_id, __entry->cmd, __entry->issue_flags)
+);
+
 TRACE_EVENT(aie_part_access_reg,
 	TP_PROTO(struct aie_partition *apart, __u32 cmd),
 	TP_ARGS(apart, cmd),
@@ -1062,6 +1079,51 @@ TRACE_EVENT(aie_part_rscmgr_set_static_range,
 	  ),
 	TP_printk("id: %d start_col: %d, num_col: %d, num_bitmaps %lld",
 		__entry->partition_id, __entry->start_col, __entry->num_col, __entry->num_bitmaps)
+);
+
+TRACE_EVENT(aie_part_get_dmabuf_da_from_off,
+	TP_PROTO(struct aie_partition *apart, int dmabuf_fd, u64 off, size_t len,
+		 dma_addr_t dma_addr, size_t size),
+	TP_ARGS(apart, dmabuf_fd, off, len, dma_addr, size),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(int, dmabuf_fd)
+		__field(__u64, off)
+		__field(size_t, len)
+		__field(dma_addr_t, dma_addr)
+		__field(size_t, size)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->dmabuf_fd = dmabuf_fd;
+		__entry->off = off;
+		__entry->len = len;
+		__entry->dma_addr = dma_addr;
+		__entry->size = size;
+	),
+	TP_printk("id: %d dmabuf_fd: %d off: 0x%llx len: 0x%zx dma_addr: 0x%llx size: 0x%zx",
+		  __entry->partition_id, __entry->dmabuf_fd, __entry->off,
+		  __entry->len, (unsigned long long)__entry->dma_addr, __entry->size)
+);
+
+TRACE_EVENT(aie_part_get_dmabuf_da,
+	TP_PROTO(struct aie_partition *apart, void *va, size_t len, dma_addr_t dma_addr),
+	TP_ARGS(apart, va, len, dma_addr),
+	TP_STRUCT__entry(
+		__field(__u32, partition_id)
+		__field(void *, va)
+		__field(size_t, len)
+		__field(dma_addr_t, dma_addr)
+	),
+	TP_fast_assign(
+		__entry->partition_id = apart->partition_id;
+		__entry->va = va;
+		__entry->len = len;
+		__entry->dma_addr = dma_addr;
+	),
+	TP_printk("id: %d va: %pK len: %zx dma_addr: 0x%llx",
+		  __entry->partition_id, __entry->va, __entry->len,
+		  (unsigned long long)__entry->dma_addr)
 );
 
 #endif /* _AI_ENGINE_TRACE_H_ */

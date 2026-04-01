@@ -1105,6 +1105,7 @@ static int aie_part_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags
 	int ret;
 	u64 res2 = 0;
 
+	trace_aie_part_uring_cmd(apart, _IOC_NR(cmd->cmd_op), issue_flags);
 	if ((issue_flags & (IO_URING_F_SQE128 | IO_URING_F_CQE32)) !=
 	    (IO_URING_F_SQE128 | IO_URING_F_CQE32))
 		return -EINVAL;
