@@ -61,7 +61,7 @@ static dma_addr_t aie_part_get_dmabuf_da(struct aie_partition *apart,
 		    va_end <= entry->vm_end) {
 			va_off = (unsigned long)va - entry->vm_start;
 			trace_aie_part_get_dmabuf_da(apart, va, len, entry->dma_addr + va_off);
-			return sg_dma_address(entry->sgt->sgl) + va_off;
+			return entry->dma_addr + va_off;
 		}
 	}
 
@@ -114,7 +114,7 @@ aie_part_get_dmabuf_da_from_off(struct aie_partition *apart, int dmabuf_fd,
 
 	trace_aie_part_get_dmabuf_da_from_off(apart, dmabuf_fd, off, len, dma_buf_xa->dma_addr,
 					      dma_buf_xa->size);
-	return sg_dma_address(dma_buf_xa->sgt->sgl) + off;
+	return dma_buf_xa->dma_addr + off;
 }
 
 /**
