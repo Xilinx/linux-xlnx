@@ -18,6 +18,7 @@
 #include <linux/clk.h>
 #include <linux/io-64-nonatomic-lo-hi.h>
 #include <linux/pm_runtime.h>
+#include <linux/reset.h>
 
 #include "../dmaengine.h"
 
@@ -906,6 +907,7 @@ static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *zdev,
 	struct zynqmp_dma_chan *chan;
 	struct device_node *node = pdev->dev.of_node;
 	const struct zynqmp_dma_config *match_data;
+	struct reset_control *rst;
 	int err;
 
 	chan = devm_kzalloc(zdev->dev, sizeof(*chan), GFP_KERNEL);
@@ -948,6 +950,15 @@ static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *zdev,
 
 	dma_cookie_init(&chan->common);
 	chan->common.device = &zdev->common;
+
+	rst = devm_reset_control_get_optional_exclusive(&pdev->dev, NULL);
+	if (IS_ERR(rst))
+		return PTR_ERR(rst);
+
+	err = reset_control_reset(rst);
+	if (err)
+		return err;
+
 	list_add_tail(&chan->common.device_node, &zdev->common.channels);
 
 	zynqmp_dma_init(chan);
