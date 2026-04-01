@@ -180,6 +180,9 @@ static inline u32 aie_get_error_category(struct aie_error *err)
 	return err->category;
 }
 
+int aie_part_detach_external_dmabuf(struct device *dev, int fd);
+int aie_part_attach_external_dmabuf(struct device *dev, void *vaddr, dma_addr_t dma_addr,
+				    size_t size, int fd);
 int aie_partition_write_privileged_mem(struct device *dev, size_t offset, size_t len, void *data);
 int aie_partition_read_privileged_mem(struct device *dev, size_t offset, size_t len, void *data);
 bool aie_partition_check_noc_aximm(struct device *dev, struct aie_location *loc);

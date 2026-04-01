@@ -10,9 +10,10 @@
 #include <linux/types.h>
 #include <linux/uaccess.h>
 #include <linux/fdtable.h>
-#include <uapi/linux/xlnx-ai-engine.h>
+#include <linux/xlnx-ai-engine.h>
 
 #include "ai-engine-internal.h"
+#include "ai-engine-trace.h"
 
 #define aie_cal_reg_goffset(adev, loc, regoff) ({ \
 	struct aie_device *_adev = (adev); \
@@ -375,6 +376,101 @@ free_dma_mem_xa:
 	put_device(&apart->dev);
 	return err;
 }
+
+/**
+ * aie_part_detach_external_dmabuf() - detach an external DMA buffer from partition
+ * @dev: AI engine partition device
+ * @fd: file descriptor of the external DMA buffer to detach
+ *
+ * Remove the external DMA buffer tracking entry from the partition's xarray.
+ * This should be called when the external DMA buffer is no longer needed.
+ *
+ * Return: 0 on success, -ENOENT if the fd was not found in the xarray.
+ */
+int aie_part_detach_external_dmabuf(struct device *dev, int fd)
+{
+	struct aie_partition *apart = container_of(dev, struct aie_partition, dev);
+	struct aie_dmabuf_xa *dma_mem_xa;
+
+	mutex_lock(&apart->mlock);
+	dma_mem_xa = xa_load(&apart->dbuf_xa, fd);
+	/* dma_mem_xa->dmabuf is NULL for external buffer. dma_buf internally allocated by
+	 * aie_dma_mem_alloc_xa() or aie_dma_mem_attach_xa_from_user() always has a reference to
+	 * dma_buf.
+	 */
+	if (!dma_mem_xa || dma_mem_xa->dmabuf) {
+		dev_err(&apart->dev, "failed to find external dma buf in xa for fd %d\n", fd);
+		mutex_unlock(&apart->mlock);
+		return -ENOENT;
+	}
+	xa_erase(&apart->dbuf_xa, fd);
+	mutex_unlock(&apart->mlock);
+	kfree(dma_mem_xa);
+
+	trace_aie_part_detach_external_dmabuf(apart, fd);
+	put_device(&apart->dev);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(aie_part_detach_external_dmabuf);
+
+/**
+ * aie_part_attach_external_dmabuf() - attach an external DMA buffer to partition
+ * @dev: AI engine partition device
+ * @vaddr: virtual address of the DMA buffer
+ * @dma_addr: DMA address of the buffer
+ * @size: size of the DMA buffer in bytes
+ * @fd: file descriptor associated with the external DMA buffer
+ *
+ * Register an external DMA buffer with the partition by storing its metadata
+ * in the partition's xarray. This allows the partition to track externally
+ * allocated DMA buffers for mmap operations. Takes a device reference on
+ * success which is released by aie_part_detach_external_dmabuf().
+ *
+ * Return: 0 on success, -EEXIST if a buffer is already attached for @fd,
+ * -ENOMEM if memory allocation fails, or other negative error code if xarray
+ * insertion fails.
+ */
+int aie_part_attach_external_dmabuf(struct device *dev, void *vaddr, dma_addr_t dma_addr,
+				    size_t size, int fd)
+{
+	struct aie_partition *apart = container_of(dev, struct aie_partition, dev);
+	struct aie_dmabuf_xa *dma_mem_xa;
+	int err;
+
+	mutex_lock(&apart->mlock);
+	dma_mem_xa = xa_load(&apart->dbuf_xa, fd);
+	if (dma_mem_xa) {
+		dev_err(&apart->dev, "dma buf already exists in xa for fd %d\n", fd);
+		err = -EEXIST;
+		goto unlock_ret;
+	}
+
+	dma_mem_xa = kzalloc(sizeof(*dma_mem_xa), GFP_KERNEL);
+	if (!dma_mem_xa) {
+		err = -ENOMEM;
+		goto unlock_ret;
+	}
+	dma_mem_xa->apart = apart;
+	dma_mem_xa->vaddr = vaddr;
+	dma_mem_xa->dma_addr = dma_addr;
+	dma_mem_xa->size = size;
+	dma_mem_xa->fd = fd;
+
+	err = xa_err(xa_store(&apart->dbuf_xa, dma_mem_xa->fd, dma_mem_xa, GFP_KERNEL));
+	if (err) {
+		dev_err(&apart->dev, "failed to store dma buf in xa for fd %d\n", dma_mem_xa->fd);
+		kfree(dma_mem_xa);
+		goto unlock_ret;
+	}
+
+	get_device(&apart->dev);
+	trace_aie_part_attach_external_dmabuf(apart, vaddr, dma_addr, size, fd);
+
+unlock_ret:
+	mutex_unlock(&apart->mlock);
+	return err;
+}
+EXPORT_SYMBOL_GPL(aie_part_attach_external_dmabuf);
 
 /**
  * aie_mem_get_info() - get AI engine memories information
