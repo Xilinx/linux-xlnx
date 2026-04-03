@@ -2164,6 +2164,9 @@ static struct extcon_dev *dwc3_get_extcon(struct dwc3 *dwc)
 	struct extcon_dev *edev = NULL;
 	const char *name;
 
+	if (dwc->dr_mode == USB_DR_MODE_HOST)
+		return NULL;
+
 	if (device_property_present(dev, "extcon"))
 		return extcon_get_edev_by_phandle(dev, 0);
 
