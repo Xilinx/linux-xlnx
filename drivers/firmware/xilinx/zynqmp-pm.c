@@ -898,6 +898,23 @@ int zynqmp_pm_set_rpu_mode(u32 node_id, enum rpu_oper_mode rpu_mode)
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_rpu_mode);
 
 /**
+ * zynqmp_pm_set_rpu_boot_addr() - Configure RPU boot address
+ * @node_id:	Node ID of the RPU core
+ * @boot_addr:	64-bit boot address for RPU core
+ *
+ * This function configures the RPU core boot address. This allows the RPU
+ * to boot from DDR memory at the specified address.
+ *
+ * Return:	Returns status, either success or error+reason
+ */
+int zynqmp_pm_set_rpu_boot_addr(u32 node_id, u64 boot_addr)
+{
+	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 3, node_id, IOCTL_RPU_BOOT_ADDR_CONFIG,
+				   boot_addr);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_set_rpu_boot_addr);
+
+/**
  * zynqmp_pm_set_tcm_config - configure TCM
  * @node_id:	Firmware specific TCM subsystem ID
  * @tcm_mode:	Argument 1 to requested IOCTL call
