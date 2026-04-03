@@ -1297,6 +1297,7 @@ L:	linux-kernel@vger.kernel.org
 L:	linux-phy@lists.infradead.org
 S:	Maintained
 F:	Documentation/devicetree/bindings/phy/amd,versal2-usbc31-dptx-phy.yaml
+F:	drivers/phy/xilinx/phy-amd-versal2-usbdp.c
 
 AMD XDNA DRIVER
 M:	Min Ma <mamin506@gmail.com>
