@@ -52,6 +52,12 @@ properties:
     $ref: /schemas/types.yaml#/definitions/uint32
     enum: [ 32, 64 ]
 
+  xlnx,en-alpha:
+    type: boolean
+    description:
+      Indicates that the IP hardware supports per-pixel alpha blending
+      video formats.
+
   xlnx,vid-formats:
     description: |
       A list of strings indicating what video memory
@@ -62,38 +68,59 @@ properties:
       and DRM fourcc code respectively by the driver.
       IP FORMAT	    DTS String	     V4L2 Fourcc	    DRM Fourcc
       -------------|----------------|----------------------|-------------------
-      RGB8		bgr888		V4L2_PIX_FMT_RGB24	DRM_FORMAT_BGR888
-      BGR8		rgb888		V4L2_PIX_FMT_BGR24	DRM_FORMAT_RGB888
-      RGBX8		xbgr8888	V4L2_PIX_FMT_BGRX32	DRM_FORMAT_XBGR8888
+      Video Formats with per-pixel Alpha
       RGBA8		abgr8888	<not supported>		DRM_FORMAT_ABGR8888
       BGRA8		argb8888	<not supported>		DRM_FORMAT_ARGB8888
+      YUVA8		avuy8888	<not supported>		DRM_FORMAT_AVUY
+
+      8 Bit Video Formats
+      RGBX8		xbgr8888	V4L2_PIX_FMT_BGRX32	DRM_FORMAT_XBGR8888
+      RGB8		bgr888		V4L2_PIX_FMT_RGB24	DRM_FORMAT_BGR888
       BGRX8		xrgb8888	V4L2_PIX_FMT_XBGR32	DRM_FORMAT_XRGB8888
-      RGBX10		xbgr2101010	V4L2_PIX_FMT_XBGR30	DRM_FORMAT_XBGR2101010
-      RGBX12		xbgr4121212	V4L2_PIX_FMT_XBGR40	<not supported>
-      RGBX16		rgb16		V4L2_PIX_FMT_BGR48	<not supported>
-      YUV8		vuy888		V4L2_PIX_FMT_VUY24	DRM_FORMAT_VUY888
+      BGR8		rgb888		V4L2_PIX_FMT_BGR24	DRM_FORMAT_RGB888
       YUVX8		xvuy8888	V4L2_PIX_FMT_XVUY32	DRM_FORMAT_XVUY8888
-      Y_U_V8		y_u_v8		V4L2_PIX_FMT_YUV444P	DRM_FORMAT_YUV444
-      Y_U_V8		y_u_v8		V4L2_PIX_FMT_YUV444M	DRM_FORMAT_YUV444
-      Y_U_V10		y_u_v10		V4L2_PIX_FMT_X403	DRM_FORMAT_X403
-      Y_U_V12		y_u_v12		V4L2_PIX_FMT_X423	DRM_FORMAT_X423
+      YUV8		vuy888		V4L2_PIX_FMT_VUY24	DRM_FORMAT_VUY888
       YUYV8		yuyv		V4L2_PIX_FMT_YUYV	DRM_FORMAT_YUYV
       UYVY8		uyvy		V4L2_PIX_FMT_UYVY	DRM_FORMAT_UYVY
-      YUVA8		avuy8888	<not supported>		DRM_FORMAT_AVUY
-      YUVX10		yuvx2101010	V4L2_PIX_FMT_XVUY10	DRM_FORMAT_XVUY2101010
-      Y8		y8		V4L2_PIX_FMT_GREY	DRM_FORMAT_Y8
-      Y10		y10		V4L2_PIX_FMT_XY10	DRM_FORMAT_Y10
+      Y_U_V8		y_u_v8		V4L2_PIX_FMT_YUV444P	DRM_FORMAT_YUV444
+      Y_U_V8		y_u_v8		V4L2_PIX_FMT_YUV444M	DRM_FORMAT_YUV444
       Y_UV8		nv16		V4L2_PIX_FMT_NV16	DRM_FORMAT_NV16
       Y_UV8		nv16		V4L2_PIX_FMT_NV16M	DRM_FORMAT_NV16
       Y_UV8_420	        nv12		V4L2_PIX_FMT_NV12	DRM_FORMAT_NV12
       Y_UV8_420	        nv12		V4L2_PIX_FMT_NV12M	DRM_FORMAT_NV12
+      Y8		y8		V4L2_PIX_FMT_GREY	DRM_FORMAT_Y8
+      Y_U_V8_420	y_u_v8_420	V4L2_PIX_FMT_YUV420	DRM_FORMAT_YUV420
+      Y_U_V8_420	y_u_v8_420	V4L2_PIX_FMT_YUV420M	DRM_FORMAT_YUV420
+
+      10 Bit Video Formats
+      RGBX10		xbgr2101010	V4L2_PIX_FMT_XBGR30	DRM_FORMAT_XBGR2101010
+      YUVX10		yuvx2101010	V4L2_PIX_FMT_XVUY10	DRM_FORMAT_XVUY2101010
+      Y_U_V10		y_u_v10		V4L2_PIX_FMT_X403	DRM_FORMAT_X403
       Y_UV10		xv20		V4L2_PIX_FMT_XV20M	DRM_FORMAT_XV20
       Y_UV10		xv20		V4L2_PIX_FMT_XV20	<not supported>
       Y_UV10_420	xv15		V4L2_PIX_FMT_XV15M	DRM_FORMAT_XV15
-      Y_UV10_420	xv15		V4L2_PIX_FMT_XV20	<not supported>
-    $ref: /schemas/types.yaml#/definitions/string
-    minItems: 1
-    maxItems: 27
+      Y_UV10_420	xv15		V4L2_PIX_FMT_XV15	<not supported>
+      Y10		y10		V4L2_PIX_FMT_XY10	DRM_FORMAT_Y10
+
+      12 Bit Video Formats
+      RGBX12		xbgr4121212	V4L2_PIX_FMT_XBGR40	<not supported>
+      YUVX12		yuvx4121212	<not supported>		<not supported>
+      Y_U_V12		y_u_v12		V4L2_PIX_FMT_X423	DRM_FORMAT_X423
+      Y_UV12		x212		V4L2_PIX_FMT_X212	<not supported>
+      Y_UV12		x212		V4L2_PIX_FMT_X212M	<not supported>
+      Y_UV12_420	x012		V4L2_PIX_FMT_X012	<not supported>
+      Y_UV12_420	x012		V4L2_PIX_FMT_X012M	<not supported>
+      Y12		y12		V4L2_PIX_FMT_XY12	<not supported>
+
+      16 Bit Video Formats
+      RGBX16		rgb16		V4L2_PIX_FMT_BGR48	<not supported>
+      YUV16		yuv16		<not supported>		<not supported>
+      Y_UV16		x216		V4L2_PIX_FMT_X216	<not supported>
+      Y_UV16		x216		V4L2_PIX_FMT_X216M	<not supported>
+      Y_UV16_420	x016		V4L2_PIX_FMT_X016	DRM_FORMAT_P016
+      Y_UV16_420	x016		V4L2_PIX_FMT_X016M	DRM_FORMAT_P016
+      Y16		y16		V4L2_PIX_FMT_Y16	<not supported>
+    $ref: /schemas/types.yaml#/definitions/string-array
 
   xlnx,pixels-per-clock:
     description: Pixels per clock set in IP
@@ -136,6 +163,58 @@ required:
   - xlnx,dma-align
   - xlnx,max-height
   - xlnx,max-width
+
+allOf:
+  - if:
+      required:
+        - xlnx,en-alpha
+    then:
+      properties:
+        xlnx,vid-formats:
+          items:
+            enum:
+              - abgr8888
+              - argb8888
+              - avuy8888
+          minItems: 1
+          maxItems: 3
+    else:
+      properties:
+        xlnx,vid-formats:
+          items:
+            enum:
+              - xbgr8888
+              - bgr888
+              - xrgb8888
+              - rgb888
+              - xvuy8888
+              - vuy888
+              - yuyv
+              - uyvy
+              - y_u_v8
+              - nv16
+              - nv12
+              - y8
+              - y_u_v8_420
+              - xbgr2101010
+              - yuvx2101010
+              - y_u_v10
+              - xv20
+              - xv15
+              - y10
+              - xbgr4121212
+              - yuvx4121212
+              - y_u_v12
+              - x212
+              - x012
+              - y12
+              - rgb16
+              - yuv16
+              - x216
+              - x016
+              - y16
+          minItems: 1
+          maxItems: 30
 
 additionalProperties: false
 
