@@ -130,6 +130,7 @@ enum {
 	TPS_MODE_BIST,
 	TPS_MODE_DISC,
 	TPS_MODE_PTCH,
+	TPS_MODE_APP1,
 };
 
 static const char *const modes[] = {
@@ -138,6 +139,7 @@ static const char *const modes[] = {
 	[TPS_MODE_BIST]	= "BIST",
 	[TPS_MODE_DISC]	= "DISC",
 	[TPS_MODE_PTCH] = "PTCH",
+	[TPS_MODE_APP1]	= "APP1",
 };
 
 /* Unrecognized commands will be replaced with "!CMD" */
@@ -625,6 +627,35 @@ static bool tps6598x_read_power_status(struct tps6598x *tps)
 	return true;
 }
 
+/*
+ * TPS6699x deprecated Power_Status register (0x3F). BC1.2 is not supported
+ * and the remaining bits are redundant with STATUS register (0x1A).
+ * Synthesize pwr_status from the already-read STATUS register.
+ */
+static bool tps6699x_read_power_status(struct tps6598x *tps)
+{
+	u16 pwr_status = 0;
+
+	/* Same masks as TPS_POWER_STATUS_CONNECTION() / SOURCESINK() / PWROPMODE() in tps6598x.h */
+	if (tps->status & TPS_STATUS_PLUG_PRESENT)
+		pwr_status |= FIELD_PREP(TPS_POWER_STATUS_CONNECTION_MASK, 1);
+
+	/* SOURCESINK: 1=sink; STATUS.PortRole 1=source, opposite convention */
+	if (!TPS_STATUS_TO_TYPEC_PORTROLE(tps->status))
+		pwr_status |= FIELD_PREP(TPS_POWER_STATUS_SOURCESINK_MASK, 1);
+
+	if (TPS_STATUS_VBUS_STATUS(tps->status) == TPS_STATUS_VBUS_STATUS_PD)
+		pwr_status |= FIELD_PREP(TPS_POWER_STATUS_TYPEC_CURRENT_MASK,
+					 TPS_POWER_STATUS_TYPEC_CURRENT_PD);
+
+	tps->pwr_status = pwr_status;
+
+	if (tps->data->trace_power_status)
+		tps->data->trace_power_status(pwr_status);
+
+	return true;
+}
+
 static void tps6598x_handle_plug_event(struct tps6598x *tps, u32 status)
 {
 	int ret;
@@ -1018,6 +1049,8 @@ static irqreturn_t tps6598x_interrupt(int irq, void *data)
 	if (!tps6598x_read_status(tps, &status))
 		goto err_unlock;
 
+	tps->status = status;
+
 	if ((event1[0] | event2[0]) & TPS_REG_INT_POWER_STATUS_UPDATE)
 		if (!tps->data->read_power_status(tps))
 			goto err_unlock;
@@ -1026,9 +1059,15 @@ static irqreturn_t tps6598x_interrupt(int irq, void *data)
 		if (!tps->data->read_data_status(tps))
 			goto err_unlock;
 
-	/* Handle plug insert or removal */
-	if ((event1[0] | event2[0]) & TPS_REG_INT_PLUG_EVENT)
+	/*
+	 * Refresh power status before connect - needed for TPS6699x which
+	 * synthesizes pwr_status from STATUS and never gets POWER_STATUS_UPDATE.
+	 */
+	if ((event1[0] | event2[0]) & TPS_REG_INT_PLUG_EVENT) {
+		if (!tps->data->read_power_status(tps))
+			goto err_unlock;
 		tps6598x_handle_plug_event(tps, status);
+	}
 
 err_unlock:
 	mutex_unlock(&tps->lock);
@@ -1064,6 +1103,7 @@ static int tps6598x_check_mode(struct tps6598x *tps)
 
 	switch (ret) {
 	case TPS_MODE_APP:
+	case TPS_MODE_APP1:
 	case TPS_MODE_PTCH:
 		return ret;
 	case TPS_MODE_BOOT:
@@ -1801,6 +1841,8 @@ static int tps6598x_probe(struct i2c_client *client)
 		goto err_clear_mask;
 	}
 
+	tps->status = status;
+
 	/*
 	 * This fwnode has a "compatible" property, but is never populated as a
 	 * struct device. Instead we simply parse it to read the properties.
@@ -1994,6 +2036,24 @@ static const struct tipd_data tps6598x_data = {
 	.connect = tps6598x_connect,
 };
 
+static const struct tipd_data tps6699x_data = {
+	.irq_handler = tps6598x_interrupt,
+	.irq_mask1 = TPS_REG_INT_DATA_STATUS_UPDATE |
+		     TPS_REG_INT_PLUG_EVENT,
+	.tps_struct_size = sizeof(struct tps6598x),
+	.register_port = tps6598x_register_port,
+	.unregister_port = tps6598x_unregister_port,
+	.trace_data_status = trace_tps6598x_data_status,
+	.trace_power_status = trace_tps6598x_power_status,
+	.trace_status = trace_tps6598x_status,
+	.apply_patch = tps6598x_apply_patch,
+	.init = tps6598x_init,
+	.read_data_status = tps6598x_read_data_status,
+	.read_power_status = tps6699x_read_power_status,
+	.reset = tps6598x_reset,
+	.connect = tps6598x_connect,
+};
+
 static const struct tipd_data tps25750_data = {
 	.irq_handler = tps25750_interrupt,
 	.irq_mask1 = TPS_REG_INT_POWER_STATUS_UPDATE |
@@ -2015,6 +2075,7 @@ static const struct tipd_data tps25750_data = {
 
 static const struct of_device_id tps6598x_of_match[] = {
 	{ .compatible = "ti,tps6598x", &tps6598x_data},
+	{ .compatible = "ti,tps6699x", &tps6699x_data},
 	{ .compatible = "apple,cd321x", &cd321x_data},
 	{ .compatible = "ti,tps25750", &tps25750_data},
 	{}
