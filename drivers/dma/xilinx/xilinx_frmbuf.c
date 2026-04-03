@@ -534,7 +534,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(26),
 	},
 	{
-		.dts_name = "y8_32t",
+		.dts_name = "T5M8",
 		.id = XILINX_FRMBUF_FMT_Y8,
 		.bpw = 32,
 		.ppw = 4,
@@ -545,7 +545,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(27),
 	},
 	{
-		.dts_name = "y8_64t",
+		.dts_name = "T6M8",
 		.id = XILINX_FRMBUF_FMT_Y8,
 		.bpw = 32,
 		.ppw = 4,
@@ -556,7 +556,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(28),
 	},
 	{
-		.dts_name = "y10_32t",
+		.dts_name = "T5MA",
 		.id = XILINX_FRMBUF_FMT_Y10,
 		.bpw = 40,
 		.ppw = 4,
@@ -567,7 +567,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(29),
 	},
 	{
-		.dts_name = "y10_64t",
+		.dts_name = "T6MA",
 		.id = XILINX_FRMBUF_FMT_Y10,
 		.bpw = 40,
 		.ppw = 4,
@@ -578,7 +578,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(30),
 	},
 	{
-		.dts_name = "y12_32t",
+		.dts_name = "T5MC",
 		.id = XILINX_FRMBUF_FMT_Y12,
 		.bpw = 12,
 		.ppw = 1,
@@ -589,7 +589,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(31),
 	},
 	{
-		.dts_name = "y12_64t",
+		.dts_name = "T6MC",
 		.id = XILINX_FRMBUF_FMT_Y12,
 		.bpw = 12,
 		.ppw = 1,
@@ -600,7 +600,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(32),
 	},
 	{
-		.dts_name = "nv12_32t",
+		.dts_name = "T508",
 		.id = XILINX_FRMBUF_FMT_Y_UV8_420,
 		.bpw = 32,
 		.ppw = 4,
@@ -611,7 +611,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(33),
 	},
 	{
-		.dts_name = "nv12_64t",
+		.dts_name = "T608",
 		.id = XILINX_FRMBUF_FMT_Y_UV8_420,
 		.bpw = 32,
 		.ppw = 4,
@@ -622,7 +622,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(34),
 	},
 	{
-		.dts_name = "y_uv10_420_32t",
+		.dts_name = "T50A",
 		.id = XILINX_FRMBUF_FMT_Y_UV10_420,
 		.bpw = 40,
 		.ppw = 4,
@@ -633,7 +633,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(35),
 	},
 	{
-		.dts_name = "y_uv10_420_64t",
+		.dts_name = "T60A",
 		.id = XILINX_FRMBUF_FMT_Y_UV10_420,
 		.bpw = 40,
 		.ppw = 4,
@@ -644,7 +644,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(36),
 	},
 	{
-		.dts_name = "y_uv12_420_32t",
+		.dts_name = "T50C",
 		.id = XILINX_FRMBUF_FMT_Y_UV12_420,
 		.bpw = 12,
 		.ppw = 1,
@@ -655,7 +655,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(37),
 	},
 	{
-		.dts_name = "y_uv12_420_64t",
+		.dts_name = "T60C",
 		.id = XILINX_FRMBUF_FMT_Y_UV12_420,
 		.bpw = 12,
 		.ppw = 1,
@@ -666,7 +666,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(38),
 	},
 	{
-		.dts_name = "nv16_32t",
+		.dts_name = "T528",
 		.id = XILINX_FRMBUF_FMT_Y_UV8,
 		.bpw = 32,
 		.ppw = 4,
@@ -677,7 +677,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(39),
 	},
 	{
-		.dts_name = "nv16_64t",
+		.dts_name = "T628",
 		.id = XILINX_FRMBUF_FMT_Y_UV8,
 		.bpw = 32,
 		.ppw = 4,
@@ -688,7 +688,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(40),
 	},
 	{
-		.dts_name = "y_uv10_32t",
+		.dts_name = "T52A",
 		.id = XILINX_FRMBUF_FMT_Y_UV10,
 		.bpw = 40,
 		.ppw = 4,
@@ -699,7 +699,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(41),
 	},
 	{
-		.dts_name = "y_uv10_64t",
+		.dts_name = "T62A",
 		.id = XILINX_FRMBUF_FMT_Y_UV10,
 		.bpw = 40,
 		.ppw = 4,
@@ -710,7 +710,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(42),
 	},
 	{
-		.dts_name = "y_uv12_32t",
+		.dts_name = "T52C",
 		.id = XILINX_FRMBUF_FMT_Y_UV12,
 		.bpw = 12,
 		.ppw = 1,
@@ -721,7 +721,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(43),
 	},
 	{
-		.dts_name = "y_uv12_64t",
+		.dts_name = "T62C",
 		.id = XILINX_FRMBUF_FMT_Y_UV12,
 		.bpw = 12,
 		.ppw = 1,
@@ -732,7 +732,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(44),
 	},
 	{
-		.dts_name = "y_u_v8_32t",
+		.dts_name = "T548",
 		.id = XILINX_FRMBUF_FMT_Y_U_V8,
 		.bpw = 32,
 		.ppw = 4,
@@ -743,7 +743,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(45),
 	},
 	{
-		.dts_name = "y_u_v8_64t",
+		.dts_name = "T648",
 		.id = XILINX_FRMBUF_FMT_Y_U_V8,
 		.bpw = 32,
 		.ppw = 4,
@@ -754,7 +754,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(46),
 	},
 	{
-		.dts_name = "y_u_v10_32t",
+		.dts_name = "T54A",
 		.id = XILINX_FRMBUF_FMT_Y_U_V10,
 		.bpw = 40,
 		.ppw = 4,
@@ -765,7 +765,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(47),
 	},
 	{
-		.dts_name = "y_u_v10_64t",
+		.dts_name = "T64A",
 		.id = XILINX_FRMBUF_FMT_Y_U_V10,
 		.bpw = 40,
 		.ppw = 4,
@@ -776,7 +776,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(48),
 	},
 	{
-		.dts_name = "y_u_v12_32t",
+		.dts_name = "T54C",
 		.id = XILINX_FRMBUF_FMT_Y_U_V12,
 		.bpw = 12,
 		.ppw = 1,
@@ -787,7 +787,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(49),
 	},
 	{
-		.dts_name = "y_u_v12_64t",
+		.dts_name = "T64C",
 		.id = XILINX_FRMBUF_FMT_Y_U_V12,
 		.bpw = 12,
 		.ppw = 1,
