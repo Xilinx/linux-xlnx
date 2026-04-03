@@ -28,6 +28,16 @@
 #include <linux/firmware/xlnx-event-manager.h>
 #include "zynqmp-debug.h"
 
+/* SCMI Node ID encoding constants */
+#define SCMI_NODEID_CLASS_SHIFT		26
+#define SCMI_NODEID_SUBCLASS_SHIFT	20
+#define SCMI_NODEID_TYPE_SHIFT		14
+#define SCMI_NODEID_FIELD_MASK		GENMASK(5, 0)
+#define SCMI_NODEID_INDEX_MASK		0x3FFF
+#define SCMI_NODECLASS			0x06U
+#define SCMI_NODESUBCLASS		0x0AU
+#define SCMI_NODETYPE			0x0FU
+
 /* CRL registers and bitfields */
 #define CRL_APB_BASE			0xFF5E0000U
 /* BOOT_PIN_CTRL- Used to control the mode pins after boot */
@@ -36,6 +46,37 @@
 #define CRL_APB_BOOTPIN_CTRL_MASK	0xF0FU
 
 static unsigned long register_address;
+
+/**
+ * prepare_node_id() - Prepare node ID for PM firmware calls
+ * @node_id:	Input ID - either a full firmware Node ID or a simple SCMI index
+ *
+ * This function handles two types of input and produces a properly formatted
+ * firmware Node ID:
+ *
+ * 1. Full firmware Node ID (class bits [31:26] are non-zero):
+ *    Returns the ID unchanged as it's already properly formatted.
+ *
+ * 2. Simple SCMI Index (class bits [31:26] are zero):
+ *    Encodes the index into a full firmware Node ID using hardcoded values:
+ *    - SCMI_NODECLASS (0x06) for Class field [31:26]
+ *    - SCMI_NODESUBCLASS (0x0A) for Subclass field [25:20]
+ *    - SCMI_NODETYPE (0x0F) for Type field [19:14]
+ *    - node_id for Index field [13:0]
+ *    (e.g., 0xBF -> 0x18A3C0BF with class=0x06, subclass=0x0A, type=0x0F, index=0xBF)
+ *
+ * Return: Full firmware node ID (or) SCMI encoded node ID
+ */
+static inline u32 prepare_node_id(u32 node_id)
+{
+	if (node_id & (SCMI_NODEID_FIELD_MASK << SCMI_NODEID_CLASS_SHIFT))
+		return node_id;
+
+	return ((SCMI_NODECLASS & SCMI_NODEID_FIELD_MASK) << SCMI_NODEID_CLASS_SHIFT) |
+	       ((SCMI_NODESUBCLASS & SCMI_NODEID_FIELD_MASK) << SCMI_NODEID_SUBCLASS_SHIFT) |
+	       ((SCMI_NODETYPE & SCMI_NODEID_FIELD_MASK) << SCMI_NODEID_TYPE_SHIFT) |
+	       (node_id & SCMI_NODEID_INDEX_MASK);
+}
 
 int zynqmp_pm_register_sgi(u32 sgi_num, u32 reset)
 {
@@ -440,7 +481,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_sd_dll_reset);
  */
 int zynqmp_pm_ospi_mux_select(u32 dev_id, u32 select)
 {
-	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 3, dev_id, IOCTL_OSPI_MUX_SELECT, select);
+	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 3, prepare_node_id(dev_id),
+				   IOCTL_OSPI_MUX_SELECT, select);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_ospi_mux_select);
 
@@ -514,7 +556,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_tapdelay_bypass);
 
 int zynqmp_pm_usb_set_state(u32 node, u32 state, u32 value)
 {
-	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 4, node, IOCTL_USB_SET_STATE,
+	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 4, prepare_node_id(node), IOCTL_USB_SET_STATE,
 				   state, value);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_usb_set_state);
@@ -560,7 +602,8 @@ int zynqmp_pm_aie_operation(u32 node, u16 start_col, u16 num_col, u32 operation)
 
 	partition = num_col;
 	partition = ((partition << 16U) | start_col);
-	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 4, node, IOCTL_AIE_OPS,
+
+	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 4, prepare_node_id(node), IOCTL_AIE_OPS,
 				   partition, operation);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_aie_operation);
@@ -576,7 +619,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_aie_operation);
  */
 int versal2_pm_aie2ps_operation(u32 node, u32 size, u32 addr_high, u32 addr_low)
 {
-	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 5, node, IOCTL_AIE2PS_OPS,
+	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 5, prepare_node_id(node), IOCTL_AIE2PS_OPS,
 				   size, addr_high, addr_low);
 }
 EXPORT_SYMBOL_GPL(versal2_pm_aie2ps_operation);
@@ -835,7 +878,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_suspend_mode);
 int zynqmp_pm_request_node(const u32 node, const u32 capabilities,
 			   const u32 qos, const enum zynqmp_pm_request_ack ack)
 {
-	return zynqmp_pm_invoke_fn(PM_REQUEST_NODE, NULL, 4, node, capabilities, qos, ack);
+	return zynqmp_pm_invoke_fn(PM_REQUEST_NODE, NULL, 4, prepare_node_id(node),
+				   capabilities, qos, ack);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_request_node);
 
@@ -851,7 +895,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_request_node);
  */
 int zynqmp_pm_release_node(const u32 node)
 {
-	return zynqmp_pm_invoke_fn(PM_RELEASE_NODE, NULL, 1, node);
+	return zynqmp_pm_invoke_fn(PM_RELEASE_NODE, NULL, 1, prepare_node_id(node));
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_release_node);
 
@@ -870,7 +914,8 @@ int zynqmp_pm_get_rpu_mode(u32 node_id, enum rpu_oper_mode *rpu_mode)
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 	int ret;
 
-	ret = zynqmp_pm_invoke_fn(PM_IOCTL, ret_payload, 2, node_id, IOCTL_GET_RPU_OPER_MODE);
+	ret = zynqmp_pm_invoke_fn(PM_IOCTL, ret_payload, 2, prepare_node_id(node_id),
+				  IOCTL_GET_RPU_OPER_MODE);
 
 	/* only set rpu_mode if no error */
 	if (ret == XST_PM_SUCCESS)
@@ -892,8 +937,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_rpu_mode);
  */
 int zynqmp_pm_set_rpu_mode(u32 node_id, enum rpu_oper_mode rpu_mode)
 {
-	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 3, node_id, IOCTL_SET_RPU_OPER_MODE,
-				   (u32)rpu_mode);
+	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 3, prepare_node_id(node_id),
+				   IOCTL_SET_RPU_OPER_MODE, (u32)rpu_mode);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_rpu_mode);
 
@@ -909,8 +954,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_rpu_mode);
  */
 int zynqmp_pm_set_rpu_boot_addr(u32 node_id, u64 boot_addr)
 {
-	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 3, node_id, IOCTL_RPU_BOOT_ADDR_CONFIG,
-				   boot_addr);
+	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 3, prepare_node_id(node_id),
+				   IOCTL_RPU_BOOT_ADDR_CONFIG, boot_addr);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_rpu_boot_addr);
 
@@ -926,8 +971,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_rpu_boot_addr);
  */
 int zynqmp_pm_set_tcm_config(u32 node_id, enum rpu_tcm_comb tcm_mode)
 {
-	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 3, node_id, IOCTL_TCM_COMB_CONFIG,
-				   (u32)tcm_mode);
+	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 3, prepare_node_id(node_id),
+				   IOCTL_TCM_COMB_CONFIG, (u32)tcm_mode);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_tcm_config);
 
@@ -959,7 +1004,7 @@ int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
 	if (!status || !requirements || !usage)
 		return -EINVAL;
 
-	ret = zynqmp_pm_invoke_fn(PM_GET_NODE_STATUS, ret_payload, 1, node);
+	ret = zynqmp_pm_invoke_fn(PM_GET_NODE_STATUS, ret_payload, 1, prepare_node_id(node));
 	if (ret_payload[0] == XST_PM_SUCCESS) {
 		*status = ret_payload[1];
 		*requirements = ret_payload[2];
@@ -1009,7 +1054,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_rpu_node_status);
 int zynqmp_pm_force_pwrdwn(const u32 node,
 			   const enum zynqmp_pm_request_ack ack)
 {
-	return zynqmp_pm_invoke_fn(PM_FORCE_POWERDOWN, NULL, 2, node, ack);
+	return zynqmp_pm_invoke_fn(PM_FORCE_POWERDOWN, NULL, 2, prepare_node_id(node), ack);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_force_pwrdwn);
 
@@ -1028,8 +1073,8 @@ int zynqmp_pm_request_wake(const u32 node,
 			   const enum zynqmp_pm_request_ack ack)
 {
 	/* set_addr flag is encoded into 1st bit of address */
-	return zynqmp_pm_invoke_fn(PM_REQUEST_WAKEUP, NULL, 4, node, address | set_addr,
-				   address >> 32, ack);
+	return zynqmp_pm_invoke_fn(PM_REQUEST_WAKEUP, NULL, 4, prepare_node_id(node),
+				   address | set_addr, address >> 32, ack);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_request_wake);
 
@@ -1049,7 +1094,8 @@ int zynqmp_pm_set_requirement(const u32 node, const u32 capabilities,
 			      const u32 qos,
 			      const enum zynqmp_pm_request_ack ack)
 {
-	return zynqmp_pm_invoke_fn(PM_SET_REQUIREMENT, NULL, 4, node, capabilities, qos, ack);
+	return zynqmp_pm_invoke_fn(PM_SET_REQUIREMENT, NULL, 4, prepare_node_id(node),
+				   capabilities, qos, ack);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_requirement);
 
@@ -1071,7 +1117,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_requirement);
 int zynqmp_pm_register_notifier(const u32 node, const u32 event,
 				const u32 wake, const u32 enable)
 {
-	return zynqmp_pm_invoke_fn(PM_REGISTER_NOTIFIER, NULL, 4, node, event, wake, enable);
+	return zynqmp_pm_invoke_fn(PM_REGISTER_NOTIFIER, NULL, 4, prepare_node_id(node),
+				   event, wake, enable);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_register_notifier);
 
@@ -1131,8 +1178,8 @@ int zynqmp_pm_sec_read_reg(u32 node_id, u32 offset, u32 *ret_value)
 	if (!ret_value)
 		return -EINVAL;
 
-	ret = zynqmp_pm_invoke_fn(PM_IOCTL, ret_payload, 4, node_id, IOCTL_READ_REG,
-				  offset, count);
+	ret = zynqmp_pm_invoke_fn(PM_IOCTL, ret_payload, 4, prepare_node_id(node_id),
+				  IOCTL_READ_REG, offset, count);
 
 	*ret_value = ret_payload[1];
 
@@ -1153,8 +1200,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_sec_read_reg);
 int zynqmp_pm_sec_mask_write_reg(const u32 node_id, const u32 offset, u32 mask,
 				 u32 value)
 {
-	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 5, node_id, IOCTL_MASK_WRITE_REG,
-				   offset, mask, value);
+	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 5, prepare_node_id(node_id),
+				   IOCTL_MASK_WRITE_REG, offset, mask, value);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_sec_mask_write_reg);
 
@@ -1175,7 +1222,7 @@ int zynqmp_pm_get_qos(u32 node, u32 *const def_qos, u32 *const qos)
 	if (!def_qos || !qos)
 		return -EINVAL;
 
-	ret = zynqmp_pm_invoke_fn(PM_IOCTL, ret_payload, 2, node, IOCTL_GET_QOS);
+	ret = zynqmp_pm_invoke_fn(PM_IOCTL, ret_payload, 2, prepare_node_id(node), IOCTL_GET_QOS);
 
 	*def_qos = ret_payload[1];
 	*qos = ret_payload[2];
@@ -1209,7 +1256,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_sd_config);
 int zynqmp_pm_set_gem_config(u32 node, enum pm_gem_config_type config,
 			     u32 value)
 {
-	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 4, node, IOCTL_SET_GEM_CONFIG, config, value);
+	return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 4, prepare_node_id(node),
+				   IOCTL_SET_GEM_CONFIG, config, value);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_gem_config);
 
