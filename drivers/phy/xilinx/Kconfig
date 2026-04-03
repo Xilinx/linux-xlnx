@@ -28,3 +28,15 @@ config PHY_XILINX_DPGTQUAD
 	  Enable this to support DP GT QUAD PHY controller core in FPGA.
 	  It is designed for enabling gt quad base configuration for Xilinx
 	  Displayport Tx and Rx subsystems.
+
+config PHY_AMD_VERSAL2_COMBO_PHY
+	tristate "AMD Versal2 USB3.1 SSP+/DP Alt Combo PHY Driver"
+	depends on TYPEC && (ARCH_ZYNQMP || COMPILE_TEST)
+	select GENERIC_PHY
+	help
+	  Enable this to support the AMD Versal2 USB3.1 SSP+/DP Alt combo
+	  PHY with Synopsys IP block. This PHY provides USB 3.1 SuperSpeed
+	  Plus and DisplayPort Alternate Mode on AMD Versal2 platforms.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called phy-amd-versal2-usbdp.
