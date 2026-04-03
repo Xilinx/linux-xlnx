@@ -1,0 +1,89 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/phy/amd,versal2-usbc31-dptx-phy.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: AMD Versal Gen 2 USB3.1 SSP+/DP Alt Combo PHY
+
+maintainers:
+  - Radhey Shyam Pandey <radhey.shyam.pandey@amd.com>
+
+description:
+  The AMD Versal Gen 2 USB3.1 SuperSpeedPlus / DisplayPort Alternate Mode
+  combo PHY provides the physical layer for USB Type-C operation. It supports
+  USB 3.1 Gen 2 (10 Gb/s) and DisplayPort Alt-Mode over a shared Type-C
+  connector, including lane muxing and orientation handling in conjunction
+  with an external Type-C/PD controller.
+
+properties:
+  compatible:
+    const: amd,versal2-usbc31-dptx-phy
+
+  reg:
+    items:
+      - description: CRPARA register block
+      - description: TCA (Type-C Adapter) register block
+
+  reg-names:
+    items:
+      - const: crpara
+      - const: tca
+
+  "#phy-cells":
+    description:
+      Cell allows setting the type of the PHY. Possible values are PHY_TYPE_USB3
+      and PHY_TYPE_DP.
+    const: 1
+
+  clocks:
+    description:
+      USB 3.1 PHY requires a reference clock with jitter < 10ps. The internal
+      reference clock has ~100ps jitter which does not satisfy this requirement.
+      A 24MHz external reference clock on the ref_pad_clk_p/m IO pads is
+      required for USB 3.1 PHY operation.
+    maxItems: 1
+
+  resets:
+    items:
+      - description: USB3 PHY reset
+
+  orientation-switch:
+    description: Flag the port as possible handler of orientation switching
+    type: boolean
+
+  port:
+    $ref: /schemas/graph.yaml#/properties/port
+    description:
+      A port node to link the PHY to a Type-C controller for the purpose
+      of handling orientation switching.
+
+required:
+  - compatible
+  - reg
+  - reg-names
+  - "#phy-cells"
+  - clocks
+  - resets
+
+additionalProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/phy/phy.h>
+
+    phy@ede40000 {
+        compatible = "amd,versal2-usbc31-dptx-phy";
+        reg = <0xede40000 0x10000>, <0xede50000 0x1000>;
+        reg-names = "crpara", "tca";
+        #phy-cells = <1>;
+        clocks = <&clk_ref>;
+        resets = <&reset_usb3>;
+        orientation-switch;
+
+        port {
+            usb3_dp_phy_ep: endpoint {
+                remote-endpoint = <&typec_ep>;
+            };
+        };
+    };

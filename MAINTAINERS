@@ -1291,6 +1291,13 @@ F:	drivers/spi/spi-amd-pci.c
 F:	drivers/spi/spi-amd.c
 F:	drivers/spi/spi-amd.h
 
+AMD VERSAL GEN 2 USB3.1 SSP+/DP ALT COMBO PHY DRIVER
+M:	Radhey Shyam Pandey <radhey.shyam.pandey@amd.com>
+L:	linux-kernel@vger.kernel.org
+L:	linux-phy@lists.infradead.org
+S:	Maintained
+F:	Documentation/devicetree/bindings/phy/amd,versal2-usbc31-dptx-phy.yaml
+
 AMD XDNA DRIVER
 M:	Min Ma <mamin506@gmail.com>
 M:	Lizhi Hou <lizhi.hou@amd.com>
