@@ -60,8 +60,8 @@ properties:
 
   xlnx,vid-formats:
     description: |
-      A list of strings indicating what video memory
-      formats the IP has been configured to support.
+      A list of strings indicating what video memory formats the IP has been
+      configured to support.
       The following table describes the legal string values to be used for
       the xlnx,vid-formats property.  To the left is the string value and the
       two columns to the right describe how this is mapped to an equivalent V4L2
@@ -120,12 +120,50 @@ properties:
       Y_UV16_420	x016		V4L2_PIX_FMT_X016	DRM_FORMAT_P016
       Y_UV16_420	x016		V4L2_PIX_FMT_X016M	DRM_FORMAT_P016
       Y16		y16		V4L2_PIX_FMT_Y16	<not supported>
+
+      Tiled video formats use a compact naming convention:
+        Byte 0: 'T' - Tiled format indicator
+        Byte 1: '5' = 32-byte tile, '6' = 64-byte tile
+        Byte 2: 'M' = mono (Y-only), '0' = 4:2:0, '2' = 4:2:2, '4' = 4:4:4
+        Byte 3: '8' = 8-bit, 'A' = 10-bit, 'C' = 12-bit
+
+      IP FORMAT (Tiled)  DTS String   V4L2 Fourcc            DRM Fourcc
+      ------------------|------------|----------------------|-------------------
+      Y8 32T		T5M8		V4L2_PIX_FMT_T5M8	DRM_FORMAT_T5M8
+      Y8 64T		T6M8		V4L2_PIX_FMT_T6M8	DRM_FORMAT_T6M8
+      Y10 32T		T5MA		V4L2_PIX_FMT_T5MA	DRM_FORMAT_T5MA
+      Y10 64T		T6MA		V4L2_PIX_FMT_T6MA	DRM_FORMAT_T6MA
+      Y12 32T		T5MC		V4L2_PIX_FMT_T5MC	DRM_FORMAT_T5MC
+      Y12 64T		T6MC		V4L2_PIX_FMT_T6MC	DRM_FORMAT_T6MC
+      Y_UV8_420 32T	T508		V4L2_PIX_FMT_T508	DRM_FORMAT_T508
+      Y_UV8_420 64T	T608		V4L2_PIX_FMT_T608	DRM_FORMAT_T608
+      Y_UV10_420 32T	T50A		V4L2_PIX_FMT_T50A	DRM_FORMAT_T50A
+      Y_UV10_420 64T	T60A		V4L2_PIX_FMT_T60A	DRM_FORMAT_T60A
+      Y_UV12_420 32T	T50C		V4L2_PIX_FMT_T50C	DRM_FORMAT_T50C
+      Y_UV12_420 64T	T60C		V4L2_PIX_FMT_T60C	DRM_FORMAT_T60C
+      Y_UV8 32T		T528		V4L2_PIX_FMT_T528	DRM_FORMAT_T528
+      Y_UV8 64T		T628		V4L2_PIX_FMT_T628	DRM_FORMAT_T628
+      Y_UV10 32T	T52A		V4L2_PIX_FMT_T52A	DRM_FORMAT_T52A
+      Y_UV10 64T	T62A		V4L2_PIX_FMT_T62A	DRM_FORMAT_T62A
+      Y_UV12 32T	T52C		V4L2_PIX_FMT_T52C	DRM_FORMAT_T52C
+      Y_UV12 64T	T62C		V4L2_PIX_FMT_T62C	DRM_FORMAT_T62C
+      Y_U_V8 32T	T548		V4L2_PIX_FMT_T548	DRM_FORMAT_T548
+      Y_U_V8 64T	T648		V4L2_PIX_FMT_T648	DRM_FORMAT_T648
+      Y_U_V10 32T	T54A		V4L2_PIX_FMT_T54A	DRM_FORMAT_T54A
+      Y_U_V10 64T	T64A		V4L2_PIX_FMT_T64A	DRM_FORMAT_T64A
+      Y_U_V12 32T	T54C		V4L2_PIX_FMT_T54C	DRM_FORMAT_T54C
+      Y_U_V12 64T	T64C		V4L2_PIX_FMT_T64C	DRM_FORMAT_T64C
     $ref: /schemas/types.yaml#/definitions/string-array
 
   xlnx,pixels-per-clock:
     description: Pixels per clock set in IP
     $ref: /schemas/types.yaml#/definitions/uint32
     enum: [1, 2, 4, 8]
+
+  xlnx,tile-formats:
+    type: boolean
+    description:
+      The IP is configured for tiled video formats.
 
   xlnx,dma-align:
     description:
@@ -165,56 +203,112 @@ required:
   - xlnx,max-width
 
 allOf:
+  # xlnx,tile-formats is only valid for v3.0 compatible strings
   - if:
-      required:
-        - xlnx,en-alpha
+      properties:
+        compatible:
+          enum:
+            - xlnx,axi-frmbuf-wr-v2.1
+            - xlnx,axi-frmbuf-wr-v2.2
+            - xlnx,axi-frmbuf-rd-v2.1
+            - xlnx,axi-frmbuf-rd-v2.2
     then:
       properties:
-        xlnx,vid-formats:
-          items:
-            enum:
-              - abgr8888
-              - argb8888
-              - avuy8888
-          minItems: 1
-          maxItems: 3
-    else:
+        xlnx,tile-formats: false
+
+  # When tiled mode: only tiled format strings
+  - if:
+      required:
+        - xlnx,tile-formats
+    then:
       properties:
+        xlnx,en-alpha: false
         xlnx,vid-formats:
           items:
             enum:
-              - xbgr8888
-              - bgr888
-              - xrgb8888
-              - rgb888
-              - xvuy8888
-              - vuy888
-              - yuyv
-              - uyvy
-              - y_u_v8
-              - nv16
-              - nv12
-              - y8
-              - y_u_v8_420
-              - xbgr2101010
-              - yuvx2101010
-              - y_u_v10
-              - xv20
-              - xv15
-              - y10
-              - xbgr4121212
-              - yuvx4121212
-              - y_u_v12
-              - x212
-              - x012
-              - y12
-              - rgb16
-              - yuv16
-              - x216
-              - x016
-              - y16
+              - T5M8
+              - T6M8
+              - T5MA
+              - T6MA
+              - T5MC
+              - T6MC
+              - T508
+              - T608
+              - T50A
+              - T60A
+              - T50C
+              - T60C
+              - T528
+              - T628
+              - T52A
+              - T62A
+              - T52C
+              - T62C
+              - T548
+              - T648
+              - T54A
+              - T64A
+              - T54C
+              - T64C
           minItems: 1
-          maxItems: 30
+          maxItems: 24
+
+  # When non-tiled mode with alpha enabled: only alpha formats
+  - if:
+      not:
+        required:
+          - xlnx,tile-formats
+    then:
+      if:
+        required:
+          - xlnx,en-alpha
+      then:
+        properties:
+          xlnx,vid-formats:
+            items:
+              enum:
+                - abgr8888
+                - argb8888
+                - avuy8888
+            minItems: 1
+            maxItems: 3
+      else:
+        properties:
+          xlnx,vid-formats:
+            items:
+              enum:
+                - xbgr8888
+                - bgr888
+                - xrgb8888
+                - rgb888
+                - xvuy8888
+                - vuy888
+                - yuyv
+                - uyvy
+                - y_u_v8
+                - nv16
+                - nv12
+                - y8
+                - y_u_v8_420
+                - xbgr2101010
+                - yuvx2101010
+                - y_u_v10
+                - xv20
+                - xv15
+                - y10
+                - xbgr4121212
+                - yuvx4121212
+                - y_u_v12
+                - x212
+                - x012
+                - y12
+                - rgb16
+                - yuv16
+                - x216
+                - x016
+                - y16
+            minItems: 1
+            maxItems: 30
 
 additionalProperties: false
 
