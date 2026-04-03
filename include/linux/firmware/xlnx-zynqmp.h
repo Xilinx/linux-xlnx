@@ -688,6 +688,7 @@ int zynqmp_pm_request_wake(const u32 node,
 			   const enum zynqmp_pm_request_ack ack);
 int zynqmp_pm_get_rpu_mode(u32 node_id, enum rpu_oper_mode *rpu_mode);
 int zynqmp_pm_set_rpu_mode(u32 node_id, enum rpu_oper_mode rpu_mode);
+int zynqmp_pm_set_rpu_boot_addr(u32 node_id, u64 boot_addr);
 int zynqmp_pm_set_tcm_config(u32 node_id, enum rpu_tcm_comb tcm_mode);
 int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
 			      u32 *const requirements, u32 *const usage);
@@ -992,6 +993,11 @@ static inline int zynqmp_pm_get_rpu_mode(u32 node_id, enum rpu_oper_mode *rpu_mo
 }
 
 static inline int zynqmp_pm_set_rpu_mode(u32 node_id, enum rpu_oper_mode rpu_mode)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_set_rpu_boot_addr(u32 node_id, u64 boot_addr)
 {
 	return -ENODEV;
 }

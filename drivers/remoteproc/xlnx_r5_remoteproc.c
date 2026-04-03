@@ -32,7 +32,6 @@
 
 #define RSC_TBL_XLNX_MAGIC	((uint32_t)'x' << 24 | (uint32_t)'a' << 16 | \
 				 (uint32_t)'m' << 8 | (uint32_t)'p')
-#define NUM_PM_IOCTL_ARGS	3
 
 /*
  * settings for RPU cluster mode which
@@ -376,9 +375,7 @@ static int zynqmp_setup_ddr_boot(struct zynqmp_r5_core *r5_core,
 		return ret;
 	}
 
-	ret = zynqmp_pm_invoke_fn(PM_IOCTL, NULL, NUM_PM_IOCTL_ARGS,
-				  r5_core->pm_domain_id,
-				  IOCTL_RPU_BOOT_ADDR_CONFIG, boot_addr);
+	ret = zynqmp_pm_set_rpu_boot_addr(r5_core->pm_domain_id, boot_addr);
 	if (ret < 0) {
 		dev_err(r5_core->dev, "failed to set RPU Boot address.\n");
 		return ret;
