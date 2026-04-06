@@ -155,10 +155,9 @@
 	#address-cells = <1>;
 	#size-cells = <0>;
 	reset-names = "qspi";
-	mt35xu02g: flash@0 {
+	mt35xu02g0: flash@0 {
 		compatible = "micron,m25p80", "jedec,spi-nor";
-		reg = <0>, <1>;
-		stacked-memories = /bits/ 64 <0x8000000 0x8000000>; /* 128MB */
+		reg = <0>;
 		#address-cells = <1>;
 		#size-cells = <1>;
 		cdns,read-delay = <0>;
@@ -170,6 +169,45 @@
 		spi-rx-bus-width = <8>;
 		spi-max-frequency = <20000000>;
 		reset-gpios = <&gpio1 0xc GPIO_ACTIVE_LOW>;
+
+		partitions {
+			#size-cells = <1>;
+			#address-cells = <1>;
+			compatible = "fixed-partitions";
+
+			ospi_flash0: partition@0 {
+				reg = <0x0 0x8000000>; /* 128MB */
+				label = "ospi-flash0";
+				part-concat-next = <&ospi_flash1>;
+			};
+		};
+	};
+
+	mt35xu02g1: flash@1 {
+		compatible = "micron,m25p80", "jedec,spi-nor";
+		reg = <1>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		cdns,read-delay = <0>;
+		cdns,tshsl-ns = <0>;
+		cdns,tsd2d-ns = <0>;
+		cdns,tchsh-ns = <1>;
+		cdns,tslch-ns = <1>;
+		spi-tx-bus-width = <8>;
+		spi-rx-bus-width = <8>;
+		spi-max-frequency = <20000000>;
+		reset-gpios = <&gpio1 0xc GPIO_ACTIVE_LOW>;
+
+		partitions {
+			#size-cells = <1>;
+			#address-cells = <1>;
+			compatible = "fixed-partitions";
+
+			ospi_flash1: partition@0 {
+				reg = <0x0 0x8000000>; /* 128MB */
+				label = "ospi-flash1";
+			};
+		};
 	};
 };
 
