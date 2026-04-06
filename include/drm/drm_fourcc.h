@@ -83,7 +83,7 @@ struct drm_format_info {
 		 * triplet @char_per_block, @block_w, @block_h for better
 		 * describing the pixel format.
 		 */
-		u8 cpp[DRM_FORMAT_MAX_PLANES];
+		u32 cpp[DRM_FORMAT_MAX_PLANES];
 
 		/**
 		 * @char_per_block:
