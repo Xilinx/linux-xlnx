@@ -18,6 +18,7 @@
 
 #include "xilinx_axienet_tsn.h"
 #include "xilinx_tsn_shaper.h"
+#include <linux/math64.h>
 #include <net/pkt_sched.h>
 
 /* Total number of TAS GCL entries */
@@ -478,7 +479,7 @@ static int xlnx_cbs_add(struct net_device *ndev,
 	 * Hardware uses CBS_HW_BW_MAX (8192) as 100% bandwidth representation
 	 * Calculate hardware values based on link speed
 	 */
-	hw_idleslope = ((u64)qopt->idleslope * CBS_HW_BW_MAX) / link_speed_kbps;
+	hw_idleslope = div_u64((u64)qopt->idleslope * CBS_HW_BW_MAX, link_speed_kbps);
 	hw_sendslope = CBS_HW_BW_MAX - hw_idleslope;
 
 	/* Get CBS index from hardware-detected mapping */
