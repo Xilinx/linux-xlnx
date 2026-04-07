@@ -1669,10 +1669,10 @@ static void xilinx_frmbuf_start_transfer(struct xilinx_frmbuf_chan *chan)
 
 	dev_dbg(xdev->dev, "fbid: %u, vsize: %u, stride: %u, hsize: %u\n",
 		chan->vid_fmt->id, desc->hw.vsize, desc->hw.stride, desc->hw.hsize);
-	dev_dbg(xdev->dev, "buffer addr 0 = 0x%08llx, 1 = 0x%08llx, 2 = 0x%08llx\n",
-		desc->hw.luma_plane_addr,
-		desc->hw.chroma_plane_addr[0],
-		desc->hw.chroma_plane_addr[1]);
+	dev_dbg(xdev->dev, "buffer addr 0 = %pad, 1 = %pad, 2 = %pad\n",
+		&desc->hw.luma_plane_addr,
+		&desc->hw.chroma_plane_addr[0],
+		&desc->hw.chroma_plane_addr[1]);
 	dev_dbg(xdev->dev, "pitch = %u\n", frmbuf_read(chan, XILINX_FRMBUF_STRIDE_OFFSET));
 
 	/* Start the hardware */
@@ -1882,7 +1882,7 @@ xilinx_frmbuf_dma_prep_interleaved(struct dma_chan *dchan,
 	hw->hsize = (xt->sgl[0].size * chan->vid_fmt->ppw * 8) /
 		     chan->vid_fmt->bpw;
 
-	dev_dbg(chan->xdev->dev, "hsize calc sgl[0].size = %lu, ppw = %u, bpw = %u hsize = %u\n",
+	dev_dbg(chan->xdev->dev, "hsize calc sgl[0].size = %zu, ppw = %u, bpw = %u hsize = %u\n",
 		xt->sgl[0].size, chan->vid_fmt->ppw, chan->vid_fmt->bpw, hw->hsize);
 
 	/* hsize calc should not have resulted in an odd number */
