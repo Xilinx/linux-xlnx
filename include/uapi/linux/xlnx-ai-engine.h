@@ -395,7 +395,7 @@ struct aie_dmabuf_bd_args {
  */
 struct aie_dmabuf_bd_cmd {
 	struct aie_location loc;
-	u32 bd[18];
+	__u32 bd[18];
 };
 
 /**
