@@ -273,6 +273,7 @@ rproc_find_carveout_by_name(struct rproc *rproc, const char *name, ...)
 
 	return mem;
 }
+EXPORT_SYMBOL(rproc_find_carveout_by_name);
 
 /**
  * rproc_check_carveout_da() - Check specified carveout da configuration
