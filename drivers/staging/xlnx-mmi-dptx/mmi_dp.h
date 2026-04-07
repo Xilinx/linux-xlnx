@@ -8,6 +8,8 @@
 #ifndef __MMI_DP_H__
 #define __MMI_DP_H__
 
+#include <linux/bitfield.h>
+
 #include <drm/display/drm_dp_helper.h>
 #include <drm/drm_bridge.h>
 
