@@ -184,14 +184,6 @@ enum sysmon_alarm_bit {
 	SYSMON_BIT_TEMP = 9,
 };
 
-static const unsigned int sysmon_oversampling_avail[5] = {
-	SYSMON_AVERAGE_FULL_SAMPLE_RATE,
-	SYSMON_AVERAGE_2_SAMPLE_RATE,
-	SYSMON_AVERAGE_4_SAMPLE_RATE,
-	SYSMON_AVERAGE_8_SAMPLE_RATE,
-	SYSMON_AVERAGE_16_SAMPLE_RATE,
-};
-
 /**
  * struct sysmon - Driver data for Sysmon
  * @base: physical base address of device
