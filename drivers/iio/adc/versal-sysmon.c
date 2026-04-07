@@ -17,6 +17,14 @@
 
 #define SYSMON_EVENT_WORK_DELAY_MS	1000
 
+static const unsigned int sysmon_oversampling_avail[] = {
+	SYSMON_AVERAGE_FULL_SAMPLE_RATE,
+	SYSMON_AVERAGE_2_SAMPLE_RATE,
+	SYSMON_AVERAGE_4_SAMPLE_RATE,
+	SYSMON_AVERAGE_8_SAMPLE_RATE,
+	SYSMON_AVERAGE_16_SAMPLE_RATE,
+};
+
 static LIST_HEAD(sysmon_list_head);
 
 static bool secure_mode;
