@@ -874,7 +874,7 @@ static void xisp_set_gamma_common(const u32 *lut, const u32 base_reg, struct xis
 	bool gamma_bypass_enabled = XGET_BIT(XISP_GAMMA_INDEX, xisp->module_bypass_en);
 	bool gamma_bypass = XGET_BIT(XISP_GAMMA_INDEX, xisp->module_bypass);
 
-	if (gamma_enabled & in_type_conf_gamma) {
+	if (gamma_enabled && in_type_conf_gamma) {
 		if (!gamma_bypass_enabled || !(gamma_bypass_enabled && gamma_bypass))
 			xisp_set_lut_entries(xisp, lut, base_reg);
 	}
