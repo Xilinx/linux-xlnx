@@ -207,14 +207,7 @@ static int sysmon_i2c_probe(struct i2c_client *client)
 	sysmon->temp_read = &sysmon_i2c_temp_read;
 	dev_set_drvdata(&client->dev, indio_dev);
 
-	return iio_device_register(indio_dev);
-}
-
-static void sysmon_i2c_remove(struct i2c_client *client)
-{
-	struct iio_dev *indio_dev = dev_get_drvdata(&client->dev);
-
-	iio_device_unregister(indio_dev);
+	return devm_iio_device_register(&client->dev, indio_dev);
 }
 
 static const struct of_device_id sysmon_i2c_of_match_table[] = {
@@ -232,7 +225,6 @@ MODULE_DEVICE_TABLE(of, sysmon_i2c_of_match_table);
 
 static struct i2c_driver sysmon_i2c_driver = {
 	.probe = sysmon_i2c_probe,
-	.remove = sysmon_i2c_remove,
 	.driver = {
 		.name = "sysmon_i2c",
 		.of_match_table = sysmon_i2c_of_match_table,
