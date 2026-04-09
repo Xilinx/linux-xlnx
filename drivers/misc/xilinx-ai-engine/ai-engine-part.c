@@ -378,6 +378,12 @@ static int aie_part_read_register(struct aie_partition *apart, size_t offset,
 	void __iomem *va;
 	int ret;
 
+	if (len % sizeof(u32)) {
+		dev_err(&apart->dev,
+			"read length 0x%zx is not 32-bit aligned\n", len);
+		return -EINVAL;
+	}
+
 	/* offset is expected to be relative to the start of the partition */
 	ret = aie_part_reg_validation(apart, offset, len, 0);
 	if (ret) {
@@ -388,10 +394,17 @@ static int aie_part_read_register(struct aie_partition *apart, size_t offset,
 
 	offset += aie_aperture_cal_regoff(aperture, apart->range.start, 0);
 	va = aperture->base + offset;
-	if (len == 4)
+
+	if (len == sizeof(u32)) {
 		*((u32 *)data) = ioread32(va);
-	else
+	} else if (len % sizeof(u64)) {
+		size_t align64 = len - sizeof(u32);
+
+		memcpy_fromio(data, va, align64);
+		*((u32 *)(data + align64)) = ioread32(va + align64);
+	} else {
 		memcpy_fromio(data, va, len);
+	}
 
 	return (int)len;
 }
