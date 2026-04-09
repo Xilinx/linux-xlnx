@@ -2429,6 +2429,224 @@ static const struct aie_l2_intr_ctrl_attr aie2ps_l2_intr_ctrl = {
 	.num_broadcasts = 0x10U,
 };
 
+static const struct aie_reg_range aie2ps_shim_tile_ranges[] = {
+	/* Lock registers + Locks Event Selection */
+	{.offset = 0x00000, .len = 0x128},
+	{.offset = 0x00128, .len = 0x04},
+	/* Interrupt controller 2nd level */
+	{.offset = 0x01000, .len = 0x10},
+	{.offset = 0x01010, .len = 0x04},
+	/* Config registers */
+	{.offset = 0x02000, .len = 0x04},
+	{.offset = 0x02100, .len = 0x08},
+	{.offset = 0x02108, .len = 0x04},
+	{.offset = 0x02120, .len = 0x04},
+	{.offset = 0x03000, .len = 0x04},
+	/* DMA BD + Control/Status */
+	{.offset = 0x09000, .len = 0x348},
+	{.offset = 0x09348, .len = 0x04},
+	/* PL Interface */
+	{.offset = 0x30000, .len = 0x10},
+	/* Performance counters */
+	{.offset = 0x31000, .len = 0x38},
+	{.offset = 0x31080, .len = 0x08},
+	/* Timer/Event */
+	{.offset = 0x34000, .len = 0x100},
+	/* Event Status */
+	{.offset = 0x34200, .len = 0x20},
+	/* Combo/Edge events */
+	{.offset = 0x34400, .len = 0x08},
+	{.offset = 0x34408, .len = 0x04},
+	/* Event Groups */
+	{.offset = 0x34500, .len = 0x30},
+	/* Event register */
+	{.offset = 0x34600, .len = 0x04},
+	/* Interrupt controller 1st level */
+	{.offset = 0x35000, .len = 0x50},
+	{.offset = 0x35050, .len = 0x04},
+	/* BISR */
+	{.offset = 0x36000, .len = 0x50},
+	/* Stream Switch Master Config */
+	{.offset = 0x3F000, .len = 0x58},
+	{.offset = 0x3F058, .len = 0x04},
+	/* Stream Switch Slave Config */
+	{.offset = 0x3F100, .len = 0x60},
+	/* Stream Switch Slave Slots */
+	{.offset = 0x3F200, .len = 0x180},
+	/* Stream Switch Deterministic Merge */
+	{.offset = 0x3F800, .len = 0x18},
+	{.offset = 0x3F818, .len = 0x04},
+	/* Stream Switch Event/Status */
+	{.offset = 0x3FF00, .len = 0x38},
+	{.offset = 0x3FF38, .len = 0x04},
+	/* Module Clock/Reset Control */
+	{.offset = 0x7FF00, .len = 0x58},
+	{.offset = 0x7FF58, .len = 0x04},
+	/* Core Program Memory + Core Private Data Memory */
+	{.offset = 0x80000, .len = 0x8000},
+	{.offset = 0x88000, .len = 0x4000},
+	/* MDM Debug Registers */
+	{.offset = 0xB0010, .len = 0x08},
+	{.offset = 0xB0018, .len = 0x04},
+	{.offset = 0xB5440, .len = 0x04},
+	{.offset = 0xB5480, .len = 0x04},
+	{.offset = 0xB54C0, .len = 0x04},
+	{.offset = 0xB5580, .len = 0x04},
+	{.offset = 0xB55C0, .len = 0x04},
+	/* Core registers */
+	{.offset = 0xC0000, .len = 0x08},
+	{.offset = 0xC0008, .len = 0x04},
+	{.offset = 0xC0020, .len = 0x20},
+	{.offset = 0xC0100, .len = 0x20},
+	{.offset = 0xC0120, .len = 0x04},
+	/* Module Data Memory */
+	{.offset = 0xD0000, .len = 0x8000},
+};
+
+static const struct aie_reg_range aie2ps_core_tile_ranges[] = {
+	/* Data Memory */
+	{.offset = 0x00000, .len = 0x10000},
+	/* Memory Performance counters */
+	{.offset = 0x11000, .len = 0x30},
+	{.offset = 0x11080, .len = 0x08},
+	/* ECC */
+	{.offset = 0x12000, .len = 0x04},
+	{.offset = 0x12110, .len = 0x18},
+	/* Memory Timer/Event */
+	{.offset = 0x14000, .len = 0x88},
+	{.offset = 0x14088, .len = 0x04},
+	{.offset = 0x140D0, .len = 0x38},
+	/* Event Status */
+	{.offset = 0x14200, .len = 0x10},
+	/* Combo/Edge Events */
+	{.offset = 0x14400, .len = 0x08},
+	{.offset = 0x14408, .len = 0x04},
+	/* Event Groups */
+	{.offset = 0x14500, .len = 0x20},
+	/* Spare/Memory Control */
+	{.offset = 0x16000, .len = 0x10},
+	{.offset = 0x16010, .len = 0x04},
+	/* DMA BD registers */
+	{.offset = 0x1D000, .len = 0x1F8},
+	/* DMA Control/Status */
+	{.offset = 0x1DE00, .len = 0x20},
+	{.offset = 0x1DF00, .len = 0x20},
+	/* Lock registers + Locks Event Selection */
+	{.offset = 0x1F000, .len = 0x128},
+	{.offset = 0x1F128, .len = 0x04},
+	/* Program Memory */
+	{.offset = 0x20000, .len = 0x8000},
+	/* Core BM registers */
+	{.offset = 0x30000, .len = 0x800},
+	/* Core X registers */
+	{.offset = 0x31800, .len = 0x300},
+	/* Core LDFIFO/STFIFO/FIFOXTRA */
+	{.offset = 0x32400, .len = 0x1C0},
+	/* Core EG registers */
+	{.offset = 0x32600, .len = 0xC0},
+	/* Core F registers */
+	{.offset = 0x32700, .len = 0xC0},
+	/* Core R + M/DN/DJ/DC + P/S registers */
+	{.offset = 0x32800, .len = 0x4B0},
+	{.offset = 0x32CB0, .len = 0x04},
+	/* Core PC/FC/SP/LR/LS/LE/LC/LCI/CR/SR */
+	{.offset = 0x32D00, .len = 0xA0},
+	{.offset = 0x32DA0, .len = 0x04},
+	{.offset = 0x32DC0, .len = 0x10},
+	{.offset = 0x32DD0, .len = 0x04},
+	/* Core Timer/Event */
+	{.offset = 0x34000, .len = 0x88},
+	{.offset = 0x34088, .len = 0x04},
+	{.offset = 0x340D0, .len = 0x30},
+	/* Event Status */
+	{.offset = 0x34200, .len = 0x10},
+	/* Combo/Edge Events */
+	{.offset = 0x34400, .len = 0x08},
+	{.offset = 0x34408, .len = 0x04},
+	/* Event Groups */
+	{.offset = 0x34500, .len = 0x20},
+	{.offset = 0x34520, .len = 0x04},
+	/* CSSD/Accumulator/Memory Control */
+	{.offset = 0x36040, .len = 0x04},
+	{.offset = 0x36060, .len = 0x10},
+	{.offset = 0x36070, .len = 0x04},
+	/* Core Performance counters */
+	{.offset = 0x37500, .len = 0x08},
+	{.offset = 0x37508, .len = 0x04},
+	{.offset = 0x37520, .len = 0x10},
+	{.offset = 0x37580, .len = 0x10},
+	/* Core Control/Status/Debug */
+	{.offset = 0x38000, .len = 0x38},
+	{.offset = 0x38038, .len = 0x04},
+	{.offset = 0x38100, .len = 0x20},
+	{.offset = 0x38120, .len = 0x04},
+	/* Stream Switch Master Config */
+	{.offset = 0x3F000, .len = 0x58},
+	{.offset = 0x3F058, .len = 0x04},
+	/* Stream Switch Slave Config */
+	{.offset = 0x3F100, .len = 0x60},
+	{.offset = 0x3F160, .len = 0x04},
+	/* Stream Switch Slave Slots */
+	{.offset = 0x3F200, .len = 0x190},
+	/* Stream Switch Deterministic Merge */
+	{.offset = 0x3F800, .len = 0x18},
+	{.offset = 0x3F818, .len = 0x04},
+	/* Stream Switch Event/Status */
+	{.offset = 0x3FF00, .len = 0x38},
+	{.offset = 0x3FF38, .len = 0x04},
+	/* Module Clock/Reset/Tile Control */
+	{.offset = 0x60000, .len = 0x30},
+	{.offset = 0x60030, .len = 0x04},
+	{.offset = 0x60100, .len = 0x08},
+};
+
+static const struct aie_reg_range aie2ps_mem_tile_ranges[] = {
+	/* Data Memory */
+	{.offset = 0x00000, .len = 0x80000},
+	/* Performance counters */
+	{.offset = 0x91000, .len = 0x38},
+	{.offset = 0x91080, .len = 0x10},
+	/* ECC */
+	{.offset = 0x92000, .len = 0x04},
+	{.offset = 0x92110, .len = 0x10},
+	{.offset = 0x92120, .len = 0x04},
+	/* Timer/Event */
+	{.offset = 0x94000, .len = 0x110},
+	/* Event Status */
+	{.offset = 0x94200, .len = 0x18},
+	/* Combo/Edge Events */
+	{.offset = 0x94400, .len = 0x08},
+	{.offset = 0x94408, .len = 0x04},
+	/* Event Groups */
+	{.offset = 0x94500, .len = 0x20},
+	{.offset = 0x94520, .len = 0x04},
+	/* CSSD/Memory Control */
+	{.offset = 0x96040, .len = 0x08},
+	{.offset = 0x96048, .len = 0x04},
+	/* DMA BD + Control/Status */
+	{.offset = 0xA0000, .len = 0x6C8},
+	{.offset = 0xA06E0, .len = 0x18},
+	/* Stream Switch Master Config */
+	{.offset = 0xB0000, .len = 0x40},
+	{.offset = 0xB0040, .len = 0x04},
+	/* Stream Switch Slave Config */
+	{.offset = 0xB0100, .len = 0x48},
+	/* Stream Switch Slave Slots */
+	{.offset = 0xB0200, .len = 0x120},
+	/* Stream Switch Deterministic Merge */
+	{.offset = 0xB0800, .len = 0x18},
+	{.offset = 0xB0818, .len = 0x04},
+	/* Stream Switch Event/Status */
+	{.offset = 0xB0F00, .len = 0x38},
+	{.offset = 0xB0F38, .len = 0x04},
+	/* Lock registers + Locks Event Selection */
+	{.offset = 0xC0000, .len = 0x430},
+	/* Module Clock/Reset/Tile Control */
+	{.offset = 0xFFF00, .len = 0x20},
+	{.offset = 0xFFF20, .len = 0x04},
+	{.offset = 0xFFFF0, .len = 0x08},
+};
+
 static u32 aie2ps_get_tile_type(struct aie_device *adev, struct aie_location *loc)
 {
 	u8 num_mem_rows = adev->ttype_attr[AIE_TILE_TYPE_MEMORY].num_rows;
@@ -4256,6 +4474,12 @@ int aie2ps_device_init(struct aie_device *adev)
 	adev->l1_ctrl = &aie2ps_l1_intr_ctrl;
 	adev->l2_ctrl = &aie2ps_l2_intr_ctrl;
 	adev->hw_err_status = &aie2ps_hw_err_status;
+	adev->shim_tile_ranges = aie2ps_shim_tile_ranges;
+	adev->num_shim_tile_ranges = ARRAY_SIZE(aie2ps_shim_tile_ranges);
+	adev->core_tile_ranges = aie2ps_core_tile_ranges;
+	adev->num_core_tile_ranges = ARRAY_SIZE(aie2ps_core_tile_ranges);
+	adev->mem_tile_ranges = aie2ps_mem_tile_ranges;
+	adev->num_mem_tile_ranges = ARRAY_SIZE(aie2ps_mem_tile_ranges);
 	aie2ps_device_init_rscs_attr(adev);
 
 	return 0;
