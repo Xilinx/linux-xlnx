@@ -312,6 +312,16 @@ struct aie_single_reg_field {
 	u32 regoff;
 };
 
+/**
+ * struct aie_reg_range - AI engine register range
+ * @offset: starting register offset
+ * @len: length of register range
+ */
+struct aie_reg_range {
+	u32 offset;
+	u32 len;
+};
+
 struct aie_device;
 struct aie_partition;
 
@@ -1186,6 +1196,12 @@ struct aie_addrlen {
  * @mem_errors: memory module error attribute
  * @memtile_errors: memory tile error attribute
  * @shim_errors: shim tile error attribute
+ * @shim_tile_ranges: valid register ranges for shim tiles
+ * @core_tile_ranges: valid register ranges for core tiles
+ * @mem_tile_ranges: valid register ranges for mem tiles
+ * @num_shim_tile_ranges: number of valid register ranges for shim tiles
+ * @num_core_tile_ranges: number of valid register ranges for core tiles
+ * @num_mem_tile_ranges: number of valid register ranges for mem tiles
  * @array_shift: array address shift
  * @col_shift: column address shift
  * @row_shift: row address shift
@@ -1241,6 +1257,12 @@ struct aie_device {
 	const struct aie_error_attr *mem_errors;
 	const struct aie_error_attr *memtile_errors;
 	const struct aie_error_attr *shim_errors;
+	const struct aie_reg_range *shim_tile_ranges;
+	const struct aie_reg_range *core_tile_ranges;
+	const struct aie_reg_range *mem_tile_ranges;
+	u32 num_shim_tile_ranges;
+	u32 num_core_tile_ranges;
+	u32 num_mem_tile_ranges;
 	u32 array_shift;
 	u32 col_shift;
 	u32 row_shift;
