@@ -543,6 +543,30 @@ int xilinx_ai_engine_add_dev(struct aie_device *adev,
 	return 0;
 }
 
+static void xilinx_ai_engine_release_auxdev(struct device *dev)
+{
+}
+
+static int xilinx_ai_engine_add_auxdev(struct aie_device *adev)
+{
+	struct auxiliary_device *auxdev = &adev->auxdev;
+	int ret;
+
+	auxdev->name = "amdxdna";
+	auxdev->dev.parent = &adev->dev;
+	auxdev->dev.release = xilinx_ai_engine_release_auxdev;
+
+	ret = auxiliary_device_init(auxdev);
+	if (ret)
+		return ret;
+
+	ret = auxiliary_device_add(auxdev);
+	if (ret)
+		auxiliary_device_uninit(auxdev);
+
+	return ret;
+}
+
 static int xilinx_ai_engine_probe(struct platform_device *pdev)
 {
 	struct aie_device *adev;
@@ -634,7 +658,16 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	ret = xilinx_ai_engine_add_auxdev(adev);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to register auxiliary device.\n");
+		device_del(&adev->dev);
+		put_device(&adev->dev);
+		return ret;
+	}
+
 	of_xilinx_ai_engine_aperture_probe(adev);
+
 	dev_info(&pdev->dev,
 		 "Xilinx AI Engine device %s probed. Device generation: %u. Clock frequency: %ldHz.\n",
 		 dev_name(&pdev->dev), aie_gen, clk_get_rate(adev->clk));
@@ -657,6 +690,8 @@ static void xilinx_ai_engine_remove(struct platform_device *pdev)
 			return;
 	}
 
+	auxiliary_device_delete(&adev->auxdev);
+	auxiliary_device_uninit(&adev->auxdev);
 	device_del(&adev->dev);
 	put_device(&adev->dev);
 }
