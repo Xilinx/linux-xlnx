@@ -190,5 +190,6 @@ int aie_partition_check_uc_aximm(struct device *dev, struct aie_location *loc);
 int aie_partition_uc_zeroize_mem(struct device *dev, struct aie_location *loc, u32 regval);
 int aie_load_cert(struct device *dev, unsigned char *elf_addr);
 int aie_load_cert_broadcast(struct device *dev, void *elf_addr);
+int aie_partition_coredump(struct device *dev, size_t len, void *data);
 
 #endif
