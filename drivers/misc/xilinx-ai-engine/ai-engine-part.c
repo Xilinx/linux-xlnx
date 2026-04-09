@@ -2170,3 +2170,89 @@ out:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(aie_load_cert_broadcast);
+
+/**
+ * aie_partition_coredump() - Read from all valid AXI registers and place into
+ *			      data buffer (AIE2PS only). The data buffer should
+ *			      be allocated by caller of this function. This
+ *			      function will check that the buffer is the correct
+ *			      size.
+ * @dev: pointer to AI Engine partition device
+ * @len: length of buffer passed
+ * @data: pointer to buffer
+ * Return: expected length of buffer for success and negative value for failure
+ */
+int aie_partition_coredump(struct device *dev, size_t len, void *data)
+{
+	struct aie_partition *apart;
+	struct aie_location loc;
+	struct aie_device *adev;
+	size_t expected_len;
+
+	if (!dev || !data)
+		return -EINVAL;
+
+	apart = dev_to_aiepart(dev);
+	if (IS_ERR(apart)) {
+		dev_err(dev, "failed to find aie partition\n");
+		return -ENODEV;
+	}
+
+	adev = apart->adev;
+	if (adev->dev_gen != AIE_DEVICE_GEN_AIE2PS) {
+		dev_err(&adev->dev, "device is not supported for coredump\n");
+		return -EINVAL;
+	}
+
+	expected_len = apart->range.size.col * apart->range.size.row *
+			BIT(apart->adev->row_shift);
+	if (len < expected_len) {
+		dev_err(dev, "coredump buffer too small: expected %zu, got %zu\n",
+			expected_len, len);
+		return -EINVAL;
+	}
+
+	for (loc.col = 0; loc.col < apart->range.size.col; loc.col++) {
+		for (loc.row = 0; loc.row < apart->range.size.row; loc.row++) {
+			const struct aie_reg_range *reg_range;
+			size_t offset, dump_len, tile_offset;
+			int i, ret, range_len;
+			u32 ttype;
+
+			tile_offset = (loc.col * apart->range.size.row + loc.row) *
+				      BIT(apart->adev->row_shift);
+			/* Initialize the tile region to zero first */
+			memset((char *)data + tile_offset, 0, BIT(apart->adev->row_shift));
+
+			ttype = apart->adev->ops->get_tile_type(apart->adev, &loc);
+			if (ttype == AIE_TILE_TYPE_MEMORY) {
+				/* Read Memory tile register ranges */
+				range_len = adev->num_mem_tile_ranges;
+				reg_range = adev->mem_tile_ranges;
+			} else if (ttype == AIE_TILE_TYPE_TILE) {
+				/* Read Core tile register ranges */
+				range_len = adev->num_core_tile_ranges;
+				reg_range = adev->core_tile_ranges;
+			} else /* AIE_TILE_TYPE_SHIMNOC */ {
+				/* Read SHIM NOC register ranges */
+				range_len = adev->num_shim_tile_ranges;
+				reg_range = adev->shim_tile_ranges;
+			}
+
+			for (i = 0; i < range_len; i++) {
+				offset = reg_range[i].offset;
+				dump_len = reg_range[i].len;
+				ret = aie_partition_read(dev, loc, offset, dump_len,
+							 (char *)data + offset + tile_offset);
+				if (ret < 0) {
+					dev_err(dev, "failed to read range 0x%zx at %d,%d\n",
+						offset, loc.col, loc.row);
+					return ret;
+				}
+			}
+		}
+	}
+
+	return expected_len;
+}
+EXPORT_SYMBOL_GPL(aie_partition_coredump);
