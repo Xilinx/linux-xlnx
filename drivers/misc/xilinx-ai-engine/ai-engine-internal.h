@@ -9,6 +9,7 @@
 #ifndef AIE_INTERNAL_H
 #define AIE_INTERNAL_H
 
+#include <linux/auxiliary_bus.h>
 #include <linux/bitfield.h>
 #include <linux/bitmap.h>
 #include <linux/bits.h>
@@ -1152,6 +1153,7 @@ struct aie_addrlen {
  * @apertures: list of apertures
  * @cdev: cdev for the AI engine
  * @dev: device for the AI engine device
+ * @auxdev: AI engine auxiliary device
  * @mlock: protection for AI engine device operations
  * @clk: AI enigne device clock
  * @kernel_regs: array of kernel only registers
@@ -1206,6 +1208,7 @@ struct aie_device {
 	struct list_head apertures;
 	struct cdev cdev;
 	struct device dev;
+	struct auxiliary_device auxdev;
 	struct mutex mlock; /* protection for AI engine apertures */
 	struct clk *clk;
 	const struct aie_tile_regs *kernel_regs;
