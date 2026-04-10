@@ -4,7 +4,6 @@
  * Copyright (c) 2022 Xilinx Inc.
  * Copyright (C) 2022-2023, Advanced Micro Devices, Inc.
  */
-#include <linux/cacheflush.h>
 #include <crypto/engine.h>
 #include <crypto/hash.h>
 #include <crypto/internal/hash.h>
@@ -26,7 +25,6 @@
 
 #define ZYNQMP_DMA_BIT_MASK		32U
 #define VERSAL_DMA_BIT_MASK		64U
-#define ZYNQMP_DMA_ALLOC_FIXED_SIZE	0x1000U
 #define VERSAL_SHA3_INVALID_PARAM			0x08U
 #define VERSAL_SHA3_STATE_MISMATCH_ERROR	0x0AU
 #define VERSAL_SHA3_FINISH_ERROR			0x07U
@@ -54,8 +52,8 @@ struct zynqmp_sha_desc_ctx {
 	struct ahash_request fallback_req;
 };
 
-static dma_addr_t update_dma_addr, final_dma_addr;
-static char *ubuf, *fbuf;
+static dma_addr_t final_dma_addr;
+static char *fbuf;
 
 static int zynqmp_sha_init_tfm(struct crypto_tfm *tfm)
 {
@@ -192,35 +190,39 @@ static int sha_digest(struct ahash_request *req)
 
 static int zynqmp_sha_digest(struct ahash_request *req)
 {
-	unsigned int processed = 0;
-	unsigned int remaining_len;
-	int update_size;
+	struct zynqmp_sha_tfm_ctx *tctx;
+	struct crypto_ahash *tfm;
+	struct scatterlist *sg;
+	int orig_nents = 0;
+	int nents = 0;
 	int ret;
+	int i;
 
-	remaining_len = req->nbytes;
+	tfm = crypto_ahash_reqtfm(req);
+	tctx = crypto_ahash_ctx(tfm);
+
+	if (req->nbytes) {
+		orig_nents = sg_nents(req->src);
+		nents = dma_map_sg(tctx->dev, req->src, orig_nents, DMA_TO_DEVICE);
+		if (nents <= 0)
+			return -EINVAL;
+	}
 	ret = zynqmp_pm_sha_hash(0, 0, ZYNQMP_SHA3_INIT);
 	if (ret)
-		return ret;
+		goto end;
 
-	while (remaining_len) {
-		if (remaining_len >= ZYNQMP_DMA_ALLOC_FIXED_SIZE)
-			update_size = ZYNQMP_DMA_ALLOC_FIXED_SIZE;
-		else
-			update_size = remaining_len;
-		sg_pcopy_to_buffer(req->src, sg_nents(req->src), ubuf, update_size, processed);
-		flush_icache_range((unsigned long)ubuf, (unsigned long)ubuf + update_size);
-		ret = zynqmp_pm_sha_hash(update_dma_addr, update_size, ZYNQMP_SHA3_UPDATE);
+	for_each_sg(req->src, sg, nents, i) {
+		ret = zynqmp_pm_sha_hash(sg_dma_address(sg), sg_dma_len(sg), ZYNQMP_SHA3_UPDATE);
 		if (ret)
-			return ret;
-
-		remaining_len -= update_size;
-		processed += update_size;
+			goto end;
 	}
 
 	ret = zynqmp_pm_sha_hash(final_dma_addr, SHA3_384_DIGEST_SIZE, ZYNQMP_SHA3_FINAL);
 	memcpy(req->result, fbuf, SHA3_384_DIGEST_SIZE);
 	memzero_explicit(fbuf, SHA3_384_DIGEST_SIZE);
 
+end:
+	dma_unmap_sg(tctx->dev, req->src, orig_nents, DMA_TO_DEVICE);
 	return ret;
 }
 
@@ -247,42 +249,50 @@ static int versal_sha_fw_error_decode(int status)
 
 static int versal_sha_digest(struct ahash_request *req)
 {
-	int update_size, ret, flag = FIRST_PACKET;
-	unsigned int processed = 0;
-	unsigned int remaining_len;
+	struct zynqmp_sha_tfm_ctx *tctx;
 	unsigned int fw_status = 0;
+	struct crypto_ahash *tfm;
+	int flag = FIRST_PACKET;
+	struct scatterlist *sg;
+	int orig_nents = 0;
+	int nents = 0;
+	int ret;
+	int i;
 
-	remaining_len = req->nbytes;
-	while (remaining_len) {
-		if (remaining_len >= ZYNQMP_DMA_ALLOC_FIXED_SIZE)
-			update_size = ZYNQMP_DMA_ALLOC_FIXED_SIZE;
-		else
-			update_size = remaining_len;
+	tfm = crypto_ahash_reqtfm(req);
+	tctx = crypto_ahash_ctx(tfm);
 
-		sg_pcopy_to_buffer(req->src, sg_nents(req->src), ubuf, update_size, processed);
-		flush_icache_range((unsigned long)ubuf,
-				   (unsigned long)ubuf + update_size);
+	if (req->nbytes) {
+		orig_nents = sg_nents(req->src);
+		nents = dma_map_sg(tctx->dev, req->src, orig_nents, DMA_TO_DEVICE);
+		if (nents <= 0)
+			return -EINVAL;
+	}
 
+	for_each_sg(req->src, sg, nents, i) {
 		flag |= CONTINUE_PACKET;
-		ret = versal_pm_sha_hash(update_dma_addr, 0,
-					 update_size | flag, &fw_status);
-		if (ret)
-			return versal_sha_fw_error_decode(fw_status);
-
-		remaining_len -= update_size;
-		processed += update_size;
+		ret = versal_pm_sha_hash(sg_dma_address(sg), 0,
+					 sg_dma_len(sg) | flag, &fw_status);
+		if (ret) {
+			ret = versal_sha_fw_error_decode(fw_status);
+			goto end;
+		}
 		flag = RESET;
 	}
 
 	flag |= FINAL_PACKET;
 	ret = versal_pm_sha_hash(0, final_dma_addr, flag, &fw_status);
-	if (ret)
-		return versal_sha_fw_error_decode(fw_status);
+	if (ret) {
+		ret = versal_sha_fw_error_decode(fw_status);
+		goto end;
+	}
 
 	memcpy(req->result, fbuf, SHA3_384_DIGEST_SIZE);
 	memzero_explicit(fbuf, SHA3_384_DIGEST_SIZE);
 
-	return 0;
+end:
+	dma_unmap_sg(tctx->dev, req->src, orig_nents, DMA_TO_DEVICE);
+	return ret;
 }
 
 static int handle_zynqmp_sha_engine_req(struct crypto_engine *engine, void *req)
@@ -407,16 +417,10 @@ static int zynqmp_sha_probe(struct platform_device *pdev)
 	sha3_drv_ctx->dev = dev;
 	platform_set_drvdata(pdev, sha3_drv_ctx);
 
-	ubuf = dma_alloc_coherent(dev, ZYNQMP_DMA_ALLOC_FIXED_SIZE, &update_dma_addr, GFP_KERNEL);
-	if (!ubuf) {
-		err = -ENOMEM;
-		return err;
-	}
-
 	fbuf = dma_alloc_coherent(dev, SHA3_384_DIGEST_SIZE, &final_dma_addr, GFP_KERNEL);
 	if (!fbuf) {
 		err = -ENOMEM;
-		goto err_mem;
+		return err;
 	}
 
 	sha3_drv_ctx->engine = crypto_engine_alloc_init(dev, 1);
@@ -445,9 +449,6 @@ err_start:
 err_engine:
 	dma_free_coherent(dev, SHA3_384_DIGEST_SIZE, fbuf, final_dma_addr);
 
-err_mem:
-	dma_free_coherent(dev, ZYNQMP_DMA_ALLOC_FIXED_SIZE, ubuf, update_dma_addr);
-
 	return err;
 }
 
@@ -458,7 +459,6 @@ static void zynqmp_sha_remove(struct platform_device *pdev)
 	sha3_drv_ctx = platform_get_drvdata(pdev);
 	crypto_engine_unregister_ahash(&sha3_drv_ctx->sha3_384);
 	crypto_engine_exit(sha3_drv_ctx->engine);
-	dma_free_coherent(sha3_drv_ctx->dev, ZYNQMP_DMA_ALLOC_FIXED_SIZE, ubuf, update_dma_addr);
 	dma_free_coherent(sha3_drv_ctx->dev, SHA3_384_DIGEST_SIZE, fbuf, final_dma_addr);
 }
 
