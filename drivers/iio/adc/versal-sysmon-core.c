@@ -901,6 +901,7 @@ int sysmon_create_avg_en_sysfs_entries(struct iio_dev *indio_dev)
 		sysmon->temp_avg_en_attrs[i].dev_attr.show = tempsat_avg_en_show;
 		sysmon->temp_avg_en_attrs[i].dev_attr.store = tempsat_avg_en_store;
 		sysmon->temp_avg_en_attrs[i].address = i;
+		sysfs_attr_init(&sysmon->temp_avg_en_attrs[i].dev_attr.attr);
 
 		/* Add all temp. sat averaging attrs to array of avg attributes */
 		sysmon->avg_attrs[i] =
@@ -924,6 +925,7 @@ int sysmon_create_avg_en_sysfs_entries(struct iio_dev *indio_dev)
 		sysmon->supply_avg_en_attrs[i].dev_attr.show = supply_avg_en_show;
 		sysmon->supply_avg_en_attrs[i].dev_attr.store = supply_avg_en_store;
 		sysmon->supply_avg_en_attrs[i].address = supply_index;
+		sysfs_attr_init(&sysmon->supply_avg_en_attrs[i].dev_attr.attr);
 
 		sysmon->avg_attrs[SYSMON_TEMP_SAT_COUNT + i] =
 			&sysmon->supply_avg_en_attrs[i].dev_attr.attr;
