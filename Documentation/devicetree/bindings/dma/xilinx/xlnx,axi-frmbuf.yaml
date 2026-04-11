@@ -7,7 +7,7 @@ $schema: http://devicetree.org/meta-schemas/core.yaml#
 title: Xilinx framebuffer read and write IP
 
 maintainers:
-  - Kunal Rane <kunal.rane@amd.com>
+  - Asif Ikbal <asif.ikbal@amd.com>
 
 description:
   The Xilinx framebuffer DMA engine supports two soft IP blocks, one IP
