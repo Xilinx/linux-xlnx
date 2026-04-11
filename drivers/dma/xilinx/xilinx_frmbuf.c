@@ -107,6 +107,10 @@
 #define XILINX_FRMBUF_FMT_Y_U_V8		42
 #define XILINX_FRMBUF_FMT_Y_U_V10		43
 #define XILINX_FRMBUF_FMT_Y_U_V12		44
+#define XILINX_FRMBUF_FMT_Y_UV10_M16LE		54
+#define XILINX_FRMBUF_FMT_Y_UV10_420_M16LE		55
+#define XILINX_FRMBUF_FMT_Y_UV12_420_M16LE		59
+#define XILINX_FRMBUF_FMT_Y12_M16LE		60
 
 /* FID Register */
 #define XILINX_FRMBUF_FID_MASK			BIT(0)
@@ -796,6 +800,46 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.drm_fmt = DRM_FORMAT_T64C,
 		.v4l2_fmt = V4L2_PIX_FMT_T64C,
 		.fmt_bitmask = BIT(50),
+	},
+	{
+		.dts_name = "y012",
+		.id = XILINX_FRMBUF_FMT_Y12_M16LE,
+		.bpw = 16,
+		.ppw = 1,
+		.num_planes = 1,
+		.drm_fmt = 0,
+		.v4l2_fmt = V4L2_PIX_FMT_Y012,
+		.fmt_bitmask = BIT(51),
+	},
+	{
+		.dts_name = "p210",
+		.id = XILINX_FRMBUF_FMT_Y_UV10_M16LE,
+		.bpw = 16,
+		.ppw = 1,
+		.num_planes = 2,
+		.drm_fmt = DRM_FORMAT_P210,
+		.v4l2_fmt = 0,
+		.fmt_bitmask = BIT(52),
+	},
+	{
+		.dts_name = "p010",
+		.id = XILINX_FRMBUF_FMT_Y_UV10_420_M16LE,
+		.bpw = 16,
+		.ppw = 1,
+		.num_planes = 2,
+		.drm_fmt = DRM_FORMAT_P010,
+		.v4l2_fmt = V4L2_PIX_FMT_P010,
+		.fmt_bitmask = BIT(53),
+	},
+	{
+		.dts_name = "p012",
+		.id = XILINX_FRMBUF_FMT_Y_UV12_420_M16LE,
+		.bpw = 16,
+		.ppw = 1,
+		.num_planes = 2,
+		.drm_fmt = DRM_FORMAT_P012,
+		.v4l2_fmt = V4L2_PIX_FMT_P012,
+		.fmt_bitmask = BIT(54),
 	},
 };
 
