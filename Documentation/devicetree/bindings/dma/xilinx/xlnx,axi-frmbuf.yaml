@@ -101,6 +101,14 @@ properties:
       Y_UV10_420	xv15		V4L2_PIX_FMT_XV15M	DRM_FORMAT_XV15
       Y_UV10_420	xv15		V4L2_PIX_FMT_XV15	<not supported>
       Y10		y10		V4L2_PIX_FMT_XY10	DRM_FORMAT_Y10
+      Y10_L16LE		ly10	<not supported>	<not supported>
+      Y_UV10_420_L16LE	l010	<not supported>	<not supported>
+      Y_UV10_L16LE	l210	<not supported>	<not supported>
+      Y_U_V10_L16LE	l410	<not supported>	<not supported>
+      Y10_M16LE		y010	<not supported>	<not supported>
+      Y_UV10_420_M16LE	p010	V4L2_PIX_FMT_P010	DRM_FORMAT_P010
+      Y_UV10_M16LE	p210	<not supported>	DRM_FORMAT_P210
+      Y_U_V10_M16LE	q410	<not supported>	DRM_FORMAT_Q410
 
       12 Bit Video Formats
       RGBX12		xbgr4121212	V4L2_PIX_FMT_XBGR40	<not supported>
@@ -111,6 +119,14 @@ properties:
       Y_UV12_420	x012		V4L2_PIX_FMT_X012	<not supported>
       Y_UV12_420	x012		V4L2_PIX_FMT_X012M	<not supported>
       Y12		y12		V4L2_PIX_FMT_XY12	<not supported>
+      Y12_L16LE		ly12	<not supported>	<not supported>
+      Y_UV12_420_L16LE	l012	<not supported>	<not supported>
+      Y_UV12_L16LE	l212	<not supported>	<not supported>
+      Y_U_V12_L16LE	l412	<not supported>	<not supported>
+      Y12_M16LE		y012	V4L2_PIX_FMT_Y012	<not supported>
+      Y_UV12_420_M16LE	p012	V4L2_PIX_FMT_P012	DRM_FORMAT_P012
+      Y_UV12_M16LE	p212	<not supported>	<not supported>
+      Y_U_V12_M16LE	q412	<not supported>	<not supported>
 
       16 Bit Video Formats
       RGBX16		rgb16		V4L2_PIX_FMT_BGR48	<not supported>
@@ -307,8 +323,24 @@ allOf:
                 - x216
                 - x016
                 - y16
+                - ly10
+                - l010
+                - l210
+                - l410
+                - y010
+                - p010
+                - p210
+                - q410
+                - ly12
+                - l012
+                - l212
+                - l412
+                - y012
+                - p012
+                - p212
+                - q412
             minItems: 1
-            maxItems: 30
+            maxItems: 46
 
 additionalProperties: false
 
