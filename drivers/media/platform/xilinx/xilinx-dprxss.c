@@ -1237,9 +1237,6 @@ static void xdprxss_set_training_params(struct xdprxss_state *xdprxss)
 	xdprxss_clr(xdprxss, XDPRX_INTR_MASK_REG, XDPRX_INTR_TRNG_MASK);
 	xdprxss_enable_training_intr_1(xdprxss);
 
-	xdprxss_write(xdprxss, XDPRX_AUX_CLKDIV_REG,
-		      xdprxss_read(xdprxss, XDPRX_AUX_CLKDIV_REG) |
-		      FIELD_PREP(XDPRX_AUX_DEFER_MASK, XDPRX_AUX_DEFER_COUNT));
 	xdprxss_write(xdprxss, XDPRX_BSIDLE_TIME_REG, XDPRX_BSIDLE_TMOUT_VAL);
 	xdprxss_clr(xdprxss, XDPRX_CRC_CONFIG_REG, XDPRX_CRC_EN_MASK);
 	xdprxss_write(xdprxss, XDPRX_LINK_ENABLE_REG, 0x1);
