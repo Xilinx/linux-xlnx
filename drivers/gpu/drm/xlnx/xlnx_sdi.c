@@ -19,6 +19,7 @@
 #include <linux/device.h>
 #include <linux/gpio/consumer.h>
 #include <linux/io.h>
+#include <linux/media-bus-format.h>
 #include <linux/of_device.h>
 #include <linux/of_graph.h>
 #include <linux/phy/phy.h>
@@ -65,6 +66,8 @@
 #define XSDI_TX_CTRL_444_BIT		BIT(22)
 #define XSDI_TX_CTRL_INS_ST352_CHROMA	BIT(23)
 #define XSDI_TX_CTRL_USE_DS2_3GA	BIT(24)
+#define XSDI_TX_CTRL_DYNAMIC_BPC_MASK	GENMASK(27, 26)
+#define XSDI_TX_CTRL_DYNAMIC_BPC_10	0x1  /* HW uses same encoding for 8-bit and 10-bit */
 
 /* TX_ST352_LINE register masks */
 #define XSDI_TX_ST352_LINE_MASK		GENMASK(10, 0)
@@ -155,6 +158,18 @@ enum payload_line_2 {
 };
 
 /**
+ * enum color_depths - Supported bits per component
+ * @SDI_TX_BPC_8: 8 bits per component
+ * @SDI_TX_BPC_10: 10 bits per component
+ * @SDI_TX_BPC_12: 12 bits per component
+ */
+enum color_depths {
+	SDI_TX_BPC_8 = 8,
+	SDI_TX_BPC_10 = 10,
+	SDI_TX_BPC_12 = 12,
+};
+
+/**
  * struct xlnx_sdi - Core configuration SDI Tx subsystem device structure
  * @encoder: DRM encoder structure
  * @connector: DRM connector structure
@@ -208,6 +223,9 @@ enum payload_line_2 {
  * @picxo_enabled: indicates picxo core presence
  * @prev_eotf: previous end of transfer function
  * @is_hfr: Indicates HFR video streaming
+ * @config_bpc: Desired bits-per-component setting (enum color_depths)
+ * @stream_bpc: Active bits-per-component applied to the SDI stream
+ * @dynamic_bpc: Enables dynamic bits-per-component configuration
  */
 struct xlnx_sdi {
 	struct drm_encoder encoder;
@@ -255,6 +273,9 @@ struct xlnx_sdi {
 	bool picxo_enabled;
 	u8 prev_eotf;
 	u8 is_hfr;
+	enum color_depths config_bpc;
+	enum color_depths stream_bpc;
+	bool dynamic_bpc;
 };
 
 #define connector_to_sdi(c) container_of(c, struct xlnx_sdi, connector)
@@ -1016,10 +1037,55 @@ static void xlnx_sdi_setup(struct xlnx_sdi *sdi)
 		}
 	}
 
+	/* Dynamic BPC configuration is applicable only in 12 bpc mode */
+	if (sdi->dynamic_bpc && sdi->config_bpc == SDI_TX_BPC_12) {
+		if (sdi->stream_bpc == sdi->config_bpc)
+			reg &= ~XSDI_TX_CTRL_DYNAMIC_BPC_MASK;
+		else
+			reg = u32_replace_bits(reg, XSDI_TX_CTRL_DYNAMIC_BPC_10,
+					       XSDI_TX_CTRL_DYNAMIC_BPC_MASK);
+	}
+
 	xlnx_sdi_writel(sdi->base, XSDI_TX_MDL_CTRL, reg);
 	xlnx_sdi_writel(sdi->base, XSDI_TX_IER_STAT, XSDI_IER_EN_MASK);
 	xlnx_sdi_writel(sdi->base, XSDI_TX_GLBL_IER, 1);
 	xlnx_stc_reset(sdi->base);
+}
+
+/**
+ * xlnx_sdi_find_media_bus - Find media bus format equivalent BPC
+ * @sdi: pointer to sdi TX core instance
+ * @media_fmt: media bus format code
+ *
+ * Return: equivalent BPC (bits per component) value
+ */
+static enum color_depths xlnx_sdi_find_media_bus(struct xlnx_sdi *sdi,
+						 u32 media_fmt)
+{
+	switch (media_fmt) {
+	/* 8 BPC formats */
+	case MEDIA_BUS_FMT_RBG888_1X24:
+	case MEDIA_BUS_FMT_VUY8_1X24:
+	case MEDIA_BUS_FMT_UYVY8_1X16:
+	case MEDIA_BUS_FMT_VYYUYY8_1X24:
+		return SDI_TX_BPC_8;
+	/* 10 BPC formats */
+	case MEDIA_BUS_FMT_RBG101010_1X30:
+	case MEDIA_BUS_FMT_VUY10_1X30:
+	case MEDIA_BUS_FMT_UYVY10_1X20:
+	case MEDIA_BUS_FMT_VYYUYY10_4X20:
+		return SDI_TX_BPC_10;
+	/* 12 BPC formats */
+	case MEDIA_BUS_FMT_RBG121212_1X36:
+	case MEDIA_BUS_FMT_VUY12_1X36:
+	case MEDIA_BUS_FMT_UYVY12_1X24:
+		return SDI_TX_BPC_12;
+	default:
+		dev_dbg(sdi->dev,
+			"Unknown media fmt: 0x%x, defaulting to configured BPC\n",
+			media_fmt);
+		return sdi->config_bpc;
+	}
 }
 
 /**
@@ -1097,6 +1163,13 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	/* HFR stream flag */
 	if (drm_mode_vrefresh(adjusted_mode) >= XSDI_HFR_MIN_FPS)
 		sdi->is_hfr = 1;
+
+	/* Dynamic stream BPC detection is valid only in 12 bpc mode */
+	if (sdi->dynamic_bpc && sdi->config_bpc == SDI_TX_BPC_12)
+		sdi->stream_bpc = xlnx_sdi_find_media_bus(sdi, sdi->out_fmt_prop_val);
+
+	dev_dbg(sdi->dev, "stream_bpc = %d config_bpc = %d\n",
+		sdi->stream_bpc, sdi->config_bpc);
 
 	xlnx_sdi_setup(sdi);
 	xlnx_sdi_set_config_parameters(sdi);
@@ -1265,6 +1338,7 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
 	u32 nports = 0, portmask = 0;
 	unsigned long clkrate = 0;
 	enum gpiod_flags flags;
+	u32 bpc;
 
 	sdi = devm_kzalloc(dev, sizeof(*sdi), GFP_KERNEL);
 	if (!sdi)
@@ -1298,6 +1372,33 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
 		dev_err(dev, "failed to get video_in_clk %d\n", ret);
 		return ret;
 	}
+
+	/* Read BPC configuration from device tree (default to 10 for backward compatibility) */
+	ret = of_property_read_u32(sdi->dev->of_node, "xlnx,bpc", &bpc);
+	if (ret == -EINVAL) {
+		bpc = SDI_TX_BPC_10;
+	} else if (ret) {
+		dev_err(sdi->dev, "failed to read xlnx,bpc property: %d\n", ret);
+		return ret;
+	}
+
+	sdi->config_bpc = bpc;
+
+	if (sdi->config_bpc != SDI_TX_BPC_8 &&
+	    sdi->config_bpc != SDI_TX_BPC_10 &&
+	    sdi->config_bpc != SDI_TX_BPC_12) {
+		dev_err(sdi->dev, "invalid xlnx,bpc value: %u\n", sdi->config_bpc);
+		return -EINVAL;
+	}
+
+	/* Read dynamic BPC configuration from device tree */
+	sdi->dynamic_bpc = of_property_read_bool(sdi->dev->of_node, "xlnx,dyn-bpc");
+	if (sdi->dynamic_bpc && sdi->config_bpc != SDI_TX_BPC_12) {
+		dev_err(sdi->dev, "xlnx,dyn-bpc requires xlnx,bpc = 12\n");
+		return -EINVAL;
+	}
+
+	sdi->stream_bpc = sdi->config_bpc;
 
 	sdi->qpll1_enabled = of_property_read_bool(sdi->dev->of_node, "xlnx,qpll1-enabled");
 	if (!sdi->qpll1_enabled) {
