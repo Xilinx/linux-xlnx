@@ -3738,13 +3738,17 @@ static int xhdmirx_parse_of(struct xhdmirx_state *xhdmi)
 
 	/* HDCP specific code starts here */
 
-	xhdmi->hdcp1x_enabled = of_property_read_bool(node, "xlnx,include-hdcp-1-4");
-	if (xhdmi->hdcp1x_enabled)
-		dev_dbg(xhdmi->dev, "HDCP 1.4 is included in design\n");
+	if (IS_ENABLED(CONFIG_VIDEO_XILINX_HDCP1X_RX)) {
+		xhdmi->hdcp1x_enabled = of_property_read_bool(node, "xlnx,include-hdcp-1-4");
+		dev_info(xhdmi->dev, "HDCP 1.4 %s\n",
+			 xhdmi->hdcp1x_enabled ? "enabled" : "disabled");
+	}
 
-	xhdmi->hdcp2x_enable = of_property_read_bool(node, "xlnx,include-hdcp-2-2");
-	if (xhdmi->hdcp2x_enable)
-		dev_info(xhdmi->dev, "HDMI:HDCP 2.2 is enabled\n");
+	if (IS_ENABLED(CONFIG_VIDEO_XILINX_HDCP2X_RX)) {
+		xhdmi->hdcp2x_enable = of_property_read_bool(node, "xlnx,include-hdcp-2-2");
+		dev_info(xhdmi->dev, "HDCP 2.2 %s\n",
+			 xhdmi->hdcp2x_enable ? "enabled" : "disabled");
+	}
 
 	/* HDCP specific code ends here */
 	switch (xhdmi->max_frl_rate) {

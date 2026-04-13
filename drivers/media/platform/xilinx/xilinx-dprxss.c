@@ -2423,13 +2423,17 @@ static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
 		return -EINVAL;
 	}
 
-	xdprxss->hdcp22_enable = of_property_read_bool(node, "xlnx,hdcp22-enable");
-	if (!xdprxss->hdcp22_enable)
-		dev_info(xdprxss->dev, "hdcp2x is not enabled\n");
+	if (IS_ENABLED(CONFIG_VIDEO_XILINX_HDCP2X_RX)) {
+		xdprxss->hdcp22_enable = of_property_read_bool(node, "xlnx,hdcp22-enable");
+		dev_info(xdprxss->dev, "hdcp2x %s\n",
+			 xdprxss->hdcp22_enable ? "enabled" : "disabled");
+	}
 
-	xdprxss->hdcp_enable = of_property_read_bool(node, "xlnx,hdcp-enable");
-	if (!xdprxss->hdcp_enable)
-		dev_info(xdprxss->dev, "hdcp is not enabled\n");
+	if (IS_ENABLED(CONFIG_VIDEO_XILINX_HDCP1X_RX)) {
+		xdprxss->hdcp_enable = of_property_read_bool(node, "xlnx,hdcp-enable");
+		dev_info(xdprxss->dev, "hdcp1x %s\n",
+			 xdprxss->hdcp_enable ? "enabled" : "disabled");
+	}
 
 	xdprxss->audio_enable = of_property_read_bool(node,
 						      "xlnx,audio-enable");
