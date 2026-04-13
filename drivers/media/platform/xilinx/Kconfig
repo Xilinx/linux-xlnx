@@ -52,16 +52,18 @@ config VIDEO_XILINX_GAMMA
 	  Say M to modularize. Say N if unsure.
 
 config VIDEO_XILINX_HDCP1X_RX
-	bool
-	select XLNX_HDCP1X_CIPHER
+	bool "Xilinx HDCP1X Rx support"
+	depends on VIDEO_XILINX_HDMI21RXSS || VIDEO_XILINX_DPRXSS
+	depends on XLNX_HDCP1X_CIPHER
 	help
 	  Functionality of HDCP1X Rx for DP and HDMI. It handles the hdcp1x rx
 	  authentication. Choose this config in a platform where the DP/HDMI Rx
 	  subsystem enabled with HDCP1X.
 
 config VIDEO_XILINX_HDCP2X_RX
-	bool
-	select XILINX_HDCP_COMMON
+	bool "Xilinx HDCP2X Rx support"
+	depends on VIDEO_XILINX_HDMI21RXSS || VIDEO_XILINX_DPRXSS
+	depends on XILINX_HDCP_COMMON && CRYPTO
 	select CRYPTO_AES
 	help
 	  Functionality of HDCP2X Rx for DP and HDMI. It handles the hdcp2x rx
@@ -71,8 +73,6 @@ config VIDEO_XILINX_HDCP2X_RX
 config VIDEO_XILINX_HDMI21RXSS
 	tristate "Xilinx HDMI 2.1 Rx Subsystem"
 	depends on VIDEO_XILINX
-	select VIDEO_XILINX_HDCP1X_RX
-	select VIDEO_XILINX_HDCP2X_RX
 	select MFD_SYSCON
 	help
 	  Driver for the Xilinx HDMI 2.1 Rx subsystem to capture HDMI streams.
@@ -148,8 +148,6 @@ config VIDEO_XILINX_VTC
 config VIDEO_XILINX_DPRXSS
 	tristate "Xilinx DP Rx Subsystem"
 	depends on VIDEO_XILINX
-	select VIDEO_XILINX_HDCP1X_RX
-	select VIDEO_XILINX_HDCP2X_RX
 	select DRM_DISPLAY_HELPER
 	select DRM_DISPLAY_DP_HELPER
 	select MFD_SYSCON
