@@ -40,6 +40,19 @@ properties:
   phy-reset-gpios:
     description: Specifier for a GPIO that asserts GT phy.
 
+  xlnx,bpc:
+    description: Bits per component for the SDI Tx IP. Sets the number of
+                 bits carried per color channel (e.g. 10 means 10-bit per
+                 each of Y, Cb, Cr or R, G, B).
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [8, 10, 12]
+    default: 10
+
+  xlnx,dyn-bpc:
+    description: Hardware supports dynamic bits-per-component switching
+                 based on the input stream format.
+    type: boolean
+
   xlnx,picxo-enabled:
     description: This property is present when PICXO is present in design.
     type: boolean
@@ -107,6 +120,14 @@ required:
   - interrupts
   - ports
 
+dependencies:
+  xlnx,dyn-bpc:
+    properties:
+      xlnx,bpc:
+        const: 12
+    required:
+      - xlnx,bpc
+
 additionalProperties: false
 
 examples:
@@ -117,6 +138,8 @@ examples:
         clocks = <&misc_clk_0>, <&misc_clk_1>, <&misc_clk_2>;
         clock-names = "s_axi_aclk", "video_in_clk", "sdi_tx_clk";
         interrupts = <0 90 4>;
+        xlnx,bpc = <12>;
+        xlnx,dyn-bpc;
         ports {
             #address-cells = <1>;
             #size-cells = <0>;
