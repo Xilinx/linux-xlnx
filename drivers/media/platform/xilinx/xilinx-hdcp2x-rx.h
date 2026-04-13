@@ -453,6 +453,7 @@ struct xlnx_hdcp2x_config {
 	void *mmult;
 };
 
+#if IS_ENABLED(CONFIG_VIDEO_XILINX_HDCP2X_RX)
 struct xlnx_hdcp_timer_config *xhdcp2x_rx_get_timer(struct xlnx_hdcp2x_config *xhdcp2x_rx);
 
 u8 xhdcp2x_rx_get_content_stream_type(struct xlnx_hdcp2x_config *xhdcp2x_rx);
@@ -494,5 +495,61 @@ void xhdcp2x_rx_compute_mprime(const u8 *streamidtype, const u8 *seqnumm, const 
 			       const u8 *rrx, const u8 *rtx, u8 *mprime);
 void xhdcp2x_rx_set_write_message_available(struct xlnx_hdcp2x_config *xhdcp2x_rx);
 void xhdcp2x_rx_set_read_message_complete(struct xlnx_hdcp2x_config *xhdcp2x_rx);
+#else
+static inline int *xhdcp2x_rx_init(struct device *dev, void *protocol_ref,
+				   void __iomem *hdcp_base_address,
+				   enum xhdcp2x_rx_protocol protocol_rx,
+				   bool is_repeater, u8 lane_count)
+{
+	return ERR_PTR(-EINVAL);
+}
+
+static inline int xhdcp2x_rx_enable(struct xlnx_hdcp2x_config *xhdcp2x_rx, u8 lane_count)
+{
+	return -EINVAL;
+}
+
+static inline int xhdcp2x_rx_disable(struct xlnx_hdcp2x_config *xhdcp2x_rx)
+{
+	return -EINVAL;
+}
+
+static inline int xhdcp2x_rx_set_callback(void *ref, u32 handlertype, void *callback_func)
+{
+	return -EINVAL;
+}
+
+static inline int xhdcp2x_rx_push_events(void *ref, u32 events)
+{
+	return -EINVAL;
+}
+
+static inline int xhdcp2x_rx_set_key(void *ref, void *hdcp2x_lc128, void *hdcp2x_private)
+{
+	return -EINVAL;
+}
+
+static inline int xhdcp2x_rx_hdcp2x_version_enable(void *ref, bool enable)
+{
+	return -EINVAL;
+}
+
+static inline void *xhdcp2x_timer_init(struct device *dev, void __iomem *interface_base)
+{
+	return ERR_PTR(-ENODEV);
+}
+
+static inline void xhdcp2x_timer_attach(struct xlnx_hdcp2x_config *xhdcp2x_rx,
+					 struct xlnx_hdcp_timer_config *tmrcntr) { }
+
+static inline void xhdcp2x_rx_timer_handler(void *callbackref, u8 tmrcntnumber) { }
+
+static inline void xhdcp2x_rx_set_stream_type(struct xlnx_hdcp2x_config *xhdcp2x_rx) { }
+
+static inline void xhdcp2x_rx_set_write_message_available(struct xlnx_hdcp2x_config *xhdcp2x_rx) { }
+
+static inline void xhdcp2x_rx_set_read_message_complete(struct xlnx_hdcp2x_config *xhdcp2x_rx) { }
+
+#endif /* CONFIG_VIDEO_XILINX_HDCP2X_RX */
 
 #endif /* __XILINX_HDCP2X_RX_H__ */
