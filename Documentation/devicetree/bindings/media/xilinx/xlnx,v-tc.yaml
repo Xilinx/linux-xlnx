@@ -51,7 +51,7 @@ additionalProperties: false
 
 examples:
   - |
-    vtc: vtc@43c40000 {
+    vtc@43c40000 {
       compatible = "xlnx,v-tc-6.1";
       reg = <0x43c40000 0x10000>;
       clocks = <&clkc 15>;
