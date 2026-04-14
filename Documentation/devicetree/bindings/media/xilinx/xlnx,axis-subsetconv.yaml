@@ -107,7 +107,7 @@ additionalProperties: false
 
 examples:
   - |
-   axis_subsetconv_0 {
+   axis-subsetconv {
         compatible = "xlnx,axis-subsetconv-1.1";
 
         ports {
