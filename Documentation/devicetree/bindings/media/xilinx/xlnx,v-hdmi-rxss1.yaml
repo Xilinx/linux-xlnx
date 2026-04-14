@@ -204,7 +204,7 @@ additionalProperties: false
 
 examples:
   - |
-    v_hdmi_rxss1@80000000 {
+    v-hdmi-rxss1@80000000 {
       compatible = "xlnx,v-hdmi-rxss1-1.1";
       reg = <0x80000000 0x10000>;
       clock-names = "s_axi_cpu_aclk", "frl_clk", "s_axis_video_aclk";
@@ -244,7 +244,7 @@ examples:
         };
       };
     };
-    hdcp_keymngmt_blk_1: hdcp_keymngmt_blk@80040000 {
+    hdcp_keymngmt_blk_1: hdcp-keymngmt-blk@80040000 {
        compatible = "xlnx,hdcp-keymngmt-blk-1.0", "syscon";
        reg = <0x80040000 0x10000>;
     };
