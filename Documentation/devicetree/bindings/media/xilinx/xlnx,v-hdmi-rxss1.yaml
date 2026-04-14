@@ -204,7 +204,7 @@ additionalProperties: false
 
 examples:
   - |
-    v_hdmi_rxss1: v_hdmi_rxss1@80000000 {
+    v_hdmi_rxss1@80000000 {
       compatible = "xlnx,v-hdmi-rxss1-1.1";
       reg = <0x80000000 0x10000>;
       clock-names = "s_axi_cpu_aclk", "frl_clk", "s_axis_video_aclk";
