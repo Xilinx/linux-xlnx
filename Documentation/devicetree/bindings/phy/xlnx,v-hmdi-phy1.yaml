@@ -262,7 +262,7 @@ then:
 
 examples:
   - |
-   v_hdmi_phy1@80040000 {
+   v-hdmi-phy1@80040000 {
            clock-names = "axi4lite_aclk", "drpclk", "tmds_clock";
            clocks = <&zynqmp_clk 71>, <&zynqmp_clk 71>, <&idt_241 1>;
            compatible = "xlnx,v-hdmi-phy1-1.0";
@@ -292,7 +292,7 @@ examples:
            xlnx,tx-clk-primitive = <0x0>;
            #phy-cells = <0>;
    };
-   v_hdmi_gt@80050000 {
+   v-hdmi-gt@80050000 {
            clock-names = "axi4lite_aclk", "drpclk", "tmds_clock";
            clocks = <&versal_clk 65>, <&versal_clk 65>, <&idt_241 1>;
            compatible = "xlnx,v-hdmi-gt-controller-1.0";
