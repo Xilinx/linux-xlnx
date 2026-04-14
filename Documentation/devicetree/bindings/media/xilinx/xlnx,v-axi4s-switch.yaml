@@ -147,7 +147,7 @@ additionalProperties: false
 
 examples:
   - |
-    axis_switch@0 {
+    axis-switch@0 {
         compatible = "xlnx,v-axis-switch-1.1";
         reg = <0xa0050000 0x1000>;
         clocks = <&vid_stream_clk>;
