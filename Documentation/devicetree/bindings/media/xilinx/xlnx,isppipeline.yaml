@@ -207,7 +207,7 @@ allOf:
 
 examples:
   - |
-   ISPPipeline@a40c0000 {
+   isppipeline@a40c0000 {
         compatible = "xlnx,isppipeline-1.0";
         reg = <0xa40c0000 0x10000>;
         clocks = <&misc_clk_0>;
@@ -241,7 +241,7 @@ examples:
     };
 
   - |
-    ISPPipeline@a40f0000 {
+    isppipeline@a40f0000 {
         compatible = "xlnx,isppipeline-2.0";
         reg = <0xa40f0000 0x10000>;
         clocks = <&misc_clk_0>;
