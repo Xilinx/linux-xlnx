@@ -106,7 +106,7 @@ additionalProperties: false
 
 examples:
   - |
-    gamma_lut_1@a0080000 {
+    gamma-lut@a0080000 {
         compatible = "xlnx,v-gamma-lut";
         reg = <0xa0080000 0x10000>;
         clocks = <&vid_stream_clk>;
