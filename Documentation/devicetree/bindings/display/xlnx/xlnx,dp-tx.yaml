@@ -189,7 +189,7 @@ examples:
        #address-cells = <2>;
        #size-cells = <2>;
 
-       v_dp_txss1@a0100000 {
+       v-dp-txss1@a0100000 {
            compatible = "xlnx,v-dp-txss-3.1";
            reg = <0x0 0xa0100000 0x0 0x40000>, <0x0 0xa4080000 0x0 0x10000>;
            reg-names = "dp_base", "gt_quad_base";
