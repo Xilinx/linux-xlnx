@@ -102,7 +102,7 @@ additionalProperties: false
 
 examples:
   - |
-    v_demosaic@a0010000 {
+    v-demosaic@a0010000 {
         compatible = "xlnx,v-demosaic-1.1";
         reg = <0xa0010000 0x10000>;
         clock-names = "ap_clk";
