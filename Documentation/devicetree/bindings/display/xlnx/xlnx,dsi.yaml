@@ -149,7 +149,7 @@ additionalProperties: false
 
 examples:
   - |
-    mipi_dsi_tx_subsystem@80000000 {
+    mipi-dsi-tx-subsystem@80000000 {
         compatible = "xlnx,dsi";
         reg = <0x80000000 0x10000>;
         clocks = <&misc_clk_0>, <&misc_clk_1>;
