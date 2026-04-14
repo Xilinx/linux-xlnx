@@ -39,7 +39,7 @@ additionalProperties: false
 
 examples:
   - |
-   video_m2m {
+   video-m2m {
         compatible = "xlnx,mem2mem";
         dmas = <&dma_1 0>, <&dma_2 0>;
         dma-names = "tx", "rx";
