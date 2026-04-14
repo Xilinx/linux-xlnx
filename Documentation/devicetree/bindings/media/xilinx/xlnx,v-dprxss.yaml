@@ -172,7 +172,7 @@ additionalProperties: false
 
 examples:
   - |
-   v_dp_rxss1@a0040000 {
+   v-dp-rxss1@a0040000 {
        clock-names = "s_axi_aclk", "rx_lnk_clk", "rx_vid_clk" ;
        clocks = <&zynqmp_clk 71>, <&zynqmp_clk 72>, <&misc_clk_1>;
        compatible = "xlnx,v-dp-rxss-3.1", "xlnx,v-dp-rxss-3.0";
@@ -205,7 +205,7 @@ examples:
            };
        };
    };
-   hdcp_keymngmt_blk_0: hdcp_keymngmt_blk@a00c0000 {
+   hdcp_keymngmt_blk_0: hdcp-keymngmt-blk@a00c0000 {
        compatible = "xlnx,hdcp-keymngmt-blk-1.0", "syscon";
        reg = <0xa00c0000 0x10000>;
    };
