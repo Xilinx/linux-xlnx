@@ -125,7 +125,6 @@ patternProperties:
     properties:
       reg:
         description: Subdevice index (0-7)
-        $ref: /schemas/types.yaml#/definitions/uint32
         minimum: 0
         maximum: 7
 
