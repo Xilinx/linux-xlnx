@@ -469,7 +469,7 @@ examples:
   - |
     #include <dt-bindings/interrupt-controller/arm-gic.h>
 
-    v_mix@a0070000 {
+    v-mix@a0070000 {
         compatible = "xlnx,v-mix-5.3";
         reg = <0xa0070000 0x10000>;
         interrupts = <GIC_SPI 95 IRQ_TYPE_LEVEL_HIGH>;
@@ -570,7 +570,7 @@ examples:
         };
     };
 
-    v_mix@80200000 {
+    v-mix@80200000 {
         compatible = "xlnx,v-mix-5.3";
         reg = <0x80200000 0x10000>;
         interrupts = <GIC_SPI 95 IRQ_TYPE_LEVEL_HIGH>;
@@ -637,7 +637,7 @@ examples:
         };
     };
 
-    v_mix@80100000 {
+    v-mix@80100000 {
         compatible = "xlnx,v-mix-5.3";
         reg = <0x80100000 0x10000>;
         interrupts = <GIC_SPI 95 IRQ_TYPE_LEVEL_HIGH>;
@@ -700,7 +700,7 @@ examples:
      * (32x4 / 64x4 classes) and valid xlnx,vformat tokens follow the binding
      * schema.
      */
-    v_mix@80300000 {
+    v-mix@80300000 {
         compatible = "xlnx,v-mix-6.0";
         reg = <0x80300000 0x10000>;
         interrupts = <GIC_SPI 95 IRQ_TYPE_LEVEL_HIGH>;
