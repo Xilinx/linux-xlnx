@@ -190,7 +190,7 @@ examples:
   - |
     #include <dt-bindings/interrupt-controller/arm-gic.h>
 
-    v_hdmi_txss1@80020000 {
+    v-hdmi-txss1@80020000 {
         compatible = "xlnx,v-hdmi-txss1-1.1";
         reg = <0x80020000 0x20000>;
         interrupt-names = "hdmitx", "hdcp14", "hdcp14timer",
@@ -222,7 +222,7 @@ examples:
         };
     };
 
-    hdcp_keymngmt_blk_0: hdcp_keymngmt_blk@80030000 {
+    hdcp_keymngmt_blk_0: hdcp-keymngmt-blk@80030000 {
         compatible = "xlnx,hdcp-keymngmt-blk-1.0", "syscon";
         reg = <0x80030000 0x10000>;
     };
