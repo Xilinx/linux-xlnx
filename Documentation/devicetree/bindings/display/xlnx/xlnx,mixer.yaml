@@ -485,7 +485,7 @@ examples:
         port {
             #address-cells = <1>;
             #size-cells = <0>;
-            mix_out1: endpoint@0 {
+            endpoint@0 {
                 reg = <0>;
                 remote-endpoint = <&hdmi_output_v_mix_0>;
             };
@@ -587,7 +587,7 @@ examples:
         port {
             #address-cells = <1>;
             #size-cells = <0>;
-            mix_out2: endpoint@0 {
+            endpoint@0 {
                 reg = <0>;
                 remote-endpoint = <&hdmi_output_v_mix_2>;
             };
@@ -654,7 +654,7 @@ examples:
         port {
             #address-cells = <1>;
             #size-cells = <0>;
-            mix_out: endpoint@0 {
+            endpoint@0 {
                 reg = <0>;
                 remote-endpoint = <&hdmi_output_v_mix_0>;
             };
@@ -716,7 +716,7 @@ examples:
         port {
             #address-cells = <1>;
             #size-cells = <0>;
-            mix_out_tile: endpoint@0 {
+            endpoint@0 {
                 reg = <0>;
                 remote-endpoint = <&hdmi_output_v_mix_0>;
             };
