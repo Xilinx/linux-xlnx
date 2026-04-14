@@ -140,7 +140,7 @@ additionalProperties: false
 
 examples:
   - |
-    v_multi_scaler@a0000000 {
+    v-multi-scaler@a0000000 {
         compatible = "xlnx,v-multi-scaler-v1.0";
         reg = <0xa0000000 0x10000>;
         clocks = <&clk 71>;
