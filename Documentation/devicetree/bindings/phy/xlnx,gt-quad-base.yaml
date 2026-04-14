@@ -40,7 +40,7 @@ additionalProperties: false
 
 examples:
   - |
-   gt_quad_base: gt_qb@a4080000 {
+   gt_qb@a4080000 {
            clocks = <&misc_clk_0>;
            compatible = "xlnx,gt-quad-base-1.1";
            reg = <0xa4080000 0x10000>;
