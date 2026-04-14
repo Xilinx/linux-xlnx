@@ -111,7 +111,7 @@ additionalProperties: false
 
 examples:
   - |
-    axis_broadcaster_0 {
+    axis-broadcaster {
         compatible = "xlnx,axis-broadcaster-1.1";
 
         ports {
