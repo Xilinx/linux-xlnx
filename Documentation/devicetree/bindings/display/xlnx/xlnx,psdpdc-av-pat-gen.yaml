@@ -82,7 +82,7 @@ additionalProperties: false
 
 examples:
   - |
-        avpg@B0010000 {
+        avpg@b0010000 {
             compatible = "xlnx,psdpdc-av-pat-gen-2.0";
             reg = <0x80030000 0x10000>;
             clocks = <&misc_clk_0>, <&misc_clk_1>, <&misc_clk_2>, <&misc_clk_3>;
