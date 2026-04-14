@@ -188,7 +188,7 @@ additionalProperties: false
 examples:
   - |
     /* Memory-based example (8 streams) */
-    v_scenechange: scenechange@a0100000 {
+    scenechange@a0100000 {
         compatible = "xlnx,v-scd";
         reg = <0xa0100000 0x2000>;
         clocks = <&misc_clk_0>;
@@ -294,7 +294,7 @@ examples:
 
   - |
     /* Streaming-based example (1 stream) */
-    v_scenechange_0: scenechange@a0280000 {
+    scenechange@a0280000 {
         compatible = "xlnx,v-scd";
         reg = <0xa0280000 0x2000>;
         clocks = <&clk 72>;
