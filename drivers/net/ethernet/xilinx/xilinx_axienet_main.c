@@ -5716,10 +5716,10 @@ static int axienet_probe(struct platform_device *pdev)
 		}
 
 		if (lp->max_speed != SPEED_100000) {
-			lp->aux_mux = devm_gpiod_get(&pdev->dev, "aux-mux", GPIOD_OUT_LOW);
+			lp->aux_mux = devm_gpiod_get_optional(&pdev->dev, "aux-mux", GPIOD_OUT_LOW);
 			if (IS_ERR(lp->aux_mux)) {
-				dev_warn(&pdev->dev,
-					 "Failed to request Speed Switch GPIO\n");
+				dev_err(&pdev->dev,
+					"Failed to request Speed Switch GPIO\n");
 				ret = PTR_ERR(lp->aux_mux);
 				goto cleanup_clk;
 			}
