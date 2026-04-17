@@ -375,6 +375,7 @@ static int aie_part_read_register(struct aie_partition *apart, size_t offset,
 				  size_t len, void *data)
 {
 	struct aie_aperture *aperture = apart->aperture;
+	size_t bytes_read;
 	void __iomem *va;
 	int ret;
 
@@ -395,16 +396,8 @@ static int aie_part_read_register(struct aie_partition *apart, size_t offset,
 	offset += aie_aperture_cal_regoff(aperture, apart->range.start, 0);
 	va = aperture->base + offset;
 
-	if (len == sizeof(u32)) {
-		*((u32 *)data) = ioread32(va);
-	} else if (len % sizeof(u64)) {
-		size_t align64 = len - sizeof(u32);
-
-		memcpy_fromio(data, va, align64);
-		*((u32 *)(data + align64)) = ioread32(va + align64);
-	} else {
-		memcpy_fromio(data, va, len);
-	}
+	for (bytes_read = 0; bytes_read < len; bytes_read += sizeof(u32))
+		*((u32 *)(data + bytes_read)) = ioread32(va + bytes_read);
 
 	return (int)len;
 }
