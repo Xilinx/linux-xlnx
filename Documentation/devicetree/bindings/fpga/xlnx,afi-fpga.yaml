@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/fpga/xlnx,afi-fpga.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx Zynq UltraScale+ MPSoC AFI Interface Manager
+
+maintainers:
+  - Nava kishore Manne <nava.kishore.manne@amd.com>
+
+description:
+  The Zynq UltraScale+ MPSoC Processing System core provides access from PL
+  masters to PS internal peripherals, and memory through AXI FIFO interface
+  (AFI) interfaces.
+
+properties:
+  compatible:
+    const: xlnx,afi-fpga
+
+  config-afi:
+    $ref: /schemas/types.yaml#/definitions/uint32-matrix
+    description:
+      Pairs of <regid value> defining AFI register configurations.
+    minItems: 1
+    maxItems: 16
+    items:
+      items:
+        - description:
+            Register ID of the AFI register to be written.
+          minimum: 0
+          maximum: 15
+        - description: |
+            Value to be written to the register.
+            For regid 0-13 (FMx_RDCTRL/WRCTRL), the value sets the
+            fabric width: 0 (128-bit), 1 (64-bit), 2 (32-bit).
+            For regid 14 (AFIFS), the value encodes dw_ss1_sel
+            (bits 11:10) and dw_ss0_sel (bits 9:8), where each
+            2-bit field accepts 0x0 (32-bit AXI data width),
+            0x1 (64-bit AXI data width), or 0x2 (128-bit AXI data
+            width). All other bits are ignored.
+            For regid 15 (AFIFS_SS2), the value selects the SS2 AXI
+            data width: 0x000 (32-bit), 0x100 (64-bit), 0x200 (128-bit).
+
+  resets:
+    description: Phandle and reset specifier for the PS-PL resets.
+    maxItems: 4
+
+required:
+  - compatible
+  - config-afi
+
+additionalProperties: false
+
+examples:
+  - |
+    afi0 {
+        compatible = "xlnx,afi-fpga";
+        config-afi = <0 2>, <1 1>, <2 1>;
+        resets = <&zynqmp_reset 116>, <&zynqmp_reset 117>,
+                 <&zynqmp_reset 118>, <&zynqmp_reset 119>;
+    };
