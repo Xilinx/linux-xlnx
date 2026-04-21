@@ -16,6 +16,7 @@
 #include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 #include <linux/v4l2-subdev.h>
 #include <media/media-entity.h>
 #include <media/mipi-csi2.h>
@@ -98,7 +99,6 @@
 #define XCSI_DLXINFR_STOP	BIT(5)
 #define XCSI_DLXINFR_SOTERR	BIT(1)
 #define XCSI_DLXINFR_SOTSYNCERR	BIT(0)
-#define XCSI_MAXDL_COUNT	0x4
 
 #define XCSI_VCXINF1R_OFFSET		0x60
 #define XCSI_VCXINF1R_LINECOUNT		GENMASK(31, 16)
@@ -122,6 +122,26 @@
 #define XCSI_MAX_VCX		16
 
 #define XCSI_NEXTREG_OFFSET	4
+
+#define XCSI_PHY_MODE_CPHY	0
+#define XCSI_PHY_MODE_DPHY	1
+
+/* Feature flags */
+#define XCSI_HAS_PHY_MODE	BIT(0)
+
+/**
+ * struct xcsi2rxss_feature - IP version feature configuration
+ * @flags: Bitmask of features enabled in this IP version
+ */
+struct xcsi2rxss_feature {
+	u32 flags;
+};
+
+static const struct xcsi2rxss_feature xcsi2rxss_cfg_v50 = { };
+
+static const struct xcsi2rxss_feature xcsi2rxss_cfg_v60 = {
+	.flags = XCSI_HAS_PHY_MODE,
+};
 
 /* There are 2 events frame sync and frame level error per VC */
 #define XCSI_VCX_NUM_EVENTS	((XCSI_MAX_VCX - XCSI_MAX_VC) * 2)
@@ -224,6 +244,8 @@ static const u32 xcsi2dt_mbus_lut[][2] = {
  * @streaming: Flag for storing streaming state
  * @enable_active_lanes: If number of active lanes can be modified
  * @en_vcx: If more than 4 VC are enabled
+ * @is_cphy: true if C-PHY mode, false if D-PHY mode
+ * @cfg: Pointer to IP version feature config struct
  *
  * This structure contains the device driver related parameters
  */
@@ -246,6 +268,8 @@ struct xcsi2rxss_state {
 	bool streaming;
 	bool enable_active_lanes;
 	bool en_vcx;
+	bool is_cphy;
+	const struct xcsi2rxss_feature *cfg;
 };
 
 static const struct clk_bulk_data xcsi2rxss_clks[] = {
@@ -417,16 +441,20 @@ static int xcsi2rxss_log_status(struct v4l2_subdev *sd)
 	dev_info(dev, "Soft reset/Core disable in progress = %s\n",
 		 data & XCSI_CSR_RIPCD ? "true" : "false");
 
-	/* Clk & Lane Info  */
-	dev_info(dev, "******** Clock Lane Info *********\n");
-	data = xcsi2rxss_read(xcsi2rxss, XCSI_CLKINFR_OFFSET);
-	dev_info(dev, "Clock Lane in Stop State = %s\n",
-		 data & XCSI_CLKINFR_STOP ? "true" : "false");
+	if (!xcsi2rxss->is_cphy) {
+		dev_info(dev, "******** Clock Lane Info *********\n");
+		data = xcsi2rxss_read(xcsi2rxss, XCSI_CLKINFR_OFFSET);
+		dev_info(dev, "Clock Lane in Stop State = %s\n",
+			 data & XCSI_CLKINFR_STOP ? "true" : "false");
+	}
 
-	dev_info(dev, "******** Data Lane Info *********\n");
-	dev_info(dev, "Lane\tSoT Error\tSoT Sync Error\tStop State\n");
+	dev_info(dev, "******** Data %s Info *********\n",
+		 xcsi2rxss->is_cphy ? "Trio" : "Lane");
+	dev_info(dev, "%s\tSoT Error\tSoT Sync Error\tStop State\n",
+		 xcsi2rxss->is_cphy ? "Trio" : "Lane");
+
 	reg = XCSI_DLXINFR_OFFSET;
-	for (i = 0; i < XCSI_MAXDL_COUNT; i++) {
+	for (i = 0; i < xcsi2rxss->max_num_lanes; i++) {
 		data = xcsi2rxss_read(xcsi2rxss, reg);
 
 		dev_info(dev, "%d\t%s\t\t%s\t\t%s\n", i,
@@ -887,13 +915,34 @@ static int xcsi2rxss_parse_of(struct xcsi2rxss_state *xcsi2rxss)
 {
 	struct device *dev = xcsi2rxss->dev;
 	struct device_node *node = dev->of_node;
-
+	struct v4l2_fwnode_endpoint vep = { };
 	struct fwnode_handle *ep;
-	struct v4l2_fwnode_endpoint vep = {
-		.bus_type = V4L2_MBUS_CSI2_DPHY
-	};
 	bool en_csi_v20, vfb;
+	u32 phy_mode;
 	int ret;
+
+	if (xcsi2rxss->cfg->flags & XCSI_HAS_PHY_MODE) {
+		ret = device_property_read_u32(dev, "xlnx,mipi-rx-phy-mode",
+					       &phy_mode);
+		if (ret < 0)
+			return dev_err_probe(dev, ret,
+					     "missing xlnx,mipi-rx-phy-mode property\n");
+
+		if (phy_mode == XCSI_PHY_MODE_CPHY) {
+			xcsi2rxss->is_cphy = true;
+			vep.bus_type = V4L2_MBUS_CSI2_CPHY;
+		} else if (phy_mode == XCSI_PHY_MODE_DPHY) {
+			xcsi2rxss->is_cphy = false;
+			vep.bus_type = V4L2_MBUS_CSI2_DPHY;
+		} else {
+			return dev_err_probe(dev, -EINVAL,
+					     "invalid xlnx,mipi-rx-phy-mode %u\n",
+					     phy_mode);
+		}
+	} else {
+		xcsi2rxss->is_cphy = false;
+		vep.bus_type = V4L2_MBUS_CSI2_DPHY;
+	}
 
 	en_csi_v20 = of_property_read_bool(node, "xlnx,en-csi-v2-0");
 	if (en_csi_v20)
@@ -961,7 +1010,8 @@ static int xcsi2rxss_parse_of(struct xcsi2rxss_state *xcsi2rxss)
 		return ret;
 	}
 
-	dev_dbg(dev, "mipi number lanes = %d\n",
+	dev_dbg(dev, "mipi number %s = %d\n",
+		xcsi2rxss->is_cphy ? "trios" : "lanes",
 		vep.bus.mipi_csi2.num_data_lanes);
 
 	xcsi2rxss->max_num_lanes = vep.bus.mipi_csi2.num_data_lanes;
@@ -976,9 +1026,11 @@ static int xcsi2rxss_parse_of(struct xcsi2rxss_state *xcsi2rxss)
 
 	fwnode_handle_put(ep);
 
-	dev_dbg(dev, "vcx %s, %u data lanes (%s), data type 0x%02x\n",
+	dev_dbg(dev, "phy mode %s, vcx %s, %u data %s (%s), data type 0x%02x\n",
+		xcsi2rxss->is_cphy ? "C-PHY" : "D-PHY",
 		xcsi2rxss->en_vcx ? "enabled" : "disabled",
 		xcsi2rxss->max_num_lanes,
+		xcsi2rxss->is_cphy ? "trios" : "lanes",
 		xcsi2rxss->enable_active_lanes ? "dynamic" : "static",
 		xcsi2rxss->datatype);
 
@@ -1010,6 +1062,10 @@ static int xcsi2rxss_probe(struct platform_device *pdev)
 	if (IS_ERR(xcsi2rxss->rst_gpio))
 		return dev_err_probe(dev, PTR_ERR(xcsi2rxss->rst_gpio),
 				     "Video Reset GPIO not setup in DT\n");
+
+	xcsi2rxss->cfg = device_get_match_data(dev);
+	if (!xcsi2rxss->cfg)
+		return dev_err_probe(dev, -ENODEV, "no match data found\n");
 
 	ret = xcsi2rxss_parse_of(xcsi2rxss);
 	if (ret < 0)
@@ -1106,7 +1162,10 @@ static void xcsi2rxss_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id xcsi2rxss_of_id_table[] = {
-	{ .compatible = "xlnx,mipi-csi2-rx-subsystem-5.0", },
+	{ .compatible = "xlnx,mipi-csi2-rx-subsystem-6.0",
+	  .data = &xcsi2rxss_cfg_v60 },
+	{ .compatible = "xlnx,mipi-csi2-rx-subsystem-5.0",
+	  .data = &xcsi2rxss_cfg_v50 },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, xcsi2rxss_of_id_table);
