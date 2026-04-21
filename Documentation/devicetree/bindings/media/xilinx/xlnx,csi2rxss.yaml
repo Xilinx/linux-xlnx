@@ -13,19 +13,21 @@ description: |
   The Xilinx MIPI CSI-2 Receiver Subsystem is used to capture MIPI CSI-2
   traffic from compliant camera sensors and send the output as AXI4 Stream
   video data for image processing.
-  The subsystem consists of a MIPI D-PHY in slave mode which captures the
-  data packets. This is passed along the MIPI CSI-2 Rx IP which extracts the
-  packet data. The optional Video Format Bridge (VFB) converts this data to
-  AXI4 Stream video data.
+  The subsystem consists of a MIPI D-PHY or C-PHY in slave mode which
+  captures the data packets. This is passed along the MIPI CSI-2 Rx IP
+  which extracts the packet data. The optional Video Format Bridge (VFB)
+  converts this data to AXI4 Stream video data.
   For more details, please refer to PG232 Xilinx MIPI CSI-2 Receiver Subsystem.
   Please note that this bindings includes only the MIPI CSI-2 Rx controller
-  and Video Format Bridge and not D-PHY.
+  and Video Format Bridge and not D-PHY/C-PHY.
 
 properties:
   compatible:
-    items:
-      - enum:
-          - xlnx,mipi-csi2-rx-subsystem-5.0
+    oneOf:
+      - const: xlnx,mipi-csi2-rx-subsystem-5.0
+      - items:
+          - const: xlnx,mipi-csi2-rx-subsystem-6.0
+          - const: xlnx,mipi-csi2-rx-subsystem-5.0
 
   reg:
     maxItems: 1
@@ -94,6 +96,13 @@ properties:
       runtime in the Protocol Configuration Register. Otherwise all lanes,
       as set in IP configuration, are always active.
 
+  xlnx,mipi-rx-phy-mode:
+    description: >-
+      Selects the MIPI PHY interface mode used by the CSI-2 Rx Subsystem.
+      0 for C-PHY mode and 1 for D-PHY mode.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [0, 1]
+
   video-reset-gpios:
     description: Optional specifier for a GPIO that asserts video_aresetn.
     maxItems: 1
@@ -118,16 +127,22 @@ properties:
                 description: |
                   This is required only in the sink port 0 endpoint which
                   connects to MIPI CSI-2 source like sensor.
-                  The possible values are -
+                  For D-PHY the possible values are -
                   1       - For 1 lane enabled in IP.
                   1 2     - For 2 lanes enabled in IP.
                   1 2 3   - For 3 lanes enabled in IP.
                   1 2 3 4 - For 4 lanes enabled in IP.
+
+                  For C-PHY the possible values are -
+                  1       - For 1 trio enabled in IP.
+                  1 2     - For 2 trios enabled in IP.
+                  1 2 3   - For 3 trios enabled in IP.
                 items:
                   - const: 1
                   - const: 2
                   - const: 3
                   - const: 4
+                minItems: 1
 
             required:
               - data-lanes
@@ -167,6 +182,42 @@ allOf:
       properties:
         xlnx,en-vcx: false
 
+  - if:
+      not:
+        properties:
+          compatible:
+            contains:
+              const: xlnx,mipi-csi2-rx-subsystem-6.0
+    then:
+      properties:
+        xlnx,mipi-rx-phy-mode: false
+
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: xlnx,mipi-csi2-rx-subsystem-6.0
+    then:
+      required:
+        - xlnx,mipi-rx-phy-mode
+
+  - if:
+      properties:
+        xlnx,mipi-rx-phy-mode:
+          const: 0
+      required:
+        - xlnx,mipi-rx-phy-mode
+    then:
+      properties:
+        ports:
+          properties:
+            port@0:
+              properties:
+                endpoint:
+                  properties:
+                    data-lanes:
+                      maxItems: 3
+
 additionalProperties: false
 
 examples:
@@ -204,6 +255,44 @@ examples:
                 reg = <1>;
                 csiss_out: endpoint {
                     remote-endpoint = <&vproc_in>;
+                };
+            };
+        };
+    };
+
+  # Example with C-PHY
+  - |
+    #include <dt-bindings/gpio/gpio.h>
+    csi2rx@a4020000 {
+        compatible = "xlnx,mipi-csi2-rx-subsystem-6.0",
+                     "xlnx,mipi-csi2-rx-subsystem-5.0";
+        reg = <0xa4020000 0x2000>;
+        interrupt-parent = <&gic>;
+        interrupts = <0 84 4>;
+        xlnx,csi-pxl-format = <0x2b>;
+        xlnx,vfb;
+        xlnx,mipi-rx-phy-mode = <0>;
+        clock-names = "lite_aclk", "video_aclk";
+        clocks = <&misc_clk_0>, <&misc_clk_1>;
+
+        ports {
+            #address-cells = <1>;
+            #size-cells = <0>;
+
+            port@0 {
+                /* Sink port */
+                reg = <0>;
+                endpoint {
+                    data-lanes = <1 2 3>;
+                    /* MIPI CSI-2 C-PHY Camera handle */
+                    remote-endpoint = <&cphy_camera_out>;
+                };
+            };
+            port@1 {
+                /* Source port */
+                reg = <1>;
+                endpoint {
+                    remote-endpoint = <&cphy_vproc_in>;
                 };
             };
         };
