@@ -52,7 +52,8 @@ static unsigned long register_address;
  * @node_id:	Input ID - either a full firmware Node ID or a simple SCMI index
  *
  * This function handles two types of input and produces a properly formatted
- * firmware Node ID:
+ * firmware Node ID. For ZynqMP platform, returns the node_id unchanged.
+ * For all other platforms, performs SCMI encoding if needed.
  *
  * 1. Full firmware Node ID (class bits [31:26] are non-zero):
  *    Returns the ID unchanged as it's already properly formatted.
@@ -65,10 +66,19 @@ static unsigned long register_address;
  *    - node_id for Index field [13:0]
  *    (e.g., 0xBF -> 0x18A3C0BF with class=0x06, subclass=0x0A, type=0x0F, index=0xBF)
  *
- * Return: Full firmware node ID (or) SCMI encoded node ID
+ * Return: Full firmware node ID (or) SCMI encoded node ID (or) unchanged node_id for ZynqMP
  */
 static inline u32 prepare_node_id(u32 node_id)
 {
+	u32 family;
+
+	if (zynqmp_pm_get_family_info(&family))
+		return node_id;
+
+	/* SCMI encoding is not applicable for ZynqMP */
+	if (family == PM_ZYNQMP_FAMILY_CODE)
+		return node_id;
+
 	if (node_id & (SCMI_NODEID_FIELD_MASK << SCMI_NODEID_CLASS_SHIFT))
 		return node_id;
 
