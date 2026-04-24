@@ -79,6 +79,19 @@
 #define DMA_ATTR_MMIO		(1UL << 10)
 
 /*
+ * DMA_ATTR_INVALIDATE_LINEAR_MAP: Invalidate the cacheable linear map alias
+ * after allocation and restore it before freeing. Use for non-coherent devices
+ * on platforms with invisible cache behavior (e.g., ARM A78 + CMN-600AE) to
+ * prevent stale cache returns via snoop filter back-snoops.
+ *
+ * Requires page-granular linear map (rodata=full on arm64) so that
+ * set_direct_map_invalid_noflush() can manipulate individual PTEs.
+ *
+ * TODO: Update Documentation/core-api/dma-attributes.rst with this attribute.
+ */
+#define DMA_ATTR_INVALIDATE_LINEAR_MAP	(1UL << 11)
+
+/*
  * A dma_addr_t can hold any valid DMA or bus address for the platform.  It can
  * be given to a device to use as a DMA source or target.  It is specific to a
  * given device and there may be a translation between the CPU physical address
