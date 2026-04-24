@@ -435,7 +435,7 @@
 	};
 
 	/* connected via J425 connector
-	 ucd90320: power-sequencer@73 { // u16
+	ucd90320: power-sequencer@73 { // u16
 		compatible = "ti,ucd90320";
 		reg = <0x73>;
 	};*/
