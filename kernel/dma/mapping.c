@@ -13,8 +13,10 @@
 #include <linux/iommu-dma.h>
 #include <linux/kmsan.h>
 #include <linux/of_device.h>
+#include <linux/set_memory.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
+#include <asm/tlbflush.h>
 #include "debug.h"
 #include "direct.h"
 
@@ -629,6 +631,71 @@ u64 dma_get_required_mask(struct device *dev)
 }
 EXPORT_SYMBOL_GPL(dma_get_required_mask);
 
+#ifdef CONFIG_ARCH_HAS_SET_DIRECT_MAP
+/*
+ * Helper functions for DMA_ATTR_INVALIDATE_LINEAR_MAP.
+ * These invalidate/restore the cacheable linear map alias to prevent stale
+ * cache returns on platforms with invisible cache (e.g., ARM A78 + CMN-600AE).
+ */
+static int __dma_invalidate_linear_map(struct device *dev,
+				       phys_addr_t phys_addr, size_t size)
+{
+	unsigned long linear_va = (unsigned long)phys_to_virt(phys_addr);
+	unsigned long pfn = PHYS_PFN(phys_addr);
+	int nr_pages = PAGE_ALIGN(size) >> PAGE_SHIFT;
+	int ret = 0;
+	int i;
+
+	for (i = 0; i < nr_pages; i++) {
+		ret = set_direct_map_invalid_noflush(pfn_to_page(pfn + i));
+		if (ret) {
+			dev_err(dev, "failed to invalidate linear map for PFN %lu: %d\n",
+				pfn + i, ret);
+			/* Undo already-invalidated pages */
+			while (i-- > 0)
+				set_direct_map_default_noflush(pfn_to_page(pfn + i));
+			break;
+		}
+	}
+
+	flush_tlb_kernel_range(linear_va, linear_va + PAGE_ALIGN(size));
+
+	return ret;
+}
+
+static void __dma_restore_linear_map(struct device *dev,
+				     phys_addr_t phys_addr, size_t size)
+{
+	unsigned long linear_va = (unsigned long)phys_to_virt(phys_addr);
+	unsigned long pfn = PHYS_PFN(phys_addr);
+	int nr_pages = PAGE_ALIGN(size) >> PAGE_SHIFT;
+	int ret;
+	int i;
+
+	for (i = 0; i < nr_pages; i++) {
+		ret = set_direct_map_default_noflush(pfn_to_page(pfn + i));
+		if (ret)
+			dev_err(dev, "failed to restore linear map for PFN %lu: %d\n",
+				pfn + i, ret);
+	}
+
+	flush_tlb_kernel_range(linear_va, linear_va + PAGE_ALIGN(size));
+}
+#else /* !CONFIG_ARCH_HAS_SET_DIRECT_MAP */
+static inline int __dma_invalidate_linear_map(struct device *dev,
+					      phys_addr_t phys_addr,
+					      size_t size)
+{
+	return 0;
+}
+
+static inline void __dma_restore_linear_map(struct device *dev,
+					    phys_addr_t phys_addr,
+					    size_t size)
+{
+}
+#endif /* CONFIG_ARCH_HAS_SET_DIRECT_MAP */
+
 void *dma_alloc_attrs(struct device *dev, size_t size, dma_addr_t *dma_handle,
 		gfp_t flag, unsigned long attrs)
 {
@@ -654,6 +721,31 @@ void *dma_alloc_attrs(struct device *dev, size_t size, dma_addr_t *dma_handle,
 	/* let the implementation decide on the zone to allocate from: */
 	flag &= ~(__GFP_DMA | __GFP_DMA32 | __GFP_HIGHMEM);
 
+#ifdef CONFIG_ARCH_HAS_SET_DIRECT_MAP
+	if (attrs & DMA_ATTR_INVALIDATE_LINEAR_MAP) {
+		/*
+		 * Reject early when the linear map is not page-granular.
+		 * set_direct_map_invalid_noflush() silently returns 0 when
+		 * the linear map uses block mappings (rodata_full not set),
+		 * so we must check explicitly.
+		 */
+		if (!can_set_direct_map()) {
+			dev_err(dev, "INVALIDATE_LINEAR_MAP needs page-granular linear map (rodata=full)\n");
+			return NULL;
+		}
+		/*
+		 * Reject when an IOMMU is active. The flag requires
+		 * dma_handle to be a physical address so we can derive a
+		 * PFN and linear map VA; with an IOMMU dma_handle is an
+		 * IOVA.
+		 */
+		if (!dev_is_dma_coherent(dev) && !dma_alloc_direct(dev, ops)) {
+			dev_err(dev, "INVALIDATE_LINEAR_MAP not supported with IOMMU\n");
+			return NULL;
+		}
+	}
+#endif
+
 	if (dma_alloc_direct(dev, ops)) {
 		cpu_addr = dma_direct_alloc(dev, size, dma_handle, flag, attrs);
 	} else if (use_dma_iommu(dev)) {
@@ -663,6 +755,14 @@ void *dma_alloc_attrs(struct device *dev, size_t size, dma_addr_t *dma_handle,
 	} else {
 		trace_dma_alloc(dev, NULL, 0, size, DMA_BIDIRECTIONAL, flag,
 				attrs);
+		return NULL;
+	}
+
+	/* Invalidate linear map alias for non-coherent devices if requested */
+	if (cpu_addr && (attrs & DMA_ATTR_INVALIDATE_LINEAR_MAP) &&
+	    !dev_is_dma_coherent(dev) &&
+	    __dma_invalidate_linear_map(dev, *dma_handle, size)) {
+		dma_free_attrs(dev, size, cpu_addr, *dma_handle, attrs & ~DMA_ATTR_INVALIDATE_LINEAR_MAP);
 		return NULL;
 	}
 
@@ -693,6 +793,11 @@ void dma_free_attrs(struct device *dev, size_t size, void *cpu_addr,
 		       attrs);
 	if (!cpu_addr)
 		return;
+
+	/* Restore linear map alias before freeing if it was invalidated */
+	if ((attrs & DMA_ATTR_INVALIDATE_LINEAR_MAP) &&
+	    !dev_is_dma_coherent(dev) && dma_alloc_direct(dev, ops))
+		__dma_restore_linear_map(dev, dma_handle, size);
 
 	debug_dma_free_coherent(dev, size, cpu_addr, dma_handle);
 	if (dma_alloc_direct(dev, ops))
