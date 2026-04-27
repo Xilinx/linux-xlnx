@@ -252,6 +252,11 @@ static const struct spi_nor_fixups mt25q02_fixups = {
 	.late_init = st_nor_four_die_late_init,
 };
 
+static const struct spi_nor_fixups st_nor_two_die_fixups = {
+	.post_bfpt = mt25qu512a_post_bfpt_fixup,
+	.late_init = st_nor_two_die_late_init,
+};
+
 static const struct flash_info micron_nor_parts[] = {
 	{
 		.id = SNOR_ID(0x2c, 0x5b, 0x1a),
@@ -462,7 +467,7 @@ static const struct flash_info st_nor_parts[] = {
 		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
 		.fixup_flags = SPI_NOR_4B_OPCODES,
 		.mfr_flags = USE_FSR,
-		.fixups = &mt25qu512a_fixups
+		.fixups = &st_nor_two_die_fixups
 	}, {
 		.id = SNOR_ID(0x20, 0xba, 0x20),
 		.name = "n25q512ax3",
@@ -471,7 +476,7 @@ static const struct flash_info st_nor_parts[] = {
 			 SPI_NOR_BP3_SR_BIT6 | NO_CHIP_ERASE,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_QUAD_READ,
 		.mfr_flags = USE_FSR,
-		.fixups = &mt25qu512a_fixups
+		.fixups = &st_nor_two_die_fixups
 	}, {
 		.id = SNOR_ID(0x20, 0xba, 0x21),
 		.name = "n25q00",
@@ -489,7 +494,7 @@ static const struct flash_info st_nor_parts[] = {
 		      SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT6 | NO_CHIP_ERASE,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_QUAD_READ,
 		.mfr_flags = USE_FSR,
-		.fixups = &mt25qu512a_fixups
+		.fixups = &n25q00_fixups
 	}, {
 		.id = SNOR_ID(0x20, 0xbb, 0x15),
 		.name = "n25q016a",
@@ -544,7 +549,7 @@ static const struct flash_info st_nor_parts[] = {
 			 SPI_NOR_BP3_SR_BIT6 | NO_CHIP_ERASE,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
 		.mfr_flags = USE_FSR,
-		.fixups = &mt25qu512a_fixups
+		.fixups = &st_nor_two_die_fixups
 	}, {
 		.id = SNOR_ID(0x20, 0xbb, 0x20),
 		.name = "n25q512a",
@@ -553,7 +558,7 @@ static const struct flash_info st_nor_parts[] = {
 			 SPI_NOR_BP3_SR_BIT6 | NO_CHIP_ERASE,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_QUAD_READ,
 		.mfr_flags = USE_FSR,
-		.fixups = &mt25qu512a_fixups
+		.fixups = &st_nor_two_die_fixups
 	}, {
 		.id = SNOR_ID(0x20, 0xbb, 0x21, 0x10, 0x44, 0x00),
 		.name = "mt25qu01g",
@@ -562,7 +567,7 @@ static const struct flash_info st_nor_parts[] = {
 			 SPI_NOR_BP3_SR_BIT6 | NO_CHIP_ERASE,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
 		.mfr_flags = USE_FSR,
-		.fixups = &mt25qu512a_fixups
+		.fixups = &st_nor_two_die_fixups
 	}, {
 		.id = SNOR_ID(0x20, 0xbb, 0x21),
 		.name = "n25q00a",
@@ -571,7 +576,7 @@ static const struct flash_info st_nor_parts[] = {
 		      SPI_NOR_BP3_SR_BIT6 | NO_CHIP_ERASE,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_QUAD_READ,
 		.mfr_flags = USE_FSR,
-		.fixups = &mt25qu512a_fixups
+		.fixups = &n25q00_fixups
 	}, {
 		.id = SNOR_ID(0x20, 0xbb, 0x22),
 		.name = "mt25qu02g",
@@ -580,7 +585,7 @@ static const struct flash_info st_nor_parts[] = {
 		      SPI_NOR_BP3_SR_BIT6 | NO_CHIP_ERASE,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
 		.mfr_flags = USE_FSR,
-		.fixups = &mt25qu512a_fixups
+		.fixups = &n25q00_fixups
 	}
 };
 
