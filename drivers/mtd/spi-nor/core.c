@@ -2273,21 +2273,16 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 			size_t *retlen, u_char *buf)
 {
 	struct spi_nor *nor = mtd_to_spi_nor(mtd);
-	struct spi_nor_flash_parameter *params;
 	ssize_t ret, read_len, len_lock =  len;
 	bool is_ofst_odd = false;
 	loff_t from_lock = from;
 	u32 rem_bank_len = 0;
 	u_char *readbuf;
 	loff_t addr;
-	u64 sz = 0;
 	u8 bank;
 
 #define OFFSET_16_MB 0x1000000
 	dev_dbg(nor->dev, "from 0x%08x, len %zd\n", (u32)from, len);
-
-	params = nor->params;
-	sz = params->size;
 
 	/*
 	 * When even number of flashes are connected in parallel and the
@@ -2491,12 +2486,9 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 	struct spi_nor *nor = mtd_to_spi_nor(mtd);
 	u32 page_size = nor->params->page_size;
 	size_t page_offset, i, ret;
-	u32 rem_bank_len = 0;
 	u32 n_flash = 1;
 	loff_t addr;
-	u8 bank;
 
-#define OFFSET_16_MB 0x1000000
 	dev_dbg(nor->dev, "to 0x%08x, len %zd\n", (u32)to, len);
 
 	if (nor->num_flash)
@@ -2549,16 +2541,6 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 	for (i = 0; i < len; ) {
 		ssize_t written;
 
-		if (nor->addr_nbytes == 3) {
-			if (nor->flags & SNOR_F_HAS_PARALLEL) {
-				bank = (u32)to / (OFFSET_16_MB << 0x01);
-				rem_bank_len = ((OFFSET_16_MB << 0x01) *
-						(bank + 1)) - to;
-			} else {
-				bank = (u32)to / (OFFSET_16_MB);
-				rem_bank_len = ((OFFSET_16_MB) * (bank + 1)) - to;
-			}
-		}
 		addr = to + i;
 
 		/*
@@ -2584,13 +2566,6 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 			nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_MULTI_CS;
 		} else {
 			nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_CS0;
-		}
-
-		if (nor->addr_nbytes == 4) {
-			if (nor->flags & SNOR_F_HAS_PARALLEL)
-				rem_bank_len = mtd->size - (addr << 1);
-			else
-				rem_bank_len = mtd->size - addr;
 		}
 
 		if (nor->addr_nbytes == 3) {
