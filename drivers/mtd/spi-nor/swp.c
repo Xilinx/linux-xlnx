@@ -46,9 +46,6 @@ static u64 spi_nor_get_min_prot_length_sr(struct spi_nor *nor)
 	u64 n_sectors = div_u64(nor->params->size, sector_size);
 	u8 mask = spi_nor_get_sr_bp_mask(nor);
 
-	if (nor->flags & SNOR_F_HAS_PARALLEL)
-		sector_size <<= 1;
-
 	/* Reserved one for "protect none" and one for "protect all". */
 	bp_slots = (1 << hweight8(mask)) - 2;
 	bp_slots_needed = ilog2(n_sectors);
@@ -440,6 +437,7 @@ static int spi_nor_lock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 	if (nor->flags & SNOR_F_HAS_PARALLEL) {
 		nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_MULTI_CS;
 		ofs /= 2;
+		len /= 2;
 	} else {
 		nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_CS0;
 	}
@@ -473,6 +471,7 @@ static int spi_nor_unlock(struct mtd_info *mtd, loff_t ofs, u64 len)
 	if (nor->flags & SNOR_F_HAS_PARALLEL) {
 		nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_MULTI_CS;
 		ofs /= 2;
+		len /= 2;
 	} else {
 		nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_CS0;
 	}
@@ -553,7 +552,7 @@ void spi_nor_try_unlock_all(struct spi_nor *nor)
 		if (info->flags & SST_GLOBAL_PROT_UNLK) {
 			spi_nor_prot_unlock(nor);
 		} else {
-			ret = spi_nor_unlock(&nor->mtd, 0, nor->params->size);
+			ret = spi_nor_unlock(&nor->mtd, 0, nor->mtd.size);
 			if (ret)
 				dev_dbg(nor->dev, "Failed to unlock the entire flash memory array\n");
 		}
