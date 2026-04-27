@@ -236,6 +236,7 @@ static int st_nor_two_die_late_init(struct spi_nor *nor)
 }
 
 static const struct spi_nor_fixups n25q00_fixups = {
+	.post_bfpt = mt25qu512a_post_bfpt_fixup,
 	.late_init = st_nor_four_die_late_init,
 };
 
@@ -479,7 +480,7 @@ static const struct flash_info st_nor_parts[] = {
 			 SPI_NOR_BP3_SR_BIT6 | NO_CHIP_ERASE,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_QUAD_READ,
 		.mfr_flags = USE_FSR,
-		.fixups = &mt25qu512a_fixups
+		.fixups = &n25q00_fixups
 	}, {
 		.id = SNOR_ID(0x20, 0xba, 0x22),
 		.name = "mt25ql02g",
