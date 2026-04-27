@@ -444,6 +444,11 @@ static int spi_nor_lock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 		nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_CS0;
 	}
 	ret = params->locking_ops->lock(nor, ofs, len);
+	if (ret) {
+		dev_err_once(nor->dev, "lock failed: %d\n", ret);
+		goto err;
+	}
+
 	/* Wait until finished previous command */
 	ret = spi_nor_wait_till_ready(nor);
 	if (ret)
@@ -472,6 +477,11 @@ static int spi_nor_unlock(struct mtd_info *mtd, loff_t ofs, u64 len)
 		nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_CS0;
 	}
 	ret = params->locking_ops->unlock(nor, ofs, len);
+	if (ret) {
+		dev_err_once(nor->dev, "unlock failed: %d\n", ret);
+		goto err;
+	}
+
 	/* Wait until finished previous command */
 	ret = spi_nor_wait_till_ready(nor);
 	if (ret)
