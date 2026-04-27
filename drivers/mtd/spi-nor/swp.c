@@ -179,8 +179,10 @@ static int spi_nor_sr_lock(struct spi_nor *nor, loff_t ofs, u64 len)
 	status_old = nor->bouncebuf[0];
 
 	/* If nothing in our range is unlocked, we don't need to do anything */
-	if (spi_nor_is_locked_sr(nor, ofs, len, status_old))
+	if (spi_nor_is_locked_sr(nor, ofs, len, status_old)) {
+		dev_dbg(nor->dev, "requested memory region is locked\n");
 		return 0;
+	}
 
 	/* If anything below us is unlocked, we can't use 'bottom' protection */
 	if (!spi_nor_is_locked_sr(nor, 0, ofs, status_old))
@@ -238,8 +240,10 @@ static int spi_nor_sr_lock(struct spi_nor *nor, loff_t ofs, u64 len)
 		status_new |= tb_mask;
 
 	/* Don't bother if they're the same */
-	if (status_new == status_old)
+	if (status_new == status_old) {
+		dev_dbg(nor->dev, "nothing in our range to lock\n");
 		return 0;
+	}
 
 	/* Only modify protection if it will not unlock other areas */
 	if ((status_new & mask) < (status_old & mask))
@@ -291,8 +295,10 @@ static int spi_nor_sr_unlock(struct spi_nor *nor, loff_t ofs, u64 len)
 	status_old = nor->bouncebuf[0];
 
 	/* If nothing in our range is locked, we don't need to do anything */
-	if (spi_nor_is_unlocked_sr(nor, ofs, len, status_old))
+	if (spi_nor_is_unlocked_sr(nor, ofs, len, status_old)) {
+		dev_dbg(nor->dev, "requested memory region is unlocked\n");
 		return 0;
+	}
 
 	/* If anything below us is locked, we can't use 'top' protection */
 	if ((!spi_nor_is_unlocked_sr(nor, 0, ofs, status_old)) ||
@@ -344,8 +350,10 @@ static int spi_nor_sr_unlock(struct spi_nor *nor, loff_t ofs, u64 len)
 		status_new |= tb_mask;
 
 	/* Don't bother if they're the same */
-	if (status_new == status_old)
+	if (status_new == status_old) {
+		dev_dbg(nor->dev, "nothing in our range to unlock\n");
 		return 0;
+	}
 
 	/* Only modify protection if it will not lock other areas */
 	if ((status_new & mask) > (status_old & mask))
