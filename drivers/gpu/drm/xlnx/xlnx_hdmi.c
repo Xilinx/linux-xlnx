@@ -2768,20 +2768,33 @@ static irqreturn_t hdmitx_irq_handler(int irq, void *dev_id)
 {
 	struct xlnx_hdmi *hdmi = (struct xlnx_hdmi *)dev_id;
 	unsigned long flags;
+	u32 frl_ctrl;
 
 	/* read status registers */
 	hdmi->intr_status = xlnx_hdmi_readl(hdmi, HDMI_TX_PIO_STA);
 	hdmi->intr_status &= HDMI_TX_PIO_STA_IRQ;
-	if (hdmi->stream.is_frl) {
+
+	/* Sample FRL_STA whenever the FRL IE bit is set in hardware. */
+	hdmi->frl_status = 0;
+	frl_ctrl = xlnx_hdmi_readl(hdmi, HDMI_TX_FRL_CTRL);
+	if (hdmi->stream.is_frl || (frl_ctrl & HDMI_TX_FRL_CTRL_IE)) {
 		hdmi->frl_status = xlnx_hdmi_readl(hdmi, HDMI_TX_FRL_STA);
 		hdmi->frl_status &= HDMI_TX_FRL_STA_IRQ;
 	}
+
+	/* Nothing pending: return IRQ_NONE and skip the thread wakeup. */
+	if (!hdmi->intr_status && !hdmi->frl_status)
+		return IRQ_NONE;
 
 	spin_lock_irqsave(&hdmi->irq_lock, flags);
 	xlnx_hdmi_piointr_disable(hdmi);
 	if (hdmi->frl_status) {
 		xlnx_hdmi_frl_intr_disable(hdmi);
-		xlnx_hdmi_frl_execute(hdmi);
+		/* W1C the FRL IRQ source so the line de-asserts. */
+		xlnx_hdmi_writel(hdmi, HDMI_TX_FRL_STA,
+				 HDMI_TX_FRL_STA_IRQ);
+		if (hdmi->stream.is_frl)
+			xlnx_hdmi_frl_execute(hdmi);
 	}
 	spin_unlock_irqrestore(&hdmi->irq_lock, flags);
 
@@ -2801,8 +2814,15 @@ static irqreturn_t hdmitx_irq_thread(int irq, void *data)
 	if (hdmi->intr_status)
 		xlnx_hdmi_piointr_handler(hdmi);
 
-	if (hdmi->frl_status && hdmi->stream.is_frl)
+	if (hdmi->frl_status && hdmi->stream.is_frl) {
 		xlnx_hdmi_frlintr_handler(hdmi);
+	} else if (hdmi->frl_status && !hdmi->stream.is_frl) {
+		/* FRL core still raising events while software is in TMDS. */
+		dev_dbg(hdmi->dev,
+			"FRL: IRQ dropped (is_frl=0 frl_state=%u frl_status=0x%x)\n",
+			hdmi->stream.frl_config.frl_train_states,
+			hdmi->frl_status);
+	}
 
 	hdmi_mutex_unlock(&hdmi->hdmi_mutex);
 
