@@ -2553,7 +2553,13 @@ static int xlnx_hdmi_exec_frl_state_ltsp(struct xlnx_hdmi *hdmi)
 			HDMI_TX_FRLSTATE_LTS_3;
 		xlnx_hdmi_set_frl_timer(hdmi, TIMEOUT_10US);
 	} else if (ddc_buf & HDMI_TX_DDC_UPDATE_FLGS_CED_UPDATE_MASK) {
-		xlnx_hdmi_set_frl_timer(hdmi, 0);
+		/* W1C the CED_UPDATE bit on the sink. */
+		xlnx_hdmi_ddcwrite_field(hdmi,
+					 HDMI_TX_SCDC_FIELD_CED_UPDATE, 1);
+		/* Keep polling in LTS_P; only stop once FRL_INTR owns it. */
+		if (hdmi->stream.frl_config.frl_train_states ==
+		    HDMI_TX_FRLSTATE_LTS_P_FRL_RDY)
+			xlnx_hdmi_set_frl_timer(hdmi, 0);
 	}
 
 	return status;
