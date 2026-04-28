@@ -219,8 +219,8 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 					"unable to set requested tx resolutions\n\r");
 			cfg->tx_params = 0;
 			clk_set_rate(phy_dev->tmds_clk, phy_dev->tx_refclk_hz);
-			dev_info(phy_dev->dev,
-				 "tx_tmdsclk %lld\n", cfg->tx_tmdsclk);
+			dev_dbg(phy_dev->dev,
+				"tx_tmdsclk %lld\n", cfg->tx_tmdsclk);
 			xhdmiphy_set_lrate(phy_dev, phy_lane->direction, 0,
 					   cfg->tx_tmdsclk, 0);
 		} else if (cfg->config_hdmi21) {
