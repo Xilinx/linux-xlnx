@@ -348,7 +348,6 @@ void xvip_width_padding_factor(u32 fourcc, u32 *numerator, u32 *denominator)
 		*denominator = 30;
 		break;
 	case V4L2_PIX_FMT_XBGR40:
-	case V4L2_PIX_FMT_XY12:
 	case V4L2_PIX_FMT_X012:
 	case V4L2_PIX_FMT_X012M:
 	case V4L2_PIX_FMT_X212:
