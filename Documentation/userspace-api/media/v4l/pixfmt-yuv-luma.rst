@@ -130,6 +130,19 @@ are often referred to as greyscale formats.
       - ...
       - ...
 
+    * .. _V4L2-PIX-FMT-XY12:
+
+      - ``V4L2_PIX_FMT_XY12``
+      - 'XY12'
+
+      - Y'\ :sub:`0`\ [7:0]
+      - Y'\ :sub:`1`\ [3:0] Y'\ :sub:`0`\ [11:8]
+      - Y'\ :sub:`1`\ [11:4]
+      - Y'\ :sub:`2`\ [7:0]
+      - Y'\ :sub:`3`\ [3:0] Y'\ :sub:`2`\ [11:8]
+      - Y'\ :sub:`3`\ [11:4]
+      - ...
+
     * .. _V4L2-PIX-FMT-Y12P:
 
       - ``V4L2_PIX_FMT_Y12P``
@@ -213,3 +226,8 @@ are often referred to as greyscale formats.
     The 'P' variations of the Y10, Y12 and Y14 formats are packed according to
     the RAW10, RAW12 and RAW14 packing scheme as defined by the MIPI CSI-2
     specification.
+
+    For the XY12 format, four consecutive 12-bit luma values are packed into
+    48 bits (6 bytes) with no padding, in contrast to the Y12 format which
+    stores each 12-bit value in a 16-bit container with 4 padding bits in the
+    most significant bits.
