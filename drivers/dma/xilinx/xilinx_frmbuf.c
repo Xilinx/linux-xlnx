@@ -601,7 +601,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.tile_sz = 64,
 		.drm_fmt = DRM_FORMAT_T6MC,
 		.v4l2_fmt = V4L2_PIX_FMT_T6MC,
-		.fmt_bitmask = BIT(32),
+		.fmt_bitmask = BIT_ULL(32),
 	},
 	{
 		.dts_name = "T508",
@@ -612,7 +612,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.tile_sz = 32,
 		.drm_fmt = DRM_FORMAT_T508,
 		.v4l2_fmt = V4L2_PIX_FMT_T508,
-		.fmt_bitmask = BIT(33),
+		.fmt_bitmask = BIT_ULL(33),
 	},
 	{
 		.dts_name = "T608",
@@ -623,7 +623,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.tile_sz = 64,
 		.drm_fmt = DRM_FORMAT_T608,
 		.v4l2_fmt = V4L2_PIX_FMT_T608,
-		.fmt_bitmask = BIT(34),
+		.fmt_bitmask = BIT_ULL(34),
 	},
 	{
 		.dts_name = "T50A",
@@ -634,7 +634,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.tile_sz = 32,
 		.drm_fmt = DRM_FORMAT_T50A,
 		.v4l2_fmt = V4L2_PIX_FMT_T50A,
-		.fmt_bitmask = BIT(35),
+		.fmt_bitmask = BIT_ULL(35),
 	},
 	{
 		.dts_name = "T60A",
@@ -645,7 +645,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.tile_sz = 64,
 		.drm_fmt = DRM_FORMAT_T60A,
 		.v4l2_fmt = V4L2_PIX_FMT_T60A,
-		.fmt_bitmask = BIT(36),
+		.fmt_bitmask = BIT_ULL(36),
 	},
 	{
 		.dts_name = "T50C",
@@ -656,7 +656,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.tile_sz = 32,
 		.drm_fmt = DRM_FORMAT_T50C,
 		.v4l2_fmt = V4L2_PIX_FMT_T50C,
-		.fmt_bitmask = BIT(37),
+		.fmt_bitmask = BIT_ULL(37),
 	},
 	{
 		.dts_name = "T60C",
@@ -667,7 +667,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.tile_sz = 64,
 		.drm_fmt = DRM_FORMAT_T60C,
 		.v4l2_fmt = V4L2_PIX_FMT_T60C,
-		.fmt_bitmask = BIT(38),
+		.fmt_bitmask = BIT_ULL(38),
 	},
 	{
 		.dts_name = "T528",
@@ -678,7 +678,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.tile_sz = 32,
 		.drm_fmt = DRM_FORMAT_T528,
 		.v4l2_fmt = V4L2_PIX_FMT_T528,
-		.fmt_bitmask = BIT(39),
+		.fmt_bitmask = BIT_ULL(39),
 	},
 	{
 		.dts_name = "T628",
@@ -689,7 +689,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.tile_sz = 64,
 		.drm_fmt = DRM_FORMAT_T628,
 		.v4l2_fmt = V4L2_PIX_FMT_T628,
-		.fmt_bitmask = BIT(40),
+		.fmt_bitmask = BIT_ULL(40),
 	},
 	{
 		.dts_name = "T52A",
@@ -700,7 +700,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.tile_sz = 32,
 		.drm_fmt = DRM_FORMAT_T52A,
 		.v4l2_fmt = V4L2_PIX_FMT_T52A,
-		.fmt_bitmask = BIT(41),
+		.fmt_bitmask = BIT_ULL(41),
 	},
 	{
 		.dts_name = "T62A",
@@ -711,7 +711,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.tile_sz = 64,
 		.drm_fmt = DRM_FORMAT_T62A,
 		.v4l2_fmt = V4L2_PIX_FMT_T62A,
-		.fmt_bitmask = BIT(42),
+		.fmt_bitmask = BIT_ULL(42),
 	},
 	{
 		.dts_name = "T52C",
@@ -722,7 +722,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.tile_sz = 32,
 		.drm_fmt = DRM_FORMAT_T52C,
 		.v4l2_fmt = V4L2_PIX_FMT_T52C,
-		.fmt_bitmask = BIT(43),
+		.fmt_bitmask = BIT_ULL(43),
 	},
 	{
 		.dts_name = "T62C",
@@ -733,7 +733,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.tile_sz = 64,
 		.drm_fmt = DRM_FORMAT_T62C,
 		.v4l2_fmt = V4L2_PIX_FMT_T62C,
-		.fmt_bitmask = BIT(44),
+		.fmt_bitmask = BIT_ULL(44),
 	},
 	{
 		.dts_name = "T548",
@@ -744,7 +744,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.tile_sz = 32,
 		.drm_fmt = DRM_FORMAT_T548,
 		.v4l2_fmt = V4L2_PIX_FMT_T548,
-		.fmt_bitmask = BIT(45),
+		.fmt_bitmask = BIT_ULL(45),
 	},
 	{
 		.dts_name = "T648",
@@ -755,7 +755,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.tile_sz = 64,
 		.drm_fmt = DRM_FORMAT_T648,
 		.v4l2_fmt = V4L2_PIX_FMT_T648,
-		.fmt_bitmask = BIT(46),
+		.fmt_bitmask = BIT_ULL(46),
 	},
 	{
 		.dts_name = "T54A",
@@ -766,7 +766,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.tile_sz = 32,
 		.drm_fmt = DRM_FORMAT_T54A,
 		.v4l2_fmt = V4L2_PIX_FMT_T54A,
-		.fmt_bitmask = BIT(47),
+		.fmt_bitmask = BIT_ULL(47),
 	},
 	{
 		.dts_name = "T64A",
@@ -777,7 +777,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.tile_sz = 64,
 		.drm_fmt = DRM_FORMAT_T64A,
 		.v4l2_fmt = V4L2_PIX_FMT_T64A,
-		.fmt_bitmask = BIT(48),
+		.fmt_bitmask = BIT_ULL(48),
 	},
 	{
 		.dts_name = "T54C",
@@ -788,7 +788,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.tile_sz = 32,
 		.drm_fmt = DRM_FORMAT_T54C,
 		.v4l2_fmt = V4L2_PIX_FMT_T54C,
-		.fmt_bitmask = BIT(49),
+		.fmt_bitmask = BIT_ULL(49),
 	},
 	{
 		.dts_name = "T64C",
@@ -799,7 +799,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.tile_sz = 64,
 		.drm_fmt = DRM_FORMAT_T64C,
 		.v4l2_fmt = V4L2_PIX_FMT_T64C,
-		.fmt_bitmask = BIT(50),
+		.fmt_bitmask = BIT_ULL(50),
 	},
 	{
 		.dts_name = "y012",
@@ -809,7 +809,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.num_planes = 1,
 		.drm_fmt = 0,
 		.v4l2_fmt = V4L2_PIX_FMT_Y012,
-		.fmt_bitmask = BIT(51),
+		.fmt_bitmask = BIT_ULL(51),
 	},
 	{
 		.dts_name = "p210",
@@ -819,7 +819,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.num_planes = 2,
 		.drm_fmt = DRM_FORMAT_P210,
 		.v4l2_fmt = 0,
-		.fmt_bitmask = BIT(52),
+		.fmt_bitmask = BIT_ULL(52),
 	},
 	{
 		.dts_name = "p010",
@@ -829,7 +829,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.num_planes = 2,
 		.drm_fmt = DRM_FORMAT_P010,
 		.v4l2_fmt = V4L2_PIX_FMT_P010,
-		.fmt_bitmask = BIT(53),
+		.fmt_bitmask = BIT_ULL(53),
 	},
 	{
 		.dts_name = "p012",
@@ -839,7 +839,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.num_planes = 2,
 		.drm_fmt = DRM_FORMAT_P012,
 		.v4l2_fmt = V4L2_PIX_FMT_P012,
-		.fmt_bitmask = BIT(54),
+		.fmt_bitmask = BIT_ULL(54),
 	},
 };
 
