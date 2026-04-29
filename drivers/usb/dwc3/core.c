@@ -330,10 +330,8 @@ int dwc3_core_soft_reset(struct dwc3 *dwc)
 	 * We're resetting only the device side because, if we're in host mode,
 	 * XHCI driver will reset the host block. If dwc3 was configured for
 	 * host-only mode, then we can return early.
-	 * When hibernated don't perform core soft reset.
 	 */
-	if (dwc->current_dr_role == DWC3_GCTL_PRTCAP_HOST ||
-	    dwc->is_hibernated == true)
+	if (dwc->current_dr_role == DWC3_GCTL_PRTCAP_HOST)
 		return 0;
 
 	reg = dwc3_readl(dwc->regs, DWC3_DCTL);
@@ -616,104 +614,6 @@ void dwc3_event_buffers_cleanup(struct dwc3 *dwc)
 	/* Clear any stale event */
 	reg = dwc3_readl(dwc->regs, DWC3_GEVNTCOUNT(0));
 	dwc3_writel(dwc->regs, DWC3_GEVNTCOUNT(0), reg);
-}
-
-static int dwc3_alloc_scratch_buffers(struct dwc3 *dwc)
-{
-	u32 size;
-
-	if (dwc->dr_mode == USB_DR_MODE_HOST)
-		return 0;
-
-	if (!dwc->has_hibernation)
-		return 0;
-
-	if (!dwc->nr_scratch)
-		return 0;
-
-	/* Allocate only if scratchbuf is NULL */
-	if (dwc->scratchbuf)
-		return 0;
-
-	size = dwc->nr_scratch * DWC3_SCRATCHBUF_SIZE;
-
-	dwc->scratchbuf = kzalloc(size, GFP_KERNEL);
-	if (!dwc->scratchbuf)
-		return -ENOMEM;
-
-	dwc->scratch_addr = dma_map_single(dwc->dev, dwc->scratchbuf, size,
-					   DMA_BIDIRECTIONAL);
-	if (dma_mapping_error(dwc->dev, dwc->scratch_addr)) {
-		dev_err(dwc->dev, "failed to map scratch buffer\n");
-		return -EFAULT;
-	}
-
-	return 0;
-}
-
-static int dwc3_setup_scratch_buffers(struct dwc3 *dwc)
-{
-	u32 param;
-	int ret;
-
-	if (dwc->dr_mode == USB_DR_MODE_HOST)
-		return 0;
-
-	if (!dwc->has_hibernation)
-		return 0;
-
-	if (!dwc->nr_scratch)
-		return 0;
-
-	 /* should never fall here */
-	if (WARN_ON(!dwc->scratchbuf))
-		return 0;
-
-	param = lower_32_bits(dwc->scratch_addr);
-
-	ret = dwc3_send_gadget_generic_command(dwc,
-			DWC3_DGCMD_SET_SCRATCHPAD_ADDR_LO, param);
-	if (ret < 0)
-		goto err1;
-
-	param = upper_32_bits(dwc->scratch_addr);
-
-	ret = dwc3_send_gadget_generic_command(dwc,
-			DWC3_DGCMD_SET_SCRATCHPAD_ADDR_HI, param);
-	if (ret < 0)
-		goto err1;
-
-	return 0;
-
-err1:
-	dma_unmap_single(dwc->sysdev, dwc->scratch_addr,
-			 (size_t)(dwc->nr_scratch *
-			 (size_t)DWC3_SCRATCHBUF_SIZE),
-			 DMA_BIDIRECTIONAL);
-
-	return ret;
-}
-
-static void dwc3_free_scratch_buffers(struct dwc3 *dwc)
-{
-	if (dwc->dr_mode == USB_DR_MODE_HOST)
-		return;
-
-	if (!dwc->has_hibernation)
-		return;
-
-	if (!dwc->nr_scratch)
-		return;
-
-	 /* should never fall here */
-	if (WARN_ON(!dwc->scratchbuf))
-		return;
-
-	dma_unmap_single(dwc->sysdev, dwc->scratch_addr,
-			 (size_t)(dwc->nr_scratch *
-			 (size_t)DWC3_SCRATCHBUF_SIZE),
-			 DMA_BIDIRECTIONAL);
-	kfree(dwc->scratchbuf);
 }
 
 static void dwc3_core_num_eps(struct dwc3 *dwc)
@@ -1133,7 +1033,6 @@ static void dwc3_core_setup_global_control(struct dwc3 *dwc)
 {
 	unsigned int power_opt;
 	unsigned int hw_mode;
-	u32 hwparams4 = dwc->hwparams.hwparams4;
 	u32 reg;
 
 	reg = dwc3_readl(dwc->regs, DWC3_GCTL);
@@ -1163,16 +1062,11 @@ static void dwc3_core_setup_global_control(struct dwc3 *dwc)
 			reg &= ~DWC3_GCTL_DSBLCLKGTNG;
 		break;
 	case DWC3_GHWPARAMS1_EN_PWROPT_HIB:
-		/* enable hibernation here */
-		dwc->nr_scratch = DWC3_GHWPARAMS4_HIBER_SCRATCHBUFS(hwparams4);
-		dwc->has_hibernation = 1;
-
 		/*
 		 * REVISIT Enabling this bit so that host-mode hibernation
 		 * will work. Device-mode hibernation is not yet implemented.
 		 */
-		if (dwc->dr_mode == USB_DR_MODE_HOST)
-			reg |= DWC3_GCTL_GBLHIBERNATIONEN;
+		reg |= DWC3_GCTL_GBLHIBERNATIONEN;
 		break;
 	default:
 		/* nothing */
@@ -1459,7 +1353,7 @@ static void dwc3_config_threshold(struct dwc3 *dwc)
  *
  * Returns 0 on success otherwise negative errno.
  */
-int dwc3_core_init(struct dwc3 *dwc)
+static int dwc3_core_init(struct dwc3 *dwc)
 {
 	unsigned int		hw_mode;
 	u32			reg;
@@ -1506,21 +1400,6 @@ int dwc3_core_init(struct dwc3 *dwc)
 
 	dwc3_core_setup_global_control(dwc);
 	dwc3_core_num_eps(dwc);
-
-	if (dwc->scratchbuf == NULL) {
-		ret = dwc3_alloc_scratch_buffers(dwc);
-		if (ret) {
-			dev_err(dwc->dev,
-				"Not enough memory for scratch buffers\n");
-			goto err_exit_phy;
-		}
-	}
-
-	ret = dwc3_setup_scratch_buffers(dwc);
-	if (ret) {
-		dev_err(dwc->dev, "Failed to setup scratch buffers: %d\n", ret);
-		goto err_exit_phy;
-	}
 
 	/* Set power down scale of suspend_clk */
 	dwc3_set_power_down_clk_scale(dwc);
@@ -2516,7 +2395,6 @@ err_exit_debugfs:
 	dwc3_ulpi_exit(dwc);
 
 err_free_event_buffers:
-	dwc3_free_scratch_buffers(dwc);
 	dwc3_free_event_buffers(dwc);
 err_allow_rpm:
 	pm_runtime_allow(dev);
@@ -2568,18 +2446,6 @@ void dwc3_core_remove(struct dwc3 *dwc)
 
 	pm_runtime_get_sync(dwc->dev);
 
-#ifdef CONFIG_PM_SLEEP
-	if (dwc->is_hibernated) {
-		/*
-		 * As we are about to get removed, wake the controller from
-		 * D3 & hibernation states
-		 */
-		dwc->force_hiber_wake = true;
-		dwc3_gadget_exit_hibernation(dwc);
-		dwc->force_hiber_wake = false;
-	}
-#endif /* CONFIG_PM_SLEEP */
-
 	dwc3_core_exit_mode(dwc);
 	dwc3_debugfs_exit(dwc);
 
@@ -2614,7 +2480,6 @@ void dwc3_core_remove(struct dwc3 *dwc)
 	pm_runtime_set_suspended(dwc->dev);
 
 	dwc3_free_event_buffers(dwc);
-	dwc3_free_scratch_buffers(dwc);
 
 	if (dwc->usb_psy)
 		power_supply_put(dwc->usb_psy);
@@ -2936,16 +2801,6 @@ int dwc3_pm_suspend(struct dwc3 *dwc)
 {
 	struct device *dev = dwc->dev;
 	int		ret;
-
-	if (dwc->is_hibernated) {
-		/*
-		 * As we are about to suspend, wake the controller from
-		 * D3 & hibernation states
-		 */
-		dwc->force_hiber_wake = true;
-		dwc3_gadget_exit_hibernation(dwc);
-		dwc->force_hiber_wake = false;
-	}
 
 	ret = dwc3_suspend_common(dwc, PMSG_SUSPEND);
 	if (ret)

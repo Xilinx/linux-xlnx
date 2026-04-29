@@ -522,7 +522,6 @@
 
 /* Device Status Register */
 #define DWC3_DSTS_DCNRD			BIT(29)
-#define DWC3_DSTS_SRE			BIT(28)
 
 /* This applies for core versions 1.87a and earlier */
 #define DWC3_DSTS_PWRUPREQ		BIT(24)
@@ -747,7 +746,6 @@ struct dwc3_event_buffer {
  * @trb_enqueue: enqueue 'pointer' into TRB array
  * @trb_dequeue: dequeue 'pointer' into TRB array
  * @dwc: pointer to DWC controller
- * @saved_state: ep state saved during hibernation
  * @flags: endpoint flags (wedged, stalled, ...)
  * @number: endpoint number (1 - 15)
  * @type: set to bmAttributes & USB_ENDPOINT_XFERTYPE_MASK
@@ -775,7 +773,6 @@ struct dwc3_ep {
 	dma_addr_t		trb_pool_dma;
 	struct dwc3		*dwc;
 
-	u32			saved_state;
 	unsigned int		flags;
 #define DWC3_EP_ENABLED			BIT(0)
 #define DWC3_EP_STALL			BIT(1)
@@ -1028,12 +1025,10 @@ struct dwc3_glue_ops {
  * @drd_work: workqueue used for role swapping
  * @ep0_trb: trb which is used for the ctrl_req
  * @bounce: address of bounce buffer
- * @scratchbuf: address of scratch buffer
  * @setup_buf: used while precessing STD USB requests
  * @ep0_trb_addr: dma address of @ep0_trb
  * @bounce_addr: dma address of @bounce
  * @ep0_usb_req: dummy req used while handling STD USB requests
- * @scratch_addr: dma address of scratchbuf
  * @ep0_in_setup: one control transfer is completed and enter setup phase
  * @lock: for synchronizing
  * @mutex: for mode switching
@@ -1062,7 +1057,6 @@ struct dwc3_glue_ops {
  * @current_otg_role: current role of operation while using the OTG block
  * @desired_otg_role: desired role of operation while using the OTG block
  * @otg_restart_host: flag that OTG controller needs to restart host
- * @nr_scratch: number of scratch buffers
  * @u1u2: only used on revisions <1.83a for workaround
  * @maximum_speed: maximum speed requested (mainly for testing purposes)
  * @max_ssp_rate: SuperSpeed Plus maximum signaling rate and lane count
@@ -1127,7 +1121,6 @@ struct dwc3_glue_ops {
  * @delayed_status: true when gadget driver asks for delayed status
  * @ep0_bounced: true when we used bounce buffer
  * @ep0_expect_in: true when we expect a DATA IN transfer
- * @has_hibernation: true when dwc3 was configured with Hibernation
  * @sysdev_is_parent: true when dwc3 device has a parent driver
  * @has_lpm_erratum: true when core was configured with LPM Erratum. Note that
  *			there's now way for software to detect this in runtime.
@@ -1186,7 +1179,6 @@ struct dwc3_glue_ops {
  *	1	- -3.5dB de-emphasis
  *	2	- No de-emphasis
  *	3	- Reserved
- * @is_hibernated: true when dwc3 is hibernated; abort processing events
  * @dis_metastability_quirk: set to disable metastability quirk.
  * @dis_split_quirk: set to disable split boundary.
  * @sys_wakeup: set if the device may do system wakeup.
@@ -1208,11 +1200,6 @@ struct dwc3_glue_ops {
  * @csr_tx_deemph_field_1: stores TX deemphasis used in Gen2 operation.
  * @dis_axi_storder_en: disables AXI strict order enable bit.
  * @is_d3: set if the controller is in d3 state
- * @saved_regs: registers to be saved/restored during hibernation/wakeup events
- * @irq_wakeup: wakeup IRQ number, triggered when host asks to wakeup from
- *              hibernation
- * @force_hiber_wake: flag set when the gadget driver is forcefully triggering
- *		a hibernation wakeup event
  * @wakeup_pending_funcs: Indicates whether any interface has requested for
  *			 function wakeup in bitmap format where bit position
  *			 represents interface_id.
@@ -1221,11 +1208,9 @@ struct dwc3 {
 	struct work_struct	drd_work;
 	struct dwc3_trb		*ep0_trb;
 	void			*bounce;
-	void			*scratchbuf;
 	u8			*setup_buf;
 	dma_addr_t		ep0_trb_addr;
 	dma_addr_t		bounce_addr;
-	dma_addr_t		scratch_addr;
 	struct dwc3_request	ep0_usb_req;
 	struct completion	ep0_in_setup;
 
@@ -1293,7 +1278,6 @@ struct dwc3 {
 	u32			current_otg_role;
 	u32			desired_otg_role;
 	bool			otg_restart_host;
-	u32			nr_scratch;
 	u32			u1u2;
 	u32			maximum_speed;
 	u32			gadget_max_speed;
@@ -1398,7 +1382,6 @@ struct dwc3 {
 	unsigned		delayed_status:1;
 	unsigned		ep0_bounced:1;
 	unsigned		ep0_expect_in:1;
-	unsigned		has_hibernation:1;
 	unsigned		sysdev_is_parent:1;
 	unsigned		has_lpm_erratum:1;
 	unsigned		is_utmi_l1_suspend:1;
@@ -1439,7 +1422,6 @@ struct dwc3 {
 
 	unsigned		tx_de_emphasis_quirk:1;
 	unsigned		tx_de_emphasis:2;
-	unsigned		is_hibernated:1;
 
 	unsigned		dis_metastability_quirk:1;
 
@@ -1460,9 +1442,6 @@ struct dwc3 {
 	u32			csr_tx_deemph_field_1;
 	bool			dis_axi_storder_en;
 	bool			is_d3;
-	u32			*saved_regs;
-	u32			irq_wakeup;
-	bool			force_hiber_wake;
 	u32			wakeup_pending_funcs;
 };
 
@@ -1706,8 +1685,6 @@ static inline void dwc3_host_wakeup_register(dwc3_wakeup_t func)
 { }
 #endif
 
-int dwc3_core_init(struct dwc3 *dwc);
-
 #if IS_ENABLED(CONFIG_USB_DWC3_GADGET) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)\
 	 || IS_ENABLED(CONFIG_USB_DWC3_OTG)
 int dwc3_gadget_init(struct dwc3 *dwc);
@@ -1721,8 +1698,6 @@ int dwc3_send_gadget_generic_command(struct dwc3 *dwc, unsigned int cmd,
 		u32 param);
 void dwc3_gadget_clear_tx_fifos(struct dwc3 *dwc);
 void dwc3_remove_requests(struct dwc3 *dwc, struct dwc3_ep *dep, int status);
-void dwc3_gadget_enter_hibernation(struct dwc3 *dwc);
-void dwc3_gadget_exit_hibernation(void *_dwc);
 #else
 static inline int dwc3_gadget_init(struct dwc3 *dwc)
 { return 0; }
@@ -1743,10 +1718,6 @@ static inline int dwc3_send_gadget_generic_command(struct dwc3 *dwc,
 		int cmd, u32 param)
 { return 0; }
 static inline void dwc3_gadget_clear_tx_fifos(struct dwc3 *dwc)
-{ }
-static inline void dwc3_gadget_enter_hibernation(struct dwc3 *dwc)
-{ }
-static inline void dwc3_gadget_exit_hibernation(void *_dwc)
 { }
 #endif
 

@@ -57,14 +57,6 @@ struct dwc3;
 /* Frame/Microframe Number Mask */
 #define DWC3_FRNUMBER_MASK		0x3fff
 
-/* Below used in hibernation */
-#define DWC3_NON_STICKY_RESTORE_RETRIES	500
-#define DWC3_NON_STICKY_SAVE_RETRIES	500
-#define DWC3_DEVICE_CTRL_READY_RETRIES	20000
-#define DWC3_NON_STICKY_RESTORE_DELAY	100
-#define DWC3_NON_STICKY_SAVE_DELAY	100
-#define DWC3_DEVICE_CTRL_READY_DELAY	5
-
 /* -------------------------------------------------------------------------- */
 
 #define to_dwc3_request(r)	(container_of(r, struct dwc3_request, request))
