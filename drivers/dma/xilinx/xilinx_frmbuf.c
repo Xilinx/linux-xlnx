@@ -841,6 +841,16 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.v4l2_fmt = V4L2_PIX_FMT_P012,
 		.fmt_bitmask = BIT_ULL(54),
 	},
+	{
+		.dts_name = "y12",
+		.id = XILINX_FRMBUF_FMT_Y12,
+		.bpw = 48,
+		.ppw = 4,
+		.num_planes = 1,
+		.drm_fmt = 0,
+		.v4l2_fmt = V4L2_PIX_FMT_XY12,
+		.fmt_bitmask = BIT_ULL(55),
+	},
 };
 
 /**
