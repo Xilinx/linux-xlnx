@@ -352,40 +352,6 @@ static void zynqmp_r5_rproc_kick(struct rproc *rproc, int vqid)
 		dev_warn(dev, "failed to send message\n");
 }
 
-/**
- * zynqmp_setup_ddr_boot() - Set RPU boot address to boot_addr
- * @r5_core: single core's corresponding core instance
- * @boot_addr: Boot address used for core
- *
- * If R52 is used and booting from DDR, then set R52 boot
- * address. This is done using AMD-Xilinx native firmware interface
- * to tell firmware to configure R52 for DDR Boot.
- *
- * Return: 0 on success, otherwise non-zero value on failure
- */
-static int zynqmp_setup_ddr_boot(struct zynqmp_r5_core *r5_core,
-				 u64 boot_addr)
-{
-	int ret;
-
-	/* This API is needed so that the RPU core has the TCMBOOT flag set to OFF */
-	ret = zynqmp_pm_is_function_supported(PM_IOCTL, IOCTL_RPU_BOOT_ADDR_CONFIG);
-	if (ret < 0) {
-		dev_err(r5_core->dev, "Setting the RPU Address is not supported.\n");
-		return ret;
-	}
-
-	ret = zynqmp_pm_set_rpu_boot_addr(r5_core->pm_domain_id, boot_addr);
-	if (ret < 0) {
-		dev_err(r5_core->dev, "failed to set RPU Boot address.\n");
-		return ret;
-	}
-
-	r5_core->rproc->bootaddr = boot_addr;
-
-	return 0;
-}
-
 /*
  * zynqmp_r5_rproc_start()
  * @rproc: single R5 core's corresponding rproc instance
@@ -397,9 +363,8 @@ static int zynqmp_setup_ddr_boot(struct zynqmp_r5_core *r5_core,
 static int zynqmp_r5_rproc_start(struct rproc *rproc)
 {
 	struct zynqmp_r5_core *r5_core = rproc->priv;
-	struct rproc_mem_entry *mem;
-	u64 bootmem;
-	int ret;
+	struct device *dev = &rproc->dev;
+	int ret, err;
 
 	/*
 	 * The exception vector pointers (EVP) refer to the base-address of
@@ -407,38 +372,54 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 	 * starts at the base-address and subsequent vectors are on 4-byte
 	 * boundaries.
 	 *
-	 * Exception vectors can start either from 0x0000_0000 (LOVEC) or
-	 * from 0xFFFF_0000 (HIVEC) which is mapped in the OCM (On-Chip Memory)
-	 *
+	 * The Cortex-R5 cores can boot from TCM and OCM memories.
+	 * Exception vectors can start either from 0x0000_0000 (LOVEC) or from
+	 * 0xFFFF_0000 (HIVEC) which is mapped in the OCM (On-Chip Memory).
 	 * Usually firmware will put Exception vectors at LOVEC.
 	 *
-	 * It is not recommend that you change the exception vector.
+	 * The Cortex-R52 cores can boot from DDR and TCM.
+	 * That means vector table can be at address 0x0 or at any DDR address
+	 * that is in the 32-bit address range. Note that booting from DDR
+	 * address 0x0 is not supported and the user must always assume that if
+	 * 0x0 address is passed, then it will be TCM boot.
+	 *
+	 * It is not recommended that you change the exception vector.
 	 * Changing the EVP to HIVEC will result in increased interrupt latency
 	 * and jitter. Also, if the OCM is secured and the Cortex-R5F processor
 	 * is non-secured, then the Cortex-R5F processor cannot access the
 	 * HIVEC exception vectors in the OCM.
-	 *
-	 * There exists case where R52 can boot from DDR.
 	 */
-	mem = rproc_find_carveout_by_name(rproc, "ddrboot");
-	if (mem) {
-		bootmem = (u64)mem->dma;
-
-		if (upper_32_bits(bootmem)) {
-			dev_err(r5_core->dev, "RPU Boot only supports 32 bit.\n");
+	if (rproc->bootaddr != 0x0) {
+		if (upper_32_bits(rproc->bootaddr)) {
+			dev_err(dev, "invalid bootaddr = 0x%llx\n",
+				rproc->bootaddr);
 			return -EINVAL;
 		}
 
-		ret = zynqmp_setup_ddr_boot(r5_core, bootmem);
-		if (ret)
+		/*
+		 * New platforms can boot from DDR and require the DDR address
+		 * to be configured explicitly. If the correct version of the
+		 * IOCTL_RPU_BOOT_ADDR_CONFIG ioctl is not supported, do not
+		 * treat it as a failure. If a DDR address is passed on other
+		 * platforms, the PM request wake EEMI call will still fail and
+		 * the RPU won't boot.
+		 */
+		ret = zynqmp_pm_is_function_supported(PM_IOCTL,
+						      IOCTL_RPU_BOOT_ADDR_CONFIG);
+		if (!ret) {
+			ret = zynqmp_pm_set_rpu_boot_addr(r5_core->pm_domain_id,
+							  rproc->bootaddr);
+			if (ret < 0) {
+				dev_err(dev, "failed to set RPU Boot address 0x%llx\n",
+					rproc->bootaddr);
+				return ret;
+			}
+		} else if (ret != -EOPNOTSUPP && ret != -ENODATA) {
+			dev_err(dev,
+				"ioctl rpu boot addr config ver check failed %d\n",
+				ret);
 			return ret;
-	} else {
-		/* TCM / OCM boot modes */
-		bootmem = (rproc->bootaddr >= 0xFFFC0000) ?
-			   PM_RPU_BOOTMEM_HIVEC : PM_RPU_BOOTMEM_LOVEC;
-
-		dev_dbg(r5_core->dev, "RPU boot addr 0x%llx from %s.", rproc->bootaddr,
-			bootmem == PM_RPU_BOOTMEM_HIVEC ? "OCM" : "TCM");
+		}
 	}
 
 	/* Request node before starting RPU core if new version of API is supported */
@@ -447,18 +428,25 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 					     ZYNQMP_PM_CAPABILITY_ACCESS, 0,
 					     ZYNQMP_PM_REQUEST_ACK_BLOCKING);
 		if (ret < 0) {
-			dev_err(r5_core->dev, "failed to request 0x%x",
+			dev_err(dev, "failed to request RPU pd 0x%x\n",
 				r5_core->pm_domain_id);
 			return ret;
 		}
 	}
 
-	ret = zynqmp_pm_request_wake(r5_core->pm_domain_id, 1,
-				     bootmem, ZYNQMP_PM_REQUEST_ACK_NO);
-	if (ret)
-		dev_err(r5_core->dev,
-			"failed to start RPU = 0x%x\n", r5_core->pm_domain_id);
-	return ret;
+	ret = zynqmp_pm_request_wake(r5_core->pm_domain_id, true, rproc->bootaddr,
+				     ZYNQMP_PM_REQUEST_ACK_NO);
+	if (ret) {
+		if (zynqmp_pm_feature(PM_RELEASE_NODE) > 1) {
+			err = zynqmp_pm_release_node(r5_core->pm_domain_id);
+			if (err)
+				dev_err(dev, "failed to release node, %d\n", err);
+		}
+		dev_err(dev, "failed to start RPU 0x%x\n", r5_core->pm_domain_id);
+		return ret;
+	}
+
+	return 0;
 }
 
 /*
