@@ -300,7 +300,8 @@ int aie_get_status_dump(struct device *dev, struct aie_col_status *status)
 	if (!status)
 		return -EFAULT;
 
-	for (col = apart->range.start.col; col < apart->range.size.col; col++) {
+	for (col = apart->range.start.col;
+	     col < apart->range.start.col + apart->range.size.col; col++) {
 		for (row = apart->range.start.row; row < apart->range.size.row; row++) {
 			loc.row = row;
 			loc.col = col;

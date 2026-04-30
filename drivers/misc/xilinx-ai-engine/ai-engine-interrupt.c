@@ -1016,7 +1016,8 @@ static void aie2ps_partition_backtrack(struct aie_partition *apart)
 	}
 
 	_aie2ps_interrupt_user_event1(apart);
-	for (col = apart->range.start.col; col < apart->range.size.col; col++) {
+	for (col = apart->range.start.col;
+	     col < apart->range.start.col + apart->range.size.col; col++) {
 		struct aie_location loc = {.col = col, .row = 0};
 		u32 ttype, l2_mask;
 
