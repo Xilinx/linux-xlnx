@@ -861,9 +861,10 @@ static void zynqmp_process_dma_irq(struct zynqmp_qspi *xqspi)
  * @irq:	IRQ number
  * @dev_id:	Pointer to the xqspi structure
  *
- * This function handles TX empty only.
+ * This function handles TX empty, and RXNEMPTY in IO mode.
  * On TX empty interrupt this function reads the received data from RX FIFO
  * and fills the TX FIFO if there is any data remaining to be transferred.
+ * On RXNEMPTY in IO mode it drains the RX FIFO into the caller's buffer.
  *
  * Return:	IRQ_HANDLED when interrupt is handled
  *		IRQ_NONE otherwise.
@@ -891,11 +892,14 @@ static irqreturn_t zynqmp_qspi_irq(int irq, void *dev_id)
 	if (mask & GQSPI_ISR_TXNOT_FULL_MASK)
 		zynqmp_qspi_filltxfifo(xqspi, GQSPI_TX_FIFO_FILL);
 
-	if (dma_status & GQSPI_QSPIDMA_DST_I_STS_DONE_MASK)
+	if (dma_status & GQSPI_QSPIDMA_DST_I_STS_DONE_MASK) {
 		zynqmp_process_dma_irq(xqspi);
-	else if (!(mask & GQSPI_IER_RXEMPTY_MASK) &&
-			(mask & GQSPI_IER_GENFIFOEMPTY_MASK))
+	} else if ((mask & GQSPI_IER_RXNEMPTY_MASK) ||
+		   (!(mask & GQSPI_IER_RXEMPTY_MASK) &&
+		    (mask & GQSPI_IER_GENFIFOEMPTY_MASK))) {
+		/* Drain on RXNEMPTY for IO-mode transfers > GQSPI_RX_FIFO_FILL. */
 		zynqmp_qspi_readrxfifo(xqspi, GQSPI_RX_FIFO_FILL);
+	}
 
 	if (xqspi->bytes_to_receive == 0 && xqspi->bytes_to_transfer == 0 &&
 	    ((status & GQSPI_IRQ_MASK) == GQSPI_IRQ_MASK)) {
