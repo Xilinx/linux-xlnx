@@ -687,6 +687,7 @@ struct aie_aperture;
  * @part_clean: partition clean for tiles.
  * @part_reset: reset partition.
  * @strmsw_port_verify: verify stream switch port configuration
+ * @check_tlast_error_disabled: checks whether or not tlast errors are disabled
  *
  * Different AI engine device version has its own device
  * operation.
@@ -757,6 +758,7 @@ struct aie_tile_operations {
 	int (*strmsw_port_verify)(u8 ttype,
 				  enum aie_strmsw_port_type slv, u8 slv_port_num,
 				  enum aie_strmsw_port_type mstr, u8 mstr_port_num);
+	bool (*check_tlast_error_disabled)(struct aie_partition *apart);
 };
 
 /**

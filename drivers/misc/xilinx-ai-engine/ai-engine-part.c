@@ -2098,6 +2098,15 @@ int aie_load_cert_broadcast(struct device *dev, void *elf_addr)
 	if (!adev->ops->map_uc_mem)
 		return -EINVAL;
 
+	/* check first that tlast errors are disabled */
+	if (!adev->ops->check_tlast_error_disabled)
+		return -EINVAL;
+
+	if (!adev->ops->check_tlast_error_disabled(apart)) {
+		dev_err(&apart->dev, "Must disable tlast errors during partition initialization\n");
+		return -EINVAL;
+	}
+
 	/* clear uC memory */
 	ret = aie_part_pm_ops(apart, &data_ops, AIE_PART_INIT_OPT_UC_ZEROIZATION,
 			      apart->range, 1);
