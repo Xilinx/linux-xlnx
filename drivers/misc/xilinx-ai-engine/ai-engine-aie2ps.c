@@ -103,6 +103,7 @@
 #define AIE2PS_SHIMNOC_UCMOD_UCVIEW_SHARED_DM_OFFSET	0x00020000U
 
 #define AIE2PS_SHIMPL_BISRCACHE_CTRL_REGOFF		0x00036000U
+#define AIE2PS_SHIMPL_MODCLOCK_CTRL_REGOFF		0x0007ff00U
 #define AIE2PS_SHIMPL_COLCLOCK_CTRL_REGOFF		0x0007ff20U
 #define AIE2PS_SHIMPL_EVENT_BC0_REGOFF			0x00034010U
 #define AIE2PS_SHIMPL_EVENT_BC_A_BLOCK_SOUTH_SET	0x00034050U
@@ -208,6 +209,7 @@
 /*
  * Register masks
  */
+#define AIE2PS_SHIMPL_MODCLOCK_CTRL_TLAST_MASK		BIT(4)
 #define AIE2PS_SHIMPL_COLCLOCK_CTRL_MASK		GENMASK(1, 0)
 #define AIE2PS_UCCORE_STS_MASK0				0x1U
 #define AIE2PS_UCCORE_STS_MASK1				0x2U
@@ -4360,6 +4362,32 @@ static int aie2ps_port_verify(u8 ttype,
 	}
 }
 
+/**
+ * aie2ps_check_tlast_error_disabled() - checks whether or not tlast errors are
+ *					 disabled for entire partition
+ * @apart: AI Engine partition
+ * @return: return true if tlast errors are disabled, false if not
+ */
+static bool aie2ps_check_tlast_error_disabled(struct aie_partition *apart)
+{
+	struct aie_location loc;
+
+	loc.row = 0;
+	for (loc.col = apart->range.start.col;
+	     loc.col < apart->range.start.col + apart->range.size.col; loc.col++) {
+		u32 regoff, value;
+
+		regoff = aie_cal_regoff(apart->adev, loc,
+					AIE2PS_SHIMPL_MODCLOCK_CTRL_REGOFF);
+		value = readl(apart->aperture->base + regoff) &
+			AIE2PS_SHIMPL_MODCLOCK_CTRL_TLAST_MASK;
+		if (value)
+			return false;
+	}
+
+	return true;
+}
+
 static const struct aie_tile_operations aie2ps_ops = {
 	.get_tile_type = aie2ps_get_tile_type,
 	.get_mem_info = aie2ps_get_mem_info,
@@ -4394,6 +4422,7 @@ static const struct aie_tile_operations aie2ps_ops = {
 	.part_clean = aie2ps_part_clean,
 	.part_reset = aie2ps_part_reset,
 	.strmsw_port_verify = aie2ps_port_verify,
+	.check_tlast_error_disabled = aie2ps_check_tlast_error_disabled,
 };
 
 /**
