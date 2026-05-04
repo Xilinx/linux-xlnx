@@ -5,6 +5,7 @@
  */
 
 #include <linux/mtd/spi-nor.h>
+#include <linux/of.h>
 
 #include "core.h"
 
@@ -201,6 +202,28 @@ static const struct spi_nor_fixups mt25qu512a_fixups = {
 	.post_bfpt = mt25qu512a_post_bfpt_fixup,
 };
 
+/*
+ * Pick the cs_index_mask used by the late_init hooks for EN4B. In
+ * parallel-memories configurations EN4B must reach every flash, so
+ * build a mask from the parallel-memories count. nor->num_flash and
+ * SNOR_F_HAS_PARALLEL are not yet populated at this point, so parse
+ * the device tree directly.
+ */
+static u32 st_nor_get_init_cs_mask(struct spi_nor *nor)
+{
+	struct device_node *np = spi_nor_get_flash_node(nor);
+	int count;
+
+	count = of_property_count_u64_elems(np, "parallel-memories");
+	if (count <= 0)
+		return SPI_NOR_ENABLE_CS0;
+
+	if (count > SPI_DEVICE_CS_CNT_MAX)
+		count = SPI_DEVICE_CS_CNT_MAX;
+
+	return GENMASK(count - 1, 0);
+}
+
 static int st_nor_four_die_late_init(struct spi_nor *nor)
 {
 	struct spi_nor_flash_parameter *params = nor->params;
@@ -208,7 +231,7 @@ static int st_nor_four_die_late_init(struct spi_nor *nor)
 	params->die_erase_opcode = SPINOR_OP_MT_DIE_ERASE;
 	params->n_dice = 4;
 
-	nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_CS0;
+	nor->spimem->spi->cs_index_mask = st_nor_get_init_cs_mask(nor);
 	/*
 	 * Unfortunately the die erase opcode does not have a 4-byte opcode
 	 * correspondent for these flashes. The SFDP 4BAIT table fails to
@@ -225,7 +248,7 @@ static int st_nor_two_die_late_init(struct spi_nor *nor)
 	params->die_erase_opcode = SPINOR_OP_MT_DIE_ERASE;
 	params->n_dice = 2;
 
-	nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_CS0;
+	nor->spimem->spi->cs_index_mask = st_nor_get_init_cs_mask(nor);
 	/*
 	 * Unfortunately the die erase opcode does not have a 4-byte opcode
 	 * correspondent for these flashes. The SFDP 4BAIT table fails to
