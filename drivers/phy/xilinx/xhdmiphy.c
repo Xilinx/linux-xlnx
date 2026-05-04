@@ -218,7 +218,11 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 				dev_err(phy_dev->dev,
 					"unable to set requested tx resolutions\n\r");
 			cfg->tx_params = 0;
+			/* Gate REFCLK so clkdet sees a 0 -> new edge and raises TXFREQCHANGE. */
+			xhdmiphy_ibufds_en(phy_dev, XHDMIPHY_DIR_TX, false);
 			clk_set_rate(phy_dev->tmds_clk, phy_dev->tx_refclk_hz);
+			xhdmiphy_clkdet_freq_reset(phy_dev, XHDMIPHY_DIR_TX);
+			xhdmiphy_ibufds_en(phy_dev, XHDMIPHY_DIR_TX, true);
 			dev_dbg(phy_dev->dev,
 				"tx_tmdsclk %lld\n", cfg->tx_tmdsclk);
 			xhdmiphy_set_lrate(phy_dev, phy_lane->direction, 0,
