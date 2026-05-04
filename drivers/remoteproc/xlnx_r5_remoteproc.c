@@ -1212,6 +1212,15 @@ static int zynqmp_r5_core_init(struct zynqmp_r5_cluster *cluster,
 		 * then do not attempt to attach to the remote processor.
 		 */
 		if (status == PM_NODE_RUNNING) {
+			/*
+			 * Not all the firmware that is running on the remote
+			 * core is expected to have the resource table. The
+			 * firmware might not use RPMsg at all, and in that case
+			 * resource table becomes irrelevant. However, we still
+			 * need to make sure that running core is not reported
+			 * as offline. so do not decide remote core state based
+			 * on the resource table availability
+			 */
 			if (zynqmp_r5_get_rsc_table_va(r5_core))
 				dev_dbg(r5_core->dev, "rsc tbl not found\n");
 			r5_core->rproc->state = RPROC_DETACHED;
