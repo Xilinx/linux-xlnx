@@ -1161,6 +1161,13 @@ F:	drivers/gpu/drm/amd/include/vi_structs.h
 F:	include/uapi/linux/kfd_ioctl.h
 F:	include/uapi/linux/kfd_sysfs.h
 
+AMD BRAM REMOTEPROC DRIVER
+M:	Ben Levinsky <ben.levinsky@amd.com>
+L:	linux-remoteproc@vger.kernel.org
+S:	Maintained
+F:	Documentation/devicetree/bindings/remoteproc/xlnx,zynqmp-bram-rproc.yaml
+F:	drivers/remoteproc/amd_bram_rproc.c
+
 AMD MMI DC DRIVER
 M:	Vishal Sagar <vishal.sagar@amd.com>
 L:	dri-devel@lists.freedesktop.org
