@@ -133,6 +133,19 @@ static int mx25um51345g_post_sfdp_fixup(struct spi_nor *nor)
 	params->quad_enable = NULL;
 
 	/*
+	 * BFPT can set SNOR_F_SWAP16; spi_nor then sets op->data.swap16 on 8-8-8
+	 * DTR mem ops. spi_mem_default_supports_op() rejects those ops unless
+	 * mem_caps.swap16 is set (same macro below), so spi_nor_spimem_adjust_hwcaps()
+	 * drops 8-8-8 DTR on controllers without that capability.
+	 *
+	 * Clear the flag only in that case so negotiation can proceed; when the
+	 * controller reports swap16 support, keep BFPT-directed byte order.
+	 */
+	if (nor->spimem &&
+	    !spi_mem_controller_is_capable(nor->spimem->spi->controller, swap16))
+		nor->flags &= ~SNOR_F_SWAP16;
+
+	/*
 	 * On some Macronix xSPI devices (e.g. MX66UM2G45G), SFDP/BFPT density
 	 * underreports actual flash capacity. When the part table size differs from
 	 * SFDP-parsed params->size, trust the table and refresh sizing so the full
