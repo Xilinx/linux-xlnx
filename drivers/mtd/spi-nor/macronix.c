@@ -418,7 +418,7 @@ static const struct flash_info macronix_nor_parts[] = {
 	}, {
 		.id = SNOR_ID(0xc2, 0x80, 0x3c),
 		.name = "mx66um2g45g",
-		.size = SZ_256,
+		.size = SZ_256M,
 		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
 			SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5 | SPI_NOR_HAS_CR_TB,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
@@ -428,7 +428,7 @@ static const struct flash_info macronix_nor_parts[] = {
 	}, {
 		.id = SNOR_ID(0xc2, 0x94, 0x3c),
 		.name = "mx66uw2g345gxrix0",
-		.size = SZ_256,
+		.size = SZ_256M,
 		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
 			SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5 | SPI_NOR_HAS_CR_TB,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
@@ -438,7 +438,7 @@ static const struct flash_info macronix_nor_parts[] = {
 	}, {
 		.id = SNOR_ID(0xc2, 0x81, 0x3a),
 		.name = "mx25um51345g",
-		.size = SZ_4M,
+		.size = SZ_64M,
 		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
 			SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5 | SPI_NOR_HAS_CR_TB,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
