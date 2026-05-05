@@ -132,6 +132,24 @@ static int mx25um51345g_post_sfdp_fixup(struct spi_nor *nor)
 	 */
 	params->quad_enable = NULL;
 
+	/*
+	 * On some Macronix xSPI devices (e.g. MX66UM2G45G), SFDP/BFPT density
+	 * underreports actual flash capacity. When the part table size differs from
+	 * SFDP-parsed params->size, trust the table and refresh sizing so the full
+	 * array is reachable without overwriting a correct SFDP size when they match.
+	 */
+	if (nor->info->size != params->size) {
+		params->size = nor->info->size;
+		params->bank_size = params->size;
+		/*
+		 * uniform_region is populated only when SFDP found no Sector
+		 * Map Parameter Table. Skip for non-uniform erase maps where
+		 * erase_mask is zero and this write would be a silent no-op.
+		 */
+		if (params->erase_map.uniform_region.erase_mask)
+			params->erase_map.uniform_region.size = params->size;
+	}
+
 	return 0;
 }
 
