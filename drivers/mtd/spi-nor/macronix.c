@@ -502,8 +502,8 @@ static const struct flash_info macronix_nor_parts[] = {
 
 static int macronix_nor_octal_dtr_en(struct spi_nor *nor)
 {
+	u8 *buf = nor->bouncebuf;
 	struct spi_mem_op op;
-	u8 *buf = nor->bouncebuf, i;
 	int ret;
 
 	/* Use dummy cycles which is parse by SFDP and convert to bit pattern. */
@@ -520,18 +520,28 @@ static int macronix_nor_octal_dtr_en(struct spi_nor *nor)
 	if (ret)
 		return ret;
 
-	/* Read flash ID to make sure the switch was successful. */
-	ret = spi_nor_read_id(nor, nor->addr_nbytes, 4, buf,
-			      SNOR_PROTO_8_8_8_DTR);
+	/*
+	 * After DOPI, READ ID ideally returns six octets: manufacturer,
+	 * memory type, and density each duplicated on the bus (A-A-B-B-C-C).
+	 * On this path only a stable four-data-byte prefix (A-A-B-B) is observed;
+	 * the remainder is not yet reliable. Transfer round_up(id_len, 2) bytes
+	 * (four when id_len is three) but verify only id_len bytes against
+	 * spimem->device_id. Handling the full six-octet pattern may be revisited.
+	 */
+	op = (struct spi_mem_op)
+		SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_RDID, 1),
+			   SPI_MEM_OP_ADDR(4, 0, 1),
+			   SPI_MEM_OP_DUMMY(4, 1),
+			   SPI_MEM_OP_DATA_IN(round_up(nor->info->id->len, 2), buf, 1));
+	spi_nor_spimem_setup_op(nor, &op, SNOR_PROTO_8_8_8_DTR);
+	ret = spi_mem_exec_op(nor->spimem, &op);
 	if (ret) {
 		dev_dbg(nor->dev, "error %d reading JEDEC ID after enabling 8D-8D-8D mode\n", ret);
 		return ret;
 	}
 
-	/* Macronix SPI-NOR flash 8D-8D-8D read ID would get 6 bytes data A-A-B-B-C-C */
-	for (i = 0; i < nor->info->id->len; i++)
-		if (buf[i * 2] != buf[(i * 2) + 1] || buf[i * 2] != nor->info->id->bytes[i])
-			return -EINVAL;
+	if (memcmp(buf, nor->spimem->device_id, nor->info->id->len))
+		return -EINVAL;
 
 	nor->flags &= ~SNOR_F_HAS_16BIT_SR;
 	nor->params->wrsr_dummy = 4;
