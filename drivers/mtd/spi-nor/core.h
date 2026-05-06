@@ -735,6 +735,19 @@ static inline bool spi_nor_needs_sfdp(const struct spi_nor *nor)
 	return !nor->info->size;
 }
 
+/**
+ * spi_nor_mfr_is() - checks if the flash manufacturer ID matches.
+ * @nor:	pointer to a 'struct spi_nor'
+ * @mfr:	manufacturer ID to check against
+ *
+ * Return: true if JEDEC ID is present and the manufacturer ID matches,
+ *         false otherwise.
+ */
+static inline bool spi_nor_mfr_is(const struct spi_nor *nor, u8 mfr)
+{
+	return nor->info->id && nor->info->id->bytes[0] == mfr;
+}
+
 #ifdef CONFIG_DEBUG_FS
 void spi_nor_debugfs_register(struct spi_nor *nor);
 void spi_nor_debugfs_shutdown(void);
