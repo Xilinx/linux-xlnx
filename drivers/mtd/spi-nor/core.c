@@ -3739,8 +3739,11 @@ static int spi_nor_init(struct spi_nor *nor)
 			/* Select the CS index issuing the command. */
 			nor->spimem->spi->cs_index_mask = SPI_NOR_ENABLE_CS0;
 		}
-		nor->bouncebuf[0] = 0;
-		spi_nor_write_sr(nor, nor->bouncebuf, 1);
+		err = spi_nor_write_sr_and_check(nor, 0);
+		if (err) {
+			dev_dbg(nor->dev, "failed to write SR: %d\n", err);
+			return err;
+		}
 	}
 
 	err = spi_nor_set_octal_dtr(nor, true);
