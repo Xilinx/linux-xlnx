@@ -824,11 +824,6 @@ static int xcsi2rxss_set_format(struct v4l2_subdev *sd,
 	 * other RAW, YUV422 8/10 or RGB888, set appropriate media bus format.
 	 */
 	dt = xcsi2rxss_get_dt(fmt->format.code);
-	if (dt == xcsi2rxss->datatype && fmt->pad == XVIP_PAD_SINK) {
-		*__format = fmt->format;
-		goto unlock_set_format;
-	}
-
 	if (dt != xcsi2rxss->datatype && dt != MIPI_CSI2_DT_RAW8) {
 		dev_dbg(xcsi2rxss->dev, "Unsupported media bus format");
 		/* set the default format for the data type */
@@ -837,6 +832,14 @@ static int xcsi2rxss_set_format(struct v4l2_subdev *sd,
 	}
 
 	*__format = fmt->format;
+
+	/* Propagate resolution from sink to source pad */
+	__format = __xcsi2rxss_get_pad_format(xcsi2rxss, sd_state,
+					      XVIP_PAD_SOURCE, fmt->which);
+	if (__format) {
+		__format->width = fmt->format.width;
+		__format->height = fmt->format.height;
+	}
 
 unlock_set_format:
 	mutex_unlock(&xcsi2rxss->lock);
