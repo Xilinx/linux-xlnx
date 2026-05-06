@@ -1,0 +1,189 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/display/xlnx/xlnx,pl-disp.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx PL Display Controller
+
+maintainers:
+  - Vishal Sagar <vishal.sagar@amd.com>
+
+description: |
+  The PL Display controller is a logical device that completes the Xilinx
+  display pipeline. It is used with VDMA and Framebuffer Read IP DMA engines
+  to forward video frames from memory to a downstream display interface.
+
+  A linear pipeline with multiple blocks:
+  DMA --> PL_Display --> SDI
+
+properties:
+  compatible:
+    const: xlnx,pl-disp
+
+  dmas:
+    maxItems: 1
+
+  dma-names:
+    items:
+      - const: dma0
+
+  memory-region:
+    description:
+      Phandle to /reserved-memory node.
+      If memory is reserved for special use by PL Display, this node
+      can be used to refer and use from this reserved memory region.
+    maxItems: 1
+
+  xlnx,bridge:
+    description:
+      Phandle to a VTC instance when it is connected as a bridge.
+    $ref: /schemas/types.yaml#/definitions/phandle
+
+  xlnx,vformat:
+    description: Pixel format encoded as a four-character code.
+    $ref: /schemas/types.yaml#/definitions/string
+    enum:
+      - AB24
+      - AR24
+      - AVUY
+      - BG24
+      - GREY
+      - NV12
+      - NV16
+      - P010
+      - P012
+      - P210
+      - RG24
+      - T508
+      - T50A
+      - T50C
+      - T528
+      - T52A
+      - T52C
+      - T548
+      - T54A
+      - T54C
+      - T5M8
+      - T5MA
+      - T5MC
+      - T608
+      - T60A
+      - T60C
+      - T628
+      - T62A
+      - T62C
+      - T648
+      - T64A
+      - T64C
+      - T6M8
+      - T6MA
+      - T6MC
+      - UYVY
+      - VU24
+      - X403
+      - X423
+      - XB24
+      - XB30
+      - XR24
+      - XV15
+      - XV20
+      - XV30
+      - XVUY
+      - "Y10 "
+      - YU24
+      - YUYV
+
+  port:
+    description:
+      Output port connecting the PL display to a downstream sink.
+    $ref: /schemas/graph.yaml#/properties/port
+
+required:
+  - compatible
+  - dmas
+  - dma-names
+  - xlnx,vformat
+  - port
+
+additionalProperties: false
+
+examples:
+  - |
+    pl-disp {
+      compatible = "xlnx,pl-disp";
+      dmas = <&axi_vdma_0 0>;
+      dma-names = "dma0";
+      xlnx,bridge = <&v_tc_0>;
+      xlnx,vformat = "YUYV";
+
+      port {
+        pl_out_0: endpoint {
+          remote-endpoint = <&sdi_port>;
+        };
+      };
+    };
+
+  # Example using a reserved-memory region
+  - |
+    bus {
+      #address-cells = <1>;
+      #size-cells = <1>;
+
+      reserved-memory {
+        #address-cells = <1>;
+        #size-cells = <1>;
+        ranges;
+        psmem: memory@40000000 {
+          compatible = "shared-dma-pool";
+          reg = <0x40000000 0x20000000>;
+          reusable;
+        };
+      };
+
+      pl-disp {
+        compatible = "xlnx,pl-disp";
+        dmas = <&v_frmbuf_rd_0 0>;
+        dma-names = "dma0";
+        memory-region = <&psmem>;
+        xlnx,vformat = "YUYV";
+
+        port {
+          pl_out_1: endpoint {
+            remote-endpoint = <&sditx_port>;
+          };
+        };
+      };
+    };
+
+  # 64-bit Shared CMA pool of 1792 MiB using external PL DDR
+  - |
+    bus {
+      #address-cells = <2>;
+      #size-cells = <2>;
+
+      reserved-memory {
+        #address-cells = <2>;
+        #size-cells = <2>;
+        ranges;
+        plmem: memory@50000000000 {
+          compatible = "shared-dma-pool";
+          reg = <0x500 0x0 0x0 0x70000000>;
+          no-map;
+        };
+      };
+
+      pl-disp-plmem {
+        compatible = "xlnx,pl-disp";
+        dmas = <&v_frmbuf_rd_0 0>;
+        dma-names = "dma0";
+        memory-region = <&plmem>;
+        xlnx,vformat = "YUYV";
+
+        port {
+          pl_out_2: endpoint {
+            remote-endpoint = <&hdmitx_port>;
+          };
+        };
+      };
+    };
