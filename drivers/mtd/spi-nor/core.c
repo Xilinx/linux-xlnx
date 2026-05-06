@@ -665,11 +665,11 @@ static int spi_nor_write_ear(struct spi_nor *nor, u32 addr)
 
 	ear = addr >> 24;
 
-	if (nor->info->id->bytes[0] == CFI_MFR_AMD)
+	if (spi_nor_mfr_is(nor, CFI_MFR_AMD))
 		code = SPINOR_OP_BRWR;
-	if (nor->info->id->bytes[0] == CFI_MFR_ST ||
-	    nor->info->id->bytes[0] == CFI_MFR_MACRONIX ||
-	    nor->info->id->bytes[0] == CFI_MFR_PMC) {
+	if (spi_nor_mfr_is(nor, CFI_MFR_ST) ||
+	    spi_nor_mfr_is(nor, CFI_MFR_MACRONIX) ||
+	    spi_nor_mfr_is(nor, CFI_MFR_PMC)) {
 		spi_nor_write_enable(nor);
 		code = SPINOR_OP_WREAR;
 	}
@@ -711,12 +711,12 @@ static int read_ear(struct spi_nor *nor, struct flash_info *info)
 	u8 code;
 
 	/* This is actually Spansion */
-	if (nor->info->id->bytes[0] == CFI_MFR_AMD)
+	if (spi_nor_mfr_is(nor, CFI_MFR_AMD))
 		code = SPINOR_OP_BRRD;
 	/* This is actually Micron */
-	else if (nor->info->id->bytes[0] == CFI_MFR_ST ||
-		 nor->info->id->bytes[0] == CFI_MFR_MACRONIX ||
-		 nor->info->id->bytes[0] == CFI_MFR_PMC)
+	else if (spi_nor_mfr_is(nor, CFI_MFR_ST) ||
+		 spi_nor_mfr_is(nor, CFI_MFR_MACRONIX) ||
+		 spi_nor_mfr_is(nor, CFI_MFR_PMC))
 		code = SPINOR_OP_RDEAR;
 	else
 		return -EINVAL;
@@ -3725,9 +3725,9 @@ static int spi_nor_init(struct spi_nor *nor)
 {
 	int err;
 
-	if (nor->info->id->bytes[0] == CFI_MFR_ATMEL ||
-	    nor->info->id->bytes[0] == CFI_MFR_INTEL ||
-	    nor->info->id->bytes[0] == CFI_MFR_SST ||
+	if (spi_nor_mfr_is(nor, CFI_MFR_ATMEL) ||
+	    spi_nor_mfr_is(nor, CFI_MFR_INTEL) ||
+	    spi_nor_mfr_is(nor, CFI_MFR_SST) ||
 	    nor->flags & SNOR_F_HAS_LOCK) {
 		if (nor->flags & SNOR_F_HAS_PARALLEL) {
 			/*
