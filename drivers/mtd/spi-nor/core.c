@@ -3728,7 +3728,7 @@ static int spi_nor_init(struct spi_nor *nor)
 	if (nor->info->id->bytes[0] == CFI_MFR_ATMEL ||
 	    nor->info->id->bytes[0] == CFI_MFR_INTEL ||
 	    nor->info->id->bytes[0] == CFI_MFR_SST ||
-	    nor->info->id->bytes[0] & SNOR_F_HAS_LOCK) {
+	    nor->flags & SNOR_F_HAS_LOCK) {
 		if (nor->flags & SNOR_F_HAS_PARALLEL) {
 			/*
 			 * In parallel mode both chip selects i.e., CS0 &
