@@ -600,9 +600,7 @@ int aie_init_freq(struct aie_aperture *aperture)
 	dev_err(&aperture->dev, "current_freq_divider[%x] boot_freq_divider[%x]\n",
 		current_qos, boot_qos);
 
-	ret = zynqmp_pm_set_requirement(aperture->node_id,
-					ZYNQMP_PM_CAPABILITY_ACCESS, boot_qos,
-					ZYNQMP_PM_REQUEST_ACK_BLOCKING);
+	ret = zynqmp_pm_set_aie_clk_div(aperture->node_id, boot_qos);
 	if (ret < 0) {
 		dev_err(&aperture->dev, "Failed to set frequency requirement.\n");
 		return -EINVAL;
@@ -666,9 +664,7 @@ int aie_part_set_freq(struct aie_partition *apart, u64 freq)
 		return -EINVAL;
 	}
 
-	ret = zynqmp_pm_set_requirement(aperture->node_id,
-					ZYNQMP_PM_CAPABILITY_ACCESS, target_qos,
-					ZYNQMP_PM_REQUEST_ACK_BLOCKING);
+	ret = zynqmp_pm_set_aie_clk_div(aperture->node_id, target_qos);
 	if (ret < 0) {
 		apart->freq_req = temp_freq;
 		dev_err(&apart->dev, "Failed to set frequency requirement.\n");
