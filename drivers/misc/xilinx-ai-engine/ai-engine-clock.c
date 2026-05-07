@@ -597,7 +597,7 @@ int aie_init_freq(struct aie_aperture *aperture)
 		return ret;
 	}
 
-	dev_err(&aperture->dev, "current_freq_divider[%x] boot_freq_divider[%x]\n",
+	dev_dbg(&aperture->dev, "current_freq_divider[%x] boot_freq_divider[%x]\n",
 		current_qos, boot_qos);
 
 	ret = zynqmp_pm_set_aie_clk_div(aperture->node_id, boot_qos);
