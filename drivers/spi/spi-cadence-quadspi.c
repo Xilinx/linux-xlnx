@@ -33,7 +33,6 @@
 
 #define CQSPI_NAME			"cadence-qspi"
 #define CQSPI_MAX_CHIPSELECT		4
-#define CQSPI_MIN_CHIPSELECT		1
 
 static_assert(CQSPI_MAX_CHIPSELECT <= SPI_DEVICE_CS_CNT_MAX);
 
@@ -2216,37 +2215,27 @@ static int cqspi_setup_flash(struct cqspi_st *cqspi)
 	struct platform_device *pdev = cqspi->pdev;
 	struct device *dev = &pdev->dev;
 	struct cqspi_flash_pdata *f_pdata;
-	int ret, cs, max_cs = cqspi->num_chipselect - 1;
-	unsigned int cs_num[2] = {0};
+	int ret, cs, max_cs = -1;
 
 	/* Get flash device data */
 	for_each_available_child_of_node_scoped(dev->of_node, np) {
-		ret = of_property_read_variable_u32_array(np, "reg", &cs_num[0],
-							  CQSPI_MIN_CHIPSELECT,
-							  CQSPI_MAX_CHIPSELECT);
-		if (ret < 0) {
+		ret = of_property_read_u32(np, "reg", &cs);
+		if (ret) {
 			dev_err(dev, "Couldn't determine chip select.\n");
 			return ret;
 		}
-		cs = cs_num[0];
+
+		if (cs >= cqspi->num_chipselect) {
+			dev_err(dev, "Chip select %d out of range.\n", cs);
+			return -EINVAL;
+		}
+
+		max_cs = max_t(int, cs, max_cs);
 
 		f_pdata = &cqspi->f_pdata[cs];
 		f_pdata->cqspi = cqspi;
 		f_pdata->cs = cs;
 
-		if (ret > CQSPI_MIN_CHIPSELECT) {
-			/* Obtain the maximum CS value between the two CS values */
-			for (int i = CQSPI_MIN_CHIPSELECT; i < ret; i++) {
-				if (cs < cs_num[i])
-					cs = cs_num[i];
-			}
-		}
-		if (cs >= cqspi->num_chipselect) {
-			dev_err(dev, "Chip select %d out of range.\n", cs);
-			return -EINVAL;
-		} else if (cs < max_cs) {
-			max_cs = cs;
-		}
 		ret = cqspi_of_get_flash_pdata(pdev, f_pdata, np);
 		if (ret)
 			return ret;
