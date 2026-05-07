@@ -264,6 +264,8 @@ enum pm_ioctl_id {
 	IOCTL_GET_QOS = 34,
 	/* AIE2PS Operations */
 	IOCTL_AIE2PS_OPS = 39,
+	/* Set AIE Clock Divider */
+	IOCTL_SET_AIE_CLK_DIV = 40,
 };
 
 enum pm_query_id {
@@ -697,6 +699,7 @@ int zynqmp_pm_get_last_reset_reason(u32 *reset_reason);
 int zynqmp_pm_aie_operation(u32 node, u16 start_col, u16 num_col, u32 operation);
 int zynqmp_pm_get_qos(u32 node, u32 *const def_qos, u32 *const qos);
 int versal2_pm_aie2ps_operation(u32 node, u32 size, u32 addr_high, u32 addr_low);
+int zynqmp_pm_set_aie_clk_div(u32 node, u32 divider);
 int zynqmp_pm_clear_tfa_state(void);
 #else
 static inline int zynqmp_pm_get_api_version(u32 *version)
@@ -1054,6 +1057,11 @@ static inline int zynqmp_pm_aie_operation(u32 node, u16 start_col,
 
 static inline int versal2_pm_aie2ps_operation(u32 node, u32 size, u32 addr_high,
 					      u32 addr_low)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_set_aie_clk_div(u32 node, u32 divider)
 {
 	return -ENODEV;
 }

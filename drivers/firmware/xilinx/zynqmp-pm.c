@@ -635,6 +635,31 @@ int versal2_pm_aie2ps_operation(u32 node, u32 size, u32 addr_high, u32 addr_low)
 EXPORT_SYMBOL_GPL(versal2_pm_aie2ps_operation);
 
 /**
+ * zynqmp_pm_set_aie_clk_div() - Set AIE clock divider
+ * @node:	AI engine node id
+ * @divider:	Clock divider value
+ *
+ * This function sets the clock divider for the AI engine device. If the
+ * firmware supports IOCTL_SET_AIE_CLK_DIV, the dedicated IOCTL is used.
+ * Otherwise, it falls back to PM_SET_REQUIREMENT for older firmware.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+int zynqmp_pm_set_aie_clk_div(u32 node, u32 divider)
+{
+	int ret;
+
+	ret = zynqmp_pm_is_function_supported(PM_IOCTL, IOCTL_SET_AIE_CLK_DIV);
+	if (!ret)
+		return zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 3, prepare_node_id(node),
+					   IOCTL_SET_AIE_CLK_DIV, divider);
+
+	return zynqmp_pm_set_requirement(node, ZYNQMP_PM_CAPABILITY_ACCESS, divider,
+				       ZYNQMP_PM_REQUEST_ACK_BLOCKING);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_set_aie_clk_div);
+
+/**
  * zynqmp_pm_reset_assert - Request setting of reset (1 - assert, 0 - release)
  * @reset:		Reset to be configured
  * @assert_flag:	Flag stating should reset be asserted (1) or
