@@ -107,9 +107,14 @@ static int micron_st_nor_octal_dtr_en(struct spi_nor *nor)
 		return ret;
 	}
 
-	if (memcmp(buf, nor->info->id->bytes, nor->info->id->len))
+	if (memcmp(buf, nor->info->id->bytes, nor->info->id->len)) {
+		dev_err(nor->dev, "JEDEC ID mismatch after DDR enable: got %02x %02x %02x, expected %02x %02x %02x\n",
+			buf[0], buf[1], buf[2],
+			nor->info->id->bytes[0], nor->info->id->bytes[1], nor->info->id->bytes[2]);
 		return -EINVAL;
+	}
 
+	dev_info(nor->dev, "switched to 8D-8D-8D mode successfully\n");
 	return 0;
 }
 
@@ -287,7 +292,7 @@ static const struct flash_info micron_nor_parts[] = {
 		.sector_size = SZ_128K,
 		.size = SZ_64M,
 		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_4BIT_BP |
-				SPI_NOR_BP3_SR_BIT6,
+				SPI_NOR_BP3_SR_BIT6 | SPI_NOR_SWP_IS_VOLATILE,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
 				 SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
 		.mfr_flags = USE_FSR,
@@ -299,7 +304,7 @@ static const struct flash_info micron_nor_parts[] = {
 		.sector_size = SZ_128K,
 		.size = SZ_128M,
 		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_4BIT_BP |
-				SPI_NOR_BP3_SR_BIT6,
+				SPI_NOR_BP3_SR_BIT6 | SPI_NOR_SWP_IS_VOLATILE,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
 			SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
 		.mfr_flags = USE_FSR,
@@ -311,7 +316,7 @@ static const struct flash_info micron_nor_parts[] = {
 		.sector_size = SZ_128K,
 		.size = SZ_256M,
 		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_4BIT_BP |
-				SPI_NOR_BP3_SR_BIT6,
+				SPI_NOR_BP3_SR_BIT6 | SPI_NOR_SWP_IS_VOLATILE,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_OCTAL_READ |
 				SPI_NOR_OCTAL_DTR_READ | SPI_NOR_OCTAL_DTR_PP,
 		.mfr_flags = USE_FSR,
@@ -710,9 +715,11 @@ static int micron_st_nor_ready(struct spi_nor *nor)
 
 	if (nor->bouncebuf[0] & (FSR_E_ERR | FSR_P_ERR)) {
 		if (nor->bouncebuf[0] & FSR_E_ERR)
-			dev_err(nor->dev, "Erase operation failed.\n");
+			dev_err(nor->dev, "Erase operation failed. FSR=0x%02x\n",
+				nor->bouncebuf[0]);
 		else
-			dev_err(nor->dev, "Program operation failed.\n");
+			dev_err(nor->dev, "Program operation failed. FSR=0x%02x\n",
+				nor->bouncebuf[0]);
 
 		if (nor->bouncebuf[0] & FSR_PT_ERR)
 			dev_err(nor->dev,
