@@ -75,6 +75,11 @@ struct cqspi_flash_pdata {
 	u32		tslch_ns;
 	bool		dtr;
 	u8		cs;
+	/* Per-CS DLL tuning parameters for stacked flash support */
+	u32		phy_config;	/* Saved PHY_CONFIG register value */
+	u32		readcapture;	/* Saved READCAPTURE register value */
+	bool		phy_tuned;	/* True if this CS has valid tuning */
+	bool		extra_dummy;	/* True if extra dummy cycle needed */
 };
 
 struct cqspi_st {
@@ -118,7 +123,8 @@ struct cqspi_st {
 
 	const struct cqspi_driver_platdata *ddata;
 	bool			extra_dummy;
-	bool			clk_tuned;
+	u32			clk_tuned;
+	int			tuned_cs;	/* CS for which tuning was done, -1 if none */
 	struct completion	tuning_complete;
 	struct spi_mem_op	tuning_op;
 	bool			tuning_scheduled;
@@ -133,6 +139,10 @@ struct cqspi_driver_platdata {
 	int (*jh7110_clk_init)(struct platform_device *pdev,
 			       struct cqspi_st *cqspi);
 };
+
+/* Forward declarations */
+static void cqspi_configure(struct cqspi_flash_pdata *f_pdata, unsigned long sclk);
+static void cqspi_controller_enable(struct cqspi_st *cqspi, bool enable);
 
 /* Operation timeout value */
 #define CQSPI_TIMEOUT_MS			500
@@ -583,11 +593,16 @@ static int cqspi_command_read(struct cqspi_flash_pdata *f_pdata,
 	size_t read_len;
 	int status;
 
-	if (f_pdata->dtr) {
-		status = cqspi_enable_dtr(f_pdata, op, CQSPI_REG_OP_EXT_STIG_LSB);
-		if (status)
-			return status;
-	}
+	/*
+	 * Always call cqspi_enable_dtr() to ensure DTR protocol bits are
+	 * properly configured. This handles both enabling DTR for DDR ops
+	 * and disabling DTR for SDR ops. This is critical for stacked flash
+	 * configurations where flash@0 may be in DDR mode while flash@1
+	 * needs SDR mode for initial JEDEC ID read.
+	 */
+	status = cqspi_enable_dtr(f_pdata, op, CQSPI_REG_OP_EXT_STIG_LSB);
+	if (status)
+		return status;
 	if (!n_rx || n_rx > CQSPI_STIG_DATA_LEN_MAX || !rxbuf) {
 		dev_err(&cqspi->pdev->dev,
 			"Invalid input argument, len %zu rxbuf 0x%p\n",
@@ -683,6 +698,25 @@ static int cqspi_setdlldelay(struct spi_mem *mem, const struct spi_mem_op *op, u
 		return 0;
 
 	f_pdata = &cqspi->f_pdata[spi_get_chipselect(mem->spi, 0)];
+
+	/*
+	 * Configure the chip select before tuning. This is critical for
+	 * stacked flash configurations where we might be tuning for CS1
+	 * but the controller still has CS0 selected from previous operations.
+	 * Use cqspi_configure() instead of just cqspi_chipselect() to ensure
+	 * proper timing delays are also set for the target flash.
+	 */
+	cqspi_configure(f_pdata, mem->spi->max_speed_hz);
+
+	/*
+	 * Reset READCAPTURE register to clean state before tuning.
+	 * In stacked flash configurations, prior tuning for another CS
+	 * may have left DQS settings that interfere with the new CS.
+	 */
+	reg = readl(cqspi->iobase + CQSPI_REG_READCAPTURE);
+	reg &= ~(CQSPI_REG_READCAPTURE_DQS_ENABLE |
+		 (CQSPI_REG_READCAPTURE_DELAY_MASK << CQSPI_REG_READCAPTURE_DELAY_LSB));
+	writel(reg, cqspi->iobase + CQSPI_REG_READCAPTURE);
 
 	/* Drive DLL reset bit to low */
 	writel(0, cqspi->iobase + CQSPI_REG_PHY_CONFIG);
@@ -803,7 +837,18 @@ static int cqspi_setdlldelay(struct spi_mem *mem, const struct spi_mem_op *op, u
 	if (ret)
 		return ret;
 
-	cqspi->clk_tuned = true;
+	cqspi->clk_tuned |= BIT(spi_get_chipselect(mem->spi, 0));
+	cqspi->tuned_cs = spi_get_chipselect(mem->spi, 0);
+
+	/*
+	 * Save per-CS tuning parameters for later restore during CS switch.
+	 * Store the DLL tap values along with RESET bit so restore can use
+	 * them directly. Hardware may clear RESET/RESYNC bits after locking.
+	 */
+	f_pdata->phy_config = txtap | avg_rxtap | CQSPI_REG_PHY_CONFIG_RESET_FLD_MASK;
+	f_pdata->readcapture = readl(cqspi->iobase + CQSPI_REG_READCAPTURE);
+	f_pdata->extra_dummy = cqspi->extra_dummy;
+	f_pdata->phy_tuned = true;
 
 	return 0;
 }
@@ -894,7 +939,12 @@ static void cqspi_setup_sdrmode(struct cqspi_st *cqspi)
 	reg |= CQSPI_REG_CONFIG_ENABLE_MASK;
 	writel(reg, cqspi->iobase + CQSPI_REG_CONFIG);
 
-	cqspi->clk_tuned = false;
+	/*
+	 * Don't reset clk_tuned here. The tuning is done at the controller
+	 * level and should remain valid even when temporarily switching to
+	 * SDR mode (e.g., for probing a different flash in a stacked config).
+	 * The tuning will be invalidated only during driver init/reset.
+	 */
 	cqspi->extra_dummy = false;
 }
 
@@ -938,8 +988,19 @@ static int cqspi_setup_phymode(struct spi_mem *mem, const struct spi_mem_op *op)
 	cqspi_setup_sdrphymode(cqspi);
 	txtap = CQSPI_SDR_TX_TAP_MASTER;
 
-	if (cqspi->clk_tuned)
+	/* Skip tuning if already tuned for this specific CS. */
+	if (cqspi->clk_tuned & BIT(spi_get_chipselect(mem->spi, 0)))
 		return 0;
+
+	/*
+	 * Skip DLL tuning if device_id is not yet populated. This happens
+	 * during flash probe when spi_nor_read_id() is called before the
+	 * flash is identified. The tuning will be performed later once
+	 * device_id is known. Without this check, cqspi_setdlldelay() would
+	 * fail with -EINVAL because it compares read IDs against zeros.
+	 */
+	if (!mem->device_id[0])
+		return -EAGAIN;
 
 	memcpy(&cqspi->tuning_op, op, sizeof(struct spi_mem_op));
 
@@ -965,31 +1026,101 @@ static int cqspi_setup_edgemode(struct spi_mem *mem,
 				const struct spi_mem_op *op)
 {
 	struct cqspi_st *cqspi = spi_controller_get_devdata(mem->spi->controller);
+	struct cqspi_flash_pdata *f_pdata;
 	int ret;
-	u32 txtap;
+	u32 txtap, phy_cfg, dll_lower;
+	int cs = spi_get_chipselect(mem->spi, 0);
+
+	f_pdata = &cqspi->f_pdata[cs];
+
+	/*
+	 * Track which chip selects have been tuned using a bitmask.
+	 * Each CS needs its own tuning during initial probe because
+	 * DLL parameters may vary between flashes.
+	 */
+	if (cqspi->clk_tuned & BIT(cs)) {
+		/*
+		 * Check if PHY needs restore by checking DLL lock status.
+		 * Hardware may clear RESET/RESYNC bits after locking, so
+		 * we can't rely on checking those bits.
+		 */
+		dll_lower = readl(cqspi->iobase + CQSPI_REG_DLL_LOWER);
+		phy_cfg = readl(cqspi->iobase + CQSPI_REG_PHY_CONFIG);
+
+		/* Check if DLL is locked and tap values match expected */
+		if ((dll_lower & CQSPI_REG_DLL_LOWER_DLL_LOCK_MASK) &&
+		    ((phy_cfg & 0x00FF00FF) == (f_pdata->phy_config & 0x00FF00FF))) {
+			/* DLL is locked with correct tap values, just setup DDR mode */
+			cqspi_setup_ddrmode(cqspi);
+			return 0;
+		}
+
+		/* Try to restore from saved values */
+		if (f_pdata->phy_tuned && f_pdata->phy_config) {
+			/* Disable controller before modifying PHY configuration */
+			cqspi_controller_enable(cqspi, 0);
+
+			/* Write PHY_CONFIG with RESET bit */
+			writel(f_pdata->phy_config, cqspi->iobase + CQSPI_REG_PHY_CONFIG);
+
+			/* Write with RESET + RESYNC to re-lock DLL */
+			writel(f_pdata->phy_config | CQSPI_REG_PHY_CONFIG_RESYNC_FLD_MASK,
+			       cqspi->iobase + CQSPI_REG_PHY_CONFIG);
+
+			/* Re-enable controller */
+			cqspi_controller_enable(cqspi, 1);
+
+			/* Wait for DLL lock */
+			ret = cqspi_wait_for_bit(cqspi->ddata,
+						 cqspi->iobase + CQSPI_REG_DLL_LOWER,
+						 CQSPI_REG_DLL_LOWER_DLL_LOCK_MASK, 0, false);
+			if (ret == 0) {
+				u32 reg = f_pdata->readcapture | CQSPI_REG_READCAPTURE_DQS_ENABLE;
+
+				writel(reg, cqspi->iobase + CQSPI_REG_READCAPTURE);
+				cqspi->extra_dummy = f_pdata->extra_dummy;
+				cqspi_setup_ddrmode(cqspi);
+				return 0;
+			}
+
+			dev_warn(&mem->spi->dev,
+				 "CS%d: PHY restore failed, will re-tune\n", cs);
+		}
+		cqspi->clk_tuned &= ~BIT(cs);
+		f_pdata->phy_tuned = false;
+	}
 
 	cqspi_setup_ddrmode(cqspi);
 	txtap = CQSPI_DDR_TX_TAP_MASTER;
 
-	if (cqspi->clk_tuned)
-		return 0;
+	/*
+	 * Skip DLL tuning if device_id is not yet populated. This happens
+	 * during flash probe when the flash is being identified. The tuning
+	 * will be performed later once device_id is known.
+	 */
+	if (!mem->device_id[0])
+		return -EAGAIN;
+
 	memcpy(&cqspi->tuning_op, op, sizeof(struct spi_mem_op));
 
-	cqspi->f_pdata[spi_get_chipselect(mem->spi, 0)].dtr = true;
+	f_pdata->dtr = true;
 
 	ret = cqspi_setdlldelay(mem, op, txtap);
 	if (ret)
 		return ret;
 
 	complete_all(&cqspi->tuning_complete);
-	if (cqspi->tuning_scheduled) {
-		cancel_delayed_work_sync(&mem->complete_work);
-		flush_delayed_work(&mem->complete_work);
+
+	/*
+	 * Only schedule periodic tuning work if not already scheduled.
+	 * The periodic tuning is global for the controller, not per-CS.
+	 */
+	if (!cqspi->tuning_scheduled) {
+		INIT_DELAYED_WORK(&mem->complete_work, cqspi_periodictuning);
+		schedule_delayed_work(&mem->complete_work,
+				      msecs_to_jiffies(CQSPI_TUNING_PERIODICITY_MS));
+		cqspi->tuning_scheduled = true;
 	}
-	INIT_DELAYED_WORK(&mem->complete_work, cqspi_periodictuning);
-	schedule_delayed_work(&mem->complete_work,
-			      msecs_to_jiffies(CQSPI_TUNING_PERIODICITY_MS));
-	cqspi->tuning_scheduled = true;
 
 	return 0;
 }
@@ -1741,6 +1872,44 @@ static void cqspi_configure(struct cqspi_flash_pdata *f_pdata,
 	if (switch_cs) {
 		cqspi->current_cs = f_pdata->cs;
 		cqspi_chipselect(f_pdata);
+
+		/*
+		 * Restore per-CS PHY tuning parameters for stacked flash.
+		 * Each CS may have different DLL tuning values, and the
+		 * PHY_CONFIG register is shared across all chip selects.
+		 * Write RESET first, then RESET+RESYNC to re-lock the DLL.
+		 */
+		if (f_pdata->phy_tuned) {
+			u32 dll_reg, reg;
+
+			/* Write PHY_CONFIG with RESET bit */
+			writel(f_pdata->phy_config, cqspi->iobase + CQSPI_REG_PHY_CONFIG);
+
+			/* Write PHY_CONFIG with RESET + RESYNC to re-lock DLL */
+			writel(f_pdata->phy_config | CQSPI_REG_PHY_CONFIG_RESYNC_FLD_MASK,
+			       cqspi->iobase + CQSPI_REG_PHY_CONFIG);
+
+			/* Brief delay for DLL to lock - typically < 1us */
+			udelay(1);
+
+			/* Check DLL lock status */
+			dll_reg = readl(cqspi->iobase + CQSPI_REG_DLL_LOWER);
+			if (!(dll_reg & CQSPI_REG_DLL_LOWER_DLL_LOCK_MASK))
+				dev_warn(&cqspi->pdev->dev,
+					 "CS%d DLL not locked after restore\n",
+					 f_pdata->cs);
+
+			/*
+			 * Restore READCAPTURE and ensure DQS is enabled for DDR mode.
+			 * The saved readcapture may not have DQS enabled if it was
+			 * saved before cqspi_setup_ddrmode() was called.
+			 */
+			reg = f_pdata->readcapture | CQSPI_REG_READCAPTURE_DQS_ENABLE;
+			writel(reg, cqspi->iobase + CQSPI_REG_READCAPTURE);
+
+			/* Restore extra_dummy setting from tuning */
+			cqspi->extra_dummy = f_pdata->extra_dummy;
+		}
 	}
 
 	/* Setup baudrate divisor and delays */
@@ -1885,7 +2054,8 @@ static int cqspi_mem_process(struct spi_mem *mem, const struct spi_mem_op *op)
 
 	f_pdata = &cqspi->f_pdata[spi_get_chipselect(mem->spi, 0)];
 
-	if (!f_pdata->cqspi->clk_tuned && mem->spi->max_speed_hz > CQSPI_SDR_MAX_FREQ)
+	if (!(f_pdata->cqspi->clk_tuned & BIT(spi_get_chipselect(mem->spi, 0))) &&
+	    mem->spi->max_speed_hz > CQSPI_SDR_MAX_FREQ)
 		speed_hz = CQSPI_SDR_MAX_FREQ;
 
 	cqspi_configure(f_pdata, speed_hz);
@@ -1946,8 +2116,21 @@ static int cqspi_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)
 	    (!op->addr.nbytes || op->addr.dtr) &&
 	    (!op->data.nbytes || op->data.dtr)) {
 		ret = cqspi_setup_edgemode(mem, op);
-		if (ret)
-			return ret;
+		if (ret) {
+			/*
+			 * If edgemode setup fails during initial probe when
+			 * device_id is not yet known (-EAGAIN), temporarily
+			 * use SDR mode. Tuning will be retried later once
+			 * device_id is populated. For other errors (tuning
+			 * failure), return the error to fail the operation.
+			 */
+			if (ret == -EAGAIN) {
+				f_pdata->dtr = false;
+				cqspi_setup_sdrmode(cqspi);
+			} else {
+				return ret;
+			}
+		}
 	} else if ((mem->spi->controller->flags & SPI_CONTROLLER_SDR_PHY) &&
 			(mem->spi->max_speed_hz >= CQSPI_SDR_MAX_FREQ)) {
 		ret = cqspi_setup_phymode(mem, op);
@@ -1956,8 +2139,19 @@ static int cqspi_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)
 			cqspi_setup_sdrmode(cqspi);
 		}
 	} else {
+		u32 reg;
+
 		f_pdata->dtr = false;
-		if (cqspi->clk_tuned)
+		/*
+		 * For SDR operations, ensure controller is in SDR mode.
+		 * This is critical for stacked flash configurations where
+		 * flash@0 may have configured the controller for DDR mode,
+		 * but flash@1 needs SDR mode for initial probe (JEDEC ID read).
+		 * Check if PHY or DTR mode is enabled and reset to SDR if needed.
+		 */
+		reg = readl(cqspi->iobase + CQSPI_REG_CONFIG);
+		if (reg & (CQSPI_REG_CONFIG_PHY_ENABLE_MASK |
+			   CQSPI_REG_CONFIG_DTR_PROTO))
 			cqspi_setup_sdrmode(cqspi);
 	}
 
@@ -2471,7 +2665,8 @@ static int cqspi_probe(struct platform_device *pdev)
 	cqspi->current_cs = -1;
 	cqspi->sclk = 0;
 	cqspi->extra_dummy = false;
-	cqspi->clk_tuned = false;
+	cqspi->clk_tuned = 0;
+	cqspi->tuned_cs = -1;
 
 	if (!(ddata && (ddata->quirks & CQSPI_DISABLE_RUNTIME_PM))) {
 		pm_runtime_enable(dev);
@@ -2568,7 +2763,7 @@ static int cqspi_runtime_suspend(struct device *dev)
 
 	if (cqspi->clk_tuned && !cqspi->tuning_complete.done &&
 	    !wait_for_completion_timeout(&cqspi->tuning_complete,
-		msecs_to_jiffies(CQSPI_TUNING_TIMEOUT_MS))) {
+					 msecs_to_jiffies(CQSPI_TUNING_TIMEOUT_MS))) {
 		return -ETIMEDOUT;
 	}
 
@@ -2585,10 +2780,12 @@ static int cqspi_runtime_resume(struct device *dev)
 	cqspi_wait_idle(cqspi);
 	cqspi_controller_enable(cqspi, 0);
 	cqspi_controller_init(cqspi);
+	cqspi_controller_reset_phy(cqspi);
 	cqspi_controller_enable(cqspi, 1);
 
 	cqspi->current_cs = -1;
 	cqspi->sclk = 0;
+
 	return 0;
 }
 
@@ -2618,7 +2815,8 @@ static int cqspi_resume(struct device *dev)
 	cqspi_controller_reset_phy(cqspi);
 	cqspi_controller_enable(cqspi, 1);
 	cqspi->extra_dummy = false;
-	cqspi->clk_tuned = false;
+	cqspi->clk_tuned = 0;
+	cqspi->tuned_cs = -1;
 
 	ret = cqspi_setup_flash(cqspi);
 	if (ret) {
