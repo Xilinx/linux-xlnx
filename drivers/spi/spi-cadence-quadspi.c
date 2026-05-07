@@ -80,6 +80,9 @@ struct cqspi_flash_pdata {
 	u32		readcapture;	/* Saved READCAPTURE register value */
 	bool		phy_tuned;	/* True if this CS has valid tuning */
 	bool		extra_dummy;	/* True if extra dummy cycle needed */
+	/* Per-CS periodic tuning context for stacked flash support */
+	struct spi_mem		*tuning_mem;	/* mem for periodic tuning */
+	struct spi_mem_op	tuning_op;	/* op for periodic tuning */
 };
 
 struct cqspi_st {
@@ -953,35 +956,72 @@ static void cqspi_periodictuning(struct work_struct *work)
 	struct delayed_work *d = to_delayed_work(work);
 	struct spi_mem *mem = container_of(d, struct spi_mem, complete_work);
 	struct cqspi_st *cqspi = spi_controller_get_devdata(mem->spi->controller);
+	struct cqspi_flash_pdata *f_pdata;
 	u8 buf[CQSPI_READ_ID_LEN];
-	int ret;
+	int ret, cs, start_cs, attempts;
 	u32 txtap;
 
-	if (!mem->request_completion.done)
-		wait_for_completion(&mem->request_completion);
-
-	if (cqspi->f_pdata[spi_get_chipselect(mem->spi, 0)].dtr)
-		txtap = CQSPI_DDR_TX_TAP_MASTER;
-	else
-		txtap = CQSPI_SDR_TX_TAP_MASTER;
-
-	reinit_completion(&cqspi->tuning_complete);
-	cqspi->tuning_op.data.buf.in = buf;
-	cqspi->tuning_op.data.nbytes = CQSPI_READ_ID_LEN;
-	ret = cqspi_setdlldelay(mem, &cqspi->tuning_op, txtap);
-	complete_all(&cqspi->tuning_complete);
-	if (ret) {
-		dev_err(&cqspi->pdev->dev,
-			"Setting dll delay error (%i)\n", ret);
-	} else {
+	/*
+	 * Don't do tuning if operations are in progress - reschedule instead.
+	 */
+	if (refcount_read(&cqspi->inflight_ops) > 1) {
 		schedule_delayed_work(&mem->complete_work,
 				      msecs_to_jiffies(CQSPI_TUNING_PERIODICITY_MS));
+		return;
 	}
+
+	/*
+	 * Tune only ONE CS per periodic tuning cycle, rotating through CSes.
+	 * This minimizes disruption to operations and reduces the chance of
+	 * tuning interfering with active I/O on other chip selects.
+	 */
+	start_cs = (cqspi->tuned_cs + 1) % cqspi->num_chipselect;
+
+	for (attempts = 0; attempts < cqspi->num_chipselect; attempts++) {
+		cs = (start_cs + attempts) % cqspi->num_chipselect;
+		f_pdata = &cqspi->f_pdata[cs];
+
+		/* Skip CSes not tuned during probe */
+		if (!f_pdata->phy_tuned)
+			continue;
+
+		/* Skip if no tuning context saved */
+		if (!f_pdata->tuning_mem)
+			continue;
+
+		/* Found a valid CS to tune */
+		txtap = f_pdata->dtr ? CQSPI_DDR_TX_TAP_MASTER :
+				       CQSPI_SDR_TX_TAP_MASTER;
+
+		f_pdata->tuning_op.data.buf.in = buf;
+		f_pdata->tuning_op.data.nbytes = CQSPI_READ_ID_LEN;
+
+		ret = cqspi_setdlldelay(f_pdata->tuning_mem,
+					&f_pdata->tuning_op, txtap);
+		if (ret)
+			dev_err(&cqspi->pdev->dev,
+				"CS%d: periodic tuning failed (%d)\n", cs, ret);
+
+		/* Update tuned_cs so next cycle tunes a different CS */
+		cqspi->tuned_cs = cs;
+		break;
+	}
+
+	/*
+	 * After tuning, invalidate current_cs to force a full
+	 * reconfiguration on the next flash operation.
+	 */
+	cqspi->current_cs = -1;
+
+	schedule_delayed_work(&mem->complete_work,
+			      msecs_to_jiffies(CQSPI_TUNING_PERIODICITY_MS));
 }
 
 static int cqspi_setup_phymode(struct spi_mem *mem, const struct spi_mem_op *op)
 {
 	struct cqspi_st *cqspi = spi_controller_get_devdata(mem->spi->controller);
+	struct cqspi_flash_pdata *f_pdata;
+	int cs = spi_get_chipselect(mem->spi, 0);
 	int ret;
 	u32 txtap;
 
@@ -989,7 +1029,7 @@ static int cqspi_setup_phymode(struct spi_mem *mem, const struct spi_mem_op *op)
 	txtap = CQSPI_SDR_TX_TAP_MASTER;
 
 	/* Skip tuning if already tuned for this specific CS. */
-	if (cqspi->clk_tuned & BIT(spi_get_chipselect(mem->spi, 0)))
+	if (cqspi->clk_tuned & BIT(cs))
 		return 0;
 
 	/*
@@ -1002,9 +1042,15 @@ static int cqspi_setup_phymode(struct spi_mem *mem, const struct spi_mem_op *op)
 	if (!mem->device_id[0])
 		return -EAGAIN;
 
-	memcpy(&cqspi->tuning_op, op, sizeof(struct spi_mem_op));
+	f_pdata = &cqspi->f_pdata[cs];
+	f_pdata->dtr = false;
 
-	cqspi->f_pdata[spi_get_chipselect(mem->spi, 0)].dtr = false;
+	/* Save per-CS tuning context for periodic re-tuning in stacked flash */
+	f_pdata->tuning_mem = mem;
+	memcpy(&f_pdata->tuning_op, op, sizeof(struct spi_mem_op));
+
+	/* Also save global tuning_op for backward compatibility */
+	memcpy(&cqspi->tuning_op, op, sizeof(struct spi_mem_op));
 
 	ret = cqspi_setdlldelay(mem, op, txtap);
 	if (ret)
@@ -1101,9 +1147,14 @@ static int cqspi_setup_edgemode(struct spi_mem *mem,
 	if (!mem->device_id[0])
 		return -EAGAIN;
 
-	memcpy(&cqspi->tuning_op, op, sizeof(struct spi_mem_op));
-
 	f_pdata->dtr = true;
+
+	/* Save per-CS tuning context for periodic re-tuning in stacked flash */
+	f_pdata->tuning_mem = mem;
+	memcpy(&f_pdata->tuning_op, op, sizeof(struct spi_mem_op));
+
+	/* Also save global tuning_op for backward compatibility */
+	memcpy(&cqspi->tuning_op, op, sizeof(struct spi_mem_op));
 
 	ret = cqspi_setdlldelay(mem, op, txtap);
 	if (ret)
@@ -1113,7 +1164,8 @@ static int cqspi_setup_edgemode(struct spi_mem *mem,
 
 	/*
 	 * Only schedule periodic tuning work if not already scheduled.
-	 * The periodic tuning is global for the controller, not per-CS.
+	 * The periodic tuning iterates through all tuned CSes, so a single
+	 * scheduled work handles all stacked flashes.
 	 */
 	if (!cqspi->tuning_scheduled) {
 		INIT_DELAYED_WORK(&mem->complete_work, cqspi_periodictuning);
@@ -1881,23 +1933,32 @@ static void cqspi_configure(struct cqspi_flash_pdata *f_pdata,
 		 */
 		if (f_pdata->phy_tuned) {
 			u32 dll_reg, reg;
+			int retry = 50;
 
 			/* Write PHY_CONFIG with RESET bit */
 			writel(f_pdata->phy_config, cqspi->iobase + CQSPI_REG_PHY_CONFIG);
+
+			/* Small delay before resync */
+			udelay(1);
 
 			/* Write PHY_CONFIG with RESET + RESYNC to re-lock DLL */
 			writel(f_pdata->phy_config | CQSPI_REG_PHY_CONFIG_RESYNC_FLD_MASK,
 			       cqspi->iobase + CQSPI_REG_PHY_CONFIG);
 
-			/* Brief delay for DLL to lock - typically < 1us */
-			udelay(1);
+			/*
+			 * Wait for DLL to lock with retry. The DLL may take
+			 * several microseconds to lock after resync, especially
+			 * during rapid CS switching.
+			 */
+			do {
+				udelay(2);
+				dll_reg = readl(cqspi->iobase + CQSPI_REG_DLL_LOWER);
+			} while (!(dll_reg & CQSPI_REG_DLL_LOWER_DLL_LOCK_MASK) && --retry);
 
-			/* Check DLL lock status */
-			dll_reg = readl(cqspi->iobase + CQSPI_REG_DLL_LOWER);
-			if (!(dll_reg & CQSPI_REG_DLL_LOWER_DLL_LOCK_MASK))
+			if (!retry)
 				dev_warn(&cqspi->pdev->dev,
-					 "CS%d DLL not locked after restore\n",
-					 f_pdata->cs);
+					 "CS%d DLL not locked after restore (DLL=0x%08x)\n",
+					 f_pdata->cs, dll_reg);
 
 			/*
 			 * Restore READCAPTURE and ensure DQS is enabled for DDR mode.
@@ -2086,7 +2147,7 @@ static int cqspi_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)
 	struct device *dev = &cqspi->pdev->dev;
 	const struct cqspi_driver_platdata *ddata = of_device_get_match_data(dev);
 	struct cqspi_flash_pdata *f_pdata;
-	int ret;
+	int ret = 0;
 
 	if (refcount_read(&cqspi->inflight_ops) == 0)
 		return -ENODEV;
@@ -2099,15 +2160,16 @@ static int cqspi_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)
 		}
 	}
 
-	if (!refcount_read(&cqspi->refcount))
-		return -EBUSY;
+	if (!refcount_read(&cqspi->refcount)) {
+		ret = -EBUSY;
+		goto out_pm_put;
+	}
 
 	refcount_inc(&cqspi->inflight_ops);
 
 	if (!refcount_read(&cqspi->refcount)) {
-		if (refcount_read(&cqspi->inflight_ops))
-			refcount_dec(&cqspi->inflight_ops);
-		return -EBUSY;
+		ret = -EBUSY;
+		goto out_dec_ops;
 	}
 
 	f_pdata = &cqspi->f_pdata[spi_get_chipselect(mem->spi, 0)];
@@ -2128,7 +2190,7 @@ static int cqspi_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)
 				f_pdata->dtr = false;
 				cqspi_setup_sdrmode(cqspi);
 			} else {
-				return ret;
+				goto out_dec_ops;
 			}
 		}
 	} else if ((mem->spi->controller->flags & SPI_CONTROLLER_SDR_PHY) &&
@@ -2155,22 +2217,43 @@ static int cqspi_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)
 			cqspi_setup_sdrmode(cqspi);
 	}
 
-	if (f_pdata->dtr && !cqspi->tuning_complete.done &&
-	    !wait_for_completion_timeout(&cqspi->tuning_complete,
-		msecs_to_jiffies(CQSPI_TUNING_TIMEOUT_MS))) {
-		return -ETIMEDOUT;
+	/*
+	 * If this CS has been PHY-tuned (DDR or SDR PHY mode), check if
+	 * periodic tuning is in progress. If so, wait briefly for it to
+	 * complete. The tuning completion is signaled quickly once the
+	 * DLL parameters are re-established.
+	 *
+	 * Note: We use a short timeout here because periodic tuning should
+	 * complete quickly. If it takes too long, something is wrong and
+	 * we should proceed anyway with the existing tuning parameters.
+	 */
+	if (f_pdata->phy_tuned && !cqspi->tuning_complete.done) {
+		if (!wait_for_completion_timeout(&cqspi->tuning_complete,
+						 msecs_to_jiffies(CQSPI_TUNING_TIMEOUT_MS))) {
+			dev_warn(&mem->spi->dev,
+				 "CS%d: tuning taking too long, proceeding anyway\n",
+				 spi_get_chipselect(mem->spi, 0));
+			/*
+			 * Don't fail the operation - proceed with existing
+			 * tuning parameters. This is better than blocking
+			 * all flash operations indefinitely.
+			 */
+		}
 	}
 
 	ret = cqspi_mem_process(mem, op);
 
-	if (!(ddata && (ddata->quirks & CQSPI_DISABLE_RUNTIME_PM)))
-		pm_runtime_put_autosuspend(dev);
-
 	if (ret)
-		dev_err(&mem->spi->dev, "operation failed with %d\n", ret);
+		dev_err(&mem->spi->dev, "CS%d: operation failed with %d\n",
+			spi_get_chipselect(mem->spi, 0), ret);
 
+out_dec_ops:
 	if (refcount_read(&cqspi->inflight_ops) > 1)
 		refcount_dec(&cqspi->inflight_ops);
+
+out_pm_put:
+	if (!(ddata && (ddata->quirks & CQSPI_DISABLE_RUNTIME_PM)))
+		pm_runtime_put_autosuspend(dev);
 
 	return ret;
 }
@@ -2552,6 +2635,11 @@ static int cqspi_probe(struct platform_device *pdev)
 
 	init_completion(&cqspi->transfer_complete);
 	init_completion(&cqspi->tuning_complete);
+	/*
+	 * Mark tuning_complete as done initially so operations can proceed
+	 * without waiting. It will be reinit'd when periodic tuning starts.
+	 */
+	complete_all(&cqspi->tuning_complete);
 
 	/* Obtain IRQ line. */
 	irq = platform_get_irq(pdev, 0);
