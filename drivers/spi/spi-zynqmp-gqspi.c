@@ -157,6 +157,9 @@
 #define GQSPI_SELECT_LOWER_CS  BIT(0)
 #define GQSPI_SELECT_UPPER_CS  BIT(1)
 
+#define CS0	0
+#define CS1	1
+
 #define SPI_AUTOSUSPEND_TIMEOUT		3000
 enum mode_type {GQSPI_MODE_IO, GQSPI_MODE_DMA};
 
@@ -526,11 +529,11 @@ static void zynqmp_qspi_chipselect(struct spi_device *qspi, bool is_high)
 					  GQSPI_SELECT_FLASH_BUS_BOTH);
 		if (!xqspi->is_parallel)
 			xqspi->is_parallel = true;
-	} else if (qspi->cs_index_mask & GQSPI_SELECT_UPPER_CS) {
+	} else if (qspi->chip_select[0] == CS1) {
 		zynqmp_gqspi_selecttarget(xqspi,
 					  GQSPI_SELECT_FLASH_CS_UPPER,
 					  GQSPI_SELECT_FLASH_BUS_LOWER);
-	} else if (qspi->cs_index_mask & GQSPI_SELECT_LOWER_CS) {
+	} else if (qspi->chip_select[0] == CS0) {
 		zynqmp_gqspi_selecttarget(xqspi,
 					  GQSPI_SELECT_FLASH_CS_LOWER,
 					  GQSPI_SELECT_FLASH_BUS_LOWER);
