@@ -594,19 +594,17 @@ int aie_init_freq(struct aie_aperture *aperture)
 	ret = zynqmp_pm_get_qos(aperture->node_id, &boot_qos, &current_qos);
 	if (ret < 0) {
 		dev_err(&aperture->dev, "Failed to get clock divider value.\n");
-		return -EINVAL;
+		return ret;
 	}
 
 	dev_err(&aperture->dev, "current_freq_divider[%x] boot_freq_divider[%x]\n",
 		current_qos, boot_qos);
 
 	ret = zynqmp_pm_set_aie_clk_div(aperture->node_id, boot_qos);
-	if (ret < 0) {
+	if (ret < 0)
 		dev_err(&aperture->dev, "Failed to set frequency requirement.\n");
-		return -EINVAL;
-	}
 
-	return 0;
+	return ret;
 }
 
 /**
@@ -648,7 +646,7 @@ int aie_part_set_freq(struct aie_partition *apart, u64 freq)
 	ret = zynqmp_pm_get_qos(aperture->node_id, &boot_qos, &current_qos);
 	if (ret < 0) {
 		dev_err(&apart->dev, "Failed to get clock divider value.\n");
-		return -EINVAL;
+		return ret;
 	}
 
 	target_qos = (boot_qos * clk_rate) / freq;
