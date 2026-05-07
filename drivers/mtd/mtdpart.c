@@ -18,7 +18,6 @@
 #include <linux/err.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
-#include <linux/mtd/concat.h>
 
 #include "mtdcore.h"
 
@@ -408,11 +407,6 @@ int add_mtd_partitions(struct mtd_info *parent,
 		if (IS_ERR(child)) {
 			ret = PTR_ERR(child);
 			goto err_del_partitions;
-		}
-
-		if (IS_REACHABLE(CONFIG_MTD_VIRT_CONCAT)) {
-			if (mtd_virt_concat_add(child))
-				continue;
 		}
 
 		mutex_lock(&master->master.partitions_lock);
