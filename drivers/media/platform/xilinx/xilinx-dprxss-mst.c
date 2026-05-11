@@ -490,3 +490,191 @@ static void xdprxss_init_mst_registers(struct xdprxss_mst *xdpmst)
 	xdprxss_mst_write(xdpmst, XDPRX_LOCAL_EDID_REG, 0x0);
 	xdprxss_mst_set(xdpmst, XDPRX_CDRCTRL_CFG_REG, XDPRX_CDRCTRL_DIS_TIMEOUT);
 }
+
+/**
+ * xdprxss_msg_crc4() - Calculate MST CRC-4/CRC-8 remainder
+ * @data: input bytes/nibbles
+ * @number_of_bits: bit count to process
+ * @crc_width: CRC width selector; XLNX_DPRX_CRC_WIDTH_4 for header CRC-4,
+ *             XLNX_DPRX_CRC_WIDTH_8 for payload CRC-8
+ *
+ * Return: computed remainder.
+ */
+static u8 xdprxss_msg_crc4(const u8 *data, u32 number_of_bits, u8 crc_width)
+{
+	u8 bit_shift = (crc_width == XLNX_DPRX_CRC_WIDTH_4) ? 0x03 : 0x07;
+	u8 bit_mask = (crc_width == XLNX_DPRX_CRC_WIDTH_4) ? 0x08 : 0x80;
+	u32 remainder = 0;
+	u32 index = 0;
+
+	while (number_of_bits != 0) {
+		number_of_bits--;
+		remainder <<= 1;
+		remainder |= (data[index] & bit_mask) >> bit_shift;
+		bit_mask >>= 1;
+		bit_shift--;
+		if (bit_mask == 0) {
+			bit_mask = (crc_width == XLNX_DPRX_CRC_WIDTH_4) ? 0x08 : 0x80;
+			bit_shift = (crc_width == XLNX_DPRX_CRC_WIDTH_4) ? 0x03 : 0x07;
+			index++;
+		}
+		if ((remainder & BIT(crc_width)) != 0)
+			remainder ^= (crc_width == XLNX_DPRX_CRC_WIDTH_4) ?
+					XLNX_DPRX_CRC4_POLY : XLNX_DPRX_CRC8_POLY;
+	}
+
+	number_of_bits = crc_width;
+	while (number_of_bits != 0) {
+		number_of_bits--;
+		remainder <<= 1;
+		if ((remainder & BIT(crc_width)) != 0)
+			remainder ^= (crc_width == XLNX_DPRX_CRC_WIDTH_4) ?
+					XLNX_DPRX_CRC4_POLY : XLNX_DPRX_CRC8_POLY;
+	}
+
+	return remainder;
+}
+
+/**
+ * xdprxss_sbmsg_data_crc8() - Compute payload CRC-8 for current fragment
+ * @sb_msg: sideband message context
+ *
+ * Return: computed CRC-8 checksum.
+ */
+static u8 xdprxss_sbmsg_data_crc8(struct xdprxss_sideband_msg_rx *sb_msg)
+{
+	struct xdprxss_sideband_msg_data *rxdata = &sb_msg->data;
+	u32 idx = sb_msg->fragment_num * (XLNX_DPRX_MAX_SBMSG_LEN - sb_msg->hdr_len - 1);
+
+	return xdprxss_msg_crc4(&rxdata->msg[idx],
+				BITS_PER_BYTE * rxdata->len,
+				XLNX_DPRX_CRC_WIDTH_8);
+}
+
+/**
+ * xdprxss_msg_header_crc4() - Compute sideband header CRC-4
+ * @hdr: parsed header fields
+ *
+ * Return: computed CRC nibble (0 on invalid header input).
+ */
+static u8 xdprxss_msg_header_crc4(const struct xdprxss_sideband_msg_hdr *hdr)
+{
+	u8 nibbles[XLNX_DPRX_MST_HDR_NIBBLE_BUFSZ];
+	u8 rel_addr_nibbles;
+	u8 offset = 0;
+
+	if (!hdr->link_count_total || hdr->link_count_total > XLNX_DPRX_MAX_LINK_COUNT)
+		return 0;
+
+	rel_addr_nibbles = hdr->link_count_total - 1;
+	if (rel_addr_nibbles > ARRAY_SIZE(hdr->relative_address))
+		return 0;
+
+	nibbles[0] = hdr->link_count_total;
+	nibbles[1] = hdr->link_count_remaining;
+
+	for (offset = 0; offset < rel_addr_nibbles; offset += 2) {
+		nibbles[2 + offset] = hdr->relative_address[offset];
+
+		if ((offset + 1) < rel_addr_nibbles)
+			nibbles[2 + offset + 1] = hdr->relative_address[offset + 1];
+		else
+			nibbles[2 + offset + 1] = 0;
+	}
+
+	nibbles[2 + offset] = (hdr->broadcast_msg << 3) |
+		(hdr->path_msg << 2) | ((hdr->msg_body_len & 0x30) >> 4);
+	nibbles[3 + offset] = hdr->msg_body_len & 0x0f;
+	nibbles[4 + offset] = (hdr->start_of_msg << 3) |
+		(hdr->end_of_msg << 2) | hdr->seq_num;
+
+	return xdprxss_msg_crc4(nibbles, 4 * (5 + offset), XLNX_DPRX_CRC_WIDTH_4);
+}
+
+/**
+ * xdprxss_sideband_parse_message() - Parse one incoming sideband fragment
+ * @sb_msg: output parsed message
+ * @rxdata: raw bytes read from DOWN_REQ FIFO window
+ *
+ * Return: 0 on success, negative errno on parse/CRC failure.
+ */
+static int xdprxss_sideband_parse_message(struct xdprxss_sideband_msg_rx *sb_msg,
+					  const u8 *rxdata)
+{
+	struct xdprxss_sideband_msg_data *data = &sb_msg->data;
+	struct xdprxss_sideband_msg_hdr *hdr = &sb_msg->hdr;
+	u8 rel_addr_nibbles;
+	u8 idx = 0;
+	u8 len = 0;
+	u8 crc4;
+
+	hdr->link_count_total = rxdata[len] >> 4;
+	hdr->link_count_remaining = rxdata[len] & 0x0f;
+	if (!hdr->link_count_total || hdr->link_count_total > XLNX_DPRX_MAX_LINK_COUNT)
+		return -EINVAL;
+
+	len++;
+	rel_addr_nibbles = hdr->link_count_total - 1;
+	if (rel_addr_nibbles > ARRAY_SIZE(hdr->relative_address))
+		return -EINVAL;
+
+	memset(hdr->relative_address, 0, sizeof(hdr->relative_address));
+	for (idx = 0; idx < DIV_ROUND_UP(rel_addr_nibbles, 2); idx++) {
+		u8 byte = rxdata[len++];
+
+		hdr->relative_address[idx * 2] = (byte >> 4) & 0x0f;
+		if (idx * 2 + 1 < rel_addr_nibbles)
+			hdr->relative_address[idx * 2 + 1] = byte & 0x0f;
+	}
+
+	hdr->broadcast_msg = (rxdata[len] >> 7) & 0x1;
+	hdr->path_msg = (rxdata[len] >> 6) & 0x1;
+	hdr->msg_body_len = rxdata[len] & 0x3f;
+	len++;
+
+	hdr->start_of_msg = (rxdata[len] >> 7) & 0x1;
+	hdr->end_of_msg = (rxdata[len] >> 6) & 0x1;
+	hdr->seq_num = (rxdata[len] >> 4) & 0x3;
+	hdr->crc4 = rxdata[len] & 0x0f;
+	len++;
+	sb_msg->hdr_len = len;
+
+	crc4 = xdprxss_msg_header_crc4(hdr);
+	if (crc4 != hdr->crc4)
+		return -EINVAL;
+
+	if (!hdr->msg_body_len || (sb_msg->hdr_len + hdr->msg_body_len) > XLNX_DPRX_MAX_SBMSG_LEN)
+		return -EINVAL;
+
+	data->len = hdr->msg_body_len - 1;
+	memcpy(data->msg, &rxdata[len], data->len);
+
+	data->crc4 = rxdata[sb_msg->hdr_len + data->len];
+
+	crc4 = xdprxss_sbmsg_data_crc8(sb_msg);
+	if (crc4 != data->crc4)
+		return -EINVAL;
+
+	return 0;
+}
+
+/**
+ * xdprxss_dp_mst_read_down_req() - Read and parse DOWN_REQ sideband buffer
+ * @xdpmst: MST context
+ * @sb_msg: parsed output message
+ *
+ * Return: 0 on success, negative errno on failure.
+ */
+static int xdprxss_dp_mst_read_down_req(struct xdprxss_mst *xdpmst,
+					struct xdprxss_sideband_msg_rx *sb_msg)
+{
+	u8 data[XLNX_DPRX_MAX_SBMSG_LEN];
+	u8 i;
+
+	for (i = 0; i < XLNX_DPRX_MAX_SBMSG_LEN; i++)
+		data[i] = xdprxss_mst_read(xdpmst, XDPRX_DOWN_REQ + (i * 4));
+
+	sb_msg->fragment_num = 0;
+
+	return xdprxss_sideband_parse_message(sb_msg, data);
+}
