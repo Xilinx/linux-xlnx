@@ -22,6 +22,7 @@
 #include <linux/phy/phy.h>
 #include <linux/phy/phy-dp.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 #include <linux/types.h>
 #include <linux/v4l2-dv-timings.h>
 #include <linux/v4l2-subdev.h>
@@ -41,6 +42,7 @@
 #include <linux/xlnx/xlnx_hdcp_common.h>
 #include <linux/xlnx/xlnx_timer.h>
 #include "xilinx-dprxss-hw.h"
+#include "xilinx-dprxss-mst.h"
 #include "xilinx-hdcp1x-rx.h"
 #include "xilinx-hdcp2x-rx.h"
 #include "xilinx-vip.h"
@@ -52,6 +54,8 @@
 #define INFO_PCKT_TYPE_AUDIO		0x84
 /* Refer section 2.2.5.1.2 in DP spec and table 42 in CTA-861-G spec */
 #define INFO_PCKT_TYPE_DRM		0x87
+#define XDPRX_MAX_STREAM_COUNT		4
+#define XDPRXSS_MST_RETRY_COUNT		10
 
 #define xdprxss_generate_hpd_intr(state, duration) \
 		xdprxss_write(state, XDPRX_HPD_INTR_REG, \
@@ -75,6 +79,11 @@
 			    XDPRX_CDRCTRL_DIS_TIMEOUT)
 #define xdprxss_enable_training_intr(state) \
 		xdprxss_clr(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_TRNG_MASK)
+#define xdprxss_enable_mst_sb_msg_interrupts(state) \
+		xdprxss_clr(state, XDPRX_INTR_MASK_REG, \
+				XDPRX_INTR_DOWN_REQUEST_MASK | XDPRX_INTR_PAYLOAD_ALLOC_MASK)
+#define xdprxss_enable_mst_valid_video_interrupts(state) \
+		xdprxss_clr(state, XDPRX_INTR_MASK_1_REG, XDPRX_INTR_MASK_1_VALID_VIDEO_ALL)
 #define xdprxss_enable_training_intr_1(state) \
 		xdprxss_clr(state, XDPRX_INTR_MASK_1_REG, XDPRX_INTR_TRNG_MASK_1)
 #define xdprxss_disable_allintr(state) \
@@ -91,6 +100,10 @@
 			XDPRX_INTR_HDCP2X_MASK_ALL)
 #define XDP_RX_HPD_INTERRUPT_ASSERT_MASK 0x01
 #define ntohll(x) be64_to_cpu(x)
+/* Per-stream register bank stride: each stream has its own 0x40-byte register window. */
+#define XDPRX_MST_STREAM_REG_STRIDE	0x40
+/* Stream index must be 1..4 as defined by HW stream register banks. */
+#define xdprxss_mst_offset(x) (XDPRX_MST_STREAM_REG_STRIDE * ((x) - 1))
 
 union xdprxss_iframe_header {
 	u32 data;
@@ -172,6 +185,7 @@ struct vidphy_cfg {
  * @edid_base: Bare Address of EDID block
  * @hdcp1x_keymgmt_base: regmap of HDCP1X Key Management block
  * @prvdata: Pointer to device private data
+ * @mst: Pointer to mst data
  * @hdcp1x: Pointer to hdcp1x data
  * @hdcp2x: Pointer to hdcp2x data
  * @hdcp1x_key: Pointer to hdcp1x key data
@@ -188,8 +202,11 @@ struct vidphy_cfg {
  * @frame_interval: Captures the frame rate
  * @max_linkrate: Maximum supported link rate
  * @max_lanecount: Maximux supported lane count
- * @bpc: Bits per component
+ * @bpc: Bits per component (DT-configured maximum sink advertisement)
+ * @detected_bpc: Per-stream detected BPC (8/10/12) decoded from MSA/SDP
  * @ce_req_val: Variable for storing channel status
+ * @mst_enable: Flag to indicate MST enabled or not
+ * @num_mst_streams: number of MST streams enabled
  * @hdcp1x_key_available: flag to indicate hdcp1x key availability
  * @hdcp2x_key_available: flag to indicate hdcp2x key availability
  * @versal_gt_present: flag to indicate versal-gt property in device tree
@@ -198,7 +215,7 @@ struct vidphy_cfg {
  * @audio_enable: To indicate audio enabled or not
  * @audio_init: flag to indicate audio is initialized
  * @rx_audio_data: audio data
- * @valid_stream: To indicate valid video
+ * @valid_stream: To indicate valid video for all streams
  * @streaming: Flag for storing streaming state
  * @ltstate: Flag for storing link training state
  * @hdcp2x_timer_irq: HDCP2X timer IRQ variable
@@ -211,9 +228,9 @@ struct xdprxss_state {
 	struct v4l2_hdr10_payload drm_infoframe;
 	struct xdprxss_infoframe infoframe;
 	struct v4l2_event event;
-	struct v4l2_dv_timings detected_timings;
+	struct v4l2_dv_timings detected_timings[XDPRX_MAX_STREAM_COUNT];
 	struct phy *phy[XDPRX_MAX_LANE_COUNT];
-	struct media_pad pad;
+	struct media_pad pad[XDPRX_MAX_STREAM_COUNT];
 	struct clk *axi_clk;
 	struct clk *rx_lnk_clk;
 	struct clk *rx_vid_clk;
@@ -222,6 +239,7 @@ struct xdprxss_state {
 	void __iomem *dp_base;
 	void __iomem *edid_base;
 	void *prvdata;
+	struct xdprxss_mst *mst;
 	void *hdcp1x;
 	void *hdcp2x;
 	u8 *hdcp1x_key;
@@ -236,12 +254,15 @@ struct xdprxss_state {
 	struct work_struct link_qual_work;
 	/* protects width, height, framerate variables */
 	spinlock_t lock;
-	struct v4l2_mbus_framefmt format;
+	struct v4l2_mbus_framefmt format[XDPRX_MAX_STREAM_COUNT];
 	unsigned int frame_interval;
 	u32 max_linkrate;
 	u32 max_lanecount;
 	u32 bpc;
+	u8 detected_bpc[XDPRX_MAX_STREAM_COUNT];
 	u32 ce_req_val;
+	bool mst_enable;
+	u8 num_mst_streams;
 	bool hdcp1x_key_available;
 	bool hdcp2x_key_available;
 	bool versal_gt_present;
@@ -250,7 +271,7 @@ struct xdprxss_state {
 	bool audio_enable;
 	bool audio_init;
 	struct xlnx_dprx_audio_data *rx_audio_data;
-	unsigned int valid_stream : 1;
+	bool valid_stream[XDPRX_MAX_STREAM_COUNT];
 	unsigned int streaming : 1;
 	unsigned int ltstate : 2;
 	unsigned int last_powered_down : 1;
@@ -389,6 +410,24 @@ static inline struct xdprxss_state *
 to_xdprxssstate(struct v4l2_subdev *subdev)
 {
 	return container_of(subdev, struct xdprxss_state, subdev);
+}
+
+static bool xdprxss_is_stream_valid(struct xdprxss_state *state)
+{
+	int i;
+
+	for (i = 0; i < state->num_mst_streams; i++) {
+		if (!state->valid_stream[i])
+			return false;
+	}
+
+	return true;
+}
+
+static bool xdprxss_is_supported_bpc(u8 bpc)
+{
+	return bpc == XDPRX_MSA_BPC_6 || bpc == XDPRX_MSA_BPC_8 ||
+	       bpc == XDPRX_MSA_BPC_10 || bpc == XDPRX_MSA_BPC_12;
 }
 
 /* Register related operations */
@@ -707,40 +746,83 @@ static void xdprxss_dtg_disable(struct xdprxss_state *state)
 	xdprxss_soft_video_reset(state);
 }
 
+/* SDP word offsets (bytes 0x00..0x1c at 4-byte steps) used when scanning VSC packets */
+static const u16 sdp_word_offsets[] = { 0x00, 0x04, 0x08, 0x0c, 0x10, 0x14, 0x18, 0x1c };
+
 /**
  * xdprxss_get_stream_properties - Get DP Rx stream properties
  * @state: pointer to driver state
+ * @stream: 1-based stream index (1..num_mst_streams)
+ *
  * This function decodes the stream to get stream properties
  * like width, height, format, picture type (interlaced/progressive), etc.
  *
- * Return: 0 for success else errors
+ * Return:
+ *   * 0 on success.
+ *   * -EINVAL when the stream index is out of range or when total horizontal
+ *     or vertical timing reads back as zero.
+ *   * -EAGAIN when MSA/SDP state is transiently unstable, when SDP requests
+ *     ignore-MSA but no valid SDP colorimetry is decoded, or when the
+ *     reported BPC is unsupported. Callers retry with a short backoff.
  */
-static int xdprxss_get_stream_properties(struct xdprxss_state *state)
+static int xdprxss_get_stream_properties(struct xdprxss_state *state, u8 stream)
 {
-	struct v4l2_mbus_framefmt *format = &state->format;
-	struct v4l2_dv_timings *dv_timings = &state->detected_timings;
 	u32 rxmsa_mvid, rxmsa_nvid, rxmsa_misc, recv_clk_freq, linkrate, data;
 	u16 vres_total, hres_total, framerate, lanecount;
 	u16 hact, vact, hsw, vsw, hstart, vstart;
+	u8 msa_fmt, msa_bpc, sdp_fmt, sdp_bpc;
+	struct v4l2_dv_timings *dv_timings;
+	struct v4l2_mbus_framefmt *format;
+	bool have_valid_sdp_bpc = false;
+	bool have_valid_sdp_fmt = false;
+	bool have_non_rgb_sdp = false;
 	u8 pixel_width, fmt, bpc;
+	bool use_sdp = false;
+	u32 sdp_raw_aligned;
+	u8 tmp_fmt, tmp_bpc;
+	u32 sdp_bases[2];
+	u32 sdp_raw_word;
+	u32 sdp_raw = 0;
 	u16 read_val;
+	u32 sdp_base;
+	u8 shift;
+	int i, j;
 
-	rxmsa_mvid = xdprxss_read(state, XDPRX_MSA_MVID_REG);
-	rxmsa_nvid = xdprxss_read(state, XDPRX_MSA_NVID_REG);
+	if (stream < 1 || stream > state->num_mst_streams)
+		return -EINVAL;
 
-	hact = xdprxss_read(state, XDPRX_MSA_HRES_REG);
+	format = &state->format[stream - 1];
+	dv_timings = &state->detected_timings[stream - 1];
 
-	vact = xdprxss_read(state, XDPRX_MSA_VHEIGHT_REG);
-	rxmsa_misc = xdprxss_read(state, XDPRX_MSA_MISC0_REG);
+	rxmsa_mvid = xdprxss_read(state, XDPRX_MSA_MVID_REG + xdprxss_mst_offset(stream));
+	rxmsa_nvid = xdprxss_read(state, XDPRX_MSA_NVID_REG + xdprxss_mst_offset(stream));
 
-	vres_total = xdprxss_read(state, XDPRX_MSA_VTOTAL_REG);
-	hres_total = xdprxss_read(state, XDPRX_MSA_HTOTAL_REG);
+	hact = xdprxss_read(state, XDPRX_MSA_HRES_REG + xdprxss_mst_offset(stream));
+
+	vact = xdprxss_read(state, XDPRX_MSA_VHEIGHT_REG + xdprxss_mst_offset(stream));
+	rxmsa_misc = xdprxss_read(state, XDPRX_MSA_MISC0_REG + xdprxss_mst_offset(stream));
+
+	vres_total = xdprxss_read(state, XDPRX_MSA_VTOTAL_REG + xdprxss_mst_offset(stream));
+	hres_total = xdprxss_read(state, XDPRX_MSA_HTOTAL_REG + xdprxss_mst_offset(stream));
 	linkrate = xdprxss_read(state, XDPRX_LINK_BW_REG);
 	lanecount = xdprxss_read(state, XDPRX_LANE_COUNT_REG);
-	hstart = xdprxss_read(state, XDPRX_MSA_HSTART_REG);
-	vstart = xdprxss_read(state, XDPRX_MSA_VSTART_REG);
-	hsw = xdprxss_read(state, XDPRX_MSA_HSWIDTH_REG);
-	vsw = xdprxss_read(state, XDPRX_MSA_VSWIDTH_REG);
+	hstart = xdprxss_read(state, XDPRX_MSA_HSTART_REG + xdprxss_mst_offset(stream));
+	vstart = xdprxss_read(state, XDPRX_MSA_VSTART_REG + xdprxss_mst_offset(stream));
+	hsw = xdprxss_read(state, XDPRX_MSA_HSWIDTH_REG + xdprxss_mst_offset(stream));
+	vsw = xdprxss_read(state, XDPRX_MSA_VSWIDTH_REG + xdprxss_mst_offset(stream));
+
+	if (!hact || !vact || !rxmsa_mvid || !rxmsa_nvid) {
+		dev_dbg(state->dev,
+			"stream=%u MSA unstable mvid=%u nvid=%u hact=%u vact=%u\n",
+			stream, rxmsa_mvid, rxmsa_nvid, hact, vact);
+		return -EAGAIN;
+	}
+	if (!hres_total || !vres_total) {
+		dev_dbg(state->dev,
+			"stream=%u total resolution unstable htotal=%u vtotal=%u\n",
+			stream, hres_total, vres_total);
+		return -EINVAL;
+	}
 
 	recv_clk_freq = (linkrate * 27 * rxmsa_mvid) / rxmsa_nvid;
 
@@ -760,71 +842,151 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state)
 	read_val = xdprxss_read(state, XDPRX_DTG_REG);
 	xdprxss_write(state, XDPRX_DTG_REG, (read_val | 0x1));
 	read_val = FIELD_GET(XDPRX_DPCD_MSA_TIMING_IGNORE_MASK,
-			     xdprxss_read(state, XDPRX_MSA_MISC1_REG));
-	if (read_val) {
-		dev_dbg(state->dev, "Read colorimetry info from SDP packet instead of MSA\n");
-		read_val = xdprxss_read(state, XDPRX_SDP_PAYLOAD_STREAM1);
-		/* Decoding Data byte 16 */
-		fmt = FIELD_GET(XDPRX_VSC_SDP_FMT_MASK, read_val);
-		bpc = FIELD_GET(XDPRX_VSC_SDP_BPC_MASK, read_val);
-	} else {
-		fmt = FIELD_GET(XDPRX_MSA_FMT_MASK, rxmsa_misc);
-		bpc = FIELD_GET(XDPRX_MSA_BPC_MASK, rxmsa_misc);
+			     xdprxss_read(state, XDPRX_MSA_MISC1_REG +
+					  xdprxss_mst_offset(stream)));
+	msa_fmt = FIELD_GET(XDPRX_MSA_FMT_MASK, rxmsa_misc);
+	msa_bpc = FIELD_GET(XDPRX_MSA_BPC_MASK, rxmsa_misc);
+
+	/*
+	 * Different core revisions expose per-stream VSC payload at slightly
+	 * different word offsets/byte lanes. Probe likely bases and nearby words,
+	 * and try all byte lanes in each word. Prefer non-RGB (420/422).
+	 */
+	sdp_bases[0] = XDPRX_SDP_PAYLOAD_STREAM1 + xdprxss_mst_offset(stream);
+	sdp_bases[1] = XDPRX_SDP_PAYLOAD_STREAM1 + ((stream - 1) * sizeof(u32));
+	sdp_fmt = XDPRX_COLOR_FORMAT_RGB;
+	sdp_bpc = XDPRX_MSA_BPC_8;
+
+	for (i = 0; i < ARRAY_SIZE(sdp_bases); i++) {
+		sdp_base = sdp_bases[i];
+		for (j = 0; j < ARRAY_SIZE(sdp_word_offsets); j++) {
+			sdp_raw_word = xdprxss_read(state, sdp_base + sdp_word_offsets[j]);
+			for (shift = 0; shift <= 24; shift += 8) {
+				sdp_raw_aligned = sdp_raw_word >> shift;
+				tmp_fmt = FIELD_GET(XDPRX_VSC_SDP_FMT_MASK, sdp_raw_aligned);
+				tmp_bpc = FIELD_GET(XDPRX_VSC_SDP_BPC_MASK, sdp_raw_aligned);
+				if (tmp_fmt > XDPRX_COLOR_FORMAT_420)
+					continue;
+
+				have_valid_sdp_fmt = true;
+				if (xdprxss_is_supported_bpc(tmp_bpc))
+					have_valid_sdp_bpc = true;
+
+				if (!sdp_raw) {
+					sdp_raw = sdp_raw_aligned;
+					sdp_fmt = tmp_fmt;
+					sdp_bpc = tmp_bpc;
+				}
+
+				if (tmp_fmt == XDPRX_COLOR_FORMAT_420 ||
+				    tmp_fmt == XDPRX_COLOR_FORMAT_422) {
+					have_non_rgb_sdp = true;
+					sdp_raw = sdp_raw_aligned;
+					sdp_fmt = tmp_fmt;
+					sdp_bpc = tmp_bpc;
+					break;
+				}
+			}
+			if (have_non_rgb_sdp)
+				break;
+		}
+		if (have_non_rgb_sdp)
+			break;
 	}
 
+	/*
+	 * Prefer SDP when MSA_TIMING_IGNORE asks for SDP, or when SDP explicitly
+	 * indicates YUV420/YUV422 (some sources do not set MSA_TIMING_IGNORE).
+	 */
+	if (read_val || have_non_rgb_sdp || sdp_fmt == XDPRX_COLOR_FORMAT_420 ||
+	    sdp_fmt == XDPRX_COLOR_FORMAT_422)
+		use_sdp = true;
+
+	/*
+	 * If source asks to ignore MSA timing/colorimetry but we could not decode
+	 * any valid SDP format, do not silently map to RGB (fmt=0). Treat this as
+	 * transient and keep previous/cached stream state.
+	 */
+	if (use_sdp && !have_valid_sdp_fmt) {
+		dev_dbg(state->dev,
+			"stream=%u SDP requested but no valid SDP colorimetry (ignore=%u)\n",
+			stream, read_val);
+		return -EAGAIN;
+	}
+
+	if (use_sdp && have_valid_sdp_fmt) {
+		/* Keep SDP format if valid; only BPC may fallback to MSA. */
+		fmt = sdp_fmt;
+		bpc = have_valid_sdp_bpc ? sdp_bpc : msa_bpc;
+		if (!have_valid_sdp_bpc)
+			dev_dbg(state->dev,
+				"SDP bpc invalid stream=%u sdp=0x%08x, using MSA bpc=0x%x\n",
+				stream, sdp_raw, msa_bpc);
+	} else {
+		fmt = msa_fmt;
+		bpc = msa_bpc;
+	}
+
+	dev_dbg(state->dev,
+		"stream=%u msa(fmt=%u,bpc=%u) sdp(fmt=%u,bpc=%u,raw=0x%08x) ignore=%u use_sdp=%u\n",
+		stream, msa_fmt, msa_bpc, sdp_fmt, sdp_bpc, sdp_raw, read_val, use_sdp);
+
 	switch (bpc) {
+	case XDPRX_MSA_BPC_6:
+		/* Hardware reports 6bpc on some streams during transitions. */
+		state->detected_bpc[stream - 1] = 8;
+		break;
 	case XDPRX_MSA_BPC_8:
-		state->bpc = 8;
+		state->detected_bpc[stream - 1] = 8;
 		break;
 	case XDPRX_MSA_BPC_10:
-		state->bpc = 10;
+		state->detected_bpc[stream - 1] = 10;
 		break;
 	case XDPRX_MSA_BPC_12:
-		state->bpc = 12;
+		state->detected_bpc[stream - 1] = 12;
 		break;
 	default:
-		dev_err(state->dev, "Unsupported bit color depth\n");
-
-		return -EINVAL;
+		dev_dbg(state->dev, "Unsupported bpc stream=%u bpc=0x%x\n", stream, bpc);
+		return -EAGAIN;
 	}
 
 	switch (fmt) {
 	case XDPRX_COLOR_FORMAT_420:
-		if (state->bpc == 10)
+		if (state->detected_bpc[stream - 1] == 10)
 			format->code = MEDIA_BUS_FMT_VYYUYY10_4X20;
-		else if (state->bpc == 12)
+		else if (state->detected_bpc[stream - 1] == 12)
 			format->code = MEDIA_BUS_FMT_UYYVYY12_4X24;
 		else
 			format->code = MEDIA_BUS_FMT_VYYUYY8_1X24;
 		break;
 	case XDPRX_COLOR_FORMAT_422:
-		if (state->bpc == 10)
+		if (state->detected_bpc[stream - 1] == 10)
 			format->code = MEDIA_BUS_FMT_UYVY10_1X20;
-		else if (state->bpc == 12)
+		else if (state->detected_bpc[stream - 1] == 12)
 			format->code = MEDIA_BUS_FMT_UYVY12_1X24;
 		else
 			format->code = MEDIA_BUS_FMT_UYVY8_1X16;
 		break;
 	case XDPRX_COLOR_FORMAT_444:
-		if (state->bpc == 10)
+		if (state->detected_bpc[stream - 1] == 10)
 			format->code = MEDIA_BUS_FMT_VUY10_1X30;
-		else if (state->bpc == 12)
+		else if (state->detected_bpc[stream - 1] == 12)
 			format->code = MEDIA_BUS_FMT_VUY12_1X36;
 		else
 			format->code = MEDIA_BUS_FMT_VUY8_1X24;
 		break;
 	case XDPRX_COLOR_FORMAT_RGB:
-		if (state->bpc == 10)
+		if (state->detected_bpc[stream - 1] == 10)
 			format->code = MEDIA_BUS_FMT_RBG101010_1X30;
-		else if (state->bpc == 12)
+		else if (state->detected_bpc[stream - 1] == 12)
 			format->code = MEDIA_BUS_FMT_RBG121212_1X36;
 		else
 			format->code = MEDIA_BUS_FMT_RBG888_1X24;
 		break;
 	default:
-		dev_err(state->dev, "Unsupported color format\n");
-
-		return -EINVAL;
+		dev_dbg(state->dev, "Unsupported color fmt stream=%u fmt=0x%x sdp=0x%08x\n",
+			stream, fmt, sdp_raw);
+		return -EAGAIN;
 	}
 
 	dv_timings->type = V4L2_DV_BT_656_1120;
@@ -837,11 +999,11 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state)
 	dv_timings->bt.height = vact;
 	dv_timings->bt.polarities = 0;
 
-	data = xdprxss_read(state, XDPRX_MSA_HSPOL_REG);
+	data = xdprxss_read(state, XDPRX_MSA_HSPOL_REG + xdprxss_mst_offset(stream));
 	if (data & XDPRX_MSA_HSPOL_MASK)
 		dv_timings->bt.polarities = V4L2_DV_HSYNC_POS_POL;
 
-	data = xdprxss_read(state, XDPRX_MSA_VSPOL_REG);
+	data = xdprxss_read(state, XDPRX_MSA_VSPOL_REG + xdprxss_mst_offset(stream));
 	if (data & XDPRX_MSA_VSPOL_MASK)
 		dv_timings->bt.polarities |= V4L2_DV_VSYNC_POS_POL;
 
@@ -868,6 +1030,12 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state)
 		dv_timings->bt.width, dv_timings->bt.height);
 
 	return 0;
+}
+
+static void xdprxss_enable_mst_interrupts(struct xdprxss_state *xdprxss)
+{
+	xdprxss_enable_mst_sb_msg_interrupts(xdprxss);
+	xdprxss_enable_mst_valid_video_interrupts(xdprxss);
 }
 
 static void xdprxss_set_training_params(struct xdprxss_state *xdprxss)
@@ -908,6 +1076,9 @@ static void xdprxss_set_training_params(struct xdprxss_state *xdprxss)
 	/* Enable training related interrupts */
 	xdprxss_clr(xdprxss, XDPRX_INTR_MASK_REG, XDPRX_INTR_TRNG_MASK);
 	xdprxss_enable_training_intr_1(xdprxss);
+
+	if (xdprxss->mst_enable)
+		xdprxss_enable_mst_interrupts(xdprxss);
 
 	xdprxss_write(xdprxss, XDPRX_BSIDLE_TIME_REG, XDPRX_BSIDLE_TMOUT_VAL);
 	xdprxss_clr(xdprxss, XDPRX_CRC_CONFIG_REG, XDPRX_CRC_EN_MASK);
@@ -984,6 +1155,10 @@ static void xdprxss_irq_unplug(struct xdprxss_state *state)
 
 	xdprxss_enable_training_intr(state);
 	xdprxss_enable_training_intr_1(state);
+
+	if (state->mst_enable)
+		xdprxss_enable_mst_interrupts(state);
+
 	/*
 	 * In a scenario, where the cable is plugged-in but the training
 	 * is lost, the software is expected to assert a HPD upon the
@@ -1058,7 +1233,8 @@ static void xdprxss_irq_tp2(struct xdprxss_state *state)
 static void xdprxss_training_failure(struct xdprxss_state *state)
 {
 	dev_dbg(state->dev, "Training Lost !!\n");
-	state->valid_stream = false;
+
+	memset(state->valid_stream, 0, sizeof(state->valid_stream));
 
 	if (state->hdcp_enable)
 		xhdcp1x_rx_disable(state->hdcp1x);
@@ -1093,24 +1269,37 @@ static void xdprxss_irq_no_video(struct xdprxss_state *state)
 	state->event.type = V4L2_EVENT_SOURCE_CHANGE;
 	state->event.u.src_change.changes = V4L2_EVENT_SRC_CH_RESOLUTION;
 	v4l2_subdev_notify_event(&state->subdev, &state->event);
-	state->valid_stream = false;
+	memset(state->valid_stream, 0, sizeof(state->valid_stream));
 }
 
-static void xdprxss_irq_valid_video(struct xdprxss_state *state)
+static void xdprxss_irq_valid_video(struct xdprxss_state *state, u8 stream)
 {
+	int ret;
+
 	dev_dbg(state->dev, "Valid Video received !!\n");
 	xdprxss_write(state, XDPRX_VIDEO_UNSUPPORTED_REG, 0x0);
 
-	if (!xdprxss_get_stream_properties(state)) {
+	ret = xdprxss_get_stream_properties(state, stream + 1);
+
+	if (!ret) {
 		memset(&state->event, 0, sizeof(state->event));
 		state->event.type = V4L2_EVENT_SOURCE_CHANGE;
 		state->event.u.src_change.changes =
 				V4L2_EVENT_SRC_CH_RESOLUTION;
 		v4l2_subdev_notify_event(&state->subdev, &state->event);
-		state->valid_stream = true;
+		state->valid_stream[stream] = true;
+	} else if (ret == -EAGAIN) {
+		/*
+		 * MSA can be transiently unavailable during stream switch/update.
+		 * Keep previous lock state and let next valid-video IRQ re-evaluate.
+		 */
+		dev_dbg_ratelimited(state->dev,
+				    "stream properties transiently unavailable: stream=%u\n",
+				    stream + 1);
 	} else {
-		dev_err(state->dev, "Unable to get stream properties!\n");
-		state->valid_stream = false;
+		dev_err(state->dev, "Unable to get stream properties! stream=%u ret=%d\n",
+			stream + 1, ret);
+		state->valid_stream[stream] = false;
 	}
 
 	xdprxss_disable_audio(state);
@@ -1290,7 +1479,23 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 	if (status & XDPRX_INTR_NOVID_MASK)
 		xdprxss_irq_no_video(state);
 	if (status & XDPRX_INTR_VID_MASK)
-		xdprxss_irq_valid_video(state);
+		xdprxss_irq_valid_video(state, 0);
+	if (state->mst_enable && state->num_mst_streams > 1 &&
+	    (status1 & (XDPRX_INTERRUPT_MASK_1_VIDEO_STREAM_MASK(2) |
+			XDPRX_INTERRUPT_MASK_1_VIDEO_STREAM_ALT_MASK(2))))
+		xdprxss_irq_valid_video(state, 1);
+	if (state->mst_enable && state->num_mst_streams > 2 &&
+	    (status1 & (XDPRX_INTERRUPT_MASK_1_VIDEO_STREAM_MASK(3) |
+			XDPRX_INTERRUPT_MASK_1_VIDEO_STREAM_ALT_MASK(3))))
+		xdprxss_irq_valid_video(state, 2);
+	if (state->mst_enable && state->num_mst_streams > 3 &&
+	    (status1 & (XDPRX_INTERRUPT_MASK_1_VIDEO_STREAM_MASK(4) |
+			XDPRX_INTERRUPT_MASK_1_VIDEO_STREAM_ALT_MASK(4))))
+		xdprxss_irq_valid_video(state, 3);
+	if (state->mst_enable && (status & XDPRX_INTR_DOWN_REQUEST_MASK))
+		xdprxss_dp_mst_handle_down_req(state->mst);
+	if (state->mst_enable && (status & XDPRX_INTR_PAYLOAD_ALLOC_MASK))
+		xdprxss_dp_mst_payload_allocation(state->mst);
 	if (status & XDPRX_INTR_AUDIO_MASK)
 		xdprxss_irq_audio_detected(state);
 	if (status & XDPRX_INTR_TRDONE_MASK) {
@@ -1371,7 +1576,7 @@ static int xdprxss_s_stream(struct v4l2_subdev *sd, int enable)
 	if (enable == xdprxss->streaming)
 		return 0;
 
-	if (enable && !xdprxss->valid_stream)
+	if (enable && !xdprxss_is_stream_valid(xdprxss))
 		return -EINVAL;
 
 	xdprxss->streaming = enable;
@@ -1395,7 +1600,7 @@ static int xdprxss_g_input_status(struct v4l2_subdev *sd, u32 *status)
 {
 	struct xdprxss_state *xdprxss = to_xdprxssstate(sd);
 
-	if (!xdprxss->valid_stream)
+	if (!xdprxss_is_stream_valid(xdprxss))
 		*status = V4L2_IN_ST_NO_SYNC | V4L2_IN_ST_NO_SIGNAL;
 	else
 		*status = 0;
@@ -1415,7 +1620,7 @@ __xdprxss_get_pad_format(struct xdprxss_state *xdprxss,
 		format = v4l2_subdev_state_get_format(sd_state, pad);
 		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
-		format = &xdprxss->format;
+		format = &xdprxss->format[pad];
 		break;
 	default:
 		format = NULL;
@@ -1440,11 +1645,14 @@ static int xdprxss_init_state(struct v4l2_subdev *sd,
 {
 	struct xdprxss_state *xdprxss = to_xdprxssstate(sd);
 	struct v4l2_mbus_framefmt *format;
+	int i;
 
-	format = v4l2_subdev_state_get_format(sd_state, 0);
+	for (i = 0; i < xdprxss->num_mst_streams; i++) {
+		format = v4l2_subdev_state_get_format(sd_state, i);
 
-	if (!xdprxss->valid_stream)
-		*format = xdprxss->format;
+		if (!xdprxss->valid_stream[i])
+			*format = xdprxss->format[i];
+	}
 
 	return 0;
 }
@@ -1467,10 +1675,34 @@ static int xdprxss_getset_format(struct v4l2_subdev *sd,
 {
 	struct xdprxss_state *xdprxss = to_xdprxssstate(sd);
 	struct v4l2_mbus_framefmt *format;
+	int retry;
+	int ret;
 
-	if (!xdprxss->valid_stream) {
+	if (fmt->pad >= xdprxss->num_mst_streams)
+		return -EINVAL;
+
+	ret = -EAGAIN;
+	for (retry = 0; retry < XDPRXSS_MST_RETRY_COUNT; retry++) {
+		ret = xdprxss_get_stream_properties(xdprxss, fmt->pad + 1);
+		if (ret != -EAGAIN)
+			break;
+		usleep_range(1000, 2000);
+	}
+	if (!ret) {
+		xdprxss->valid_stream[fmt->pad] = true;
+	} else if (!xdprxss->valid_stream[fmt->pad]) {
 		dev_err(xdprxss->dev, "Video not locked!\n");
 		return -EINVAL;
+	}
+
+	if (ret) {
+		/*
+		 * Keep serving cached format if stream is transiently unstable;
+		 * this avoids false unlock reporting during retrain.
+		 */
+		dev_dbg_ratelimited(xdprxss->dev,
+				    "using cached format for stream=%u ret=%d\n",
+				    fmt->pad + 1, ret);
 	}
 
 	dev_dbg(xdprxss->dev,
@@ -1503,15 +1735,21 @@ static int xdprxss_enum_mbus_code(struct v4l2_subdev *sd,
 	struct xdprxss_state *xdprxss = to_xdprxssstate(sd);
 	u32 index = code->index;
 	u32 base = 0;
+	u8 pad_bpc;
 
-	if (xdprxss->bpc == 8)
-		base = 0;
-
-	if (xdprxss->bpc == 10)
-		base = 3;
-
-	if (code->pad || index >= 3)
+	if (code->pad >= xdprxss->num_mst_streams || index >= 3)
 		return -EINVAL;
+
+	/*
+	 * Each pad reports its own detected bpc in MST mode. Fall back to the
+	 * DT-configured maximum advertised bpc when no detection has run yet.
+	 */
+	pad_bpc = xdprxss->detected_bpc[code->pad];
+	if (!pad_bpc)
+		pad_bpc = xdprxss->bpc;
+
+	if (pad_bpc == 10)
+		base = 3;
 
 	code->code = xdprxss_supported_mbus_fmts[base + index];
 
@@ -1531,7 +1769,7 @@ static int xdprxss_enum_dv_timings(struct v4l2_subdev *sd,
 	if (timings->index >= ARRAY_SIZE(fmt_cap))
 		return -EINVAL;
 
-	if (timings->pad != 0)
+	if (timings->pad >= to_xdprxssstate(sd)->num_mst_streams)
 		return -EINVAL;
 
 	timings->timings = fmt_cap[timings->index];
@@ -1566,7 +1804,7 @@ static int xdprxss_get_dv_timings_cap(struct v4l2_subdev *subdev,
 		)
 	};
 
-	if (cap->pad != 0)
+	if (cap->pad >= state->num_mst_streams)
 		return -EINVAL;
 
 	*cap = xdprxss_dv_timings_cap;
@@ -1578,17 +1816,34 @@ static int xdprxss_query_dv_timings(struct v4l2_subdev *sd, unsigned int pad,
 				    struct v4l2_dv_timings *timings)
 {
 	struct xdprxss_state *state = to_xdprxssstate(sd);
-
-	if (pad != 0)
-		return -EINVAL;
+	int retry;
+	int ret;
 
 	if (!timings)
 		return -EINVAL;
 
-	if (!state->valid_stream)
+	if (pad >= state->num_mst_streams)
+		return -EINVAL;
+
+	ret = -EAGAIN;
+	for (retry = 0; retry < XDPRXSS_MST_RETRY_COUNT; retry++) {
+		ret = xdprxss_get_stream_properties(state, pad + 1);
+		if (ret != -EAGAIN)
+			break;
+		usleep_range(1000, 2000);
+	}
+	if (!ret)
+		state->valid_stream[pad] = true;
+	else if (!state->valid_stream[pad])
 		return -ENOLCK;
 
-	*timings = state->detected_timings;
+	if (ret) {
+		dev_dbg_ratelimited(state->dev,
+				    "using cached timings for stream=%u ret=%d\n",
+				    pad + 1, ret);
+	}
+
+	*timings = state->detected_timings[pad];
 
 	return 0;
 }
@@ -1603,7 +1858,7 @@ static int xdprxss_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 
 	switch (ctrl->id) {
 	case V4L2_CID_METADATA_HDR:
-		if (!state->valid_stream) {
+		if (!xdprxss_is_stream_valid(state)) {
 			dev_err(state->dev, "Can't get values when video not locked!\n");
 			return -EINVAL;
 		}
@@ -2177,9 +2432,26 @@ static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
 		dev_err(xdprxss->dev, "xlnx,mode property not found\n");
 		return ret;
 	}
-	if (val > 0) {
-		dev_err(xdprxss->dev, "driver doesn't support MST mode\n");
+	if (val > 1) {
+		dev_err(xdprxss->dev, "invalid xlnx,mode=%u\n", val);
 		return -EINVAL;
+	}
+
+	xdprxss->mst_enable = !!val;
+
+	if (!xdprxss->mst_enable) {
+		xdprxss->num_mst_streams = 1;
+	} else {
+		ret = device_property_read_u32(xdprxss->dev, "xlnx,num-streams", &val);
+		if (ret < 0) {
+			dev_err(xdprxss->dev, "xlnx,num-streams property not found\n");
+			return ret;
+		}
+		if (!val || val > XDPRX_MAX_STREAM_COUNT) {
+			dev_err(xdprxss->dev, "invalid xlnx,num-streams=%u\n", val);
+			return -EINVAL;
+		}
+		xdprxss->num_mst_streams = val;
 	}
 
 	return 0;
@@ -2247,6 +2519,9 @@ static void xlnx_dp_powerchange_work_func(struct work_struct *work)
 
 			xdprxss_enable_training_intr(state);
 			xdprxss_enable_training_intr_1(state);
+
+			if (state->mst_enable)
+				xdprxss_enable_mst_interrupts(state);
 		}
 	}
 }
@@ -2787,8 +3062,25 @@ static int xdprxss_probe(struct platform_device *pdev)
 	/* Initialize the DP core */
 	xdprxss_core_init(xdprxss);
 
-	/* Initialize V4L2 subdevice and media entity */
-	xdprxss->pad.flags = MEDIA_PAD_FL_SOURCE;
+	if (xdprxss->mst_enable) {
+		/*
+		 * DP RX MST currently uses one audio channel allocation per stream.
+		 * Keep both arguments in sync until audio-channel topology support
+		 * is extended independently from stream count.
+		 */
+		xdprxss->mst = xdprxss_init_mst(xdprxss->dev, xdprxss->dp_base,
+						xdprxss->mst_enable, xdprxss->num_mst_streams,
+						xdprxss->num_mst_streams);
+		if (IS_ERR(xdprxss->mst)) {
+			dev_err(xdprxss->dev, "failed to initialize MST module\n");
+			ret = PTR_ERR(xdprxss->mst);
+			goto clk_err;
+		}
+		xdprxss_enable_mst_interrupts(xdprxss);
+	}
+
+	for (i = 0; i < xdprxss->num_mst_streams; i++)
+		xdprxss->pad[i].flags = MEDIA_PAD_FL_SOURCE;
 
 	/* Initialize V4L2 subdevice and media entity */
 	subdev = &xdprxss->subdev;
@@ -2802,7 +3094,7 @@ static int xdprxss_probe(struct platform_device *pdev)
 	subdev->entity.ops = &xdprxss_media_ops;
 
 	v4l2_set_subdevdata(subdev, xdprxss);
-	ret = media_entity_pads_init(&subdev->entity, 1, &xdprxss->pad);
+	ret = media_entity_pads_init(&subdev->entity, xdprxss->num_mst_streams, &xdprxss->pad[0]);
 	if (ret < 0)
 		goto error;
 
@@ -2918,6 +3210,8 @@ static int xdprxss_probe(struct platform_device *pdev)
 	return 0;
 
 error:
+	if (xdprxss->mst_enable)
+		xdprxss_deinit_mst(xdprxss->mst);
 	media_entity_cleanup(&subdev->entity);
 clk_err:
 	clk_disable_unprepare(xdprxss->rx_vid_clk);
@@ -2953,6 +3247,8 @@ static void xdprxss_remove(struct platform_device *pdev)
 	cancel_delayed_work_sync(&xdprxss->tp1_work);
 	cancel_work_sync(&xdprxss->lane_set_work);
 	cancel_work_sync(&xdprxss->link_qual_work);
+	if (xdprxss->mst_enable)
+		xdprxss_deinit_mst(xdprxss->mst);
 	v4l2_async_unregister_subdev(subdev);
 	media_entity_cleanup(&subdev->entity);
 	clk_disable_unprepare(xdprxss->rx_vid_clk);
