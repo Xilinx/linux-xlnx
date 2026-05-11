@@ -99,7 +99,6 @@
 	xdprxss_set(state, XDPRX_INTR_MASK_2_REG, \
 			XDPRX_INTR_HDCP2X_MASK_ALL)
 #define XDP_RX_HPD_INTERRUPT_ASSERT_MASK 0x01
-#define ntohll(x) be64_to_cpu(x)
 /* Per-stream register bank stride: each stream has its own 0x40-byte register window. */
 #define XDPRX_MST_STREAM_REG_STRIDE	0x40
 /* Stream index must be 1..4 as defined by HW stream register banks. */
@@ -280,7 +279,8 @@ struct xdprxss_state {
 
 union hdcp1x_key_table {
 	u8 data_u8[HDCP1X_KEYS_SIZE];
-	u64 data_u64[HDCP1X_KEYS_SIZE / (sizeof(u64))];
+	__be64 data_be64[HDCP1X_KEYS_SIZE / sizeof(__be64)];
+	u64 data_u64[HDCP1X_KEYS_SIZE / sizeof(u64)];
 };
 
 /*
@@ -2088,7 +2088,7 @@ static int xdprxss_hdcp1x_keymgmt_set_key(struct xdprxss_state *state)
 	memcpy(key_table.data_u8, state->hdcp1x_key, HDCP1X_KEYS_SIZE);
 	/* adjust the endian-ness to host order */
 	for (index = 0; index < HDCP1X_KEYS_SIZE / sizeof(u64); index++)
-		key_table.data_u64[index] = ntohll(key_table.data_u64[index]);
+		key_table.data_u64[index] = be64_to_cpu(key_table.data_be64[index]);
 	ret = xdprxss_hdcp1x_keymgmt_load_keys(state, &key_table,
 					       HDCP1X_KEYS_SIZE);
 	if (ret)
@@ -2111,11 +2111,13 @@ static int xdprxss_hdcp2x_key_write(struct xdprxss_state *xdprxss,
 	    xhdcp22_keys->size_private != HDCP2X_PRIVATE_SIZE)
 		return -EINVAL;
 
-	if (copy_from_user(xdprxss->hdcp2x_lc128, xhdcp22_keys->key_lc128,
+	if (copy_from_user(xdprxss->hdcp2x_lc128,
+			   (const void __user *)xhdcp22_keys->key_lc128,
 			   xhdcp22_keys->size_lc128))
 		return -EFAULT;
 
-	if (copy_from_user(xdprxss->hdcp2x_private, xhdcp22_keys->key_private,
+	if (copy_from_user(xdprxss->hdcp2x_private,
+			   (const void __user *)xhdcp22_keys->key_private,
 			   xhdcp22_keys->size_private))
 		return -EFAULT;
 
@@ -2147,7 +2149,8 @@ static int xdprxss_hdcp1x_key_write(struct xdprxss_state *xdprxss,
 	if (hdcp_keys->size != HDCP1X_KEYS_SIZE)
 		return -EINVAL;
 
-	if (copy_from_user(xdprxss->hdcp1x_key, hdcp_keys->keys,
+	if (copy_from_user(xdprxss->hdcp1x_key,
+			   (const void __user *)hdcp_keys->keys,
 			   hdcp_keys->size))
 		return -EFAULT;
 
