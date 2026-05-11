@@ -144,6 +144,13 @@ All components are stored with the same number of bits per component.
       - Cb, Cr
       - Yes
       - Linear
+    * - V4L2_PIX_FMT_XV15
+      - 'XV15'
+      - 10
+      - 4:2:0
+      - Cb, Cr
+      - Yes
+      - Linear
     * - V4L2_PIX_FMT_NV15_4L4
       - 'VT15'
       - 15
@@ -195,6 +202,13 @@ All components are stored with the same number of bits per component.
       - Linear
     * - V4L2_PIX_FMT_NV20
       - 'NV20'
+      - 10
+      - 4:2:2
+      - Cb, Cr
+      - Yes
+      - Linear
+    * - V4L2_PIX_FMT_XV20
+      - 'XV20'
       - 10
       - 4:2:2
       - Cb, Cr
@@ -955,6 +969,100 @@ Data in the 12 high bits, zeros in the 4 low bits, arranged in little endian ord
       - Cb\ :sub:`11`
       - Cr\ :sub:`11`
 
+.. _V4L2-PIX-FMT-XV15:
+
+XV15
+----
+
+Semi-planar 10-bit YUV 4:2:0 format similar to NV12, using 10-bit components
+with 2-bits padding between 3 components. A group of 3 components are stored
+over 4 bytes in little endian order.
+Y plane :-  x:Y2:Y1:Y0 2:10:10:10
+UV Plane :- x:Cr2:Cb2:Cr1:x:Cb1:Cr0:Cb0 2:10:10:10:2:10:10:10
+
+.. flat-table:: Sample 6x2 XV15 Image (1 byte per cell)
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Y'\ :sub:`00[7:0]`
+      - Y'\ :sub:`01[5:0]`\ Y'\ :sub:`00[9:8]`
+      - Y'\ :sub:`02[3:0]`\ Y'\ :sub:`01[9:6]`
+      - X\ :sub:`[1:0]`\ Y'\ :sub:`02[9:4]`
+      - Y'\ :sub:`03[7:0]`
+      - Y'\ :sub:`04[5:0]`\ Y'\ :sub:`03[9:8]`
+      - Y'\ :sub:`05[3:0]`\ Y'\ :sub:`04[9:6]`
+      - X\ :sub:`[1:0]`\ Y'\ :sub:`05[9:4]`
+    * - start + 8:
+      - Y'\ :sub:`10[7:0]`
+      - Y'\ :sub:`11[5:0]`\ Y'\ :sub:`10[9:8]`
+      - Y'\ :sub:`12[3:0]`\ Y'\ :sub:`11[9:6]`
+      - X\ :sub:`[1:0]`\ Y'\ :sub:`12[9:4]`
+      - Y'\ :sub:`13[7:0]`
+      - Y'\ :sub:`14[5:0]`\ Y'\ :sub:`13[9:8]`
+      - Y'\ :sub:`15[3:0]`\ Y'\ :sub:`14[9:6]`
+      - X\ :sub:`[1:0]`\ Y'\ :sub:`15[9:4]`
+    * - start + 16:
+      - Cb\ :sub:`00[7:0]`
+      - Cr\ :sub:`00[5:0]`\ Cb\ :sub:`00[9:8]`
+      - Cb\ :sub:`01[3:0]`\ Cr\ :sub:`00[9:6]`
+      - X\ :sub:`[1:0]`\ Cb\ :sub:`01[9:4]`
+      - Cr\ :sub:`01[7:0]`
+      - Cb\ :sub:`02[5:0]`\ Cr\ :sub:`01[9:8]`
+      - Cr\ :sub:`02[3:0]`\ Cb\ :sub:`02[9:6]`
+      - X\ :sub:`[1:0]`\ Cr\ :sub:`02[9:4]`
+
+.. _V4L2-PIX-FMT-XV20:
+
+XV20
+----
+
+Semi-planar 10-bit YUV 4:2:2 format similar to NV16, using 10-bit components
+with 2-bits padding between 3 components. A group of 3 components are stored
+over 4 bytes in little endian order.
+Y plane :-  x:Y2:Y1:Y0 2:10:10:10
+UV Plane :- x:Cr2:Cb2:Cr1:x:Cb1:Cr0:Cb0 2:10:10:10:2:10:10:10
+
+.. flat-table:: Sample 6x2 XV20 Image (1 byte per cell)
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Y'\ :sub:`00[7:0]`
+      - Y'\ :sub:`01[5:0]`\ Y'\ :sub:`00[9:8]`
+      - Y'\ :sub:`02[3:0]`\ Y'\ :sub:`01[9:6]`
+      - X\ :sub:`[1:0]`\ Y'\ :sub:`02[9:4]`
+      - Y'\ :sub:`03[7:0]`
+      - Y'\ :sub:`04[5:0]`\ Y'\ :sub:`03[9:8]`
+      - Y'\ :sub:`05[3:0]`\ Y'\ :sub:`04[9:6]`
+      - X\ :sub:`[1:0]`\ Y'\ :sub:`05[9:4]`
+    * - start + 8:
+      - Y'\ :sub:`10[7:0]`
+      - Y'\ :sub:`11[5:0]`\ Y'\ :sub:`10[9:8]`
+      - Y'\ :sub:`12[3:0]`\ Y'\ :sub:`11[9:6]`
+      - X\ :sub:`[1:0]`\ Y'\ :sub:`12[9:4]`
+      - Y'\ :sub:`13[7:0]`
+      - Y'\ :sub:`14[5:0]`\ Y'\ :sub:`13[9:8]`
+      - Y'\ :sub:`15[3:0]`\ Y'\ :sub:`14[9:6]`
+      - X\ :sub:`[1:0]`\ Y'\ :sub:`15[9:4]`
+    * - start + 16:
+      - Cb\ :sub:`00[7:0]`
+      - Cr\ :sub:`00[5:0]`\ Cb\ :sub:`00[9:8]`
+      - Cb\ :sub:`01[3:0]`\ Cr\ :sub:`00[9:6]`
+      - X\ :sub:`[1:0]`\ Cb\ :sub:`01[9:4]`
+      - Cr\ :sub:`01[7:0]`
+      - Cb\ :sub:`02[5:0]`\ Cr\ :sub:`01[9:8]`
+      - Cr\ :sub:`02[3:0]`\ Cb\ :sub:`02[9:6]`
+      - X\ :sub:`[1:0]`\ Cr\ :sub:`02[9:4]`
+    * - start + 24:
+      - Cb\ :sub:`10[7:0]`
+      - Cr\ :sub:`10[5:0]`\ Cb\ :sub:`10[9:8]`
+      - Cb\ :sub:`11[3:0]`\ Cr\ :sub:`10[9:6]`
+      - X\ :sub:`[1:0]`\ Cb\ :sub:`11[9:4]`
+      - Cr\ :sub:`11[7:0]`
+      - Cb\ :sub:`12[5:0]`\ Cr\ :sub:`11[9:8]`
+      - Cr\ :sub:`12[3:0]`\ Cb\ :sub:`12[9:6]`
+      - X\ :sub:`[1:0]`\ Cr\ :sub:`12[9:4]`
 
 Fully Planar YUV Formats
 ========================
