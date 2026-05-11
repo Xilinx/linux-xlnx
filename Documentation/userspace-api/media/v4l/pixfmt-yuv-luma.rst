@@ -24,6 +24,7 @@ bit, E is the exponent, and M is the mantissa (see also
    - Y'\ :sub:`x`\ [9:2] denotes bits 9 to 2 of the Y' value for pixel at column
      `x`.
    - `0` denotes padding bits set to 0.
+   - `X` denotes padding bits with undefined values.
 
 
 .. raw:: latex
@@ -120,6 +121,19 @@ bit, E is the exponent, and M is the mantissa (see also
       - `000000` Y'\ :sub:`0`\ [9:8]
       - ...
       - ...
+      - ...
+      - ...
+      - ...
+
+    * .. _V4L2-PIX-FMT-XY10:
+
+      - ``V4L2_PIX_FMT_XY10``
+      - 'XY10'
+
+      - Y'\ :sub:`0`\ [7:0]
+      - Y'\ :sub:`1`\ [5:0] Y'\ :sub:`0`\ [9:8]
+      - Y'\ :sub:`2`\ [3:0] Y'\ :sub:`1`\ [9:6]
+      - `XX` Y'\ :sub:`2`\ [9:4]
       - ...
       - ...
       - ...
