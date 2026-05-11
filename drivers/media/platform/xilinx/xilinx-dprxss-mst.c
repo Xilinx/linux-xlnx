@@ -8,6 +8,8 @@
  * Author: Katta Dhanunjanrao <katta.dhanunjanrao@amd.com>
  */
 
+#include <linux/bitfield.h>
+#include <linux/bits.h>
 #include <linux/device.h>
 #include <linux/io.h>
 #include <linux/iopoll.h>
@@ -260,7 +262,7 @@ struct xlnx_dprx_mst_port {
  */
 struct xdprx_mst_config {
 	struct xdprx_mst_link_address link_address;
-	u8 payload_id_table[XLNX_DPRX_NO_OF_MST_TIMESLOTS];
+	u8 payload_id_table[XLNX_DPRX_MST_TIMESLOT_COUNT];
 	struct xlnx_dprx_mst_port mst_port[XLNX_DPRX_MAX_MST_PORTS];
 };
 
@@ -1232,4 +1234,79 @@ static void xdprxss_dp_mst_work(struct work_struct *work)
 void xdprxss_dp_mst_handle_down_req(struct xdprxss_mst *xdpmst)
 {
 	schedule_work(&xdpmst->mst_work);
+}
+
+/**
+ * xdprxss_dp_mst_payload_allocation() - Apply ALLOCATE_PAYLOAD/CLEAR changes
+ * @xdpmst: MST context
+ *
+ * Reads allocation request fields from %XDPRX_MST_ALLOC, updates the local
+ * VC payload table mirror, writes timeslot entries to %XDPRX_VC_PAYLOAD_TABLE
+ * and asserts %XDPRX_MST_CAP_VCP_UPDATE_MASK so HW consumes the update.
+ *
+ * This function is critical to MST functionality because it maps per-stream
+ * VC payload IDs to timeslots and keeps branch-side allocation state aligned
+ * with source-side sideband allocation commands.
+ * See DP 1.4a sections 2.6.4, 2.6.5 and 2.6.6.
+ */
+void xdprxss_dp_mst_payload_allocation(struct xdprxss_mst *xdpmst)
+{
+	u8 *payload_table = &xdpmst->rx_topology.payload_id_table[0];
+	u32 mst_alloc_reg;
+	u8 stream_id;
+	u8 num_slots;
+	u8 write_idx;
+	u8 start_ts;
+	u8 read_idx;
+	u8 idx;
+
+	mst_alloc_reg = xdprxss_mst_read(xdpmst, XDPRX_MST_ALLOC);
+
+	stream_id = FIELD_GET(XDPRX_MST_ALLOC_VCP_ID_MASK, mst_alloc_reg);
+	start_ts = FIELD_GET(XDPRX_MST_ALLOC_START_TS_MASK, mst_alloc_reg);
+	num_slots = FIELD_GET(XDPRX_MST_ALLOC_COUNT_TS_MASK, mst_alloc_reg);
+
+	if (start_ts >= XLNX_DPRX_MST_TIMESLOT_COUNT) {
+		dev_err(xdpmst->dev, "MST: invalid start timeslot %u\n", start_ts);
+		return;
+	}
+
+	if (num_slots &&
+	    (start_ts + num_slots > XLNX_DPRX_MST_TIMESLOT_COUNT)) {
+		dev_err(xdpmst->dev, "invalid MST alloc: start=%u slots=%u\n",
+			start_ts, num_slots);
+		return;
+	}
+
+	if (num_slots) {
+		memset(&payload_table[start_ts], stream_id, num_slots);
+		/*
+		 * When clearing all VCs (stream_id=0) and slots covers all but
+		 * the last timeslot, explicitly zero the final slot which the
+		 * memset above does not reach (DP 1.4a s2.6.4).
+		 */
+		if (!stream_id && num_slots == XLNX_DPRX_MST_TIMESLOT_COUNT - 1)
+			payload_table[XLNX_DPRX_MST_TIMESLOT_COUNT - 1] = 0;
+	} else {
+		for (idx = 0; idx < XLNX_DPRX_MST_TIMESLOT_COUNT; idx++) {
+			if (payload_table[idx] == stream_id)
+				payload_table[idx] = 0;
+		}
+
+		write_idx = start_ts;
+		for (read_idx = start_ts; read_idx < XLNX_DPRX_MST_TIMESLOT_COUNT; read_idx++) {
+			if (payload_table[read_idx])
+				payload_table[write_idx++] = payload_table[read_idx];
+		}
+
+		memset(&payload_table[write_idx], 0,
+		       XLNX_DPRX_MST_TIMESLOT_COUNT - write_idx);
+	}
+
+	for (idx = 0; idx < XLNX_DPRX_MST_TIMESLOT_COUNT; idx++) {
+		xdprxss_mst_write(xdpmst, XDPRX_VC_PAYLOAD_TABLE + (idx * sizeof(u32)),
+				  payload_table[idx]);
+	}
+
+	xdprxss_mst_set(xdpmst, XDPRX_MST_CAP_REG, XDPRX_MST_CAP_VCP_UPDATE_MASK);
 }
