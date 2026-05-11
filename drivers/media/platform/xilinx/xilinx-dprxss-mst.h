@@ -72,7 +72,7 @@ struct device;
 struct xdprxss_mst;
 
 struct xdprxss_mst *xdprxss_init_mst(struct device *dev,
-				     void __iomem *interface_base,
+				     void __iomem *intf_base,
 				     bool mst_enable, u32 num_audio_channels,
 				     u8 num_streams);
 void xdprxss_dp_mst_handle_down_req(struct xdprxss_mst *xdpmst);

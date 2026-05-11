@@ -38,7 +38,7 @@
  */
 #define XLNX_DPRX_EDID_BLOCK_SIZE	128
 
-static const u8 __maybe_unused edid[XLNX_DPRX_EDID_BLOCK_SIZE] = {
+static const u8 edid[XLNX_DPRX_EDID_BLOCK_SIZE] = {
 	0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00,
 	0x61, 0x2c, 0x01, 0x00, 0x78, 0x56, 0x34, 0x12,
 	0x01, 0x18, 0x01, 0x04, 0xa0, 0x2f, 0x1e, 0x78,
@@ -65,7 +65,7 @@ static const u8 __maybe_unused edid[XLNX_DPRX_EDID_BLOCK_SIZE] = {
  * DisplayPort MST topology discovery and device identification.
  * See DP 1.4a sections 2.5.3 and 2.11.9.
  */
-static const u8 __maybe_unused guid_table[XLNX_DPRX_MAX_MST_PORTS][XLNX_DPRX_GUID_NBYTES] = {
+static const u8 guid_table[XLNX_DPRX_MAX_MST_PORTS][XLNX_DPRX_GUID_NBYTES] = {
 	{0x78, 0x69, 0x6c, 0x61, 0x6e, 0x64, 0x72, 0x65,
 	 0x69, 0x6c, 0x73, 0x69, 0x6d, 0x69, 0x6f, 0x6e},
 	{0x12, 0x34, 0x12, 0x34, 0x43, 0x21, 0x43, 0x21,
@@ -106,7 +106,7 @@ static const u8 __maybe_unused guid_table[XLNX_DPRX_MAX_MST_PORTS][XLNX_DPRX_GUI
  * These bytes map to the receiver capability space at DPCD 0x00000 onward.
  * See DP 1.4a section 2.9.3 (DPCD Field Address Mapping).
  */
-static const u8 __maybe_unused dpcd[] = {
+static const u8 dpcd[] = {
 	0x12, /* DPCD Rev 1.2 */
 	0x0a, /* Max Link Rate 2.7 Gbps */
 	0x84, /* Max Lane Count 4 + Enhanced Framing */
@@ -500,6 +500,25 @@ static void xdprxss_init_mst_registers(struct xdprxss_mst *xdpmst)
 	xdprxss_mst_write(xdpmst, XDPRX_INTR_MASK_1_REG, 0x0);
 	xdprxss_mst_write(xdpmst, XDPRX_LOCAL_EDID_REG, 0x0);
 	xdprxss_mst_set(xdpmst, XDPRX_CDRCTRL_CFG_REG, XDPRX_CDRCTRL_DIS_TIMEOUT);
+}
+
+/**
+ * xdprxss_reset_mst_registers() - Restore MST registers to disabled defaults
+ * @xdpmst: MST context
+ *
+ * Used on the init error path to undo the MST capability advertisement
+ * programmed by xdprxss_init_mst_registers() when subsequent setup fails,
+ * so the hardware is not left half-configured to a state that no software
+ * is actively servicing.
+ */
+static void xdprxss_reset_mst_registers(struct xdprxss_mst *xdpmst)
+{
+	u32 val;
+
+	val = xdprxss_mst_read(xdpmst, XDPRX_CDRCTRL_CFG_REG);
+	xdprxss_mst_write(xdpmst, XDPRX_CDRCTRL_CFG_REG,
+			  val & ~XDPRX_CDRCTRL_DIS_TIMEOUT);
+	xdprxss_mst_write(xdpmst, XDPRX_MST_CAP_REG, 0x0);
 }
 
 /**
@@ -1309,4 +1328,62 @@ void xdprxss_dp_mst_payload_allocation(struct xdprxss_mst *xdpmst)
 	}
 
 	xdprxss_mst_set(xdpmst, XDPRX_MST_CAP_REG, XDPRX_MST_CAP_VCP_UPDATE_MASK);
+}
+
+/**
+ * xdprxss_init_mst() - Allocate and initialize MST sideband engine context
+ * @dev: owning device
+ * @intf_base: mapped DPRX register base
+ * @mst_enable: MST mode enable flag
+ * @num_audio_channels: audio capability count used in LINK_ADDRESS
+ * @num_streams: number of downstream virtual streams
+ *
+ * Return: valid context pointer on success, %ERR_PTR() on failure.
+ */
+struct xdprxss_mst *xdprxss_init_mst(struct device *dev, void __iomem *intf_base,
+				     bool mst_enable, u32 num_audio_channels,
+				     u8 num_streams)
+{
+	struct xdprxss_mst *xdpmst;
+	int ret;
+
+	if (!dev || !intf_base)
+		return ERR_PTR(-EINVAL);
+
+	xdpmst = devm_kzalloc(dev, sizeof(*xdpmst), GFP_KERNEL);
+	if (!xdpmst)
+		return ERR_PTR(-ENOMEM);
+
+	xdpmst->mst_enable = mst_enable;
+	xdpmst->num_streams = num_streams;
+	xdpmst->num_audio_channels = num_audio_channels;
+	xdpmst->dev = dev;
+	xdpmst->intf_base = intf_base;
+
+	mutex_init(&xdpmst->dprx_mst_mutex);
+	INIT_WORK(&xdpmst->mst_work, xdprxss_dp_mst_work);
+
+	xdprxss_init_mst_registers(xdpmst);
+
+	ret = xdprxss_init_mst_streams(xdpmst);
+	if (ret < 0) {
+		xdprxss_reset_mst_registers(xdpmst);
+		mutex_destroy(&xdpmst->dprx_mst_mutex);
+		return ERR_PTR(ret);
+	}
+
+	return xdpmst;
+}
+
+/**
+ * xdprxss_deinit_mst() - Tear down MST sideband engine state
+ * @xdpmst: MST context
+ */
+void xdprxss_deinit_mst(struct xdprxss_mst *xdpmst)
+{
+	if (!xdpmst)
+		return;
+
+	cancel_work_sync(&xdpmst->mst_work);
+	mutex_destroy(&xdpmst->dprx_mst_mutex);
 }
