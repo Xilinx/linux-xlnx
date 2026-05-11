@@ -96,6 +96,7 @@ See also the examples in :ref:`control`.
 
 .. tabularcolumns:: |p{1.2cm}|p{3.6cm}|p{12.5cm}|
 
+.. _v4l2-ctrl-type-hdr:
 .. _v4l2-queryctrl:
 
 .. cssclass:: longtable
