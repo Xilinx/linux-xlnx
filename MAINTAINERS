@@ -28285,7 +28285,8 @@ M:	Lakshmi Prasanna Eachuri <lakshmi.prasanna.eachuri@amd.com>
 R:	Vishal Sagar <vishal.sagar@amd.com>
 S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-dprxss.yaml
-F:	drivers/media/platform/xilinx/xilinx-dprxss.c
+F:	drivers/media/platform/xilinx/xilinx-dprxss-core.c
+F:	drivers/media/platform/xilinx/xilinx-dprxss-hw.h
 
 XILINX DISPLAYPORT TX DRIVER
 M:	Lakshmi Prasanna Eachuri <lakshmi.prasanna.eachuri@amd.com>
