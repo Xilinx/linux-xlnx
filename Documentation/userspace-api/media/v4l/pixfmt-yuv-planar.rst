@@ -2418,3 +2418,930 @@ A group of 2 components are stored over 3 bytes in little endian order. Y plane 
       - Cr\ :sub:`10[7:0]`
       - Cr\ :sub:`11[3:0]`\ Cr\ :sub:`10[11:8]`
       - Cr\ :sub:`11[11:4]`
+
+Xilinx Tiled YUV Formats
+========================
+
+These formats use a tiled memory layout optimized for efficient memory access patterns
+in video processing hardware. Instead of storing pixels in raster scan order (row by
+row), pixels are organized into rectangular tiles that are stored consecutively in
+memory.
+
+**Tiling Structure:**
+
+The basic building block is a 4×4 pixel mini-tile. These mini-tiles are then grouped
+into larger tile rows:
+
+- **T5** formats (32×4 tiles): 8 mini-tiles of 4×4 pixels (32 pixels wide, 4 pixels high)
+- **T6** formats (64×4 tiles): 16 mini-tiles of 4×4 pixels (64 pixels wide, 4 pixels high)
+
+Within each 4×4 mini-tile, all 4 rows of pixels are stored consecutively in memory
+before moving to the next mini-tile.
+
+**Memory Layout:**
+
+For an 8×8 pixel image divided into four 4×4 mini-tiles, the on-screen display order
+(reading left-to-right, top-to-bottom) would be:
+
+.. code-block:: none
+
+    Display Order:                     Mini-Tile Grouping:
+    00 01 02 03 | 04 05 06 07          [Tile 0]   [Tile 1]
+    10 11 12 13 | 14 15 16 17          00-03      04-07
+    20 21 22 23 | 24 25 26 27          10-13      14-17
+    30 31 32 33 | 34 35 36 37          20-23      24-27
+    ------------+------------          30-33      34-37
+    40 41 42 43 | 44 45 46 47
+    50 51 52 53 | 54 55 56 57          [Tile 2]   [Tile 3]
+    60 61 62 63 | 64 65 66 67          40-43      44-47
+    70 71 72 73 | 74 75 76 77          50-53      54-57
+                                       60-63      64-67
+                                       70-73      74-77
+
+In tiled memory layout, these mini-tiles are stored consecutively:
+
+.. code-block:: none
+
+    Memory Offset:  Content (for 8-bit format)
+    +0:             00 01 02 03  (Tile 0, row 0)
+    +4:             10 11 12 13  (Tile 0, row 1)
+    +8:             20 21 22 23  (Tile 0, row 2)
+    +12:            30 31 32 33  (Tile 0, row 3)
+    +16:            04 05 06 07  (Tile 1, row 0)
+    +20:            14 15 16 17  (Tile 1, row 1)
+    +24:            24 25 26 27  (Tile 1, row 2)
+    +28:            34 35 36 37  (Tile 1, row 3)
+    +32:            40 41 42 43  (Tile 2, row 0)
+    +36:            50 51 52 53  (Tile 2, row 1)
+    +40:            60 61 62 63  (Tile 2, row 2)
+    +44:            70 71 72 73  (Tile 2, row 3)
+    +48:            44 45 46 47  (Tile 3, row 0)
+    ... and so on
+
+**Bit Packing:**
+
+Components within each 4×4 mini-tile are tightly packed according to bit depth:
+
+- **8-bit formats**: 1 pixel = 1 byte, so 4×4 mini-tile = 16 bytes
+- **10-bit formats**: 4 pixels = 5 bytes, so 4×4 mini-tile = 20 bytes
+- **12-bit formats**: 2 pixels = 3 bytes (4 pixels = 6 bytes), so 4×4 mini-tile = 24 bytes
+
+For 10-bit formats, 4 consecutive pixels are packed as:
+
+.. code-block:: none
+
+    Byte 0: P0[7:0]
+    Byte 1: P1[5:0] P0[9:8]
+    Byte 2: P2[3:0] P1[9:6]
+    Byte 3: P3[1:0] P2[9:4]
+    Byte 4: P3[9:2]
+
+For 12-bit formats, 2 consecutive pixels are packed as:
+
+.. code-block:: none
+
+    Byte 0: P0[7:0]
+    Byte 1: P1[3:0] P0[11:8]
+    Byte 2: P1[11:4]
+
+**Plane Organization:**
+
+- **Luma-only formats** (T5M8, T5MA, T5MC, T6M8, T6MA, T6MC): Single Y plane
+- **4:2:0 and 4:2:2 formats** (T508, T50A, T50C, T528, T52A, T52C and T6xx variants):
+  Semi-planar with Y plane and interleaved CbCr plane. Chroma plane follows the same
+  tiling structure with subsampling applied.
+- **4:4:4 formats** (T548, T54A, T54C, T648, T64A, T64C): Three separate planes (Y, Cb, Cr),
+  each following the tiling structure.
+
+**Format Naming Convention:**
+
+.. code-block:: none
+
+    Format: TXYZ
+
+    T  = Tiled format indicator
+    X  = Tile width: '5' = 32 pixels (8 mini-tiles)
+                     '6' = 64 pixels (16 mini-tiles)
+    Y  = Chroma subsampling: 'M' = Luma only (4:0:0)
+                              '0' = 4:2:0
+                              '2' = 4:2:2
+                              '4' = 4:4:4
+    Z  = Bit depth: '8' = 8-bit
+                    'A' = 10-bit (A = ten in hex)
+                    'C' = 12-bit (C = twelve in hex)
+
+.. raw:: latex
+
+    \footnotesize
+
+.. tabularcolumns:: |p{5.2cm}|p{1.0cm}|p{1.5cm}|p{1.9cm}|p{1.2cm}|p{2.7cm}|
+
+.. flat-table:: Overview of Xilinx Tiled YUV Formats
+    :header-rows:  1
+    :stub-columns: 0
+
+    * - Identifier
+      - Code
+      - Bits per component
+      - Subsampling
+      - Chroma order
+      - Tile Size (width×height)
+    * - V4L2_PIX_FMT_T5M8
+      - 'T5M8'
+      - 8
+      - 4:0:0
+      - Luma only
+      - 32×4
+    * - V4L2_PIX_FMT_T5MA
+      - 'T5MA'
+      - 10
+      - 4:0:0
+      - Luma only
+      - 32×4
+    * - V4L2_PIX_FMT_T5MC
+      - 'T5MC'
+      - 12
+      - 4:0:0
+      - Luma only
+      - 32×4
+    * - V4L2_PIX_FMT_T6M8
+      - 'T6M8'
+      - 8
+      - 4:0:0
+      - Luma only
+      - 64×4
+    * - V4L2_PIX_FMT_T6MA
+      - 'T6MA'
+      - 10
+      - 4:0:0
+      - Luma only
+      - 64×4
+    * - V4L2_PIX_FMT_T6MC
+      - 'T6MC'
+      - 12
+      - 4:0:0
+      - Luma only
+      - 64×4
+    * - V4L2_PIX_FMT_T508
+      - 'T508'
+      - 8
+      - 4:2:0
+      - Cb, Cr interleaved
+      - 32×4
+    * - V4L2_PIX_FMT_T50A
+      - 'T50A'
+      - 10
+      - 4:2:0
+      - Cb, Cr interleaved
+      - 32×4
+    * - V4L2_PIX_FMT_T50C
+      - 'T50C'
+      - 12
+      - 4:2:0
+      - Cb, Cr interleaved
+      - 32×4
+    * - V4L2_PIX_FMT_T608
+      - 'T608'
+      - 8
+      - 4:2:0
+      - Cb, Cr interleaved
+      - 64×4
+    * - V4L2_PIX_FMT_T60A
+      - 'T60A'
+      - 10
+      - 4:2:0
+      - Cb, Cr interleaved
+      - 64×4
+    * - V4L2_PIX_FMT_T60C
+      - 'T60C'
+      - 12
+      - 4:2:0
+      - Cb, Cr interleaved
+      - 64×4
+    * - V4L2_PIX_FMT_T528
+      - 'T528'
+      - 8
+      - 4:2:2
+      - Cb, Cr interleaved
+      - 32×4
+    * - V4L2_PIX_FMT_T52A
+      - 'T52A'
+      - 10
+      - 4:2:2
+      - Cb, Cr interleaved
+      - 32×4
+    * - V4L2_PIX_FMT_T52C
+      - 'T52C'
+      - 12
+      - 4:2:2
+      - Cb, Cr interleaved
+      - 32×4
+    * - V4L2_PIX_FMT_T628
+      - 'T628'
+      - 8
+      - 4:2:2
+      - Cb, Cr interleaved
+      - 64×4
+    * - V4L2_PIX_FMT_T62A
+      - 'T62A'
+      - 10
+      - 4:2:2
+      - Cb, Cr interleaved
+      - 64×4
+    * - V4L2_PIX_FMT_T62C
+      - 'T62C'
+      - 12
+      - 4:2:2
+      - Cb, Cr interleaved
+      - 64×4
+    * - V4L2_PIX_FMT_T548
+      - 'T548'
+      - 8
+      - 4:4:4
+      - Cb, Cr separate planes
+      - 32×4
+    * - V4L2_PIX_FMT_T54A
+      - 'T54A'
+      - 10
+      - 4:4:4
+      - Cb, Cr separate planes
+      - 32×4
+    * - V4L2_PIX_FMT_T54C
+      - 'T54C'
+      - 12
+      - 4:4:4
+      - Cb, Cr separate planes
+      - 32×4
+    * - V4L2_PIX_FMT_T648
+      - 'T648'
+      - 8
+      - 4:4:4
+      - Cb, Cr separate planes
+      - 64×4
+    * - V4L2_PIX_FMT_T64A
+      - 'T64A'
+      - 10
+      - 4:4:4
+      - Cb, Cr separate planes
+      - 64×4
+    * - V4L2_PIX_FMT_T64C
+      - 'T64C'
+      - 12
+      - 4:4:4
+      - Cb, Cr separate planes
+      - 64×4
+
+.. raw:: latex
+
+    \normalsize
+
+
+
+Luma-Only Tiled Formats
+------------------------
+
+.. _V4L2-PIX-FMT-T5M8:
+.. _V4L2-PIX-FMT-T6M8:
+
+T5M8 and T6M8
+^^^^^^^^^^^^^
+
+Luma-only (4:0:0) format with 8-bit components. T5M8 uses 32×4 pixel tiles
+(8 mini-tiles), while T6M8 uses 64×4 pixel tiles (16 mini-tiles). The memory
+layout within each 4×4 mini-tile is identical.
+
+**Luma plane - Byte layout for one 4×4 mini-tile:**
+
+Each pixel occupies exactly 1 byte. The 4×4 block is stored row by row:
+
+.. flat-table:: T5M8/T6M8 luma mini-tile (4×4 pixels)
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Y'\ :sub:`00`
+      - Y'\ :sub:`01`
+      - Y'\ :sub:`02`
+      - Y'\ :sub:`03`
+    * - start + 4:
+      - Y'\ :sub:`10`
+      - Y'\ :sub:`11`
+      - Y'\ :sub:`12`
+      - Y'\ :sub:`13`
+    * - start + 8:
+      - Y'\ :sub:`20`
+      - Y'\ :sub:`21`
+      - Y'\ :sub:`22`
+      - Y'\ :sub:`23`
+    * - start + 12:
+      - Y'\ :sub:`30`
+      - Y'\ :sub:`31`
+      - Y'\ :sub:`32`
+      - Y'\ :sub:`33`
+
+Total mini-tile size: 16 bytes.
+
+.. _V4L2-PIX-FMT-T5MA:
+.. _V4L2-PIX-FMT-T6MA:
+
+T5MA and T6MA
+^^^^^^^^^^^^^
+
+Luma-only (4:0:0) format with 10-bit components. T5MA uses 32×4 pixel tiles,
+while T6MA uses 64×4 pixel tiles.
+
+**Luma plane - Byte layout for one 4×4 mini-tile:**
+
+Each row of 4 pixels is packed into 5 bytes (4 pixels × 10 bits = 40 bits = 5 bytes).
+The packing uses the following scheme for 4 consecutive pixels:
+
+.. flat-table:: T5MA/T6MA luma mini-tile (4×4 pixels)
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Y'\ :sub:`00[7:0]`
+      - Y'\ :sub:`01[5:0]`\ Y'\ :sub:`00[9:8]`
+      - Y'\ :sub:`02[3:0]`\ Y'\ :sub:`01[9:6]`
+      - Y'\ :sub:`03[1:0]`\ Y'\ :sub:`02[9:4]`
+      - Y'\ :sub:`03[9:2]`
+    * - start + 5:
+      - Y'\ :sub:`10[7:0]`
+      - Y'\ :sub:`11[5:0]`\ Y'\ :sub:`10[9:8]`
+      - Y'\ :sub:`12[3:0]`\ Y'\ :sub:`11[9:6]`
+      - Y'\ :sub:`13[1:0]`\ Y'\ :sub:`12[9:4]`
+      - Y'\ :sub:`13[9:2]`
+    * - start + 10:
+      - Y'\ :sub:`20[7:0]`
+      - Y'\ :sub:`21[5:0]`\ Y'\ :sub:`20[9:8]`
+      - Y'\ :sub:`22[3:0]`\ Y'\ :sub:`21[9:6]`
+      - Y'\ :sub:`23[1:0]`\ Y'\ :sub:`22[9:4]`
+      - Y'\ :sub:`23[9:2]`
+    * - start + 15:
+      - Y'\ :sub:`30[7:0]`
+      - Y'\ :sub:`31[5:0]`\ Y'\ :sub:`30[9:8]`
+      - Y'\ :sub:`32[3:0]`\ Y'\ :sub:`31[9:6]`
+      - Y'\ :sub:`33[1:0]`\ Y'\ :sub:`32[9:4]`
+      - Y'\ :sub:`33[9:2]`
+
+Total mini-tile size: 20 bytes.
+
+.. _V4L2-PIX-FMT-T5MC:
+.. _V4L2-PIX-FMT-T6MC:
+
+T5MC and T6MC
+^^^^^^^^^^^^^
+
+Luma-only (4:0:0) format with 12-bit components. T5MC uses 32×4 pixel tiles,
+while T6MC uses 64×4 pixel tiles.
+
+**Luma plane - Byte layout for one 4×4 mini-tile:**
+
+Each pair of pixels is packed into 3 bytes (2 pixels × 12 bits = 24 bits = 3 bytes).
+Thus, each row of 4 pixels occupies 6 bytes:
+
+.. flat-table:: T5MC/T6MC luma mini-tile (4×4 pixels)
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Y'\ :sub:`00[7:0]`
+      - Y'\ :sub:`01[3:0]`\ Y'\ :sub:`00[11:8]`
+      - Y'\ :sub:`01[11:4]`
+      - Y'\ :sub:`02[7:0]`
+      - Y'\ :sub:`03[3:0]`\ Y'\ :sub:`02[11:8]`
+      - Y'\ :sub:`03[11:4]`
+    * - start + 6:
+      - Y'\ :sub:`10[7:0]`
+      - Y'\ :sub:`11[3:0]`\ Y'\ :sub:`10[11:8]`
+      - Y'\ :sub:`11[11:4]`
+      - Y'\ :sub:`12[7:0]`
+      - Y'\ :sub:`13[3:0]`\ Y'\ :sub:`12[11:8]`
+      - Y'\ :sub:`13[11:4]`
+    * - start + 12:
+      - Y'\ :sub:`20[7:0]`
+      - Y'\ :sub:`21[3:0]`\ Y'\ :sub:`20[11:8]`
+      - Y'\ :sub:`21[11:4]`
+      - Y'\ :sub:`22[7:0]`
+      - Y'\ :sub:`23[3:0]`\ Y'\ :sub:`22[11:8]`
+      - Y'\ :sub:`23[11:4]`
+    * - start + 18:
+      - Y'\ :sub:`30[7:0]`
+      - Y'\ :sub:`31[3:0]`\ Y'\ :sub:`30[11:8]`
+      - Y'\ :sub:`31[11:4]`
+      - Y'\ :sub:`32[7:0]`
+      - Y'\ :sub:`33[3:0]`\ Y'\ :sub:`32[11:8]`
+      - Y'\ :sub:`33[11:4]`
+
+Total mini-tile size: 24 bytes.
+
+
+4:2:0 Tiled Formats
+-------------------
+
+.. _V4L2-PIX-FMT-T508:
+.. _V4L2-PIX-FMT-T608:
+
+T508 and T608
+^^^^^^^^^^^^^
+
+Semi-planar YUV 4:2:0 format with 8-bit components. T508 uses 32×4 pixel tiles,
+while T608 uses 64×4 pixel tiles. The Y plane follows the same layout as T5M8/T6M8.
+Chroma is subsampled both horizontally and vertically (2×2).
+
+**Luma plane:**
+
+Same as T5M8/T6M8 (see above): 16 bytes per 4×4 mini-tile.
+
+**Chroma plane - Byte layout for one 4×4 mini-tile:**
+
+Due to 4:2:0 subsampling, a 4×4 luma block corresponds to a 2×2 chroma block.
+Cb and Cr are interleaved:
+
+.. flat-table:: T508/T608 chroma mini-tile (2×2 samples, interleaved CbCr)
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Cb\ :sub:`00`
+      - Cr\ :sub:`00`
+      - Cb\ :sub:`01`
+      - Cr\ :sub:`01`
+    * - start + 4:
+      - Cb\ :sub:`10`
+      - Cr\ :sub:`10`
+      - Cb\ :sub:`11`
+      - Cr\ :sub:`11`
+
+Total chroma mini-tile size: 8 bytes (4 CbCr pairs).
+
+.. _V4L2-PIX-FMT-T50A:
+.. _V4L2-PIX-FMT-T60A:
+
+T50A and T60A
+^^^^^^^^^^^^^
+
+Semi-planar YUV 4:2:0 format with 10-bit components. T50A uses 32×4 pixel tiles,
+while T60A uses 64×4 pixel tiles. The Y plane follows the same layout as T5MA/T6MA.
+
+**Luma plane:**
+
+Same as T5MA/T6MA (see above): 20 bytes per 4×4 mini-tile.
+
+**Chroma plane - Byte layout for one 4×4 mini-tile:**
+
+A 4×4 luma block corresponds to a 2×2 chroma block. Each row of 2 CbCr pairs is
+packed into 5 bytes:
+
+.. flat-table:: T50A/T60A chroma mini-tile (2×2 samples, interleaved CbCr)
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Cb\ :sub:`00[7:0]`
+      - Cr\ :sub:`00[5:0]`\ Cb\ :sub:`00[9:8]`
+      - Cr\ :sub:`00[9:6]`\ Cb\ :sub:`01[3:0]`
+      - Cr\ :sub:`01[1:0]`\ Cb\ :sub:`01[9:4]`
+      - Cr\ :sub:`01[9:2]`
+    * - start + 5:
+      - Cb\ :sub:`10[7:0]`
+      - Cr\ :sub:`10[5:0]`\ Cb\ :sub:`10[9:8]`
+      - Cr\ :sub:`10[9:6]`\ Cb\ :sub:`11[3:0]`
+      - Cr\ :sub:`11[1:0]`\ Cb\ :sub:`11[9:4]`
+      - Cr\ :sub:`11[9:2]`
+
+Total chroma mini-tile size: 10 bytes (4 CbCr pairs packed).
+
+.. _V4L2-PIX-FMT-T50C:
+.. _V4L2-PIX-FMT-T60C:
+
+T50C and T60C
+^^^^^^^^^^^^^
+
+Semi-planar YUV 4:2:0 format with 12-bit components. T50C uses 32×4 pixel tiles,
+while T60C uses 64×4 pixel tiles. The Y plane follows the same layout as T5MC/T6MC.
+
+**Luma plane:**
+
+Same as T5MC/T6MC (see above): 24 bytes per 4×4 mini-tile.
+
+**Chroma plane - Byte layout for one 4×4 mini-tile:**
+
+A 4×4 luma block corresponds to a 2×2 chroma block. Each CbCr pair is packed into
+3 bytes:
+
+.. flat-table:: T50C/T60C chroma mini-tile (2×2 samples, interleaved CbCr)
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Cb\ :sub:`00[7:0]`
+      - Cr\ :sub:`00[3:0]`\ Cb\ :sub:`00[11:8]`
+      - Cr\ :sub:`00[11:4]`
+      - Cb\ :sub:`01[7:0]`
+      - Cr\ :sub:`01[3:0]`\ Cb\ :sub:`01[11:8]`
+      - Cr\ :sub:`01[11:4]`
+    * - start + 6:
+      - Cb\ :sub:`10[7:0]`
+      - Cr\ :sub:`10[3:0]`\ Cb\ :sub:`10[11:8]`
+      - Cr\ :sub:`10[11:4]`
+      - Cb\ :sub:`11[7:0]`
+      - Cr\ :sub:`11[3:0]`\ Cb\ :sub:`11[11:8]`
+      - Cr\ :sub:`11[11:4]`
+
+Total chroma mini-tile size: 12 bytes (4 CbCr pairs packed).
+
+
+4:2:2 Tiled Formats
+-------------------
+
+.. _V4L2-PIX-FMT-T528:
+.. _V4L2-PIX-FMT-T628:
+
+T528 and T628
+^^^^^^^^^^^^^
+
+Semi-planar YUV 4:2:2 format with 8-bit components. T528 uses 32×4 pixel tiles,
+while T628 uses 64×4 pixel tiles. The Y plane follows the same layout as T5M8/T6M8.
+Chroma is subsampled horizontally only (2×1).
+
+**Luma plane:**
+
+Same as T5M8/T6M8 (see above): 16 bytes per 4×4 mini-tile.
+
+**Chroma plane - Byte layout for one 4×4 mini-tile:**
+
+Due to 4:2:2 subsampling, a 4×4 luma block corresponds to a 4×2 chroma block
+(horizontally subsampled). Cb and Cr are interleaved:
+
+.. flat-table:: T528/T628 chroma mini-tile (4 rows × 2 samples, interleaved CbCr)
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Cb\ :sub:`00`
+      - Cr\ :sub:`00`
+      - Cb\ :sub:`01`
+      - Cr\ :sub:`01`
+    * - start + 4:
+      - Cb\ :sub:`10`
+      - Cr\ :sub:`10`
+      - Cb\ :sub:`11`
+      - Cr\ :sub:`11`
+    * - start + 8:
+      - Cb\ :sub:`20`
+      - Cr\ :sub:`20`
+      - Cb\ :sub:`21`
+      - Cr\ :sub:`21`
+    * - start + 12:
+      - Cb\ :sub:`30`
+      - Cr\ :sub:`30`
+      - Cb\ :sub:`31`
+      - Cr\ :sub:`31`
+
+Total chroma mini-tile size: 16 bytes (8 CbCr pairs).
+
+.. _V4L2-PIX-FMT-T52A:
+.. _V4L2-PIX-FMT-T62A:
+
+T52A and T62A
+^^^^^^^^^^^^^
+
+Semi-planar YUV 4:2:2 format with 10-bit components. T52A uses 32×4 pixel tiles,
+while T62A uses 64×4 pixel tiles. The Y plane follows the same layout as T5MA/T6MA.
+
+**Luma plane:**
+
+Same as T5MA/T6MA (see above): 20 bytes per 4×4 mini-tile.
+
+**Chroma plane - Byte layout for one 4×4 mini-tile:**
+
+A 4×4 luma block corresponds to a 4×2 chroma block. Each row of 2 CbCr pairs is
+packed into 5 bytes:
+
+.. flat-table:: T52A/T62A chroma mini-tile (4 rows × 2 samples, interleaved CbCr)
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Cb\ :sub:`00[7:0]`
+      - Cr\ :sub:`00[5:0]`\ Cb\ :sub:`00[9:8]`
+      - Cr\ :sub:`00[9:6]`\ Cb\ :sub:`01[3:0]`
+      - Cr\ :sub:`01[1:0]`\ Cb\ :sub:`01[9:4]`
+      - Cr\ :sub:`01[9:2]`
+    * - start + 5:
+      - Cb\ :sub:`10[7:0]`
+      - Cr\ :sub:`10[5:0]`\ Cb\ :sub:`10[9:8]`
+      - Cr\ :sub:`10[9:6]`\ Cb\ :sub:`11[3:0]`
+      - Cr\ :sub:`11[1:0]`\ Cb\ :sub:`11[9:4]`
+      - Cr\ :sub:`11[9:2]`
+    * - start + 10:
+      - Cb\ :sub:`20[7:0]`
+      - Cr\ :sub:`20[5:0]`\ Cb\ :sub:`20[9:8]`
+      - Cr\ :sub:`20[9:6]`\ Cb\ :sub:`21[3:0]`
+      - Cr\ :sub:`21[1:0]`\ Cb\ :sub:`21[9:4]`
+      - Cr\ :sub:`21[9:2]`
+    * - start + 15:
+      - Cb\ :sub:`30[7:0]`
+      - Cr\ :sub:`30[5:0]`\ Cb\ :sub:`30[9:8]`
+      - Cr\ :sub:`30[9:6]`\ Cb\ :sub:`31[3:0]`
+      - Cr\ :sub:`31[1:0]`\ Cb\ :sub:`31[9:4]`
+      - Cr\ :sub:`31[9:2]`
+
+Total chroma mini-tile size: 20 bytes (8 CbCr pairs packed).
+
+.. _V4L2-PIX-FMT-T52C:
+.. _V4L2-PIX-FMT-T62C:
+
+T52C and T62C
+^^^^^^^^^^^^^
+
+Semi-planar YUV 4:2:2 format with 12-bit components. T52C uses 32×4 pixel tiles,
+while T62C uses 64×4 pixel tiles. The Y plane follows the same layout as T5MC/T6MC.
+
+**Luma plane:**
+
+Same as T5MC/T6MC (see above): 24 bytes per 4×4 mini-tile.
+
+**Chroma plane - Byte layout for one 4×4 mini-tile:**
+
+A 4×4 luma block corresponds to a 4×2 chroma block. Each CbCr pair is packed into
+3 bytes:
+
+.. flat-table:: T52C/T62C chroma mini-tile (4 rows × 2 samples, interleaved CbCr)
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Cb\ :sub:`00[7:0]`
+      - Cr\ :sub:`00[3:0]`\ Cb\ :sub:`00[11:8]`
+      - Cr\ :sub:`00[11:4]`
+      - Cb\ :sub:`01[7:0]`
+      - Cr\ :sub:`01[3:0]`\ Cb\ :sub:`01[11:8]`
+      - Cr\ :sub:`01[11:4]`
+    * - start + 6:
+      - Cb\ :sub:`10[7:0]`
+      - Cr\ :sub:`10[3:0]`\ Cb\ :sub:`10[11:8]`
+      - Cr\ :sub:`10[11:4]`
+      - Cb\ :sub:`11[7:0]`
+      - Cr\ :sub:`11[3:0]`\ Cb\ :sub:`11[11:8]`
+      - Cr\ :sub:`11[11:4]`
+    * - start + 12:
+      - Cb\ :sub:`20[7:0]`
+      - Cr\ :sub:`20[3:0]`\ Cb\ :sub:`20[11:8]`
+      - Cr\ :sub:`20[11:4]`
+      - Cb\ :sub:`21[7:0]`
+      - Cr\ :sub:`21[3:0]`\ Cb\ :sub:`21[11:8]`
+      - Cr\ :sub:`21[11:4]`
+    * - start + 18:
+      - Cb\ :sub:`30[7:0]`
+      - Cr\ :sub:`30[3:0]`\ Cb\ :sub:`30[11:8]`
+      - Cr\ :sub:`30[11:4]`
+      - Cb\ :sub:`31[7:0]`
+      - Cr\ :sub:`31[3:0]`\ Cb\ :sub:`31[11:8]`
+      - Cr\ :sub:`31[11:4]`
+
+Total chroma mini-tile size: 24 bytes (8 CbCr pairs packed).
+
+
+4:4:4 Tiled Formats
+-------------------
+
+.. _V4L2-PIX-FMT-T548:
+.. _V4L2-PIX-FMT-T648:
+
+T548 and T648
+^^^^^^^^^^^^^
+
+Planar YUV 4:4:4 format with 8-bit components and separate Y, Cb, Cr planes.
+T548 uses 32×4 pixel tiles, while T648 uses 64×4 pixel tiles. No chroma
+subsampling is applied.
+
+**Luma plane:**
+
+Same as T5M8/T6M8 (see above): 16 bytes per 4×4 mini-tile.
+
+**Cb plane - Byte layout for one 4×4 mini-tile:**
+
+Each chroma component has the same resolution as luma (4:4:4). Each pixel
+occupies 1 byte:
+
+.. flat-table:: T548/T648 Cb mini-tile (4×4 pixels)
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Cb\ :sub:`00`
+      - Cb\ :sub:`01`
+      - Cb\ :sub:`02`
+      - Cb\ :sub:`03`
+    * - start + 4:
+      - Cb\ :sub:`10`
+      - Cb\ :sub:`11`
+      - Cb\ :sub:`12`
+      - Cb\ :sub:`13`
+    * - start + 8:
+      - Cb\ :sub:`20`
+      - Cb\ :sub:`21`
+      - Cb\ :sub:`22`
+      - Cb\ :sub:`23`
+    * - start + 12:
+      - Cb\ :sub:`30`
+      - Cb\ :sub:`31`
+      - Cb\ :sub:`32`
+      - Cb\ :sub:`33`
+
+**Cr plane - Byte layout for one 4×4 mini-tile:**
+
+.. flat-table:: T548/T648 Cr mini-tile (4×4 pixels)
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Cr\ :sub:`00`
+      - Cr\ :sub:`01`
+      - Cr\ :sub:`02`
+      - Cr\ :sub:`03`
+    * - start + 4:
+      - Cr\ :sub:`10`
+      - Cr\ :sub:`11`
+      - Cr\ :sub:`12`
+      - Cr\ :sub:`13`
+    * - start + 8:
+      - Cr\ :sub:`20`
+      - Cr\ :sub:`21`
+      - Cr\ :sub:`22`
+      - Cr\ :sub:`23`
+    * - start + 12:
+      - Cr\ :sub:`30`
+      - Cr\ :sub:`31`
+      - Cr\ :sub:`32`
+      - Cr\ :sub:`33`
+
+Total Cb mini-tile size: 16 bytes. Total Cr mini-tile size: 16 bytes.
+
+.. _V4L2-PIX-FMT-T54A:
+.. _V4L2-PIX-FMT-T64A:
+
+T54A and T64A
+^^^^^^^^^^^^^
+
+Planar YUV 4:4:4 format with 10-bit components and separate Y, Cb, Cr planes.
+T54A uses 32×4 pixel tiles, while T64A uses 64×4 pixel tiles.
+
+**Luma Plane:**
+
+Same as T5MA/T6MA (see above): 20 bytes per 4×4 mini-tile.
+
+**Cb plane - Byte layout for one 4×4 mini-tile:**
+
+Each row of 4 pixels is packed into 5 bytes:
+
+.. flat-table:: T54A/T64A Cb mini-tile (4×4 pixels)
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Cb\ :sub:`00[7:0]`
+      - Cb\ :sub:`01[5:0]`\ Cb\ :sub:`00[9:8]`
+      - Cb\ :sub:`02[3:0]`\ Cb\ :sub:`01[9:6]`
+      - Cb\ :sub:`03[1:0]`\ Cb\ :sub:`02[9:4]`
+      - Cb\ :sub:`03[9:2]`
+    * - start + 5:
+      - Cb\ :sub:`10[7:0]`
+      - Cb\ :sub:`11[5:0]`\ Cb\ :sub:`10[9:8]`
+      - Cb\ :sub:`12[3:0]`\ Cb\ :sub:`11[9:6]`
+      - Cb\ :sub:`13[1:0]`\ Cb\ :sub:`12[9:4]`
+      - Cb\ :sub:`13[9:2]`
+    * - start + 10:
+      - Cb\ :sub:`20[7:0]`
+      - Cb\ :sub:`21[5:0]`\ Cb\ :sub:`20[9:8]`
+      - Cb\ :sub:`22[3:0]`\ Cb\ :sub:`21[9:6]`
+      - Cb\ :sub:`23[1:0]`\ Cb\ :sub:`22[9:4]`
+      - Cb\ :sub:`23[9:2]`
+    * - start + 15:
+      - Cb\ :sub:`30[7:0]`
+      - Cb\ :sub:`31[5:0]`\ Cb\ :sub:`30[9:8]`
+      - Cb\ :sub:`32[3:0]`\ Cb\ :sub:`31[9:6]`
+      - Cb\ :sub:`33[1:0]`\ Cb\ :sub:`32[9:4]`
+      - Cb\ :sub:`33[9:2]`
+
+**Cr plane - Byte layout for one 4×4 mini-tile:**
+
+.. flat-table:: T54A/T64A Cr mini-tile (4×4 pixels)
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Cr\ :sub:`00[7:0]`
+      - Cr\ :sub:`01[5:0]`\ Cr\ :sub:`00[9:8]`
+      - Cr\ :sub:`02[3:0]`\ Cr\ :sub:`01[9:6]`
+      - Cr\ :sub:`03[1:0]`\ Cr\ :sub:`02[9:4]`
+      - Cr\ :sub:`03[9:2]`
+    * - start + 5:
+      - Cr\ :sub:`10[7:0]`
+      - Cr\ :sub:`11[5:0]`\ Cr\ :sub:`10[9:8]`
+      - Cr\ :sub:`12[3:0]`\ Cr\ :sub:`11[9:6]`
+      - Cr\ :sub:`13[1:0]`\ Cr\ :sub:`12[9:4]`
+      - Cr\ :sub:`13[9:2]`
+    * - start + 10:
+      - Cr\ :sub:`20[7:0]`
+      - Cr\ :sub:`21[5:0]`\ Cr\ :sub:`20[9:8]`
+      - Cr\ :sub:`22[3:0]`\ Cr\ :sub:`21[9:6]`
+      - Cr\ :sub:`23[1:0]`\ Cr\ :sub:`22[9:4]`
+      - Cr\ :sub:`23[9:2]`
+    * - start + 15:
+      - Cr\ :sub:`30[7:0]`
+      - Cr\ :sub:`31[5:0]`\ Cr\ :sub:`30[9:8]`
+      - Cr\ :sub:`32[3:0]`\ Cr\ :sub:`31[9:6]`
+      - Cr\ :sub:`33[1:0]`\ Cr\ :sub:`32[9:4]`
+      - Cr\ :sub:`33[9:2]`
+
+Total Cb mini-tile size: 20 bytes. Total Cr mini-tile size: 20 bytes.
+
+.. _V4L2-PIX-FMT-T54C:
+.. _V4L2-PIX-FMT-T64C:
+
+T54C and T64C
+^^^^^^^^^^^^^
+
+Planar YUV 4:4:4 format with 12-bit components and separate Y, Cb, Cr planes.
+T54C uses 32×4 pixel tiles, while T64C uses 64×4 pixel tiles.
+
+**Luma Plane:**
+
+Same as T5MC/T6MC (see above): 24 bytes per 4×4 mini-tile.
+
+**Cb plane - Byte layout for one 4×4 mini-tile:**
+
+Each pair of pixels is packed into 3 bytes, so each row of 4 pixels occupies 6 bytes:
+
+.. flat-table:: T54C/T64C Cb mini-tile (4×4 pixels)
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Cb\ :sub:`00[7:0]`
+      - Cb\ :sub:`01[3:0]`\ Cb\ :sub:`00[11:8]`
+      - Cb\ :sub:`01[11:4]`
+      - Cb\ :sub:`02[7:0]`
+      - Cb\ :sub:`03[3:0]`\ Cb\ :sub:`02[11:8]`
+      - Cb\ :sub:`03[11:4]`
+    * - start + 6:
+      - Cb\ :sub:`10[7:0]`
+      - Cb\ :sub:`11[3:0]`\ Cb\ :sub:`10[11:8]`
+      - Cb\ :sub:`11[11:4]`
+      - Cb\ :sub:`12[7:0]`
+      - Cb\ :sub:`13[3:0]`\ Cb\ :sub:`12[11:8]`
+      - Cb\ :sub:`13[11:4]`
+    * - start + 12:
+      - Cb\ :sub:`20[7:0]`
+      - Cb\ :sub:`21[3:0]`\ Cb\ :sub:`20[11:8]`
+      - Cb\ :sub:`21[11:4]`
+      - Cb\ :sub:`22[7:0]`
+      - Cb\ :sub:`23[3:0]`\ Cb\ :sub:`22[11:8]`
+      - Cb\ :sub:`23[11:4]`
+    * - start + 18:
+      - Cb\ :sub:`30[7:0]`
+      - Cb\ :sub:`31[3:0]`\ Cb\ :sub:`30[11:8]`
+      - Cb\ :sub:`31[11:4]`
+      - Cb\ :sub:`32[7:0]`
+      - Cb\ :sub:`33[3:0]`\ Cb\ :sub:`32[11:8]`
+      - Cb\ :sub:`33[11:4]`
+
+**Cr plane - Byte layout for one 4×4 mini-tile:**
+
+.. flat-table:: T54C/T64C Cr mini-tile (4×4 pixels)
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Cr\ :sub:`00[7:0]`
+      - Cr\ :sub:`01[3:0]`\ Cr\ :sub:`00[11:8]`
+      - Cr\ :sub:`01[11:4]`
+      - Cr\ :sub:`02[7:0]`
+      - Cr\ :sub:`03[3:0]`\ Cr\ :sub:`02[11:8]`
+      - Cr\ :sub:`03[11:4]`
+    * - start + 6:
+      - Cr\ :sub:`10[7:0]`
+      - Cr\ :sub:`11[3:0]`\ Cr\ :sub:`10[11:8]`
+      - Cr\ :sub:`11[11:4]`
+      - Cr\ :sub:`12[7:0]`
+      - Cr\ :sub:`13[3:0]`\ Cr\ :sub:`12[11:8]`
+      - Cr\ :sub:`13[11:4]`
+    * - start + 12:
+      - Cr\ :sub:`20[7:0]`
+      - Cr\ :sub:`21[3:0]`\ Cr\ :sub:`20[11:8]`
+      - Cr\ :sub:`21[11:4]`
+      - Cr\ :sub:`22[7:0]`
+      - Cr\ :sub:`23[3:0]`\ Cr\ :sub:`22[11:8]`
+      - Cr\ :sub:`23[11:4]`
+    * - start + 18:
+      - Cr\ :sub:`30[7:0]`
+      - Cr\ :sub:`31[3:0]`\ Cr\ :sub:`30[11:8]`
+      - Cr\ :sub:`31[11:4]`
+      - Cr\ :sub:`32[7:0]`
+      - Cr\ :sub:`33[3:0]`\ Cr\ :sub:`32[11:8]`
+      - Cr\ :sub:`33[11:4]`
+
+Total Cb mini-tile size: 24 bytes. Total Cr mini-tile size: 24 bytes.
