@@ -10,6 +10,7 @@
 
 #include <linux/device.h>
 #include <linux/io.h>
+#include <linux/iopoll.h>
 #include <linux/mutex.h>
 #include <linux/string.h>
 #include <linux/types.h>
@@ -17,6 +18,12 @@
 
 #include "xilinx-dprxss-hw.h"
 #include "xilinx-dprxss-mst.h"
+
+/*
+ * HW requires a short settle time between fragment assembly and
+ * DOWN_REP write trigger to avoid sporadic sideband handshaking loss.
+ */
+#define XDPRX_SBMSG_TX_DELAY_MS		20
 
 /*
  * Reference EDID used to answer REMOTE_I2C_READ transactions.
@@ -677,4 +684,190 @@ static int xdprxss_dp_mst_read_down_req(struct xdprxss_mst *xdpmst,
 	sb_msg->fragment_num = 0;
 
 	return xdprxss_sideband_parse_message(sb_msg, data);
+}
+
+/**
+ * xdprxss_dp_write_sideband_msg() - Write one reply fragment to DOWN_REP
+ * @xdpmst: MST context
+ * @buf: serialized sideband bytes
+ * @len: number of bytes to write
+ *
+ * Return: 0 on success, negative errno on timeout/failure.
+ */
+static int xdprxss_dp_write_sideband_msg(struct xdprxss_mst *xdpmst,
+					 const u8 *buf, u8 len)
+{
+	void __iomem *address = xdpmst->intf_base + XDPRX_DEVICE_SERVICE_IRQ;
+	u32 status;
+	u8 idx;
+
+	for (idx = 0; idx < len; idx++)
+		xdprxss_mst_write(xdpmst, XDPRX_DOWN_REP + (idx * 4), buf[idx]);
+
+	xdprxss_mst_write(xdpmst, XDPRX_DEVICE_SERVICE_IRQ,
+			  XDPRX_DEVICE_SERVICE_IRQ_NEW_DOWN_REPLY_MASK);
+	xdprxss_mst_write(xdpmst, XDPRX_HPD_INTR_REG, XDPRX_HPD_INTR_MASK);
+
+	return readx_poll_timeout(ioread32, address, status,
+				  status & XDPRX_DEVICE_SERVICE_IRQ_NEW_DOWN_REPLY_MASK,
+				  USEC_PER_MSEC,
+				  XLNX_DPRX_SB_MSG_REPLY_TIMEOUT_MS * USEC_PER_MSEC);
+}
+
+/**
+ * xdprxss_serialized_hdr_len() - Compute on-wire MST sideband header length
+ * @link_count_total: total link/hop count carried in the sideband header
+ *
+ * The serialized header is one LCT/LCR byte plus ceil((LCT - 1) / 2) bytes
+ * carrying relative-address nibbles plus two trailing fixed bytes
+ * (broadcast/path/msg_body_len and SoM/EoM/seq_num/crc4). For LCT <= 1 the
+ * length collapses to XLNX_DPRX_MST_HEADER_LENGTH; multi-hop topologies
+ * extend it by one byte for every two additional hops.
+ *
+ * Return: serialized header length in bytes.
+ */
+static u8 xdprxss_serialized_hdr_len(u8 link_count_total)
+{
+	return XLNX_DPRX_MST_HEADER_LENGTH + (link_count_total / 2);
+}
+
+/**
+ * xdprxss_dp_send_sideband_msg() - Serialize and send one sideband fragment
+ * @xdpmst: MST context
+ * @sb_msg: sideband reply fragment metadata/payload
+ *
+ * Return: 0 on success, negative errno otherwise.
+ */
+static int xdprxss_dp_send_sideband_msg(struct xdprxss_mst *xdpmst,
+					struct xdprxss_sideband_msg_rx *sb_msg)
+{
+	struct xdprxss_sideband_msg_data *data = &sb_msg->data;
+	struct xdprxss_sideband_msg_hdr *hdr = &sb_msg->hdr;
+	u8 buf[XLNX_DPRX_MAX_SBMSG_LEN];
+	int idx = 0, i;
+	u8 full_len;
+
+	msleep(XDPRX_SBMSG_TX_DELAY_MS);
+
+	buf[idx++] = ((hdr->link_count_total & 0xf) << 4) | (hdr->link_count_remaining & 0xf);
+
+	for (i = 0; i < hdr->link_count_total - 1; i += 2) {
+		buf[idx] = (hdr->relative_address[i] << 4);
+		if ((i + 1) < (hdr->link_count_total - 1))
+			buf[idx] |= hdr->relative_address[i + 1];
+		idx++;
+	}
+
+	buf[idx++] = (hdr->broadcast_msg << 7) | (hdr->path_msg << 6) | (hdr->msg_body_len & 0x3f);
+	buf[idx++] = (hdr->start_of_msg << 7) | (hdr->end_of_msg << 6) | (hdr->seq_num << 4) |
+		     (hdr->crc4);
+
+	sb_msg->hdr_len = idx;
+
+	full_len = XLNX_DPRX_MAX_SBMSG_LEN - sb_msg->hdr_len - 1;
+
+	for (i = 0; i < data->len; i++)
+		buf[i + sb_msg->hdr_len] = data->msg[i + (sb_msg->fragment_num * full_len)];
+
+	buf[sb_msg->hdr_len + i] = data->crc4;
+
+	return xdprxss_dp_write_sideband_msg(xdpmst, buf, sb_msg->hdr_len + hdr->msg_body_len);
+}
+
+/**
+ * xdprxss_dp_process_sideband_msg() - Fragment and transmit full sideband reply
+ * @xdpmst: MST context
+ * @sb_msg: sideband reply container
+ *
+ * Return: 0 on success, negative errno on TX failure.
+ */
+static int
+xdprxss_dp_process_sideband_msg(struct xdprxss_mst *xdpmst,
+				struct xdprxss_sideband_msg_rx *sb_msg)
+{
+	struct xdprxss_sideband_msg_data *data = &sb_msg->data;
+	struct xdprxss_sideband_msg_hdr *hdr = &sb_msg->hdr;
+	u32 data_remaining = data->len;
+	u32 data_len = data->len;
+	u8 full_len;
+	int ret;
+
+	sb_msg->fragment_num = 0;
+	hdr->seq_num = 0;
+
+	/*
+	 * Per-fragment payload capacity must match what the serializer will
+	 * actually emit. The reply builders pre-set hdr_len to the constant
+	 * XLNX_DPRX_MST_HEADER_LENGTH, but multi-hop topologies grow the
+	 * on-wire header by one byte per two relative-address nibble pairs.
+	 * Recompute hdr_len here from link_count_total so the per-fragment
+	 * capacity (full_len) cannot exceed what xdprxss_dp_send_sideband_msg
+	 * has room to write into the wire buffer.
+	 */
+	sb_msg->hdr_len = xdprxss_serialized_hdr_len(hdr->link_count_total);
+	full_len = XLNX_DPRX_MAX_SBMSG_LEN - sb_msg->hdr_len - 1;
+
+	while (data_remaining) {
+		hdr->start_of_msg = (data_remaining == data_len) ? 1 : 0;
+		data->len = (data_remaining > full_len) ? full_len : data_remaining;
+		data_remaining -= data->len;
+		hdr->msg_body_len = data->len + 1;
+		hdr->end_of_msg = data_remaining ? 0 : 1;
+		hdr->crc4 = xdprxss_msg_header_crc4(hdr);
+		data->crc4 = xdprxss_sbmsg_data_crc8(sb_msg);
+
+		ret = xdprxss_dp_send_sideband_msg(xdpmst, sb_msg);
+		if (ret)
+			return ret;
+
+		sb_msg->fragment_num++;
+		hdr->seq_num = (hdr->seq_num + 1) & 0x3;
+	}
+
+	return 0;
+}
+
+/**
+ * xdprxss_build_mst_header() - Fill common MST reply header fields
+ * @reply_msg: reply container
+ * @hdr_data: template header bytes
+ */
+static void
+xdprxss_build_mst_header(struct xdprxss_sideband_msg_rx *reply_msg,
+			 const u8 *hdr_data)
+{
+	reply_msg->hdr.link_count_remaining = reply_msg->hdr.link_count_total - 1;
+	reply_msg->hdr.broadcast_msg = *hdr_data++;
+	reply_msg->hdr.path_msg = *hdr_data++;
+	reply_msg->hdr_len = XLNX_DPRX_MST_HEADER_LENGTH;
+}
+
+/**
+ * xdprxss_build_nack_reply() - Build a NACK sideband reply
+ * @xdpmst: MST context
+ * @reply_msg: reply container
+ *
+ * Assembles a generic NACK reply carrying the local branch GUID and a
+ * WRITE_FAILURE reason code, used when an incoming DOWN_REQ cannot be
+ * processed.
+ */
+static void
+xdprxss_build_nack_reply(struct xdprxss_mst *xdpmst,
+			 struct xdprxss_sideband_msg_rx *reply_msg)
+{
+	u8 guid_idx;
+	u8 idx = 0;
+
+	reply_msg->data.msg[idx++] = BIT(7);
+	for (guid_idx = 0; guid_idx < XLNX_DPRX_GUID_NBYTES; guid_idx++)
+		reply_msg->data.msg[idx++] = xdpmst->rx_topology.link_address.guid[guid_idx];
+
+	reply_msg->data.msg[idx++] = XLNX_DPRX_SBMSG_NAK_REASON_WRITE_FAILURE;
+	reply_msg->data.msg[idx++] = 0x00;
+	reply_msg->hdr.link_count_remaining = 0;
+	reply_msg->hdr.broadcast_msg = 0;
+	reply_msg->hdr.path_msg = 0;
+	reply_msg->hdr_len = XLNX_DPRX_MST_HEADER_LENGTH;
+
+	reply_msg->data.len = idx;
 }
