@@ -1085,3 +1085,142 @@ xdprxss_build_remote_iic_read_reply(struct xdprxss_mst *xdpmst,
 
 	reply_msg->data.len = XLNX_DPRX_I2C_REPLY_HDR_LEN + i;
 }
+
+/**
+ * xdprxss_build_clear_payload_reply() - Build CLEAR_PAYLOAD_ID_TABLE reply
+ * @reply_msg: reply container
+ *
+ * Assembles a broadcast CLEAR_PAYLOAD_ID_TABLE reply per DP 1.4a 2.11.9.1.5.
+ */
+static void xdprxss_build_clear_payload_reply(struct xdprxss_sideband_msg_rx *reply_msg)
+{
+	reply_msg->hdr.link_count_remaining = 0;
+	reply_msg->hdr.broadcast_msg = 1;
+	reply_msg->hdr.path_msg = 1;
+	reply_msg->hdr.msg_body_len = 2;
+	reply_msg->hdr_len = 3;
+	reply_msg->data.msg[0] = XLNX_DPRX_SBMSG_CLEAR_PAYLOAD_ID_TABLE;
+	reply_msg->data.len = 1;
+}
+
+/**
+ * xdprxss_build_link_address_reply() - Build LINK_ADDRESS reply
+ * @xdpmst: MST context
+ * @reply_msg: reply container
+ */
+static void xdprxss_build_link_address_reply(struct xdprxss_mst *xdpmst,
+					     struct xdprxss_sideband_msg_rx *reply_msg)
+{
+	u8 header[4] = { XLNX_DPRX_MST_NON_BROADCAST, XLNX_DPRX_MST_END_PATH, 0, 0 };
+	struct xdprx_mst_config *rx_topology = &xdpmst->rx_topology;
+	struct xdprx_mst_link_address_reply_port *port;
+	u8 idx = 0, i, guid_idx;
+
+	xdprxss_build_mst_header(reply_msg, header);
+
+	reply_msg->data.msg[idx++] = XLNX_DPRX_SBMSG_LINK_ADDRESS;
+
+	for (guid_idx = 0; guid_idx < XLNX_DPRX_GUID_NBYTES; guid_idx++)
+		reply_msg->data.msg[idx++] = rx_topology->link_address.guid[guid_idx];
+
+	reply_msg->data.msg[idx++] = rx_topology->link_address.num_of_ports;
+
+	for (i = 0; i < XLNX_DPRX_MAX_MST_PORTS; i++) {
+		if (!rx_topology->mst_port[i].enable)
+			continue;
+		port = &rx_topology->link_address.ports[i];
+
+		reply_msg->data.msg[idx] = (port->input_port << 7) |
+					   ((port->peer_device_type & 0x07) << 4) |
+					   (port->port_number & 0x0f);
+		idx++;
+
+		reply_msg->data.msg[idx] = (port->msg_cap_status << 7) |
+					   ((port->device_plug_status & 0x01) << 6);
+
+		if (port->input_port) {
+			idx++;
+			continue;
+		}
+
+		reply_msg->data.msg[idx++] |= ((port->legacy_device_plug_status & 0x01) << 5);
+		reply_msg->data.msg[idx++] = port->dpcd_rev;
+
+		for (guid_idx = 0; guid_idx < XLNX_DPRX_GUID_NBYTES; guid_idx++)
+			reply_msg->data.msg[idx++] = port->peer_guid[guid_idx];
+
+		reply_msg->data.msg[idx] = (port->num_sdp_streams << 4) |
+					   (port->num_sdp_stream_sinks & 0x0f);
+		idx++;
+	}
+	reply_msg->data.len = idx;
+}
+
+/**
+ * xdprxss_dp_mst_process_down_req() - Decode DOWN_REQ and emit opcode reply
+ * @xdpmst: MST context
+ *
+ * Parses one received sideband request, dispatches the corresponding reply
+ * builder (LINK_ADDRESS, ENUM_PATH_RESOURCES, ALLOCATE_PAYLOAD, etc.) and
+ * transmits the assembled DOWN_REP message.
+ *
+ * Return: 0 on success, negative errno on parse or transmit failure.
+ */
+static int xdprxss_dp_mst_process_down_req(struct xdprxss_mst *xdpmst)
+{
+	struct xdprxss_sideband_msg_rx reply_msg = { 0 };
+	u8 opcode;
+	int ret;
+
+	ret = xdprxss_dp_mst_read_down_req(xdpmst, &reply_msg);
+	if (ret) {
+		dev_err(xdpmst->dev, "MST: failed to parse DOWN_REQ (%d)\n", ret);
+		return ret;
+	}
+
+	opcode = reply_msg.data.msg[0];
+
+	switch (opcode) {
+	case XLNX_DPRX_SBMSG_CLEAR_PAYLOAD_ID_TABLE:
+		xdprxss_build_clear_payload_reply(&reply_msg);
+		break;
+	case XLNX_DPRX_SBMSG_LINK_ADDRESS:
+		xdprxss_build_link_address_reply(xdpmst, &reply_msg);
+		break;
+	case XLNX_DPRX_SBMSG_REMOTE_I2C_READ:
+		xdprxss_build_remote_iic_read_reply(xdpmst, &reply_msg);
+		break;
+	case XLNX_DPRX_SBMSG_REMOTE_DPCD_READ:
+		xdprxss_build_remote_dpcd_read_reply(xdpmst, &reply_msg);
+		break;
+	case XLNX_DPRX_SBMSG_ENUM_PATH_RESOURCES:
+		xdprxss_build_enum_path_resource_reply(xdpmst, &reply_msg);
+		break;
+	case XLNX_DPRX_SBMSG_ALLOCATE_PAYLOAD:
+		xdprxss_build_allocate_payload_reply(xdpmst, &reply_msg);
+		break;
+	default:
+		xdprxss_build_nack_reply(xdpmst, &reply_msg);
+		break;
+	}
+
+	ret = xdprxss_dp_process_sideband_msg(xdpmst, &reply_msg);
+	if (ret)
+		dev_err(xdpmst->dev, "MST: failed DOWN_REP opcode=0x%02x (%d)\n",
+			opcode, ret);
+
+	return ret;
+}
+
+/**
+ * xdprxss_dp_mst_work() - Worker that handles one MST DOWN_REQ message
+ * @work: embedded work item
+ */
+static void xdprxss_dp_mst_work(struct work_struct *work)
+{
+	struct xdprxss_mst *xdpmst = container_of(work, struct xdprxss_mst, mst_work);
+
+	mutex_lock(&xdpmst->dprx_mst_mutex);
+	xdprxss_dp_mst_process_down_req(xdpmst);
+	mutex_unlock(&xdpmst->dprx_mst_mutex);
+}
