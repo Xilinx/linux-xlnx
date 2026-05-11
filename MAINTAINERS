@@ -28287,6 +28287,8 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-dprxss.yaml
 F:	drivers/media/platform/xilinx/xilinx-dprxss-core.c
 F:	drivers/media/platform/xilinx/xilinx-dprxss-hw.h
+F:	drivers/media/platform/xilinx/xilinx-dprxss-mst.c
+F:	drivers/media/platform/xilinx/xilinx-dprxss-mst.h
 
 XILINX DISPLAYPORT TX DRIVER
 M:	Lakshmi Prasanna Eachuri <lakshmi.prasanna.eachuri@amd.com>
