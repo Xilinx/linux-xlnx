@@ -1224,3 +1224,12 @@ static void xdprxss_dp_mst_work(struct work_struct *work)
 	xdprxss_dp_mst_process_down_req(xdpmst);
 	mutex_unlock(&xdpmst->dprx_mst_mutex);
 }
+
+/**
+ * xdprxss_dp_mst_handle_down_req() - Schedule sideband request handling
+ * @xdpmst: MST context
+ */
+void xdprxss_dp_mst_handle_down_req(struct xdprxss_mst *xdpmst)
+{
+	schedule_work(&xdpmst->mst_work);
+}
