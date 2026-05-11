@@ -194,6 +194,7 @@ struct vidphy_cfg {
  * @vidphy_prvdata: Pointer to video phy private data structure
  * @tp1_work: training pattern 1 worker
  * @unplug_work: Unplug worker
+ * @powerchange_work: Delayed work for DP power state change handling
  * @lane_set_work: lane set worker
  * @link_qual_work: link qual worker
  * @lock: Lock is used for width, height, framerate variables
@@ -217,6 +218,7 @@ struct vidphy_cfg {
  * @valid_stream: To indicate valid video for all streams
  * @streaming: Flag for storing streaming state
  * @ltstate: Flag for storing link training state
+ * @last_powered_down: Tracks whether link was last in power-down state
  * @hdcp2x_timer_irq: HDCP2X timer IRQ variable
  * This structure contains the device driver related parameters
  */
