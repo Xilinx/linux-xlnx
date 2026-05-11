@@ -287,6 +287,32 @@ the second byte and Y'\ :sub:`7-0` in the third byte.
     - The padding bits contain undefined values that must be ignored by all
       applications and drivers.
 
+The next table lists the packed YUV 4:4:4 formats with 10-bits per component.
+They are named based on the order of the Y, Cb and Cr components as seen in
+32-bit word, followed by bit depth and then stored in little endian format.
+X is padding bits.
+
+.. flat-table:: Packed YUV Image Formats (10bpc)
+    :header-rows: 1
+    :stub-columns: 0
+
+    * - Identifier
+      - Code
+      - Byte 0
+      - Byte 1
+      - Byte 2
+      - Byte 3
+
+    * .. _V4L2-PIX-FMT-XVUY10:
+
+      - ``V4L2_PIX_FMT_XVUY10``
+      - 'X410'
+
+      - Y'\ :sub:`7-0`
+      - Cb\ :sub:`5-0` Y'\ :sub:`9-8`
+      - Cr\ :sub:`3-0` Cb\ :sub:`9-6`
+      - X\ :sub:`1-0` Cr\ :sub:`9-4`
+
 The next table lists the packed YUV 4:4:4 formats with 12 bits per component.
 Expand the bits per component to 16 bits, data in the high bits, zeros in the low bits,
 arranged in little endian order, storing 1 pixel in 6 bytes.
