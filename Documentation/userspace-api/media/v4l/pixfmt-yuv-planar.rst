@@ -326,6 +326,27 @@ All components are stored with the same number of bits per component.
       - Cb, Cr
       - No
       - Linear
+    * - V4L2_PIX_FMT_YUV444P
+      - '444P'
+      - 8
+      - 4:4:4
+      - Cb, Cr
+      - Yes
+      - Linear
+    * - V4L2_PIX_FMT_X403
+      - 'X403'
+      - 10
+      - 4:4:4
+      - Cb, Cr
+      - Yes
+      - Linear
+    * - V4L2_PIX_FMT_X423
+      - 'X423'
+      - 12
+      - 4:4:4
+      - Cb, Cr
+      - Yes
+      - Linear
 
 .. raw:: latex
 
@@ -2148,13 +2169,79 @@ as the luma plane.
 
 .. _V4L2-PIX-FMT-YUV444M:
 .. _V4L2-PIX-FMT-YVU444M:
+.. _V4L2-PIX-FMT-YUV444P:
 
-YUV444M and YVU444M
--------------------
+YUV444P, YUV444M and YVU444M
+----------------------------
 
 Planar YUV 4:4:4 formats. The chroma planes are no subsampled. Chroma lines
 contain the same number of pixels and bytes of the luma lines, and the chroma
 planes contain the same number of lines as the luma plane.
+
+.. flat-table:: Sample 4x4 YUV444P Image
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Y'\ :sub:`00`
+      - Y'\ :sub:`01`
+      - Y'\ :sub:`02`
+      - Y'\ :sub:`03`
+    * - start + 4:
+      - Y'\ :sub:`10`
+      - Y'\ :sub:`11`
+      - Y'\ :sub:`12`
+      - Y'\ :sub:`13`
+    * - start + 8:
+      - Y'\ :sub:`20`
+      - Y'\ :sub:`21`
+      - Y'\ :sub:`22`
+      - Y'\ :sub:`23`
+    * - start + 12:
+      - Y'\ :sub:`30`
+      - Y'\ :sub:`31`
+      - Y'\ :sub:`32`
+      - Y'\ :sub:`33`
+    * - start + 16:
+      - Cb\ :sub:`00`
+      - Cb\ :sub:`01`
+      - Cb\ :sub:`02`
+      - Cb\ :sub:`03`
+    * - start + 20:
+      - Cb\ :sub:`10`
+      - Cb\ :sub:`11`
+      - Cb\ :sub:`12`
+      - Cb\ :sub:`13`
+    * - start + 24:
+      - Cb\ :sub:`20`
+      - Cb\ :sub:`21`
+      - Cb\ :sub:`22`
+      - Cb\ :sub:`23`
+    * - start + 28:
+      - Cb\ :sub:`30`
+      - Cb\ :sub:`31`
+      - Cb\ :sub:`32`
+      - Cb\ :sub:`33`
+    * - start + 32:
+      - Cr\ :sub:`00`
+      - Cr\ :sub:`01`
+      - Cr\ :sub:`02`
+      - Cr\ :sub:`03`
+    * - start + 36:
+      - Cr\ :sub:`10`
+      - Cr\ :sub:`11`
+      - Cr\ :sub:`12`
+      - Cr\ :sub:`13`
+    * - start + 40:
+      - Cr\ :sub:`20`
+      - Cr\ :sub:`21`
+      - Cr\ :sub:`22`
+      - Cr\ :sub:`23`
+    * - start + 44:
+      - Cr\ :sub:`30`
+      - Cr\ :sub:`31`
+      - Cr\ :sub:`32`
+      - Cr\ :sub:`33`
 
 .. flat-table:: Sample 4x4 YUV444M Image
     :header-rows:  0
@@ -2222,3 +2309,112 @@ planes contain the same number of lines as the luma plane.
       - Cr\ :sub:`31`
       - Cr\ :sub:`32`
       - Cr\ :sub:`33`
+
+.. _V4L2-PIX-FMT-X403:
+
+X403
+----
+
+Planar YUV 4:4:4 format of bit depth 10. The chroma planes are no subsampled.
+Chroma lines contain the same number of pixels and bytes of the luma lines,
+and the chroma planes contain the same number of lines as the luma plane.
+Pixel are stored using 10-bit components with 2-bits padding between 3 components.
+A group of 3 components are stored over 4 bytes in little endian order. Y plane :- x:Y2:Y1:Y0 2:10:10:10
+
+.. flat-table:: Sample 6x2 X403 Image (1 byte per cell)
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Y'\ :sub:`00[7:0]`
+      - Y'\ :sub:`01[5:0]`\ Y'\ :sub:`00[9:8]`
+      - Y'\ :sub:`02[3:0]`\ Y'\ :sub:`01[9:6]`
+      - X\ :sub:`[1:0]`\ Y'\ :sub:`02[9:4]`
+      - Y'\ :sub:`03[7:0]`
+      - Y'\ :sub:`04[5:0]`\ Y'\ :sub:`03[9:8]`
+      - Y'\ :sub:`05[3:0]`\ Y'\ :sub:`04[9:6]`
+      - X\ :sub:`[1:0]`\ Y'\ :sub:`05[9:4]`
+    * - start + 8:
+      - Y'\ :sub:`10[7:0]`
+      - Y'\ :sub:`11[5:0]`\ Y'\ :sub:`10[9:8]`
+      - Y'\ :sub:`12[3:0]`\ Y'\ :sub:`11[9:6]`
+      - X\ :sub:`[1:0]`\ Y'\ :sub:`12[9:4]`
+      - Y'\ :sub:`13[7:0]`
+      - Y'\ :sub:`14[5:0]`\ Y'\ :sub:`13[9:8]`
+      - Y'\ :sub:`15[3:0]`\ Y'\ :sub:`14[9:6]`
+      - X\ :sub:`[1:0]`\ Y'\ :sub:`15[9:4]`
+    * - start + 12:
+      - Cb'\ :sub:`00[7:0]`
+      - Cb'\ :sub:`01[5:0]`\ Cb'\ :sub:`00[9:8]`
+      - Cb'\ :sub:`02[3:0]`\ Cb'\ :sub:`01[9:6]`
+      - X\ :sub:`[1:0]`\ Cb'\ :sub:`02[9:4]`
+      - Cb'\ :sub:`03[7:0]`
+      - Cb'\ :sub:`04[5:0]`\ Cb'\ :sub:`03[9:8]`
+      - Cb'\ :sub:`05[3:0]`\ Cb'\ :sub:`04[9:6]`
+      - X\ :sub:`[1:0]`\ Cb'\ :sub:`05[9:4]`
+    * - start + 16:
+      - Cb'\ :sub:`10[7:0]`
+      - Cb'\ :sub:`11[5:0]`\ Cb'\ :sub:`10[9:8]`
+      - Cb'\ :sub:`12[3:0]`\ Cb'\ :sub:`11[9:6]`
+      - X\ :sub:`[1:0]`\ Cb'\ :sub:`12[9:4]`
+      - Cb'\ :sub:`13[7:0]`
+      - Cb'\ :sub:`14[5:0]`\ Cb'\ :sub:`13[9:8]`
+      - Cb'\ :sub:`15[3:0]`\ Cb'\ :sub:`14[9:6]`
+      - X\ :sub:`[1:0]`\ Cb'\ :sub:`15[9:4]`
+    * - start + 20:
+      - Cr'\ :sub:`00[7:0]`
+      - Cr'\ :sub:`01[5:0]`\ Cr'\ :sub:`00[9:8]`
+      - Cr'\ :sub:`02[3:0]`\ Cr'\ :sub:`01[9:6]`
+      - X\ :sub:`[1:0]`\ Cr'\ :sub:`02[9:4]`
+      - Cr'\ :sub:`03[7:0]`
+      - Cr'\ :sub:`04[5:0]`\ Cr'\ :sub:`03[9:8]`
+      - Cr'\ :sub:`05[3:0]`\ Cr'\ :sub:`04[9:6]`
+      - X\ :sub:`[1:0]`\ Cr'\ :sub:`05[9:4]`
+    * - start + 24:
+      - Cr'\ :sub:`10[7:0]`
+      - Cr'\ :sub:`11[5:0]`\ Cr'\ :sub:`10[9:8]`
+      - Cr'\ :sub:`12[3:0]`\ Cr'\ :sub:`11[9:6]`
+      - X\ :sub:`[1:0]`\ Cr'\ :sub:`12[9:4]`
+      - Cr'\ :sub:`13[7:0]`
+      - Cr'\ :sub:`14[5:0]`\ Cr'\ :sub:`13[9:8]`
+      - Cr'\ :sub:`15[3:0]`\ Cr'\ :sub:`14[9:6]`
+      - X\ :sub:`[1:0]`\ Cr'\ :sub:`15[9:4]`
+
+.. _V4L2-PIX-FMT-X423:
+
+X423
+----
+
+Planar YUV 4:4:4 format of bit depth 12. The chroma planes are no subsampled.
+Chroma lines contain the same number of pixels and bytes of the luma lines,
+and the chroma planes contain the same number of lines as the luma plane.
+A group of 2 components are stored over 3 bytes in little endian order. Y plane :- [23:12] Y1 [11:0] Y0
+
+.. flat-table:: Sample 2x2 X423 Image (1 byte per cell)
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Y'\ :sub:`00[7:0]`
+      - Y'\ :sub:`01[3:0]`\ Y'\ :sub:`00[11:8]`
+      - Y'\ :sub:`01[11:4]`
+    * - start + 3:
+      - Y'\ :sub:`10[7:0]`
+      - Y'\ :sub:`11[3:0]`\ Y'\ :sub:`10[11:8]`
+      - Y'\ :sub:`11[11:4]`
+    * - start + 6:
+      - Cb\ :sub:`00[7:0]`
+      - Cb\ :sub:`01[3:0]`\ Cb\ :sub:`00[11:8]`
+      - Cb\ :sub:`01[11:4]`
+    * - start + 9:
+      - Cb\ :sub:`10[7:0]`
+      - Cb\ :sub:`11[3:0]`\ Cb\ :sub:`10[11:8]`
+      - Cb\ :sub:`11[11:4]`
+    * - start + 12:
+      - Cr\ :sub:`00[7:0]`
+      - Cr\ :sub:`01[3:0]`\ Cr\ :sub:`00[11:8]`
+      - Cr\ :sub:`01[11:4]`
+    * - start + 15:
+      - Cr\ :sub:`10[7:0]`
+      - Cr\ :sub:`11[3:0]`\ Cr\ :sub:`10[11:8]`
+      - Cr\ :sub:`11[11:4]`
