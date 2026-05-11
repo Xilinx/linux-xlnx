@@ -24,6 +24,8 @@
  * DOWN_REP write trigger to avoid sporadic sideband handshaking loss.
  */
 #define XDPRX_SBMSG_TX_DELAY_MS		20
+#define XLNX_DPRX_DPCD_REPLY_HDR_LEN	4
+#define XLNX_DPRX_I2C_REPLY_HDR_LEN	3
 
 /*
  * Reference EDID used to answer REMOTE_I2C_READ transactions.
@@ -944,4 +946,142 @@ xdprxss_build_allocate_payload_reply(struct xdprxss_mst *xdpmst,
 	reply_msg->data.msg[idx++] = pbn & 0xff;
 
 	reply_msg->data.len = idx;
+}
+
+/**
+ * xdprxss_build_remote_dpcd_read_reply() - Build REMOTE_DPCD_READ reply
+ * @xdpmst: MST context
+ * @reply_msg: reply container
+ *
+ * Reads DPCD bytes for the requested port and address range from the local
+ * dpcd[] table and assembles a REMOTE_DPCD_READ reply message.
+ */
+static void
+xdprxss_build_remote_dpcd_read_reply(struct xdprxss_mst *xdpmst,
+				     struct xdprxss_sideband_msg_rx *reply_msg)
+{
+	struct xlnx_dprx_dpcd_map *dpcd;
+	u32 dpcd_end_address;
+	u32 dpcd_rd_address;
+	u8 port_number;
+	u32 dpcd_idx;
+	u8 num_bytes;
+	u16 idx = 0;
+	u8 index;
+
+	port_number = reply_msg->data.msg[1] >> 4;
+	if (port_number >= XLNX_DPRX_MAX_MST_PORTS) {
+		xdprxss_build_nack_reply(xdpmst, reply_msg);
+		return;
+	}
+	dpcd_rd_address = ((reply_msg->data.msg[1] & 0x0f) << 16) |
+			(reply_msg->data.msg[2] << 8) | reply_msg->data.msg[3];
+	num_bytes = reply_msg->data.msg[4];
+	if (num_bytes > XLNX_DPRX_MAX_SBMSG_BODY - XLNX_DPRX_DPCD_REPLY_HDR_LEN)
+		num_bytes = XLNX_DPRX_MAX_SBMSG_BODY - XLNX_DPRX_DPCD_REPLY_HDR_LEN;
+	reply_msg->hdr.link_count_remaining = 0;
+	reply_msg->hdr.broadcast_msg = 0;
+	reply_msg->hdr.path_msg = 0;
+	reply_msg->hdr_len = XLNX_DPRX_MST_HEADER_LENGTH;
+
+	reply_msg->data.msg[idx++] = XLNX_DPRX_SBMSG_REMOTE_DPCD_READ;
+	reply_msg->data.msg[idx++] = port_number;
+	reply_msg->data.msg[idx++] = num_bytes;
+
+	dpcd = &xdpmst->rx_topology.mst_port[port_number].dpcd;
+	if (!dpcd->num_bytes) {
+		reply_msg->data.len = idx;
+		return;
+	}
+	dpcd_end_address = dpcd->start_address + dpcd->num_bytes - 1;
+
+	for (index = 0; index < num_bytes; index++) {
+		dpcd_idx = dpcd_rd_address + index;
+		if (dpcd_idx >= dpcd->start_address && dpcd_idx <= dpcd_end_address)
+			reply_msg->data.msg[idx++] = dpcd->bytes[dpcd_idx - dpcd->start_address];
+		else
+			reply_msg->data.msg[idx++] = 0x00;
+	}
+
+	reply_msg->data.len = idx;
+}
+
+/**
+ * xdprxss_build_remote_iic_read_reply() - Build REMOTE_I2C_READ reply
+ * @xdpmst: MST context
+ * @reply_msg: reply container
+ *
+ * Handles a REMOTE_I2C_READ sideband request by scanning the per-port I2C
+ * map for each write transaction address, recording the write offset, and
+ * then copying the matching cached response bytes into the reply payload.
+ */
+static void
+xdprxss_build_remote_iic_read_reply(struct xdprxss_mst *xdpmst,
+				    struct xdprxss_sideband_msg_rx *reply_msg)
+{
+	struct xlnx_dprx_i2c_map *i2c_write;
+	u8 write_i2c_device_id;
+	u8 read_i2c_device_id;
+	u8 number_bytes_write;
+	u8 number_bytes_read;
+	u8 num_transactions;
+	u8 port_number;
+	u16 idx;
+	u8 i;
+
+	reply_msg->hdr.link_count_remaining = 0;
+	reply_msg->hdr.broadcast_msg = 0;
+	reply_msg->hdr.path_msg = 0;
+	reply_msg->hdr_len = XLNX_DPRX_MST_HEADER_LENGTH;
+
+	num_transactions = reply_msg->data.msg[1] & 0x03;
+
+	idx = 1;
+	port_number = reply_msg->data.msg[idx++] >> 4;
+	if (port_number >= XLNX_DPRX_MAX_MST_PORTS) {
+		xdprxss_build_nack_reply(xdpmst, reply_msg);
+		return;
+	}
+
+	for (i = 0; i < num_transactions; i++) {
+		write_i2c_device_id = reply_msg->data.msg[idx++] & 0x7f;
+		number_bytes_write = reply_msg->data.msg[idx++];
+
+		if (idx + number_bytes_write + 1 > reply_msg->data.len) {
+			xdprxss_build_nack_reply(xdpmst, reply_msg);
+			return;
+		}
+
+		i2c_write = xget_i2c_device(xdpmst, port_number, write_i2c_device_id);
+		if (!i2c_write) {
+			xdprxss_build_nack_reply(xdpmst, reply_msg);
+			return;
+		}
+
+		i2c_write->wdata = reply_msg->data.msg[idx];
+		idx += number_bytes_write + 1;
+	}
+
+	read_i2c_device_id = reply_msg->data.msg[idx++];
+	number_bytes_read = reply_msg->data.msg[idx];
+	if (number_bytes_read > XLNX_DPRX_MAX_SBMSG_BODY - XLNX_DPRX_I2C_REPLY_HDR_LEN)
+		number_bytes_read = XLNX_DPRX_MAX_SBMSG_BODY - XLNX_DPRX_I2C_REPLY_HDR_LEN;
+
+	i2c_write = xget_i2c_device(xdpmst, port_number, read_i2c_device_id);
+	if (!i2c_write) {
+		xdprxss_build_nack_reply(xdpmst, reply_msg);
+		return;
+	}
+
+	reply_msg->data.msg[0] = XLNX_DPRX_SBMSG_REMOTE_I2C_READ;
+	reply_msg->data.msg[1] = port_number;
+	reply_msg->data.msg[2] = number_bytes_read;
+	for (i = 0; i < number_bytes_read; i++) {
+		if ((i + i2c_write->wdata) < i2c_write->num_bytes)
+			reply_msg->data.msg[3 + i] = i2c_write->bytes[i + i2c_write->wdata];
+		else
+			reply_msg->data.msg[3 + i] = 0x00;
+	}
+
+	reply_msg->data.len = XLNX_DPRX_I2C_REPLY_HDR_LEN + i;
 }
