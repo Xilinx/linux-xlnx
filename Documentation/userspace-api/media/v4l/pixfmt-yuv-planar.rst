@@ -249,6 +249,27 @@ All components are stored with the same number of bits per component.
       - Cb, Cr
       - Yes
       - Linear
+    * - V4L2_PIX_FMT_X016
+      - 'X016'
+      - 16
+      - 4:2:0
+      - Cb, Cr
+      - Yes
+      - Linear
+    * - V4L2_PIX_FMT_X216
+      - 'X216'
+      - 16
+      - 4:2:2
+      - Cb, Cr
+      - Yes
+      - Linear
+    * - V4L2_PIX_FMT_X416
+      - 'X416'
+      - 16
+      - 4:4:4
+      - Cb, Cr
+      - Yes
+      - Linear
 
 .. raw:: latex
 
@@ -1243,6 +1264,110 @@ UV Plane :- x:Cb2:Cr2:Cb1:x:Cr1:Cb0:Cr0 4:12:12:12:4:12:12:12
       - Cb\ :sub:`12[11:4]`
       - Cr\ :sub:`12[7:0]`
       - X\ :sub:`[3:0]`\ Cr\ :sub:`12[11:8]`
+
+.. _V4L2-PIX-FMT-X016:
+
+X016
+----
+
+X016 is like NV12 with 16-bits per component.
+2 Bytes combinedly stores data of one component, arranged in little endian order.
+
+.. flat-table:: Sample 2x2 X016 Image
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Y'\ :sub:`00[7-0]`
+      - Y'\ :sub:`00[15-8]`
+      - Y'\ :sub:`01[7-0]`
+      - Y'\ :sub:`01[15-8]`
+    * - start + 4:
+      - Y'\ :sub:`10[7-0]`
+      - Y'\ :sub:`10[15-8]`
+      - Y'\ :sub:`11[7-0]`
+      - Y'\ :sub:`11[15-8]`
+    * - start + 8:
+      - Cb'\ :sub:`00[7-0]`
+      - Cb'\ :sub:`00[15-8]`
+      - Cr'\ :sub:`00[7-0]`
+      - Cr'\ :sub:`00[15-8]`
+
+.. _V4L2-PIX-FMT-X216:
+
+X216
+----
+
+X216 is like NV16 with 16-bits per component.
+2 Bytes combinedly stores data of one component, arranged in little endian order.
+
+.. flat-table:: Sample 2x2 X216 Image
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Y'\ :sub:`00[7-0]`
+      - Y'\ :sub:`00[15-8]`
+      - Y'\ :sub:`01[7-0]`
+      - Y'\ :sub:`01[15-8]`
+    * - start + 4:
+      - Y'\ :sub:`10[7-0]`
+      - Y'\ :sub:`10[15-8]`
+      - Y'\ :sub:`11[7-0]`
+      - Y'\ :sub:`11[15-8]`
+    * - start + 8:
+      - Cb'\ :sub:`00[7-0]`
+      - Cb'\ :sub:`00[15-8]`
+      - Cr'\ :sub:`00[7-0]`
+      - Cr'\ :sub:`00[15-8]`
+    * - start + 12:
+      - Cb'\ :sub:`10[7-0]`
+      - Cb'\ :sub:`10[15-8]`
+      - Cr'\ :sub:`10[7-0]`
+      - Cr'\ :sub:`10[15-8]`
+
+.. _V4L2-PIX-FMT-X416:
+
+X416
+----
+
+X416 is like NV24 with 16-bits per component.
+2 Bytes combinedly stores data of one component, arranged in little endian order.
+
+.. flat-table:: Sample 2x2 X416 Image
+    :header-rows:  0
+    :stub-columns: 0
+
+    * - start + 0:
+      - Y'\ :sub:`00[7-0]`
+      - Y'\ :sub:`00[15-8]`
+      - Y'\ :sub:`01[7-0]`
+      - Y'\ :sub:`01[15-8]`
+    * - start + 4:
+      - Y'\ :sub:`10[7-0]`
+      - Y'\ :sub:`10[15-8]`
+      - Y'\ :sub:`11[7-0]`
+      - Y'\ :sub:`11[15-8]`
+    * - start + 8:
+      - Cb'\ :sub:`00[7-0]`
+      - Cb'\ :sub:`00[15-8]`
+      - Cr'\ :sub:`00[7-0]`
+      - Cr'\ :sub:`00[15-8]`
+    * - start + 12:
+      - Cb'\ :sub:`01[7-0]`
+      - Cb'\ :sub:`01[15-8]`
+      - Cr'\ :sub:`01[7-0]`
+      - Cr'\ :sub:`01[15-8]`
+    * - start + 16:
+      - Cb'\ :sub:`10[7-0]`
+      - Cb'\ :sub:`10[15-8]`
+      - Cr'\ :sub:`10[7-0]`
+      - Cr'\ :sub:`10[15-8]`
+    * - start + 20:
+      - Cb'\ :sub:`11[7-0]`
+      - Cb'\ :sub:`11[15-8]`
+      - Cr'\ :sub:`11[7-0]`
+      - Cr'\ :sub:`11[15-8]`
 
 Fully Planar YUV Formats
 ========================
