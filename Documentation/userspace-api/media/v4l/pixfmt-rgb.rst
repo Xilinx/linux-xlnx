@@ -766,11 +766,16 @@ nomenclature that instead use the order of components as seen in a 24- or
 10 Bits Per Component
 =====================
 
-These formats store a 30-bit RGB triplet with an optional 2 bit alpha in four
+These formats store a 30-bit RGB triplet with an optional 2-bits alpha/padding in four
 bytes. They are named based on the order of the RGB components as seen in a
 32-bit word, which is then stored in memory in little endian byte order
 (unless otherwise noted by the presence of bit 31 in the 4CC value), and on the
 number of bits for each component.
+
+XBGR30 is a packed RGB format storing a 32-bit pixel in four bytes, with
+10-bits per color component and 2-bits of padding. The components are
+arranged in XBGR order within the pixel, from most significant to least
+significant bits.
 
 .. raw:: latex
 
@@ -948,6 +953,46 @@ number of bits for each component.
       - r\ :sub:`6`
       - r\ :sub:`5`
       - r\ :sub:`4`
+    * .. _V4L2-PIX-FMT-XBGR30:
+
+      - ``V4L2_PIX_FMT_XBGR30``
+      - 'XR30'
+
+      - r\ :sub:`7`
+      - r\ :sub:`6`
+      - r\ :sub:`5`
+      - r\ :sub:`4`
+      - r\ :sub:`3`
+      - r\ :sub:`2`
+      - r\ :sub:`1`
+      - r\ :sub:`0`
+
+      - g\ :sub:`5`
+      - g\ :sub:`4`
+      - g\ :sub:`3`
+      - g\ :sub:`2`
+      - g\ :sub:`1`
+      - g\ :sub:`0`
+      - r\ :sub:`9`
+      - r\ :sub:`8`
+
+      - b\ :sub:`3`
+      - b\ :sub:`2`
+      - b\ :sub:`1`
+      - b\ :sub:`0`
+      - g\ :sub:`9`
+      - g\ :sub:`8`
+      - g\ :sub:`7`
+      - g\ :sub:`6`
+
+      - x\ :sub:`1`
+      - x\ :sub:`0`
+      - b\ :sub:`9`
+      - b\ :sub:`8`
+      - b\ :sub:`7`
+      - b\ :sub:`6`
+      - b\ :sub:`5`
+      - b\ :sub:`4`
 
 .. raw:: latex
 
@@ -959,6 +1004,12 @@ number of bits for each component.
 These formats store an RGB triplet in six or eight bytes, with 12 bits per component.
 Expand the bits per component to 16 bits, data in the high bits, zeros in the low bits,
 arranged in little endian order.
+
+XBGR40 is a packed RGB format storing a 40-bit pixel in five bytes, with 12-bits per
+color component and 4-bits of padding. The components are arranged in XBGR order within
+the pixel, from most significant to least significant bits. The pixel is stored in
+memory in little endian byte order. Unlike the 16-bit expanded formats, the components
+are tightly packed without padding to 16-bit boundaries.
 
 .. raw:: latex
 
@@ -991,6 +1042,15 @@ arranged in little endian order.
       - G\ :sub:`15-4`
       - R\ :sub:`15-4`
       - A\ :sub:`15-4`
+    * .. _V4L2-PIX-FMT-XBGR40:
+
+      - ``V4L2_PIX_FMT_XBGR40``
+      - 'RX40'
+
+      - G\ :sub:`3-0`, R\ :sub:`11-8`; R\ :sub:`7-0`
+      - B\ :sub:`7-0`; G\ :sub:`11-4`
+      - X\ :sub:`3-0`; B\ :sub:`11-8`
+      -
 
 .. raw:: latex
 
