@@ -2445,9 +2445,9 @@ static int dprx_register_hdcp2x_dev(struct xdprxss_state *xdprxss, struct platfo
 
 	xdprxss->tmr_config = xhdcp2x_timer_init(&pdev->dev,
 						 xdprxss->dp_base + XDPRX_HDCP_TIMER_OFFSET);
-	if (IS_ERR(xdprxss->hdcp2x)) {
+	if (IS_ERR(xdprxss->tmr_config)) {
 		dev_err(xdprxss->dev, "failed to initialize hdcp timer\n");
-		return PTR_ERR(xdprxss->hdcp2x);
+		return PTR_ERR(xdprxss->tmr_config);
 	}
 
 	xhdcp2x_timer_attach(xdprxss->hdcp2x, xdprxss->tmr_config);
