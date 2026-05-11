@@ -871,3 +871,77 @@ xdprxss_build_nack_reply(struct xdprxss_mst *xdpmst,
 
 	reply_msg->data.len = idx;
 }
+
+/**
+ * xdprxss_build_enum_path_resource_reply() - Build ENUM_PATH_RESOURCES reply
+ * @xdpmst: MST context
+ * @reply_msg: reply container
+ */
+static void
+xdprxss_build_enum_path_resource_reply(struct xdprxss_mst *xdpmst,
+				       struct xdprxss_sideband_msg_rx *reply_msg)
+{
+	u8 header[4] = { XLNX_DPRX_MST_NON_BROADCAST, XLNX_DPRX_MST_END_PATH, 0, 0 };
+	struct xlnx_dprx_mst_port *port;
+	u8 port_number;
+	u8 idx = 0;
+
+	xdprxss_build_mst_header(reply_msg, header);
+
+	port_number = reply_msg->data.msg[1] >> 4;
+	if (port_number >= XLNX_DPRX_MAX_MST_PORTS) {
+		xdprxss_build_nack_reply(xdpmst, reply_msg);
+		return;
+	}
+
+	port = &xdpmst->rx_topology.mst_port[port_number];
+	reply_msg->data.msg[idx++] = XLNX_DPRX_SBMSG_ENUM_PATH_RESOURCES;
+	reply_msg->data.msg[idx++] = port_number << 4;
+
+	if (!port->fullpbn || !port->availpbn) {
+		port->fullpbn = XLNX_DPRX_MST_DEFAULT_PBN;
+		port->availpbn = XLNX_DPRX_MST_DEFAULT_PBN;
+	}
+
+	reply_msg->data.msg[idx++] = port->fullpbn >> 8;
+	reply_msg->data.msg[idx++] = port->fullpbn & 0xff;
+	reply_msg->data.msg[idx++] = port->availpbn >> 8;
+	reply_msg->data.msg[idx++] = port->availpbn & 0xff;
+
+	reply_msg->data.len = idx;
+}
+
+/**
+ * xdprxss_build_allocate_payload_reply() - Build ALLOCATE_PAYLOAD reply
+ * @xdpmst: MST context
+ * @reply_msg: reply container
+ */
+static void
+xdprxss_build_allocate_payload_reply(struct xdprxss_mst *xdpmst,
+				     struct xdprxss_sideband_msg_rx *reply_msg)
+{
+	u8 header[4] = { XLNX_DPRX_MST_NON_BROADCAST, XLNX_DPRX_MST_END_PATH, 0, 0 };
+	u8 port_number;
+	u8 idx = 0;
+	u8 vc_id;
+	u32 pbn;
+
+	xdprxss_build_mst_header(reply_msg, header);
+
+	port_number = reply_msg->data.msg[1] >> 4;
+	if (port_number >= XLNX_DPRX_MAX_MST_PORTS) {
+		xdprxss_build_nack_reply(xdpmst, reply_msg);
+		return;
+	}
+
+	reply_msg->data.msg[idx++] = XLNX_DPRX_SBMSG_ALLOCATE_PAYLOAD;
+	vc_id = reply_msg->data.msg[2];
+	pbn = (reply_msg->data.msg[3] << 8) | reply_msg->data.msg[4];
+
+	reply_msg->data.msg[idx++] = port_number << 4;
+	reply_msg->data.msg[idx++] = vc_id;
+	reply_msg->data.msg[idx++] = pbn >> 8;
+	reply_msg->data.msg[idx++] = pbn & 0xff;
+
+	reply_msg->data.len = idx;
+}
