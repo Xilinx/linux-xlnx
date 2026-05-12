@@ -1331,6 +1331,9 @@ static void v4l_fill_fmtdesc(struct v4l2_fmtdesc *fmt)
 	case V4L2_PIX_FMT_RGB_BF48P_4_3:	descr = "48-bit RGB-BF-16-16-16 plr 4x3"; break;
 	case V4L2_PIX_FMT_RGB_FP48P_4_3:	descr = "48-bit RGB-FP-16-16-16 plr 4x3"; break;
 	case V4L2_PIX_FMT_RGB_FP323232P_4_3:	descr = "96-bit RGB-FP-32-32-32 plr 4x3"; break;
+	case V4L2_PIX_FMT_GREY_BF16:	descr = "16-bit BF16 Greyscale"; break;
+	case V4L2_PIX_FMT_GREY_FP16:	descr = "16-bit FP16 Greyscale"; break;
+	case V4L2_PIX_FMT_GREY_FP32:	descr = "32-bit FP32 Greyscale"; break;
 	case V4L2_PIX_FMT_GREY:		descr = "8-bit Greyscale"; break;
 	case V4L2_PIX_FMT_Y4:		descr = "4-bit Greyscale"; break;
 	case V4L2_PIX_FMT_Y6:		descr = "6-bit Greyscale"; break;
