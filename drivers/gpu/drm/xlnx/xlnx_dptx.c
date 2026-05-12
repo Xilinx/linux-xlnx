@@ -3913,24 +3913,23 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 			return ret;
 
 		fnode = of_parse_phandle(pnode, "xlnx,xilinx-vfmc", 0);
-		if (!fnode) {
-			dev_err(&pdev->dev, "platform node not found\n");
-			of_node_put(fnode);
-		} else {
+		if (fnode) {
 			iface_pdev = of_find_device_by_node(fnode);
-			if (!iface_pdev) {
-				of_node_put(pnode);
-				return -ENODEV;
-			}
-
-			ptr = dev_get_drvdata(&iface_pdev->dev);
-			if (!ptr) {
-				dev_info(&pdev->dev,
-					 "platform device not found -EPROBE_DEFER\n");
-				of_node_put(fnode);
-				return -EPROBE_DEFER;
-			}
 			of_node_put(fnode);
+			if (!iface_pdev) {
+				ret = -ENODEV;
+				goto error_phy;
+			}
+			if (!dev_get_drvdata(&iface_pdev->dev)) {
+				put_device(&iface_pdev->dev);
+				ret = dev_err_probe(dp->dev, -EPROBE_DEFER,
+						    "vfmc driver not ready\n");
+				goto error_phy;
+			}
+			put_device(&iface_pdev->dev);
+		} else {
+			dev_dbg(&pdev->dev,
+				"xlnx,xilinx-vfmc not present, skipping\n");
 		}
 	}
 
