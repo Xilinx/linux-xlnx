@@ -3252,7 +3252,7 @@ static int xlnx_dp_bind(struct device *dev, struct device *master, void *data)
 	struct drm_encoder *encoder = &dp->encoder;
 	struct drm_connector *connector = &dp->connector;
 	struct drm_device *drm = data;
-	unsigned int ret;
+	int ret;
 
 	encoder->possible_crtcs = 1;
 	drm_encoder_init(drm, encoder, &xlnx_dp_encoder_funcs,
