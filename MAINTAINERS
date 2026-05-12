@@ -28629,6 +28629,13 @@ F:	Documentation/devicetree/bindings/media/xilinx/xlnx,video.txt
 F:	drivers/media/platform/xilinx/xilinx-dma*
 F:	drivers/media/platform/xilinx/xilinx-vip*
 
+XILINX VIDEO PREPROCESS DRIVER
+M:	Mounik Katikala <mounik.katikala@amd.com>
+L:	linux-media@vger.kernel.org
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,preprocess.yaml
+F:	drivers/media/platform/xilinx/xilinx-preprocess.c
+
 XILINX VERSAL EDAC DRIVER
 M:	Shubhrajyoti Datta <shubhrajyoti.datta@amd.com>
 M:	Sai Krishna Potthuri <sai.krishna.potthuri@amd.com>

@@ -96,6 +96,15 @@ config VIDEO_XILINX_ISP
 	  stream format as input and generates an RGB video output.
 	  Say M to modularize. Say N if unsure.
 
+config VIDEO_XILINX_PREPROCESS
+	tristate "Xilinx Video Preprocess"
+	depends on VIDEO_XILINX
+	help
+	  Driver for Xilinx Video Preprocess. This is a V4L sub-device
+	  based driver for Video Preprocess that takes a RGB video
+	  stream format as input and generates an RGB/RGBA video output.
+	  Say M to modularize. Say N if unsure.
+
 config VIDEO_XILINX_MULTISCALER
 	tristate "Xilinx Video Multiscaler"
 	depends on VIDEO_XILINX
