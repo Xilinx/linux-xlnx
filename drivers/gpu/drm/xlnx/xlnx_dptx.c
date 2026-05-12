@@ -3940,8 +3940,11 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 	}
 
 	dp->tx_vid_clk = devm_clk_get(&pdev->dev, "tx_vid_clk");
-	if (IS_ERR(dp->tx_vid_clk))
-		dev_err(dp->dev, "failed to get vid clk stream1\n");
+	if (IS_ERR(dp->tx_vid_clk)) {
+		ret = dev_err_probe(dp->dev, PTR_ERR(dp->tx_vid_clk),
+				    "failed to get tx_vid_clk\n");
+		goto error_phy;
+	}
 
 	platform_set_drvdata(pdev, dp);
 	xlnx_dp_write(dp->dp_base, XDPTX_ENABLE_REG, 0);
