@@ -597,6 +597,24 @@ struct v4l2_pix_format {
 #define V4L2_PIX_FMT_ABGR64_12   v4l2_fourcc('B', '4', '1', '2') /* 64  BGRA 12-bit per component */
 #define V4L2_PIX_FMT_XBGR30  v4l2_fourcc('X', 'R', '3', '0') /* 32  XBGR-2-10-10-10 */
 #define V4L2_PIX_FMT_XBGR40  v4l2_fourcc('R', 'X', '4', '0') /* 40  XBGR-4-12-12-12 */
+#define V4L2_PIX_FMT_RGB_BF48  v4l2_fourcc('B', 'B', '4', '8') /* 48  RGB-BF-16-16-16 */
+#define V4L2_PIX_FMT_RGB_FP48  v4l2_fourcc('B', 'F', '4', '8') /* 48  RGB-FP-16-16-16 */
+#define V4L2_PIX_FMT_RGB_FP323232  v4l2_fourcc('B', 'R', '9', '6') /* 96  RGB-32-32-32 */
+#define V4L2_PIX_FMT_RGBA_BF64  v4l2_fourcc('B', 'B', '6', '4') /* 64  RGBA-BF-16-16-16-16 */
+#define V4L2_PIX_FMT_RGBA_FP64  v4l2_fourcc('B', 'F', '6', '4') /* 64  RGBA-FP-16-16-16-16 */
+#define V4L2_PIX_FMT_RGBA_FP32323232  v4l2_fourcc('B', 'A', '3', '2') /* 128  RGBA-FP-32-32-32-32 */
+#define V4L2_PIX_FMT_RGB24P  v4l2_fourcc('B', 'R', 'M', '3') /* 24  RGB-8-8-8 planar */
+#define V4L2_PIX_FMT_RGB_BF48P  v4l2_fourcc('B', 'B', '4', 'M') /* 48  RGB-BF-16-16-16 planar */
+#define V4L2_PIX_FMT_RGB_FP48P  v4l2_fourcc('B', 'F', '4', 'M') /* 48  RGB-FP-16-16-16 planar */
+#define V4L2_PIX_FMT_RGB_FP323232P  v4l2_fourcc('B', '9', '6', 'M') /* 96  RGB-FP-32-32-32 planar */
+#define V4L2_PIX_FMT_RGBA32P  v4l2_fourcc('B', 'A', '8', 'M') /* 32  RGBA-8-8-8-8 planar */
+#define V4L2_PIX_FMT_RGBA_BF64P  v4l2_fourcc('B', 'B', '6', 'M') /* 64  RGBA-BF-16-16-16-16 planar */
+#define V4L2_PIX_FMT_RGBA_FP64P  v4l2_fourcc('B', 'F', '6', 'M') /* 64  RGBA-FP-16-16-16-16 planar */
+#define V4L2_PIX_FMT_RGBA_FP32323232P  v4l2_fourcc('B', '3', '2', 'M') /* 128  RGBA-FP-32-32-32-32 planar */
+#define V4L2_PIX_FMT_RGB24P_4_3  v4l2_fourcc('B', '3', '4', '3') /* 24  RGB-8-8-8 planar 4x3 */
+#define V4L2_PIX_FMT_RGB_BF48P_4_3  v4l2_fourcc('B', '4', '4', '3') /* 48  RGB-BF-16-16-16 planar 4x3 */
+#define V4L2_PIX_FMT_RGB_FP48P_4_3  v4l2_fourcc('B', '5', '4', '3') /* 48  RGB-FP-16-16-16 planar 4x3 */
+#define V4L2_PIX_FMT_RGB_FP323232P_4_3  v4l2_fourcc('B', '6', '4', '3') /* 96  RGB-FP-32-32-32 planar 4x3 */
 
 /* Grey formats */
 #define V4L2_PIX_FMT_GREY    v4l2_fourcc('G', 'R', 'E', 'Y') /*  8  Greyscale     */
