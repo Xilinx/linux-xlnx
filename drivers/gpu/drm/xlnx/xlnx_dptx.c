@@ -3975,19 +3975,19 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 	} else {
 		ret = xlnx_dp_tx_gt_control_init(dp);
 		if (ret < 0)
-			return ret;
+			goto error_phy;
 	}
 
 	ret = clk_prepare_enable(dp->axi_lite_clk);
 	if (ret) {
 		dev_err(dp->dev, "failed to enable axi_lite_clk (%d)\n", ret);
-		return ret;
+		goto error_phy;
 	}
 
 	ret = clk_prepare_enable(dp->tx_vid_clk);
 	if (ret) {
 		dev_err(dp->dev, "failed to enable tx_vid_clk (%d)\n", ret);
-		goto tx_vid_clk_err;
+		goto error_clk_axi;
 	}
 
 	dp->aux.name = "Xlnx DP AUX";
@@ -3996,14 +3996,14 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
 		ret = irq;
-		goto error;
+		goto error_clk_vid;
 	}
 	ret = devm_request_threaded_irq(dp->dev, irq, NULL,
 					xlnx_dp_irq_handler, IRQF_ONESHOT,
 					dev_name(dp->dev), dp);
 
 	if (ret < 0)
-		goto error;
+		goto error_clk_vid;
 
 	ret = sysfs_create_group(&dp->dev->kobj, &attr_group);
 	if (ret)
@@ -4012,7 +4012,7 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 	if (dp->config.hdcp2x_enable || dp->config.hdcp1x_enable) {
 		ret = xlnx_hdcp_init(dp, pdev);
 		if (ret < 0)
-			goto error_hdcp;
+			goto error_sysfs;
 	}
 	if (dp->config.audio_enabled) {
 		if (dptx_register_aud_dev(dp->dev)) {
@@ -4028,8 +4028,13 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 	return component_add(&pdev->dev, &xlnx_dp_component_ops);
 
 error_hdcp:
-	xlnx_dp_hdcp_exit(dp);
-tx_vid_clk_err:
+	if (dp->config.hdcp2x_enable || dp->config.hdcp1x_enable)
+		xlnx_dp_hdcp_exit(dp);
+error_sysfs:
+	sysfs_remove_group(&dp->dev->kobj, &attr_group);
+error_clk_vid:
+	clk_disable_unprepare(dp->tx_vid_clk);
+error_clk_axi:
 	clk_disable_unprepare(dp->axi_lite_clk);
 error_phy:
 	if (!dp->config.versal_gt_present) {
