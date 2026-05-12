@@ -10,6 +10,7 @@
 #include <linux/bitfield.h>
 #include <linux/clk.h>
 #include <linux/device.h>
+#include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/mfd/syscon.h>
 #include <linux/module.h>
@@ -461,24 +462,36 @@ struct xlnx_dprx_audio_data {
 
 /**
  * struct retimer_cfg - Retimer configuration structure
- * @retimer_access_laneset: Function pointer to retimer access laneset function
- * @retimer_rst_cr_path: Function pointer to retimer reset cr path function
- * @retimer_rst_dp_path: Function pointer to retimer reset dp path function
- * @retimer_prbs_mode: Function pointer to prbs mode enable/disable function
+ * @client: I2C client handle for the retimer device instance
+ * @retimer_access_laneset: Callback to configure retimer lane settings for
+ *			    the given I2C client instance
+ * @retimer_rst_cr_path: Callback to reset the retimer clock recovery path
+ *			 for the given I2C client instance
+ * @retimer_rst_dp_path: Callback to reset the retimer DP path for the given
+ *			 I2C client instance
+ * @retimer_prbs_mode: Callback to enable or disable PRBS mode on the retimer
+ *		       for the given I2C client instance
  */
 struct retimer_cfg {
-	void (*retimer_access_laneset)(void);
-	void (*retimer_rst_cr_path)(void);
-	void (*retimer_rst_dp_path)(void);
-	void (*retimer_prbs_mode)(u8 enable);
+	struct i2c_client *client;
+	void (*retimer_access_laneset)(struct i2c_client *client);
+	void (*retimer_rst_cr_path)(struct i2c_client *client);
+	void (*retimer_rst_dp_path)(struct i2c_client *client);
+	void (*retimer_prbs_mode)(struct i2c_client *client, u8 enable);
 };
 
+/* Forward declaration as xvphy_dev definition is in an out-of-tree module */
+struct xvphy_dev;
+
 /**
- * struct vidphy_cfg - Video phy configuration structure
- * @vidphy_prbs_mode: Function pointer to prbs mode enable/disable function
+ * struct vidphy_cfg - Video PHY configuration structure
+ * @vidphy_prbs_mode: Callback to enable or disable PRBS mode on the video PHY
+ *                    for the given xvphy_dev instance
+ * @vphydev: Video PHY device instance for prbs callbacks
  */
 struct vidphy_cfg {
-	void (*vidphy_prbs_mode)(u8 enable);
+	void (*vidphy_prbs_mode)(struct xvphy_dev *vphydev, u8 enable);
+	struct xvphy_dev *vphydev;
 };
 
 /**
@@ -1283,6 +1296,8 @@ static void xdprxss_core_init(struct xdprxss_state *xdprxss)
 
 static void xdprxss_irq_unplug(struct xdprxss_state *state)
 {
+	struct retimer_cfg *rtmr_cfg;
+
 	dev_dbg(state->dev, "Asserted cable unplug interrupt\n");
 	if (state->hdcp22_enable)
 		xhdcp2x_rx_disable(state->hdcp2x);
@@ -1292,8 +1307,11 @@ static void xdprxss_irq_unplug(struct xdprxss_state *state)
 	xdprxss_set(state, XDPRX_SOFT_RST_REG, XDPRX_SOFT_VIDRST_MASK);
 	xdprxss_clr(state, XDPRX_SOFT_RST_REG, XDPRX_SOFT_VIDRST_MASK);
 
-	if (state->retimer_prvdata)
-		state->retimer_prvdata->retimer_rst_dp_path();
+	if (state->retimer_prvdata) {
+		rtmr_cfg = state->retimer_prvdata;
+		if (rtmr_cfg->client && rtmr_cfg->retimer_rst_dp_path)
+			rtmr_cfg->retimer_rst_dp_path(rtmr_cfg->client);
+	}
 
 	/*
 	 * Disable unplug interrupt so that no unplug event when RX is
@@ -1322,8 +1340,9 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 {
 	union phy_configure_opts phy_opts = { 0 };
 	struct phy_configure_opts_dp *phy_cfg = &phy_opts.dp;
-	u32 linkrate;
+	struct retimer_cfg *rtmr_cfg;
 	unsigned int i;
+	u32 linkrate;
 
 	dev_dbg(state->dev, "Asserted training pattern 1\n");
 
@@ -1342,8 +1361,11 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 	}
 
 	if (state->retimer_prvdata) {
-		state->retimer_prvdata->retimer_rst_cr_path();
-		state->retimer_prvdata->retimer_access_laneset();
+		rtmr_cfg = state->retimer_prvdata;
+		if (rtmr_cfg->client && rtmr_cfg->retimer_rst_cr_path)
+			rtmr_cfg->retimer_rst_cr_path(rtmr_cfg->client);
+		if (rtmr_cfg->client && rtmr_cfg->retimer_access_laneset)
+			rtmr_cfg->retimer_access_laneset(rtmr_cfg->client);
 	}
 
 	if (!state->versal_gt_present) {
@@ -1516,6 +1538,7 @@ static void xdprxss_irq_audio_detected(struct xdprxss_state *state)
 
 static void xdprxss_irq_access_laneset(struct xdprxss_state *state)
 {
+	struct retimer_cfg *rtmr_cfg;
 	u32 read_val;
 	u8 training;
 
@@ -1524,8 +1547,11 @@ static void xdprxss_irq_access_laneset(struct xdprxss_state *state)
 	if (state->ltstate == 2 && training != 1) {
 		read_val = xdprxss_get_lane01_reqval(state);
 
-		if (state->ce_req_val != read_val && state->retimer_prvdata)
-			state->retimer_prvdata->retimer_access_laneset();
+		if (state->ce_req_val != read_val && state->retimer_prvdata) {
+			rtmr_cfg = state->retimer_prvdata;
+			if (rtmr_cfg->client && rtmr_cfg->retimer_access_laneset)
+				rtmr_cfg->retimer_access_laneset(rtmr_cfg->client);
+		}
 
 		/* Update the value to be used in next round */
 		state->ce_req_val = xdprxss_get_lane01_reqval(state);
@@ -1534,6 +1560,8 @@ static void xdprxss_irq_access_laneset(struct xdprxss_state *state)
 
 static void xdprxss_irq_access_linkqual(struct xdprxss_state *state)
 {
+	struct retimer_cfg *rtmr_cfg;
+	struct vidphy_cfg *vphy_cfg;
 	u32 read_val;
 
 	read_val = xdprxss_read(state, XDPRX_DPC_LINK_QUAL_CONFIG);
@@ -1541,14 +1569,30 @@ static void xdprxss_irq_access_linkqual(struct xdprxss_state *state)
 	if ((read_val & XDPRX_LINK_QUAL_PRBS_MODE_MASK) ==
 	    XDPRX_DPCD_LINK_QUAL_PRBS_MASK) {
 		/* enable PRBS mode in video phy */
-		state->vidphy_prvdata->vidphy_prbs_mode(1);
+		if (state->vidphy_prvdata) {
+			vphy_cfg = state->vidphy_prvdata;
+			if (vphy_cfg->vphydev && vphy_cfg->vidphy_prbs_mode)
+				vphy_cfg->vidphy_prbs_mode(vphy_cfg->vphydev, 1);
+		}
 		/* enable PRBS mode in retimer */
-		state->retimer_prvdata->retimer_prbs_mode(1);
+		if (state->retimer_prvdata) {
+			rtmr_cfg = state->retimer_prvdata;
+			if (rtmr_cfg->client && rtmr_cfg->retimer_prbs_mode)
+				rtmr_cfg->retimer_prbs_mode(rtmr_cfg->client, 1);
+		}
 	} else {
 		/* disable PRBS mode in video phy */
-		state->vidphy_prvdata->vidphy_prbs_mode(0);
+		if (state->vidphy_prvdata) {
+			vphy_cfg = state->vidphy_prvdata;
+			if (vphy_cfg->vphydev && vphy_cfg->vidphy_prbs_mode)
+				vphy_cfg->vidphy_prbs_mode(vphy_cfg->vphydev, 0);
+		}
 		/* disable PRBS mode in retimer */
-		state->retimer_prvdata->retimer_prbs_mode(0);
+		if (state->retimer_prvdata) {
+			rtmr_cfg = state->retimer_prvdata;
+			if (rtmr_cfg->client && rtmr_cfg->retimer_prbs_mode)
+				rtmr_cfg->retimer_prbs_mode(rtmr_cfg->client, 0);
+		}
 	}
 }
 
