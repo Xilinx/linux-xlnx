@@ -1,0 +1,160 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/dma/xilinx/xlnx,ai-layout-formatter-wr.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx AI layout formatter write DMA IP
+
+maintainers:
+  - Mounik Katikala <mounik.katikala@amd.com>
+
+description:
+  The Xilinx AI Layout Formatter Write IP accepts AXI4-Stream video data and
+  writes frames to memory in compile-time-configured, AI-oriented packed or
+  planar layouts. Supported line widths and frame sizes are fixed per instance.
+
+properties:
+  compatible:
+    const: xlnx,ai-layout-formatter-wr-v1
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    description: Reference to the AXI Streaming clock.
+    maxItems: 1
+
+  clock-names:
+    description: Input clock for AXI streaming interface.
+    items:
+      - const: ap_clk
+
+  interrupts:
+    maxItems: 1
+
+  reset-gpios:
+    description: Asserts the IP core hard reset
+    maxItems: 1
+
+  "#dma-cells":
+    const: 1
+    description:
+      Number of cells in the DMA specifier; the controller provides one channel
+      ID per specifier.
+
+  xlnx,dma-addr-width:
+    description: Size of the DMA address pointer configured in the IP.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [ 32, 64 ]
+
+  xlnx,max-height:
+    description: Maximum number of lines in a frame.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 64
+    maximum: 8640
+
+  xlnx,max-width:
+    description: Maximum number of pixels in a line.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 64
+    maximum: 15360
+
+  xlnx,pixels-per-clock:
+    description: Number of pixels the hardware processes per clock cycle, configured at synthesis time.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [1, 2, 4, 8]
+
+  xlnx,vid-formats:
+    description:
+      List of compile-time format tokens representing the output layouts supported by this IP instance.
+      Each string corresponds to a distinct hardware-supported memory or pixel arrangement for output frames.
+    $ref: /schemas/types.yaml#/definitions/string-array
+    minItems: 1
+    maxItems: 64
+    items:
+      enum:
+        - bgr888
+        - gray32
+        - gray_bf16
+        - gray_fp16
+        - HCWNC4_32_3_3
+        - HCWNC4_32_4_3
+        - HCWNC4_32_4_4
+        - HCWNC4_8_3_3
+        - HCWNC4_8_4_3
+        - HCWNC4_8_4_4
+        - HCWNC4_BF16_3_3
+        - HCWNC4_BF16_4_3
+        - HCWNC4_BF16_4_4
+        - HCWNC4_FP16_3_3
+        - HCWNC4_FP16_4_3
+        - HCWNC4_FP16_4_4
+        - HCWNC8_32_3_3
+        - HCWNC8_32_4_3
+        - HCWNC8_32_4_4
+        - HCWNC8_8_3_3
+        - HCWNC8_8_4_3
+        - HCWNC8_8_4_4
+        - HCWNC8_BF16_3_3
+        - HCWNC8_BF16_4_3
+        - HCWNC8_BF16_4_4
+        - HCWNC8_FP16_3_3
+        - HCWNC8_FP16_4_3
+        - HCWNC8_FP16_4_4
+        - RGB_24M_4_3
+        - RGB_323232M_4_3
+        - RGB_BF48M_4_3
+        - RGB_FP48M_4_3
+        - rgb323232
+        - rgb323232m
+        - rgb888
+        - rgb888m
+        - rgb_bf16
+        - rgb_bf161616m
+        - rgb_fp16
+        - rgb_fp161616m
+        - rgba32323232
+        - rgba32323232m
+        - rgba8888
+        - rgba8888m
+        - rgba_bf16161616
+        - rgba_bf16161616m
+        - rgba_fp16161616
+        - rgba_fp16161616m
+        - y8
+
+required:
+  - compatible
+  - reg
+  - "#dma-cells"
+  - clocks
+  - clock-names
+  - interrupts
+  - reset-gpios
+  - xlnx,dma-addr-width
+  - xlnx,max-height
+  - xlnx,max-width
+  - xlnx,pixels-per-clock
+  - xlnx,vid-formats
+
+additionalProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/gpio/gpio.h>
+    #include <dt-bindings/interrupt-controller/irq.h>
+    ai-layout-formatter@a0081000 {
+        compatible = "xlnx,ai-layout-formatter-wr-v1";
+        reg = <0xa0081000 0x10000>;
+        #dma-cells = <1>;
+        clocks = <&misc_clk_2>;
+        clock-names = "ap_clk";
+        interrupts = <0 109 IRQ_TYPE_LEVEL_HIGH>;
+        reset-gpios = <&gpio 7 GPIO_ACTIVE_HIGH>;
+        xlnx,dma-addr-width = <64>;
+        xlnx,max-height = <2160>;
+        xlnx,max-width = <3840>;
+        xlnx,pixels-per-clock = <2>;
+        xlnx,vid-formats = "HCWNC4_8_4_4", "rgba8888", "rgba8888m";
+    };
