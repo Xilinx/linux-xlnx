@@ -1,0 +1,115 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# Copyright (C) 2026 AMD
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/media/xilinx/xlnx,preprocess.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx Video Preprocess IP
+
+maintainers:
+  - Mounik Katikala <mounik.katikala@amd.com>
+
+description: |
+  Xilinx Video Preprocess IP applies per-channel normalization to input
+  RGB pixel data and produces output samples in INT8
+  precision.
+  Linux fixes the output channel packing count from the first
+  xlnx,vid-formats entry for the lifetime of the device: V4L2 per-channel
+  alpha/beta controls are sized to that count, and the source pad rejects
+  set_fmt to media-bus codes with a different channel count even if a later
+  DT entry would enable that format. List only formats that share the same
+  channel count as the first string (or repeat the same packing with
+  different precision).
+
+properties:
+  compatible:
+    const: xlnx,preprocess-1.0
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    description: Reference to video core clock.
+    maxItems: 1
+
+  clock-names:
+    deprecated: true
+    maxItems: 1
+
+  reset-gpios:
+    maxItems: 1
+
+  xlnx,vid-formats:
+    description:
+      Ordered list of supported output format identifiers for this instance.
+      Each entry selects output sample packing and the number of channels
+      the IP produces for that format. The first entry sets the channel
+      packing for V4L2.
+    $ref: /schemas/types.yaml#/definitions/string-array
+    minItems: 1
+    maxItems: 64
+    items:
+      enum:
+        - bgr888
+
+  ports:
+    $ref: /schemas/graph.yaml#/properties/ports
+
+    properties:
+      port@0:
+        $ref: /schemas/graph.yaml#/properties/port
+        description: Input/sink port node for the upstream video connection.
+
+        unevaluatedProperties: false
+
+      port@1:
+        $ref: /schemas/graph.yaml#/properties/port
+        description: Output/source port node for the downstream video connection.
+
+        unevaluatedProperties: false
+
+    required:
+      - port@0
+      - port@1
+
+    unevaluatedProperties: false
+
+required:
+  - compatible
+  - reg
+  - clocks
+  - reset-gpios
+  - xlnx,vid-formats
+  - ports
+
+additionalProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/gpio/gpio.h>
+    preprocess@a0000000 {
+        compatible = "xlnx,preprocess-1.0";
+        reg = <0xa0000000 0x1000>;
+        clocks = <&misc_clk_1>;
+        reset-gpios = <&gpio0 5 GPIO_ACTIVE_LOW>;
+        xlnx,vid-formats = "bgr888";
+        ports {
+            #address-cells = <1>;
+            #size-cells = <0>;
+
+            port@0 {
+                reg = <0>; /* sink */
+                endpoint {
+                    remote-endpoint = <&upstream_out>;
+                };
+            };
+
+            port@1 {
+                reg = <1>; /* source */
+                endpoint {
+                    remote-endpoint = <&downstream_in>;
+                };
+            };
+        };
+    };
