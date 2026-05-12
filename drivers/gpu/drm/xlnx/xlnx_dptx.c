@@ -3910,7 +3910,7 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 
 		ret = phy_init(dp->phy[0]);
 		if (ret)
-			goto error_phy;
+			return ret;
 
 		fnode = of_parse_phandle(pnode, "xlnx,xilinx-vfmc", 0);
 		if (!fnode) {
