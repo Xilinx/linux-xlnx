@@ -11,6 +11,9 @@
 
 #include <linux/bits.h>
 
+/* Compatible for AI Layout Formatter Write (binding: xlnx,ai-layout-formatter-wr.yaml). */
+#define XILINX_AI_LAYOUT_FORMATTER_DT_COMPAT	"xlnx,ai-layout-formatter-wr-v1"
+
 /**
  * enum xilinx_vid_dma_mode - Video-aware DMA control register mode field
  * @XILINX_VID_DMA_DEFAULT: Default mode; no explicit mode bits set in the control register.
