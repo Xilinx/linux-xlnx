@@ -3993,6 +3993,7 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 	dp->aux.name = "Xlnx DP AUX";
 	dp->aux.dev = dp->dev;
 	dp->aux.transfer = xlnx_dp_aux_transfer;
+
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
 		ret = irq;
@@ -4016,6 +4017,7 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 		if (ret < 0)
 			goto error_sysfs;
 	}
+
 	if (dp->config.audio_enabled) {
 		ret = dptx_register_aud_dev(dp->dev);
 		if (ret) {
