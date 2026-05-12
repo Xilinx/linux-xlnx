@@ -1050,6 +1050,156 @@ the 48-bits little endian word.
 
     \normalsize
 
+16 Bits Per Component (FP16/BF16)
+=================================
+
+These formats store an RGB triplet in six bytes (48 bits per pixel) using
+``V4L2_PIX_FMT_RGB_BF48`` or ``V4L2_PIX_FMT_RGB_FP48``. Memory order is blue,
+green, then red (RGB within each 16-bit channel). For example,
+``V4L2_PIX_FMT_RGB_BF48`` places R\ :sub:`7-0` in byte 0 and R\ :sub:`15-8` in
+byte 1, then the green and blue channels in the same little endian byte order per
+16-bit word (see the table below).
+
+Below is the bit layout for each float-related data type, where S is the sign
+bit, E is the exponent, and M is the mantissa (see also
+:doc:`pixfmt-float-bitfield-tables`):
+
+.. include:: pixfmt-float-bitfield-tables.rst
+   :start-after: FLOAT_BITFIELD_LIST_TABLES_BEGIN
+   :end-before: FLOAT_BITFIELD_FP32_START
+
+.. raw:: latex
+
+    \small
+
+.. flat-table:: RGB Formats With 16 Bits Per Component
+    :header-rows:  1
+
+    * - Identifier
+      - Code
+      - Byte 0
+      - Byte 1
+      - Byte 2
+      - Byte 3
+      - Byte 4
+      - Byte 5
+
+    * .. _V4L2-PIX-FMT-RGB-BF48:
+
+      - ``V4L2_PIX_FMT_RGB_BF48``
+      - 'BB48'
+
+      - R\ :sub:`7-0`\ :sup:`BF16`
+      - R\ :sub:`15-8`\ :sup:`BF16`
+      - G\ :sub:`7-0`\ :sup:`BF16`
+      - G\ :sub:`15-8`\ :sup:`BF16`
+      - B\ :sub:`7-0`\ :sup:`BF16`
+      - B\ :sub:`15-8`\ :sup:`BF16`
+
+    * .. _V4L2-PIX-FMT-RGB-FP48:
+
+      - ``V4L2_PIX_FMT_RGB_FP48``
+      - 'BF48'
+
+      - R\ :sub:`7-0`\ :sup:`FP16`
+      - R\ :sub:`15-8`\ :sup:`FP16`
+      - G\ :sub:`7-0`\ :sup:`FP16`
+      - G\ :sub:`15-8`\ :sup:`FP16`
+      - B\ :sub:`7-0`\ :sup:`FP16`
+      - B\ :sub:`15-8`\ :sup:`FP16`
+
+.. raw:: latex
+
+    \normalsize
+
+32 Bits Per Component (FP32)
+============================
+
+These formats store an RGB or RGBA triplet with 32 bits per channel as IEEE 754
+binary32 (single-precision floating point, FP32) per color component: 96 bits
+(12 bytes) per pixel for ``V4L2_PIX_FMT_RGB_FP323232`` and 128 bits (16 bytes) for
+``V4L2_PIX_FMT_RGBA_FP32323232``. Each channel is one FP32 value in little endian byte
+order (byte 0 is the least significant byte of each component, as in the table
+below). The FP32 bit field layout is as follows (see also
+:doc:`pixfmt-float-bitfield-tables`):
+
+.. include:: pixfmt-float-bitfield-tables.rst
+   :start-after: FLOAT_BITFIELD_FP32_START
+
+.. raw:: latex
+
+    \small
+
+.. flat-table:: RGB(A) Formats With 32 Bits Per Component (FP32)
+    :header-rows:  1
+
+    * - Identifier
+      - Code
+      - Byte 0 (LSB)
+      - Byte 1
+      - Byte 2
+      - Byte 3
+      - Byte 4
+      - Byte 5
+      - Byte 6
+      - Byte 7
+      - Byte 8
+      - Byte 9
+      - Byte 10
+      - Byte 11
+      - Byte 12
+      - Byte 13
+      - Byte 14
+      - Byte 15
+
+    * .. _V4L2-PIX-FMT-RGB-FP323232:
+
+      - ``V4L2_PIX_FMT_RGB_FP323232``
+      - 'BR96'
+
+      - R\ :sub:`7-0`
+      - R\ :sub:`15-8`
+      - R\ :sub:`23-16`
+      - R\ :sub:`31-24`
+      - G\ :sub:`7-0`
+      - G\ :sub:`15-8`
+      - G\ :sub:`23-16`
+      - G\ :sub:`31-24`
+      - B\ :sub:`7-0`
+      - B\ :sub:`15-8`
+      - B\ :sub:`23-16`
+      - B\ :sub:`31-24`
+      - -
+      - -
+      - -
+      - -
+
+    * .. _V4L2-PIX-FMT-RGBA-FP32323232:
+
+      - ``V4L2_PIX_FMT_RGBA_FP32323232``
+      - 'BA32'
+
+      - R\ :sub:`7-0`
+      - R\ :sub:`15-8`
+      - R\ :sub:`23-16`
+      - R\ :sub:`31-24`
+      - G\ :sub:`7-0`
+      - G\ :sub:`15-8`
+      - G\ :sub:`23-16`
+      - G\ :sub:`31-24`
+      - B\ :sub:`7-0`
+      - B\ :sub:`15-8`
+      - B\ :sub:`23-16`
+      - B\ :sub:`31-24`
+      - A\ :sub:`7-0`
+      - A\ :sub:`15-8`
+      - A\ :sub:`23-16`
+      - A\ :sub:`31-24`
+
+.. raw:: latex
+
+    \normalsize
+
 Deprecated RGB Formats
 ======================
 
