@@ -3867,7 +3867,6 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 	struct xlnx_dp *dp;
 	struct resource *res;
 	const struct of_device_id *match;
-	void *ptr;
 	unsigned int i;
 	int irq, ret;
 
