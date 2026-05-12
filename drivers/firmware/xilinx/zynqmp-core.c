@@ -12,7 +12,6 @@
 #include <linux/mfd/core.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
-#include <linux/pm_domain.h>
 
 #include <linux/firmware/xlnx-zynqmp.h>
 #include "zynqmp-debug.h"
@@ -951,19 +950,6 @@ static void zynqmp_firmware_remove(struct platform_device *pdev)
 	platform_device_unregister(em_dev);
 }
 
-static void zynqmp_firmware_sync_state(struct device *dev)
-{
-	struct device_node *np = dev->of_node;
-
-	if (!of_device_is_compatible(np, "xlnx,zynqmp-firmware"))
-		return;
-
-	of_genpd_sync_state(np);
-
-	if (zynqmp_pm_init_finalize())
-		dev_warn(dev, "failed to release power management to firmware\n");
-}
-
 static const struct platform_fw_data platform_fw_data_versal2 = {
 	.do_feature_check = do_feature_check_extended,
 	.zynqmp_pm_fw_call = __zynqmp_pm_fw_call_extended,
@@ -1001,10 +987,35 @@ static struct platform_driver zynqmp_firmware_driver = {
 	.driver = {
 		.name = "zynqmp_firmware",
 		.of_match_table = zynqmp_firmware_of_match,
-		.sync_state = zynqmp_firmware_sync_state,
 	},
 	.probe = zynqmp_firmware_probe,
 	.remove = zynqmp_firmware_remove,
 	.shutdown = zynqmp_firmware_shutdown,
 };
 module_platform_driver(zynqmp_firmware_driver);
+
+/*
+ * pm_init_finalize was previously called from the firmware driver's
+ * sync_state callback, but sync_state can be blocked indefinitely if
+ * any device consumer never probes. Use late_initcall to ensure
+ * pm_init_finalize is called reliably regardless of consumer
+ * probe status.
+ */
+static int __init zynqmp_pm_init_finalize_late(void)
+{
+	u32 pm_family_code;
+	int ret;
+
+	ret = zynqmp_pm_get_family_info(&pm_family_code);
+	if (ret)
+		return ret;
+
+	if (pm_family_code != PM_ZYNQMP_FAMILY_CODE)
+		return 0;
+
+	if (zynqmp_pm_init_finalize())
+		pr_warn("zynqmp: failed to release power management to firmware\n");
+
+	return 0;
+}
+late_initcall(zynqmp_pm_init_finalize_late);
