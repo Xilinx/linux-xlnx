@@ -61,6 +61,9 @@
 #define XPREPROCESS_PARAM_BETA_DEF			BIT(23)
 
 #define XPREPROCESS_INT8			0
+#define XPREPROCESS_FP16			1
+#define XPREPROCESS_BF16			2
+#define XPREPROCESS_FP32			3
 
 #define XPREPROCESS_RESET_DEASSERT			0
 #define XPREPROCESS_RESET_ASSERT			1
@@ -94,6 +97,61 @@ static const struct xilinx_preprocess_out_format_desc xilinx_preprocess_formats[
 		.code = MEDIA_BUS_FMT_RBG888_1X24,
 		.channels = 3
 	},
+	{
+		.dts_name = "rgb_bf161616",
+		.code = MEDIA_BUS_FMT_RGB_BF161616_1X48,
+		.channels = 3
+	},
+	{
+		.dts_name = "rgb_fp161616",
+		.code = MEDIA_BUS_FMT_RGB_FP161616_1X48,
+		.channels = 3
+	},
+	{
+		.dts_name = "rgb323232",
+		.code = MEDIA_BUS_FMT_RGB_FP323232_1X96,
+		.channels = 3
+	},
+	{
+		.dts_name = "rgba8888",
+		.code = MEDIA_BUS_FMT_RGBA8888_1X32,
+		.channels = 4
+	},
+	{
+		.dts_name = "rgba_bf16161616",
+		.code = MEDIA_BUS_FMT_RGBA_BF16161616_1X64,
+		.channels = 4
+	},
+	{
+		.dts_name = "rgba_fp16161616",
+		.code = MEDIA_BUS_FMT_RGBA_FP16161616_1X64,
+		.channels = 4
+	},
+	{
+		.dts_name = "rgba32323232",
+		.code = MEDIA_BUS_FMT_RGBA_FP32323232_1X128,
+		.channels = 4
+	},
+	{
+		.dts_name = "y8",
+		.code = MEDIA_BUS_FMT_Y8_1X8,
+		.channels = 1
+	},
+	{
+		.dts_name = "gray_bf16",
+		.code = MEDIA_BUS_FMT_Y_BF16_1X16,
+		.channels = 1
+	},
+	{
+		.dts_name = "gray_fp16",
+		.code = MEDIA_BUS_FMT_Y_FP16_1X16,
+		.channels = 1
+	},
+	{
+		.dts_name = "gray32",
+		.code = MEDIA_BUS_FMT_Y_FP32_1X32,
+		.channels = 1
+	},
 };
 
 /**
@@ -109,7 +167,7 @@ static const struct xilinx_preprocess_out_format_desc xilinx_preprocess_formats[
  * @out_width:		Current output frame width
  * @out_height:		Current output frame height
  * @channels:		Number of channels for the selected output format
- * @data_type:		Quantization and precision: INT8
+ * @data_type:		Quantization and precision: INT8, BF16, FP16, or FP32
  * @preprocess_param_alpha:	Cached per-channel alpha coefficients for HW registers
  * @preprocess_param_beta:	Cached per-channel beta coefficients for HW registers
  * @npads:		Number of pads discovered from DT
@@ -337,7 +395,21 @@ static u32 xpreprocess_data_type_from_code(unsigned int code)
 {
 	switch (code) {
 	case MEDIA_BUS_FMT_RBG888_1X24:
+	case MEDIA_BUS_FMT_RGBA8888_1X32:
+	case MEDIA_BUS_FMT_Y8_1X8:
 		return XPREPROCESS_INT8;
+	case MEDIA_BUS_FMT_RGB_BF161616_1X48:
+	case MEDIA_BUS_FMT_RGBA_BF16161616_1X64:
+	case MEDIA_BUS_FMT_Y_BF16_1X16:
+		return XPREPROCESS_BF16;
+	case MEDIA_BUS_FMT_RGB_FP161616_1X48:
+	case MEDIA_BUS_FMT_RGBA_FP16161616_1X64:
+	case MEDIA_BUS_FMT_Y_FP16_1X16:
+		return XPREPROCESS_FP16;
+	case MEDIA_BUS_FMT_RGB_FP323232_1X96:
+	case MEDIA_BUS_FMT_RGBA_FP32323232_1X128:
+	case MEDIA_BUS_FMT_Y_FP32_1X32:
+		return XPREPROCESS_FP32;
 	default:
 		return XPREPROCESS_INT8;
 	}
@@ -516,6 +588,17 @@ static int xpreprocess_set_format(struct v4l2_subdev *subdev,
 
 		switch (fmt->format.code) {
 		case MEDIA_BUS_FMT_RBG888_1X24:
+		case MEDIA_BUS_FMT_RGB_BF161616_1X48:
+		case MEDIA_BUS_FMT_RGB_FP161616_1X48:
+		case MEDIA_BUS_FMT_RGB_FP323232_1X96:
+		case MEDIA_BUS_FMT_RGBA8888_1X32:
+		case MEDIA_BUS_FMT_RGBA_BF16161616_1X64:
+		case MEDIA_BUS_FMT_RGBA_FP16161616_1X64:
+		case MEDIA_BUS_FMT_RGBA_FP32323232_1X128:
+		case MEDIA_BUS_FMT_Y8_1X8:
+		case MEDIA_BUS_FMT_Y_BF16_1X16:
+		case MEDIA_BUS_FMT_Y_FP16_1X16:
+		case MEDIA_BUS_FMT_Y_FP32_1X32:
 			code = fmt->format.code;
 			break;
 		default:
