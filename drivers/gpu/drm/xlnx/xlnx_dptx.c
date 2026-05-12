@@ -4006,8 +4006,10 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 		goto error_clk_vid;
 
 	ret = sysfs_create_group(&dp->dev->kobj, &attr_group);
-	if (ret)
-		dev_err(dp->dev, "sysfs group creation failed to store keys");
+	if (ret) {
+		dev_err(dp->dev, "sysfs group creation failed\n");
+		goto error_clk_vid;
+	}
 
 	if (dp->config.hdcp2x_enable || dp->config.hdcp1x_enable) {
 		ret = xlnx_hdcp_init(dp, pdev);
