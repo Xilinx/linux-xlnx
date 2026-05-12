@@ -3276,7 +3276,7 @@ static int xlnx_dp_bind(struct device *dev, struct device *master, void *data)
 	dp->drm = drm;
 	dp->aux.drm_dev = drm;
 	ret = drm_dp_aux_register(&dp->aux);
-	if (ret < 0) {
+	if (ret) {
 		dev_err(dp->dev, "failed to register DP aux\n");
 		goto error_connector;
 	}
@@ -3974,7 +3974,7 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 			goto error_phy;
 	} else {
 		ret = xlnx_dp_tx_gt_control_init(dp);
-		if (ret < 0)
+		if (ret)
 			goto error_phy;
 	}
 
@@ -4003,7 +4003,7 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 					xlnx_dp_irq_handler, IRQF_ONESHOT,
 					dev_name(dp->dev), dp);
 
-	if (ret < 0)
+	if (ret)
 		goto error_clk_vid;
 
 	ret = sysfs_create_group(&dp->dev->kobj, &attr_group);
@@ -4014,7 +4014,7 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 
 	if (dp->config.hdcp2x_enable || dp->config.hdcp1x_enable) {
 		ret = xlnx_hdcp_init(dp, pdev);
-		if (ret < 0)
+		if (ret)
 			goto error_sysfs;
 	}
 
