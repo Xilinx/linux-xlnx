@@ -4027,7 +4027,15 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 		dev_info(dp->dev, "dp tx audio initialized\n");
 	}
 
-	return component_add(&pdev->dev, &xlnx_dp_component_ops);
+	/*
+	 * Audio cleanup is handled automatically via devm on failure.
+	 * component_add() has no devm variant and must be undone explicitly.
+	 */
+	ret = component_add(&pdev->dev, &xlnx_dp_component_ops);
+	if (ret)
+		goto error_hdcp;
+
+	return 0;
 
 error_hdcp:
 	if (dp->config.hdcp2x_enable || dp->config.hdcp1x_enable)
