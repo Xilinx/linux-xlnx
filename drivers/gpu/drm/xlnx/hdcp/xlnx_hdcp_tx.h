@@ -4,7 +4,7 @@
  *
  * Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
  *
- * Author: Lakshmi Prasanna Eachuri <lakshmi.prasanna.eachuri@amd.com>
+ * Author: Lakshmi Prasanna Eachuri
  */
 
 #ifndef _XLNX_HDCP_TX_H_
