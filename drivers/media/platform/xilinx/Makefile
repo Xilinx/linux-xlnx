@@ -21,6 +21,7 @@ obj-$(CONFIG_VIDEO_XILINX_HLS) += xilinx-hls.o
 obj-$(CONFIG_VIDEO_XILINX_ISP) += xilinx-isppipeline.o
 obj-$(CONFIG_VIDEO_XILINX_M2M) += xilinx-m2m.o
 obj-$(CONFIG_VIDEO_XILINX_MULTISCALER) += xilinx-multi-scaler.o
+obj-$(CONFIG_VIDEO_XILINX_PREPROCESS) += xilinx-preprocess.o
 obj-$(CONFIG_VIDEO_XILINX_SCD) += xilinx-scd.o
 obj-$(CONFIG_VIDEO_XILINX_SDIRXSS) += xilinx-sdirxss.o
 obj-$(CONFIG_VIDEO_XILINX_TPG) += xilinx-tpg.o
