@@ -4017,14 +4017,14 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 			goto error_sysfs;
 	}
 	if (dp->config.audio_enabled) {
-		if (dptx_register_aud_dev(dp->dev)) {
+		ret = dptx_register_aud_dev(dp->dev);
+		if (ret) {
 			dp->audio_init = false;
 			dev_err(dp->dev, "dp tx audio init failed\n");
-			goto error;
-		} else {
-			dp->audio_init = true;
-			dev_info(dp->dev, "dp tx audio initialized\n");
+			goto error_hdcp;
 		}
+		dp->audio_init = true;
+		dev_info(dp->dev, "dp tx audio initialized\n");
 	}
 
 	return component_add(&pdev->dev, &xlnx_dp_component_ops);
