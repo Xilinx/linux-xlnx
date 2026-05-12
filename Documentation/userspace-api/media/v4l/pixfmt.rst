@@ -24,6 +24,7 @@ see also :ref:`VIDIOC_G_FBUF <VIDIOC_G_FBUF>`.)
     pixfmt-intro
     pixfmt-indexed
     pixfmt-rgb
+    pixfmt-rgb-planar
     pixfmt-bayer
     yuv-formats
     hsv-formats
