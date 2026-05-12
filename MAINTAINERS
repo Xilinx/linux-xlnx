@@ -28636,6 +28636,7 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,preprocess.yaml
 F:	Documentation/userspace-api/media/v4l/pixfmt-float-bitfield-tables.rst
 F:	Documentation/userspace-api/media/v4l/pixfmt-npu-hwfmt.rst
+F:	Documentation/userspace-api/media/v4l/pixfmt-rgb-planar.rst
 F:	drivers/media/platform/xilinx/xilinx-preprocess.c
 
 XILINX VERSAL EDAC DRIVER
