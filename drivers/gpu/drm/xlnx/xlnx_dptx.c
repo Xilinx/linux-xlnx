@@ -3274,6 +3274,13 @@ static int xlnx_dp_bind(struct device *dev, struct device *master, void *data)
 	connector->dpms = DRM_MODE_DPMS_OFF;
 
 	dp->drm = drm;
+	dp->aux.drm_dev = drm;
+	ret = drm_dp_aux_register(&dp->aux);
+	if (ret < 0) {
+		dev_err(dp->dev, "failed to register DP aux\n");
+		goto error_connector;
+	}
+
 	dp->sync_prop = drm_property_create_bool(drm, 0, "sync");
 	dp->bpc_prop = drm_property_create_enum(drm, 0, "bpc",
 						xlnx_dp_bpc_enum,
@@ -3301,6 +3308,8 @@ static int xlnx_dp_bind(struct device *dev, struct device *master, void *data)
 error_prop:
 	drm_property_destroy(dp->drm, dp->bpc_prop);
 	drm_property_destroy(dp->drm, dp->sync_prop);
+	drm_dp_aux_unregister(&dp->aux);
+error_connector:
 	xlnx_dp_connector_destroy(&dp->connector);
 error_encoder:
 	drm_encoder_cleanup(&dp->encoder);
@@ -3316,6 +3325,7 @@ static void xlnx_dp_unbind(struct device *dev,
 	cancel_delayed_work_sync(&dp->hpd_work);
 	cancel_delayed_work_sync(&dp->hpd_pulse_work);
 	xlnx_dp_exit_aux(dp);
+	drm_dp_aux_unregister(&dp->aux);
 	drm_property_destroy(dp->drm, dp->bpc_prop);
 	drm_property_destroy(dp->drm, dp->sync_prop);
 	xlnx_dp_connector_destroy(&dp->connector);
@@ -3984,11 +3994,6 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 	dp->aux.name = "Xlnx DP AUX";
 	dp->aux.dev = dp->dev;
 	dp->aux.transfer = xlnx_dp_aux_transfer;
-	ret = drm_dp_aux_register(&dp->aux);
-	if (ret < 0) {
-		dev_err(dp->dev, "failed to initialize DP aux\n");
-		goto error;
-	}
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
 		ret = irq;
@@ -4027,8 +4032,6 @@ error_hdcp:
 	xlnx_dp_hdcp_exit(dp);
 tx_vid_clk_err:
 	clk_disable_unprepare(dp->axi_lite_clk);
-error:
-	drm_dp_aux_unregister(&dp->aux);
 error_phy:
 	if (!dp->config.versal_gt_present) {
 		dev_dbg(&pdev->dev, "xdprxss_probe() error_phy:\n");
@@ -4047,7 +4050,6 @@ static void xlnx_dp_remove(struct platform_device *pdev)
 	xlnx_dp_write(dp->dp_base, XDPTX_ENABLE_REG, 0);
 	if (dp->config.hdcp2x_enable || dp->config.hdcp1x_enable)
 		xlnx_dp_hdcp_exit(dp);
-	drm_dp_aux_unregister(&dp->aux);
 	if (!dp->config.versal_gt_present)
 		xlnx_dp_exit_phy(dp);
 	else
