@@ -38,6 +38,9 @@ pages pull in only the tables using ``.. include::`` with ``:start-after:``.
      - E
      - M
 
+..
+   FLOAT_BITFIELD_FP32_START
+
 .. list-table:: FP32 bit layout
    :header-rows: 1
    :widths: 20 20 20 20
