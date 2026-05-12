@@ -4,7 +4,7 @@
  *
  * Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
  *
- * Author: Lakshmi Prasanna Eachuri <lakshmi.prasanna.eachuri@amd.com>
+ * Author: Lakshmi Prasanna Eachuri
  *
  * This driver configures Xilinx HDCP IP and its internal modules like Cipher and
  * Random Number Generator.
