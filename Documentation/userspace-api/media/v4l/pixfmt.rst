@@ -28,6 +28,7 @@ see also :ref:`VIDIOC_G_FBUF <VIDIOC_G_FBUF>`.)
     yuv-formats
     hsv-formats
     depth-formats
+    pixfmt-npu-hwfmt
     pixfmt-compressed
     sdr-formats
     tch-formats
