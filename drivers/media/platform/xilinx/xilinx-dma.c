@@ -1216,13 +1216,13 @@ static int xvip_dma_s_ctrl(struct v4l2_ctrl *ctl)
 			 * to avoid extra one frame delay between
 			 * programming and actual writing of data
 			 */
-			xilinx_xdma_set_mode(dma->dma, DEFAULT);
+			xilinx_xdma_set_mode(dma->dma, XILINX_VID_DMA_DEFAULT);
 		} else if (ctl->val == XVIP_LOW_LATENCY_DISABLE) {
 			if (vb2_is_busy(&dma->queue))
 				return -EBUSY;
 
 			dma->low_latency_cap = false;
-			xilinx_xdma_set_mode(dma->dma, AUTO_RESTART);
+			xilinx_xdma_set_mode(dma->dma, XILINX_VID_DMA_AUTO_RESTART);
 		} else if (ctl->val == XVIP_START_DMA) {
 			if (dma->low_latency_cap &&
 			    vb2_is_streaming(&dma->queue)) {
@@ -1279,7 +1279,7 @@ static int xvip_dma_open(struct file *file)
 
 		mutex_lock(&dma->lock);
 		dma->low_latency_cap = false;
-		xilinx_xdma_set_mode(dma->dma, AUTO_RESTART);
+		xilinx_xdma_set_mode(dma->dma, XILINX_VID_DMA_AUTO_RESTART);
 		mutex_unlock(&dma->lock);
 	}
 

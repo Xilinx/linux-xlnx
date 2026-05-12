@@ -214,7 +214,7 @@ struct xilinx_frmbuf_chan {
 	struct tasklet_struct tasklet;
 	const struct xilinx_frmbuf_format_desc *vid_fmt;
 	bool hw_fid;
-	enum operation_mode mode;
+	enum xilinx_vid_dma_mode mode;
 	u8 fid_err_flag;
 	u8 fid_out_val;
 	enum fid_modes fid_mode;
@@ -1202,7 +1202,7 @@ static void xilinx_xdma_set_config(struct dma_chan *chan, u32 fourcc, u32 type)
 	}
 }
 
-void xilinx_xdma_set_mode(struct dma_chan *chan, enum operation_mode
+void xilinx_xdma_set_mode(struct dma_chan *chan, enum xilinx_vid_dma_mode
 			  mode)
 {
 	struct xilinx_frmbuf_chan *xil_chan;
@@ -1690,7 +1690,7 @@ static void xilinx_frmbuf_start_transfer(struct xilinx_frmbuf_chan *chan)
 	list_del(&desc->node);
 
 	/* No staging descriptor required when auto restart is disabled */
-	if (chan->mode == AUTO_RESTART)
+	if (chan->mode == XILINX_VID_DMA_AUTO_RESTART)
 		chan->staged_desc = desc;
 	else
 		chan->active_desc = desc;
@@ -1780,7 +1780,7 @@ static irqreturn_t xilinx_frmbuf_irq_handler(int irq, void *data)
 		if (chan->direction == DMA_MEM_TO_DEV &&
 		    chan->hw_fid && chan->idle &&
 		    chan->xdev->cfg->flags & XILINX_FID_ERR_DETECT_PROP) {
-			if (chan->mode == AUTO_RESTART)
+			if (chan->mode == XILINX_VID_DMA_AUTO_RESTART)
 				chan->fid_mode = FID_MODE_2;
 			else
 				chan->fid_mode = FID_MODE_1;
@@ -2040,7 +2040,7 @@ static int xilinx_frmbuf_chan_probe(struct xilinx_frmbuf_device *xdev,
 	chan->idle = true;
 	chan->fid_err_flag = 0;
 	chan->fid_out_val = 0;
-	chan->mode = AUTO_RESTART;
+	chan->mode = XILINX_VID_DMA_AUTO_RESTART;
 
 	err = of_property_read_u32(node, "xlnx,dma-addr-width",
 				   &dma_addr_size);

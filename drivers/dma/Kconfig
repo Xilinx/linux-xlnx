@@ -767,6 +767,17 @@ config XILINX_FRMBUF
 	help
 	 Enable support for Xilinx Framebuffer DMA.
 
+config XILINX_AI_LAYOUT_FORMATTER
+	tristate "Xilinx AI Layout Formatter Write DMA"
+	depends on HAS_IOMEM && OF
+	select DMA_ENGINE
+	help
+	  Enable support for Xilinx AI Layout Formatter Write DMA.
+	  Choose this option if you need stream-to-memory layout
+	  conversions for AI or video acceleration.
+	  The driver provides the DMA engine required by the
+	  AI Layout Formatter hardware.
+
 # driver files
 source "drivers/dma/amd/Kconfig"
 

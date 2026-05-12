@@ -8,6 +8,7 @@
 #ifndef __XILINX_FRMBUF_DMA_H
 #define __XILINX_FRMBUF_DMA_H
 
+#include <linux/dma/xilinx_video_dma_common.h>
 #include <linux/dmaengine.h>
 
 /* Modes to enable early callback */
@@ -23,16 +24,6 @@
 enum vid_frmwork_type {
 	XDMA_DRM = 0,
 	XDMA_V4L2,
-};
-
-/**
- * enum operation_mode - FB IP control register field settings to select mode
- * @DEFAULT : Use default mode, No explicit bit field settings required.
- * @AUTO_RESTART : Use auto-restart mode by setting BIT(7) of control register.
- */
-enum operation_mode {
-	DEFAULT = 0x0,
-	AUTO_RESTART = BIT(7),
 };
 
 /**
@@ -62,7 +53,7 @@ enum fid_modes {
  *
  * auto-restart or free running mode.
  */
-void xilinx_xdma_set_mode(struct dma_chan *chan, enum operation_mode mode);
+void xilinx_xdma_set_mode(struct dma_chan *chan, enum xilinx_vid_dma_mode mode);
 
 /**
  * xilinx_xdma_drm_config - configure video format in video aware DMA
@@ -195,7 +186,7 @@ int xilinx_xdma_get_width_align(struct dma_chan *chan, u32 *width_align);
 
 #else
 static inline void xilinx_xdma_set_mode(struct dma_chan *chan,
-					enum operation_mode mode)
+					enum xilinx_vid_dma_mode mode)
 { }
 
 static inline void xilinx_xdma_drm_config(struct dma_chan *chan, u32 drm_fourcc)
