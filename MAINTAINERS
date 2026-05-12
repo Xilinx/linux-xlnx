@@ -28210,6 +28210,15 @@ F:	fs/xfs/
 F:	include/uapi/linux/dqblk_xfs.h
 F:	include/uapi/linux/fsmap.h
 
+XILINX AI LAYOUT FORMATTER DRIVER
+M:	Mounik Katikala <mounik.katikala@amd.com>
+L:	dmaengine@vger.kernel.org
+S:	Maintained
+F:	Documentation/devicetree/bindings/dma/xilinx/xlnx,ai-layout-formatter-wr.yaml
+F:	drivers/dma/xilinx/xilinx_ai_layout_formatter.c
+F:	include/linux/dma/xilinx_ai_layout_formatter.h
+F:	include/linux/dma/xilinx_video_dma_common.h
+
 XILINX AMS DRIVER
 M:	Salih Erim <salih.erim@amd.com>
 M:	Conall O'Griofa <conall.ogriofa@amd.com>

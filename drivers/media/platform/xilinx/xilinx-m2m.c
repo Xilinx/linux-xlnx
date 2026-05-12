@@ -1226,7 +1226,7 @@ static void xvip_m2m_prep_submit_dev2mem_desc(struct xvip_m2m_ctx *ctx,
 	u32 bpl_nume, bpl_deno;
 	u32 luma_size;
 	u32 flags = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
-	enum operation_mode mode = DEFAULT;
+	enum xilinx_vid_dma_mode mode = XILINX_VID_DMA_DEFAULT;
 	u32 bpl, dst_width, dst_height;
 
 	p_out = vb2_dma_contig_plane_dma_addr(&dst_buf->vb2_buf, 0);
@@ -1316,7 +1316,7 @@ static void xvip_m2m_prep_submit_mem2dev_desc(struct xvip_m2m_ctx *ctx,
 	u32 bpl_nume, bpl_deno;
 	u32 luma_size;
 	u32 flags = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
-	enum operation_mode mode = DEFAULT;
+	enum xilinx_vid_dma_mode mode = XILINX_VID_DMA_DEFAULT;
 	u32 bpl, src_width, src_height;
 
 	p_in = vb2_dma_contig_plane_dma_addr(&src_buf->vb2_buf, 0);
