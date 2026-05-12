@@ -11,12 +11,14 @@
 
 #include <dt-bindings/media/xilinx-vip.h>
 
+#include <linux/dma/xilinx_ai_layout_formatter.h>
 #include <linux/dma/xilinx_dma.h>
 #include <linux/dma/xilinx_frmbuf.h>
 #include <linux/lcm.h>
 #include <linux/list.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/property.h>
 #include <linux/slab.h>
 #include <linux/xilinx-v4l2-controls.h>
 
@@ -39,6 +41,21 @@
 #define XVIP_DMA_MAX_WIDTH		65535U
 #define XVIP_DMA_MIN_HEIGHT		1U
 #define XVIP_DMA_MAX_HEIGHT		8191U
+
+/* One rodata ops table per backend; struct xvip_dma only holds a pointer. */
+static const struct xvip_xdma_ops xvip_xdma_ops_frmbuf = {
+	.v4l2_config = xilinx_xdma_v4l2_config,
+	.get_v4l2_vid_fmts = xilinx_xdma_get_v4l2_vid_fmts,
+	.set_mode = xilinx_xdma_set_mode,
+	.get_width_align = xilinx_xdma_get_width_align,
+};
+
+static const struct xvip_xdma_ops xvip_xdma_ops_ai_layout = {
+	.v4l2_config = xilinx_ai_xdma_v4l2_config,
+	.get_v4l2_vid_fmts = xilinx_ai_xdma_get_v4l2_vid_fmts,
+	.set_mode = xilinx_ai_xdma_set_mode,
+	.get_width_align = xilinx_ai_xdma_get_width_align,
+};
 
 /* -----------------------------------------------------------------------------
  * Helper functions
@@ -269,6 +286,12 @@ static void xvip_dma_complete(void *param)
 	buf->buf.sequence = dma->sequence++;
 	buf->buf.vb2_buf.timestamp = ktime_get_ns();
 
+	/*
+	 * Field-ID comes from the framebuffer (xilinx_frmbuf) DMA driver only.
+	 * On an AI layout formatter channel, xilinx_xdma_get_fid() resolves no
+	 * frmbuf device and returns -ENODEV, so the interlaced path below is
+	 * skipped. That matches hardware: this IP has no interlaced FID metadata.
+	 */
 	status = xilinx_xdma_get_fid(dma->dma, buf->desc, &fid);
 	if (!status) {
 		if (((V4L2_TYPE_IS_MULTIPLANAR(dma->format.type)) &&
@@ -397,7 +420,7 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 		pix_mp = &dma->format.fmt.pix_mp;
 		bpl = pix_mp->plane_fmt[0].bytesperline;
 
-		xilinx_xdma_v4l2_config(dma->dma, pix_mp->pixelformat);
+		dma->xdma->v4l2_config(dma->dma, pix_mp->pixelformat);
 		xvip_width_padding_factor(pix_mp->pixelformat,
 					  &padding_factor_nume,
 					  &padding_factor_deno);
@@ -461,7 +484,7 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 
 		pix = &dma->format.fmt.pix;
 		bpl = pix->bytesperline;
-		xilinx_xdma_v4l2_config(dma->dma, pix->pixelformat);
+		dma->xdma->v4l2_config(dma->dma, pix->pixelformat);
 		xvip_width_padding_factor(pix->pixelformat,
 					  &padding_factor_nume,
 					  &padding_factor_deno);
@@ -496,6 +519,12 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 	else if (buf->buf.field == V4L2_FIELD_NONE)
 		fid = 0;
 
+	/*
+	 * FID tagging is framebuffer-DMA only. AI layout formatter channels get
+	 * -ENODEV from xilinx_xdma_set_fid(); the return value is ignored because
+	 * dmaengine descriptors here are not frmbuf-owned and the IP does not use
+	 * per-descriptor field IDs.
+	 */
 	xilinx_xdma_set_fid(dma->dma, desc, fid);
 
 	spin_lock_irq(&dma->queued_lock);
@@ -504,7 +533,9 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 
 	/*
 	 * Low latency capture: Give descriptor callback at start of
-	 * processing the descriptor
+	 * processing the descriptor. Early-callback mode exists only on
+	 * framebuffer DMA; on AI layout formatter, xilinx_xdma_set_earlycb()
+	 * fails with -ENODEV and is ignored (same rationale as set_fid above).
 	 */
 	if (dma->low_latency_cap)
 		xilinx_xdma_set_earlycb(dma->dma, desc,
@@ -652,7 +683,7 @@ static int xvip_xdma_enum_fmt(struct xvip_dma *dma, struct v4l2_fmtdesc *f,
 	int ret;
 	u32 i, fmt_cnt = 0, *fmts = NULL;
 
-	ret = xilinx_xdma_get_v4l2_vid_fmts(dma->dma, &fmt_cnt, &fmts);
+	ret = dma->xdma->get_v4l2_vid_fmts(dma->dma, &fmt_cnt, &fmts);
 	if (ret)
 		return ret;
 
@@ -966,10 +997,29 @@ __xvip_dma_try_format(struct xvip_dma *dma,
 							pix_mp->height;
 				} else {
 					/* Multi plane formats */
-					plane_fmt[0].sizeimage =
-						DIV_ROUND_UP(plane_fmt[0].bytesperline *
-							     pix_mp->height *
-							     info->bpp, 8);
+					/*
+					 * Plane 0 sizeimage in bytes: bytesperline is already a
+					 * line stride in bytes; multiply by height and the format
+					 * bits-per-pixel (info->bpp), then round up to whole bytes
+					 * with DIV_ROUND_UP(..., BITS_PER_BYTE), i.e.
+					 * ceil(bytesperline * height * bpp / 8).
+					 * AI layout formatter DMA uses struct xvip_video_format
+					 * width (AXI4 bits per component) as the packing divisor
+					 * instead of BITS_PER_BYTE.
+					 */
+					if (dma->layout_formatter) {
+						unsigned int packing_bits = info->width;
+
+						plane_fmt[0].sizeimage =
+							DIV_ROUND_UP(plane_fmt[0].bytesperline *
+								     pix_mp->height *
+								     info->bpp, packing_bits);
+					} else {
+						plane_fmt[0].sizeimage =
+							DIV_ROUND_UP(plane_fmt[0].bytesperline *
+								     pix_mp->height *
+								     info->bpp, BITS_PER_BYTE);
+					}
 				}
 			} else {
 				/* Handling non-contiguous data with mplanes */
@@ -1216,13 +1266,13 @@ static int xvip_dma_s_ctrl(struct v4l2_ctrl *ctl)
 			 * to avoid extra one frame delay between
 			 * programming and actual writing of data
 			 */
-			xilinx_xdma_set_mode(dma->dma, XILINX_VID_DMA_DEFAULT);
+			dma->xdma->set_mode(dma->dma, XILINX_VID_DMA_DEFAULT);
 		} else if (ctl->val == XVIP_LOW_LATENCY_DISABLE) {
 			if (vb2_is_busy(&dma->queue))
 				return -EBUSY;
 
 			dma->low_latency_cap = false;
-			xilinx_xdma_set_mode(dma->dma, XILINX_VID_DMA_AUTO_RESTART);
+			dma->xdma->set_mode(dma->dma, XILINX_VID_DMA_AUTO_RESTART);
 		} else if (ctl->val == XVIP_START_DMA) {
 			if (dma->low_latency_cap &&
 			    vb2_is_streaming(&dma->queue)) {
@@ -1279,7 +1329,7 @@ static int xvip_dma_open(struct file *file)
 
 		mutex_lock(&dma->lock);
 		dma->low_latency_cap = false;
-		xilinx_xdma_set_mode(dma->dma, XILINX_VID_DMA_AUTO_RESTART);
+		dma->xdma->set_mode(dma->dma, XILINX_VID_DMA_AUTO_RESTART);
 		mutex_unlock(&dma->lock);
 	}
 
@@ -1390,6 +1440,33 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 	if (ret < 0)
 		goto error;
 
+	/* ... and the DMA channel. */
+	snprintf(name, sizeof(name), "port%u", port);
+	dma->dma = dma_request_chan(dma->xdev->dev, name);
+	if (IS_ERR(dma->dma)) {
+		ret = dev_err_probe(dma->xdev->dev, PTR_ERR(dma->dma),
+				    "no VDMA channel found\n");
+		goto error;
+	}
+
+	dma->layout_formatter = device_is_compatible(dma->dma->device->dev,
+						     XILINX_AI_LAYOUT_FORMATTER_DT_COMPAT);
+
+	if (dma->layout_formatter)
+		dma->xdma = &xvip_xdma_ops_ai_layout;
+	else
+		dma->xdma = &xvip_xdma_ops_frmbuf;
+
+	dma->xdma->get_width_align(dma->dma, &dma->width_align);
+
+	if (!dma->width_align) {
+		dev_dbg(dma->xdev->dev,
+			"Using width align %d\n", XVIP_DMA_DEF_WIDTH_ALIGN);
+		dma->width_align = XVIP_DMA_DEF_WIDTH_ALIGN;
+	}
+
+	dma->align = BIT(dma->dma->device->copy_align);
+
 	ret = v4l2_ctrl_handler_init(&dma->ctrl_handler,
 				     ARRAY_SIZE(xvip_dma_ctrls));
 	if (ret < 0) {
@@ -1486,24 +1563,6 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 		dev_err(dma->xdev->dev, "failed to initialize VB2 queue\n");
 		goto error;
 	}
-
-	/* ... and the DMA channel. */
-	snprintf(name, sizeof(name), "port%u", port);
-	dma->dma = dma_request_chan(dma->xdev->dev, name);
-	if (IS_ERR(dma->dma)) {
-		ret = dev_err_probe(dma->xdev->dev, PTR_ERR(dma->dma),
-				    "no VDMA channel found\n");
-		goto error;
-	}
-
-	xilinx_xdma_get_width_align(dma->dma, &dma->width_align);
-	if (!dma->width_align) {
-		dev_dbg(dma->xdev->dev,
-			"Using width align %d\n", XVIP_DMA_DEF_WIDTH_ALIGN);
-		dma->width_align = XVIP_DMA_DEF_WIDTH_ALIGN;
-	}
-
-	dma->align = 1 << dma->dma->device->copy_align;
 
 	ret = video_register_device(&dma->video, VFL_TYPE_VIDEO, -1);
 	if (ret < 0) {

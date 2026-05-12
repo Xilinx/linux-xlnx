@@ -12,6 +12,7 @@
 #ifndef __XILINX_VIP_DMA_H__
 #define __XILINX_VIP_DMA_H__
 
+#include <linux/dma/xilinx_video_dma_common.h>
 #include <linux/dmaengine.h>
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
@@ -25,6 +26,25 @@
 struct dma_chan;
 struct xvip_composite_device;
 struct xvip_video_format;
+
+/**
+ * struct xvip_xdma_ops - Video-aware Xilinx DMA hooks (framebuffer vs AI layout formatter)
+ * @v4l2_config: Program DMA for the active V4L2 memory layout
+ * @get_v4l2_vid_fmts: List supported V4L2 fourcc codes for this channel
+ * @set_mode: Set default vs auto-restart mode before dma_async_issue_pending()
+ * @get_width_align: Query required horizontal width alignment in pixels
+ *
+ * Interlaced field-ID and early-callback setup stay as direct calls to
+ * xilinx_xdma_get_fid(), xilinx_xdma_set_fid(), and xilinx_xdma_set_earlycb()
+ * in xilinx-dma.c: they are implemented only for framebuffer DMA. AI layout
+ * formatter channels get -ENODEV from those helpers; see comments there.
+ */
+struct xvip_xdma_ops {
+	void (*v4l2_config)(struct dma_chan *chan, u32 v4l2_fourcc);
+	int (*get_v4l2_vid_fmts)(struct dma_chan *chan, u32 *fmt_cnt, u32 **fmts);
+	void (*set_mode)(struct dma_chan *chan, enum xilinx_vid_dma_mode mode);
+	int (*get_width_align)(struct dma_chan *chan, u32 *width_align);
+};
 
 /**
  * struct xvip_pipeline - Xilinx Video IP pipeline structure
@@ -83,6 +103,8 @@ static inline struct xvip_pipeline *to_xvip_pipeline(struct video_device *vdev)
  * @sgl: data chunk structure for dma_interleaved_template
  * @prev_fid: Previous Field ID
  * @low_latency_cap: Low latency capture mode
+ * @layout_formatter: DMA channel is AI layout formatter device
+ * @xdma: Read-only ops table for this channel (framebuffer vs AI layout formatter)
  */
 struct xvip_dma {
 	struct list_head list;
@@ -117,6 +139,8 @@ struct xvip_dma {
 
 	u32 prev_fid;
 	u32 low_latency_cap;
+	bool layout_formatter;
+	const struct xvip_xdma_ops *xdma;
 };
 
 #define to_xvip_dma(vdev)	container_of(vdev, struct xvip_dma, video)
