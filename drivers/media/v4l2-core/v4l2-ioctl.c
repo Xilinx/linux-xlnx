@@ -1557,6 +1557,30 @@ static void v4l_fill_fmtdesc(struct v4l2_fmtdesc *fmt)
 	case V4L2_PIX_FMT_T648:		descr = "Y/CbCr 4:4:4 8-bit 64x4 tiles"; break;
 	case V4L2_PIX_FMT_T64A:		descr = "Y/CbCr 4:4:4 10-bit 64x4 tiles"; break;
 	case V4L2_PIX_FMT_T64C:		descr = "Y/CbCr 4:4:4 12-bit 64x4 tiles"; break;
+	case V4L2_PIX_FMT_HCWNC4_8_4_4:	descr = "32-bit HCWNC4 u8 4x4"; break;
+	case V4L2_PIX_FMT_HCWNC4_BF16_4_4:	descr = "64-bit HCWNC4 BF16 4x4"; break;
+	case V4L2_PIX_FMT_HCWNC4_FP16_4_4:	descr = "64-bit HCWNC4 FP16 4x4"; break;
+	case V4L2_PIX_FMT_HCWNC4_FP32_4_4:	descr = "128-bit HCWNC4 FP32 4x4"; break;
+	case V4L2_PIX_FMT_HCWNC8_8_4_4:	descr = "64-bit HCWNC8 u8 4x4"; break;
+	case V4L2_PIX_FMT_HCWNC8_BF16_4_4:	descr = "128-bit HCWNC8 BF16 4x4"; break;
+	case V4L2_PIX_FMT_HCWNC8_FP16_4_4:	descr = "128-bit HCWNC8 FP16 4x4"; break;
+	case V4L2_PIX_FMT_HCWNC8_FP32_4_4:	descr = "256-bit HCWNC8 FP32 4x4"; break;
+	case V4L2_PIX_FMT_HCWNC4_8_4_3:	descr = "32-bit HCWNC4 u8 4x3"; break;
+	case V4L2_PIX_FMT_HCWNC4_BF16_4_3:	descr = "64-bit HCWNC4 BF16 4x3"; break;
+	case V4L2_PIX_FMT_HCWNC4_FP16_4_3:	descr = "64-bit HCWNC4 FP16 4x3"; break;
+	case V4L2_PIX_FMT_HCWNC4_FP32_4_3:	descr = "128-bit HCWNC4 FP32 4x3"; break;
+	case V4L2_PIX_FMT_HCWNC8_8_4_3:	descr = "64-bit HCWNC8 u8 4x3"; break;
+	case V4L2_PIX_FMT_HCWNC8_BF16_4_3:	descr = "128-bit HCWNC8 BF16 4x3"; break;
+	case V4L2_PIX_FMT_HCWNC8_FP16_4_3:	descr = "128-bit HCWNC8 FP16 4x3"; break;
+	case V4L2_PIX_FMT_HCWNC8_FP32_4_3:	descr = "256-bit HCWNC8 FP32 4x3"; break;
+	case V4L2_PIX_FMT_HCWNC4_8_3_3:	descr = "32-bit HCWNC4 u8 3x3"; break;
+	case V4L2_PIX_FMT_HCWNC4_BF16_3_3:	descr = "64-bit HCWNC4 BF16 3x3"; break;
+	case V4L2_PIX_FMT_HCWNC4_FP16_3_3:	descr = "64-bit HCWNC4 FP16 3x3"; break;
+	case V4L2_PIX_FMT_HCWNC4_FP32_3_3:	descr = "128-bit HCWNC4 FP32 3x3"; break;
+	case V4L2_PIX_FMT_HCWNC8_8_3_3:	descr = "64-bit HCWNC8 u8 3x3"; break;
+	case V4L2_PIX_FMT_HCWNC8_BF16_3_3:	descr = "128-bit HCWNC8 BF16 3x3"; break;
+	case V4L2_PIX_FMT_HCWNC8_FP16_3_3:	descr = "128-bit HCWNC8 FP16 3x3"; break;
+	case V4L2_PIX_FMT_HCWNC8_FP32_3_3:	descr = "256-bit HCWNC8 FP32 3x3"; break;
 	default:
 		/* Compressed formats */
 		flags = V4L2_FMT_FLAG_COMPRESSED;
