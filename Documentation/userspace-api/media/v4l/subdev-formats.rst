@@ -2134,7 +2134,29 @@ The following table list existing packed 36bit wide RGB formats.
     \endgroup
 
 
-The following table list existing packed 48bit wide RGB formats.
+The following tables list existing and new packed 48-bit-wide RGB media-bus formats.
+
+MEDIA_BUS_FMT_RGB_BF161616_1X48
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This format closely resembles MEDIA_BUS_FMT_RGB161616_1X48, with the difference being that each
+16-bit channel stores a Brain Floating Point (BF16) value instead of a plain integer. The
+ordering of the color channels places R (red) in the most significant 16 bits, G (green) in the
+middle 16 bits, and B (blue) in the least significant 16 bits of each 48-bit pixel sample, thus
+spreading the channels sequentially from most to least significant bytes.
+
+MEDIA_BUS_FMT_RGB_FP161616_1X48
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This format follows the structure of MEDIA_BUS_FMT_RGB161616_1X48, but instead of representing
+channels as 16-bit integers, each R, G, and B channel has a 16-bit floating-point (FP16, also
+referred to as half-precision) value. For each 48-bit pixel, the R channel uses the most
+significant 16 bits, G uses the next 16 bits, and B uses the least significant 16 bits. The layout
+for FP16, BF16, and FP32 floating point types, where S is sign, E is exponent, and M is mantissa,
+is shown below:
+
+.. include:: pixfmt-float-bitfield-tables.rst
+   :start-after: FLOAT_BITFIELD_LIST_TABLES_BEGIN
 
 .. tabularcolumns:: |p{4.0cm}|p{0.7cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|
 
@@ -2369,6 +2391,1327 @@ The following table list existing packed 48bit wide RGB formats.
       - g\ :sub:`2`
       - g\ :sub:`1`
       - g\ :sub:`0`
+    * .. _MEDIA-BUS-FMT-RGB-BF161616-1X48:
+
+      - MEDIA_BUS_FMT_RGB_BF161616_1X48
+      - 0x102e
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      - r\ :sub:`BF15`
+      - r\ :sub:`BF14`
+      - r\ :sub:`BF13`
+      - r\ :sub:`BF12`
+      - r\ :sub:`BF11`
+      - r\ :sub:`BF10`
+      - r\ :sub:`BF9`
+      - r\ :sub:`BF8`
+      - r\ :sub:`BF7`
+      - r\ :sub:`BF6`
+      - r\ :sub:`BF5`
+      - r\ :sub:`BF4`
+      - r\ :sub:`BF3`
+      - r\ :sub:`BF2`
+      - r\ :sub:`BF1`
+      - r\ :sub:`BF0`
+    * -
+      -
+      -
+      - g\ :sub:`BF15`
+      - g\ :sub:`BF14`
+      - g\ :sub:`BF13`
+      - g\ :sub:`BF12`
+      - g\ :sub:`BF11`
+      - g\ :sub:`BF10`
+      - g\ :sub:`BF9`
+      - g\ :sub:`BF8`
+      - g\ :sub:`BF7`
+      - g\ :sub:`BF6`
+      - g\ :sub:`BF5`
+      - g\ :sub:`BF4`
+      - g\ :sub:`BF3`
+      - g\ :sub:`BF2`
+      - g\ :sub:`BF1`
+      - g\ :sub:`BF0`
+      - b\ :sub:`BF15`
+      - b\ :sub:`BF14`
+      - b\ :sub:`BF13`
+      - b\ :sub:`BF12`
+      - b\ :sub:`BF11`
+      - b\ :sub:`BF10`
+      - b\ :sub:`BF9`
+      - b\ :sub:`BF8`
+      - b\ :sub:`BF7`
+      - b\ :sub:`BF6`
+      - b\ :sub:`BF5`
+      - b\ :sub:`BF4`
+      - b\ :sub:`BF3`
+      - b\ :sub:`BF2`
+      - b\ :sub:`BF1`
+      - b\ :sub:`BF0`
+    * .. _MEDIA-BUS-FMT-RGB-FP161616-1X48:
+
+      - MEDIA_BUS_FMT_RGB_FP161616_1X48
+      - 0x102f
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      - r\ :sub:`FP15`
+      - r\ :sub:`FP14`
+      - r\ :sub:`FP13`
+      - r\ :sub:`FP12`
+      - r\ :sub:`FP11`
+      - r\ :sub:`FP10`
+      - r\ :sub:`FP9`
+      - r\ :sub:`FP8`
+      - r\ :sub:`FP7`
+      - r\ :sub:`FP6`
+      - r\ :sub:`FP5`
+      - r\ :sub:`FP4`
+      - r\ :sub:`FP3`
+      - r\ :sub:`FP2`
+      - r\ :sub:`FP1`
+      - r\ :sub:`FP0`
+    * -
+      -
+      -
+      - g\ :sub:`FP15`
+      - g\ :sub:`FP14`
+      - g\ :sub:`FP13`
+      - g\ :sub:`FP12`
+      - g\ :sub:`FP11`
+      - g\ :sub:`FP10`
+      - g\ :sub:`FP9`
+      - g\ :sub:`FP8`
+      - g\ :sub:`FP7`
+      - g\ :sub:`FP6`
+      - g\ :sub:`FP5`
+      - g\ :sub:`FP4`
+      - g\ :sub:`FP3`
+      - g\ :sub:`FP2`
+      - g\ :sub:`FP1`
+      - g\ :sub:`FP0`
+      - b\ :sub:`FP15`
+      - b\ :sub:`FP14`
+      - b\ :sub:`FP13`
+      - b\ :sub:`FP12`
+      - b\ :sub:`FP11`
+      - b\ :sub:`FP10`
+      - b\ :sub:`FP9`
+      - b\ :sub:`FP8`
+      - b\ :sub:`FP7`
+      - b\ :sub:`FP6`
+      - b\ :sub:`FP5`
+      - b\ :sub:`FP4`
+      - b\ :sub:`FP3`
+      - b\ :sub:`FP2`
+      - b\ :sub:`FP1`
+      - b\ :sub:`FP0`
+
+.. raw:: latex
+
+    \endgroup
+
+The following table lists packed 96-bit-wide RGB formats.
+
+MEDIA_BUS_FMT_RGB_FP323232_1X96
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This represents a FP32, 3-channel pixel arrangement. Each 32 bits represent a floating-point
+(FP32) value.
+With each channel being 32 bits wide, a single full pixel requires 96 bits in total.
+The R, G, and B channels are arranged from the most significant to the least significant bits; R
+occupies the most significant bytes, G occupies the middle bytes, and B occupies the least
+significant bytes.
+
+.. tabularcolumns:: |p{4.0cm}|p{0.7cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|
+
+.. _v4l2-mbus-pixelcode-rgb-96:
+
+.. raw:: latex
+
+    \begingroup
+    \tiny
+    \setlength{\tabcolsep}{2pt}
+
+.. flat-table:: 96bit RGB formats
+    :header-rows:  3
+    :stub-columns: 0
+    :widths: 36 7 3 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2
+
+    * - Identifier
+      - Code
+      -
+      - :cspan:`31` Data organization
+    * -
+      -
+      - Bit
+      - 95
+      - 94
+      - 93
+      - 92
+      - 91
+      - 90
+      - 89
+      - 88
+      - 87
+      - 86
+      - 85
+      - 84
+      - 83
+      - 82
+      - 81
+      - 80
+      - 79
+      - 78
+      - 77
+      - 76
+      - 75
+      - 74
+      - 73
+      - 72
+      - 71
+      - 70
+      - 69
+      - 68
+      - 67
+      - 66
+      - 65
+      - 64
+    * -
+      -
+      -
+      - 63
+      - 62
+      - 61
+      - 60
+      - 59
+      - 58
+      - 57
+      - 56
+      - 55
+      - 54
+      - 53
+      - 52
+      - 51
+      - 50
+      - 49
+      - 48
+      - 47
+      - 46
+      - 45
+      - 44
+      - 43
+      - 42
+      - 41
+      - 40
+      - 39
+      - 38
+      - 37
+      - 36
+      - 35
+      - 34
+      - 33
+      - 32
+    * -
+      -
+      -
+      - 31
+      - 30
+      - 29
+      - 28
+      - 27
+      - 26
+      - 25
+      - 24
+      - 23
+      - 22
+      - 21
+      - 20
+      - 19
+      - 18
+      - 17
+      - 16
+      - 15
+      - 14
+      - 13
+      - 12
+      - 11
+      - 10
+      - 9
+      - 8
+      - 7
+      - 6
+      - 5
+      - 4
+      - 3
+      - 2
+      - 1
+      - 0
+    * .. _MEDIA-BUS-FMT-RGB-FP323232-1X96:
+
+      - MEDIA_BUS_FMT_RGB_FP323232_1X96
+      - 0x1030
+      -
+      - r\ :sub:`31`
+      - r\ :sub:`30`
+      - r\ :sub:`29`
+      - r\ :sub:`28`
+      - r\ :sub:`27`
+      - r\ :sub:`26`
+      - r\ :sub:`25`
+      - r\ :sub:`24`
+      - r\ :sub:`23`
+      - r\ :sub:`22`
+      - r\ :sub:`21`
+      - r\ :sub:`20`
+      - r\ :sub:`19`
+      - r\ :sub:`18`
+      - r\ :sub:`17`
+      - r\ :sub:`16`
+      - r\ :sub:`15`
+      - r\ :sub:`14`
+      - r\ :sub:`13`
+      - r\ :sub:`12`
+      - r\ :sub:`11`
+      - r\ :sub:`10`
+      - r\ :sub:`9`
+      - r\ :sub:`8`
+      - r\ :sub:`7`
+      - r\ :sub:`6`
+      - r\ :sub:`5`
+      - r\ :sub:`4`
+      - r\ :sub:`3`
+      - r\ :sub:`2`
+      - r\ :sub:`1`
+      - r\ :sub:`0`
+    * -
+      -
+      -
+      - g\ :sub:`31`
+      - g\ :sub:`30`
+      - g\ :sub:`29`
+      - g\ :sub:`28`
+      - g\ :sub:`27`
+      - g\ :sub:`26`
+      - g\ :sub:`25`
+      - g\ :sub:`24`
+      - g\ :sub:`23`
+      - g\ :sub:`22`
+      - g\ :sub:`21`
+      - g\ :sub:`20`
+      - g\ :sub:`19`
+      - g\ :sub:`18`
+      - g\ :sub:`17`
+      - g\ :sub:`16`
+      - g\ :sub:`15`
+      - g\ :sub:`14`
+      - g\ :sub:`13`
+      - g\ :sub:`12`
+      - g\ :sub:`11`
+      - g\ :sub:`10`
+      - g\ :sub:`9`
+      - g\ :sub:`8`
+      - g\ :sub:`7`
+      - g\ :sub:`6`
+      - g\ :sub:`5`
+      - g\ :sub:`4`
+      - g\ :sub:`3`
+      - g\ :sub:`2`
+      - g\ :sub:`1`
+      - g\ :sub:`0`
+    * -
+      -
+      -
+      - b\ :sub:`31`
+      - b\ :sub:`30`
+      - b\ :sub:`29`
+      - b\ :sub:`28`
+      - b\ :sub:`27`
+      - b\ :sub:`26`
+      - b\ :sub:`25`
+      - b\ :sub:`24`
+      - b\ :sub:`23`
+      - b\ :sub:`22`
+      - b\ :sub:`21`
+      - b\ :sub:`20`
+      - b\ :sub:`19`
+      - b\ :sub:`18`
+      - b\ :sub:`17`
+      - b\ :sub:`16`
+      - b\ :sub:`15`
+      - b\ :sub:`14`
+      - b\ :sub:`13`
+      - b\ :sub:`12`
+      - b\ :sub:`11`
+      - b\ :sub:`10`
+      - b\ :sub:`9`
+      - b\ :sub:`8`
+      - b\ :sub:`7`
+      - b\ :sub:`6`
+      - b\ :sub:`5`
+      - b\ :sub:`4`
+      - b\ :sub:`3`
+      - b\ :sub:`2`
+      - b\ :sub:`1`
+      - b\ :sub:`0`
+
+.. raw:: latex
+
+    \endgroup
+
+The following table lists packed 32-bit-wide RGBA formats.
+
+MEDIA_BUS_FMT_RGBA8888_1X32
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This represents an 8-bit, 4-channel pixel arrangement. Each 8 bits represent a plain integer value.
+With each channel being 8 bits wide, a single full pixel requires 32 bits in total.
+The R, G, B, and A channels are arranged from the most significant to the least significant bits; R
+occupies the most significant byte, G occupies the next byte, B occupies the next byte, and A
+occupies the least significant byte.
+
+.. tabularcolumns:: |p{4.0cm}|p{0.7cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|
+
+.. _v4l2-mbus-pixelcode-rgba-32:
+
+.. raw:: latex
+
+    \begingroup
+    \tiny
+    \setlength{\tabcolsep}{2pt}
+
+.. flat-table:: 32bit RGBA formats
+    :header-rows:  3
+    :stub-columns: 0
+    :widths: 36 7 3 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2
+
+    * - Identifier
+      - Code
+      -
+      - :cspan:`31` Data organization
+    * -
+      -
+      - Bit
+      - 31
+      - 30
+      - 29
+      - 28
+      - 27
+      - 26
+      - 25
+      - 24
+      - 23
+      - 22
+      - 21
+      - 20
+      - 19
+      - 18
+      - 17
+      - 16
+      - 15
+      - 14
+      - 13
+      - 12
+      - 11
+      - 10
+      - 9
+      - 8
+      - 7
+      - 6
+      - 5
+      - 4
+      - 3
+      - 2
+      - 1
+      - 0
+    * .. _MEDIA-BUS-FMT-RGBA8888-1X32:
+
+      - MEDIA_BUS_FMT_RGBA8888_1X32
+      - 0x1031
+      -
+      - r\ :sub:`7`
+      - r\ :sub:`6`
+      - r\ :sub:`5`
+      - r\ :sub:`4`
+      - r\ :sub:`3`
+      - r\ :sub:`2`
+      - r\ :sub:`1`
+      - r\ :sub:`0`
+      - g\ :sub:`7`
+      - g\ :sub:`6`
+      - g\ :sub:`5`
+      - g\ :sub:`4`
+      - g\ :sub:`3`
+      - g\ :sub:`2`
+      - g\ :sub:`1`
+      - g\ :sub:`0`
+      - b\ :sub:`7`
+      - b\ :sub:`6`
+      - b\ :sub:`5`
+      - b\ :sub:`4`
+      - b\ :sub:`3`
+      - b\ :sub:`2`
+      - b\ :sub:`1`
+      - b\ :sub:`0`
+      - a\ :sub:`7`
+      - a\ :sub:`6`
+      - a\ :sub:`5`
+      - a\ :sub:`4`
+      - a\ :sub:`3`
+      - a\ :sub:`2`
+      - a\ :sub:`1`
+      - a\ :sub:`0`
+
+.. raw:: latex
+
+    \endgroup
+
+The following tables list and new packed 64-bit-wide RGBA media-bus formats.
+
+MEDIA_BUS_FMT_RGBA_BF16161616_1X64
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This format packs four 16-bit BF16 channels per 64-bit sample in R-G-B-A order.
+The R, G, B, and A channels are arranged from the most significant to the least significant bits; R
+occupies the most significant bytes, followed by G, then B, with A in the least significant bytes.
+
+MEDIA_BUS_FMT_RGBA_FP16161616_1X64
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This format packs four 16-bit FP16 channels per 64-bit sample in R-G-B-A order.
+The R, G, B, and A channels are arranged from the most significant to the least significant bits; R
+occupies the most significant bytes, followed by G, then B, with A in the least significant bytes.
+
+.. tabularcolumns:: |p{4.0cm}|p{0.7cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|
+
+.. _v4l2-mbus-pixelcode-rgba-64:
+
+.. raw:: latex
+
+    \begingroup
+    \tiny
+    \setlength{\tabcolsep}{2pt}
+
+.. flat-table:: 64bit RGBA formats
+    :header-rows:  3
+    :stub-columns: 0
+    :widths: 36 7 3 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2
+
+    * - Identifier
+      - Code
+      -
+      - :cspan:`31` Data organization
+    * -
+      -
+      - Bit
+      - 63
+      - 62
+      - 61
+      - 60
+      - 59
+      - 58
+      - 57
+      - 56
+      - 55
+      - 54
+      - 53
+      - 52
+      - 51
+      - 50
+      - 49
+      - 48
+      - 47
+      - 46
+      - 45
+      - 44
+      - 43
+      - 42
+      - 41
+      - 40
+      - 39
+      - 38
+      - 37
+      - 36
+      - 35
+      - 34
+      - 33
+      - 32
+    * -
+      -
+      -
+      - 31
+      - 30
+      - 29
+      - 28
+      - 27
+      - 26
+      - 25
+      - 24
+      - 23
+      - 22
+      - 21
+      - 20
+      - 19
+      - 18
+      - 17
+      - 16
+      - 15
+      - 14
+      - 13
+      - 12
+      - 11
+      - 10
+      - 9
+      - 8
+      - 7
+      - 6
+      - 5
+      - 4
+      - 3
+      - 2
+      - 1
+      - 0
+    * .. _MEDIA-BUS-FMT-RGBA-BF16161616-1X64:
+
+      - MEDIA_BUS_FMT_RGBA_BF16161616_1X64
+      - 0x1032
+      -
+      - r\ :sub:`15`
+      - r\ :sub:`14`
+      - r\ :sub:`13`
+      - r\ :sub:`12`
+      - r\ :sub:`11`
+      - r\ :sub:`10`
+      - r\ :sub:`9`
+      - r\ :sub:`8`
+      - r\ :sub:`7`
+      - r\ :sub:`6`
+      - r\ :sub:`5`
+      - r\ :sub:`4`
+      - r\ :sub:`3`
+      - r\ :sub:`2`
+      - r\ :sub:`1`
+      - r\ :sub:`0`
+      - g\ :sub:`15`
+      - g\ :sub:`14`
+      - g\ :sub:`13`
+      - g\ :sub:`12`
+      - g\ :sub:`11`
+      - g\ :sub:`10`
+      - g\ :sub:`9`
+      - g\ :sub:`8`
+      - g\ :sub:`7`
+      - g\ :sub:`6`
+      - g\ :sub:`5`
+      - g\ :sub:`4`
+      - g\ :sub:`3`
+      - g\ :sub:`2`
+      - g\ :sub:`1`
+      - g\ :sub:`0`
+    * -
+      -
+      -
+      - b\ :sub:`15`
+      - b\ :sub:`14`
+      - b\ :sub:`13`
+      - b\ :sub:`12`
+      - b\ :sub:`11`
+      - b\ :sub:`10`
+      - b\ :sub:`9`
+      - b\ :sub:`8`
+      - b\ :sub:`7`
+      - b\ :sub:`6`
+      - b\ :sub:`5`
+      - b\ :sub:`4`
+      - b\ :sub:`3`
+      - b\ :sub:`2`
+      - b\ :sub:`1`
+      - b\ :sub:`0`
+      - a\ :sub:`15`
+      - a\ :sub:`14`
+      - a\ :sub:`13`
+      - a\ :sub:`12`
+      - a\ :sub:`11`
+      - a\ :sub:`10`
+      - a\ :sub:`9`
+      - a\ :sub:`8`
+      - a\ :sub:`7`
+      - a\ :sub:`6`
+      - a\ :sub:`5`
+      - a\ :sub:`4`
+      - a\ :sub:`3`
+      - a\ :sub:`2`
+      - a\ :sub:`1`
+      - a\ :sub:`0`
+    * .. _MEDIA-BUS-FMT-RGBA-FP16161616-1X64:
+
+      - MEDIA_BUS_FMT_RGBA_FP16161616_1X64
+      - 0x1033
+      -
+      - r\ :sub:`15`
+      - r\ :sub:`14`
+      - r\ :sub:`13`
+      - r\ :sub:`12`
+      - r\ :sub:`11`
+      - r\ :sub:`10`
+      - r\ :sub:`9`
+      - r\ :sub:`8`
+      - r\ :sub:`7`
+      - r\ :sub:`6`
+      - r\ :sub:`5`
+      - r\ :sub:`4`
+      - r\ :sub:`3`
+      - r\ :sub:`2`
+      - r\ :sub:`1`
+      - r\ :sub:`0`
+      - g\ :sub:`15`
+      - g\ :sub:`14`
+      - g\ :sub:`13`
+      - g\ :sub:`12`
+      - g\ :sub:`11`
+      - g\ :sub:`10`
+      - g\ :sub:`9`
+      - g\ :sub:`8`
+      - g\ :sub:`7`
+      - g\ :sub:`6`
+      - g\ :sub:`5`
+      - g\ :sub:`4`
+      - g\ :sub:`3`
+      - g\ :sub:`2`
+      - g\ :sub:`1`
+      - g\ :sub:`0`
+    * -
+      -
+      -
+      - b\ :sub:`15`
+      - b\ :sub:`14`
+      - b\ :sub:`13`
+      - b\ :sub:`12`
+      - b\ :sub:`11`
+      - b\ :sub:`10`
+      - b\ :sub:`9`
+      - b\ :sub:`8`
+      - b\ :sub:`7`
+      - b\ :sub:`6`
+      - b\ :sub:`5`
+      - b\ :sub:`4`
+      - b\ :sub:`3`
+      - b\ :sub:`2`
+      - b\ :sub:`1`
+      - b\ :sub:`0`
+      - a\ :sub:`15`
+      - a\ :sub:`14`
+      - a\ :sub:`13`
+      - a\ :sub:`12`
+      - a\ :sub:`11`
+      - a\ :sub:`10`
+      - a\ :sub:`9`
+      - a\ :sub:`8`
+      - a\ :sub:`7`
+      - a\ :sub:`6`
+      - a\ :sub:`5`
+      - a\ :sub:`4`
+      - a\ :sub:`3`
+      - a\ :sub:`2`
+      - a\ :sub:`1`
+      - a\ :sub:`0`
+
+.. raw:: latex
+
+    \endgroup
+
+The following table lists packed 128-bit-wide RGBA formats.
+
+MEDIA_BUS_FMT_RGBA_FP32323232_1X128
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This represents a FP32, 4-channel pixel arrangement. Each 32 bits represent a floating-point
+(FP32) value.
+With each channel being 32 bits wide, a single full pixel requires 128 bits in total.
+The R, G, B, and A channels are arranged from the most significant to the least significant bits; R
+occupies the most significant bytes, followed by G, then B, with A in the least significant bytes.
+
+.. tabularcolumns:: |p{4.0cm}|p{0.7cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|
+
+.. _v4l2-mbus-pixelcode-rgba-128:
+
+.. raw:: latex
+
+    \begingroup
+    \tiny
+    \setlength{\tabcolsep}{2pt}
+
+.. flat-table:: 128bit RGBA formats
+    :header-rows:  3
+    :stub-columns: 0
+    :widths: 36 7 3 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2
+
+    * - Identifier
+      - Code
+      -
+      - :cspan:`31` Data organization
+    * -
+      -
+      - Bit
+      - 127
+      - 126
+      - 125
+      - 124
+      - 123
+      - 122
+      - 121
+      - 120
+      - 119
+      - 118
+      - 117
+      - 116
+      - 115
+      - 114
+      - 113
+      - 112
+      - 111
+      - 110
+      - 109
+      - 108
+      - 107
+      - 106
+      - 105
+      - 104
+      - 103
+      - 102
+      - 101
+      - 100
+      - 99
+      - 98
+      - 97
+      - 96
+    * -
+      -
+      -
+      - 95
+      - 94
+      - 93
+      - 92
+      - 91
+      - 90
+      - 89
+      - 88
+      - 87
+      - 86
+      - 85
+      - 84
+      - 83
+      - 82
+      - 81
+      - 80
+      - 79
+      - 78
+      - 77
+      - 76
+      - 75
+      - 74
+      - 73
+      - 72
+      - 71
+      - 70
+      - 69
+      - 68
+      - 67
+      - 66
+      - 65
+      - 64
+    * -
+      -
+      -
+      - 63
+      - 62
+      - 61
+      - 60
+      - 59
+      - 58
+      - 57
+      - 56
+      - 55
+      - 54
+      - 53
+      - 52
+      - 51
+      - 50
+      - 49
+      - 48
+      - 47
+      - 46
+      - 45
+      - 44
+      - 43
+      - 42
+      - 41
+      - 40
+      - 39
+      - 38
+      - 37
+      - 36
+      - 35
+      - 34
+      - 33
+      - 32
+    * -
+      -
+      -
+      - 31
+      - 30
+      - 29
+      - 28
+      - 27
+      - 26
+      - 25
+      - 24
+      - 23
+      - 22
+      - 21
+      - 20
+      - 19
+      - 18
+      - 17
+      - 16
+      - 15
+      - 14
+      - 13
+      - 12
+      - 11
+      - 10
+      - 9
+      - 8
+      - 7
+      - 6
+      - 5
+      - 4
+      - 3
+      - 2
+      - 1
+      - 0
+    * .. _MEDIA-BUS-FMT-RGBA-FP32323232-1X128:
+
+      - MEDIA_BUS_FMT_RGBA_FP32323232_1X128
+      - 0x1034
+      -
+      - r\ :sub:`31`
+      - r\ :sub:`30`
+      - r\ :sub:`29`
+      - r\ :sub:`28`
+      - r\ :sub:`27`
+      - r\ :sub:`26`
+      - r\ :sub:`25`
+      - r\ :sub:`24`
+      - r\ :sub:`23`
+      - r\ :sub:`22`
+      - r\ :sub:`21`
+      - r\ :sub:`20`
+      - r\ :sub:`19`
+      - r\ :sub:`18`
+      - r\ :sub:`17`
+      - r\ :sub:`16`
+      - r\ :sub:`15`
+      - r\ :sub:`14`
+      - r\ :sub:`13`
+      - r\ :sub:`12`
+      - r\ :sub:`11`
+      - r\ :sub:`10`
+      - r\ :sub:`9`
+      - r\ :sub:`8`
+      - r\ :sub:`7`
+      - r\ :sub:`6`
+      - r\ :sub:`5`
+      - r\ :sub:`4`
+      - r\ :sub:`3`
+      - r\ :sub:`2`
+      - r\ :sub:`1`
+      - r\ :sub:`0`
+    * -
+      -
+      -
+      - g\ :sub:`31`
+      - g\ :sub:`30`
+      - g\ :sub:`29`
+      - g\ :sub:`28`
+      - g\ :sub:`27`
+      - g\ :sub:`26`
+      - g\ :sub:`25`
+      - g\ :sub:`24`
+      - g\ :sub:`23`
+      - g\ :sub:`22`
+      - g\ :sub:`21`
+      - g\ :sub:`20`
+      - g\ :sub:`19`
+      - g\ :sub:`18`
+      - g\ :sub:`17`
+      - g\ :sub:`16`
+      - g\ :sub:`15`
+      - g\ :sub:`14`
+      - g\ :sub:`13`
+      - g\ :sub:`12`
+      - g\ :sub:`11`
+      - g\ :sub:`10`
+      - g\ :sub:`9`
+      - g\ :sub:`8`
+      - g\ :sub:`7`
+      - g\ :sub:`6`
+      - g\ :sub:`5`
+      - g\ :sub:`4`
+      - g\ :sub:`3`
+      - g\ :sub:`2`
+      - g\ :sub:`1`
+      - g\ :sub:`0`
+    * -
+      -
+      -
+      - b\ :sub:`31`
+      - b\ :sub:`30`
+      - b\ :sub:`29`
+      - b\ :sub:`28`
+      - b\ :sub:`27`
+      - b\ :sub:`26`
+      - b\ :sub:`25`
+      - b\ :sub:`24`
+      - b\ :sub:`23`
+      - b\ :sub:`22`
+      - b\ :sub:`21`
+      - b\ :sub:`20`
+      - b\ :sub:`19`
+      - b\ :sub:`18`
+      - b\ :sub:`17`
+      - b\ :sub:`16`
+      - b\ :sub:`15`
+      - b\ :sub:`14`
+      - b\ :sub:`13`
+      - b\ :sub:`12`
+      - b\ :sub:`11`
+      - b\ :sub:`10`
+      - b\ :sub:`9`
+      - b\ :sub:`8`
+      - b\ :sub:`7`
+      - b\ :sub:`6`
+      - b\ :sub:`5`
+      - b\ :sub:`4`
+      - b\ :sub:`3`
+      - b\ :sub:`2`
+      - b\ :sub:`1`
+      - b\ :sub:`0`
+    * -
+      -
+      -
+      - a\ :sub:`31`
+      - a\ :sub:`30`
+      - a\ :sub:`29`
+      - a\ :sub:`28`
+      - a\ :sub:`27`
+      - a\ :sub:`26`
+      - a\ :sub:`25`
+      - a\ :sub:`24`
+      - a\ :sub:`23`
+      - a\ :sub:`22`
+      - a\ :sub:`21`
+      - a\ :sub:`20`
+      - a\ :sub:`19`
+      - a\ :sub:`18`
+      - a\ :sub:`17`
+      - a\ :sub:`16`
+      - a\ :sub:`15`
+      - a\ :sub:`14`
+      - a\ :sub:`13`
+      - a\ :sub:`12`
+      - a\ :sub:`11`
+      - a\ :sub:`10`
+      - a\ :sub:`9`
+      - a\ :sub:`8`
+      - a\ :sub:`7`
+      - a\ :sub:`6`
+      - a\ :sub:`5`
+      - a\ :sub:`4`
+      - a\ :sub:`3`
+      - a\ :sub:`2`
+      - a\ :sub:`1`
+      - a\ :sub:`0`
+
+.. raw:: latex
+
+    \endgroup
+
+The following table lists packed 16-bit-wide Y formats.
+
+MEDIA_BUS_FMT_Y_BF16_1X16
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This represents a 16-bit, single-channel pixel arrangement. Each 16 bits represent a Brain-Float (BF16) value.
+The Y channel occupies the entire 16 bits.
+
+MEDIA_BUS_FMT_Y_FP16_1X16
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This represents a 16-bit, single-channel pixel arrangement. Each 16 bits represent a 16-bit floating-point (FP16 or half) value.
+The Y channel occupies the entire 16 bits.
+
+.. tabularcolumns:: |p{4.0cm}|p{0.7cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|
+
+.. _v4l2-mbus-pixelcode-y-16:
+
+.. raw:: latex
+
+    \begingroup
+    \tiny
+    \setlength{\tabcolsep}{2pt}
+
+.. flat-table:: 16bit Y formats
+    :header-rows:  3
+    :stub-columns: 0
+    :widths: 36 7 3 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2
+
+    * - Identifier
+      - Code
+      -
+      - :cspan:`31` Data organization
+    * -
+      -
+      - Bit
+      - 31
+      - 30
+      - 29
+      - 28
+      - 27
+      - 26
+      - 25
+      - 24
+      - 23
+      - 22
+      - 21
+      - 20
+      - 19
+      - 18
+      - 17
+      - 16
+      - 15
+      - 14
+      - 13
+      - 12
+      - 11
+      - 10
+      - 9
+      - 8
+      - 7
+      - 6
+      - 5
+      - 4
+      - 3
+      - 2
+      - 1
+      - 0
+    * .. _MEDIA-BUS-FMT-Y-BF16-1X16:
+
+      - MEDIA_BUS_FMT_Y_BF16_1X16
+      - 0x202f
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      - y\ :sub:`BF15`
+      - y\ :sub:`BF14`
+      - y\ :sub:`BF13`
+      - y\ :sub:`BF12`
+      - y\ :sub:`BF11`
+      - y\ :sub:`BF10`
+      - y\ :sub:`BF9`
+      - y\ :sub:`BF8`
+      - y\ :sub:`BF7`
+      - y\ :sub:`BF6`
+      - y\ :sub:`BF5`
+      - y\ :sub:`BF4`
+      - y\ :sub:`BF3`
+      - y\ :sub:`BF2`
+      - y\ :sub:`BF1`
+      - y\ :sub:`BF0`
+    * .. _MEDIA-BUS-FMT-Y-FP16-1X16:
+
+      - MEDIA_BUS_FMT_Y_FP16_1X16
+      - 0x2030
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      -
+      - y\ :sub:`FP15`
+      - y\ :sub:`FP14`
+      - y\ :sub:`FP13`
+      - y\ :sub:`FP12`
+      - y\ :sub:`FP11`
+      - y\ :sub:`FP10`
+      - y\ :sub:`FP9`
+      - y\ :sub:`FP8`
+      - y\ :sub:`FP7`
+      - y\ :sub:`FP6`
+      - y\ :sub:`FP5`
+      - y\ :sub:`FP4`
+      - y\ :sub:`FP3`
+      - y\ :sub:`FP2`
+      - y\ :sub:`FP1`
+      - y\ :sub:`FP0`
+
+.. raw:: latex
+
+    \endgroup
+
+The following table lists packed FP32-wide Y formats.
+
+MEDIA_BUS_FMT_Y_FP32_1X32
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This represents a FP32, single-channel pixel arrangement. Each 32 bits represent a floating-point (FP32) value.
+The Y channel occupies the entire 32 bits.
+
+.. tabularcolumns:: |p{4.0cm}|p{0.7cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|p{0.22cm}|
+
+.. _v4l2-mbus-pixelcode-y-32:
+
+.. raw:: latex
+
+    \begingroup
+    \tiny
+    \setlength{\tabcolsep}{2pt}
+
+.. flat-table:: 32bit Y formats
+    :header-rows:  3
+    :stub-columns: 0
+    :widths: 36 7 3 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2
+
+    * - Identifier
+      - Code
+      -
+      - :cspan:`31` Data organization
+    * -
+      -
+      - Bit
+      - 31
+      - 30
+      - 29
+      - 28
+      - 27
+      - 26
+      - 25
+      - 24
+      - 23
+      - 22
+      - 21
+      - 20
+      - 19
+      - 18
+      - 17
+      - 16
+      - 15
+      - 14
+      - 13
+      - 12
+      - 11
+      - 10
+      - 9
+      - 8
+      - 7
+      - 6
+      - 5
+      - 4
+      - 3
+      - 2
+      - 1
+      - 0
+    * .. _MEDIA-BUS-FMT-Y-FP32-1X32:
+
+      - MEDIA_BUS_FMT_Y_FP32_1X32
+      - 0x2031
+      -
+      - y\ :sub:`31`
+      - y\ :sub:`30`
+      - y\ :sub:`29`
+      - y\ :sub:`28`
+      - y\ :sub:`27`
+      - y\ :sub:`26`
+      - y\ :sub:`25`
+      - y\ :sub:`24`
+      - y\ :sub:`23`
+      - y\ :sub:`22`
+      - y\ :sub:`21`
+      - y\ :sub:`20`
+      - y\ :sub:`19`
+      - y\ :sub:`18`
+      - y\ :sub:`17`
+      - y\ :sub:`16`
+      - y\ :sub:`15`
+      - y\ :sub:`14`
+      - y\ :sub:`13`
+      - y\ :sub:`12`
+      - y\ :sub:`11`
+      - y\ :sub:`10`
+      - y\ :sub:`9`
+      - y\ :sub:`8`
+      - y\ :sub:`7`
+      - y\ :sub:`6`
+      - y\ :sub:`5`
+      - y\ :sub:`4`
+      - y\ :sub:`3`
+      - y\ :sub:`2`
+      - y\ :sub:`1`
+      - y\ :sub:`0`
 
 .. raw:: latex
 
