@@ -3933,8 +3933,11 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 	}
 
 	dp->axi_lite_clk = devm_clk_get(&pdev->dev, "s_axi_aclk");
-	if (IS_ERR(dp->axi_lite_clk))
-		return PTR_ERR(dp->axi_lite_clk);
+	if (IS_ERR(dp->axi_lite_clk)) {
+		ret = dev_err_probe(dp->dev, PTR_ERR(dp->axi_lite_clk),
+				    "failed to get axi_lite_clk\n");
+		goto error_phy;
+	}
 
 	dp->tx_vid_clk = devm_clk_get(&pdev->dev, "tx_vid_clk");
 	if (IS_ERR(dp->tx_vid_clk))
