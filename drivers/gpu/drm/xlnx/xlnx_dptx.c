@@ -3955,16 +3955,10 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 			snprintf(phy_name, sizeof(phy_name), "dp-phy%d", i);
 			dp->phy[i] = devm_phy_get(dp->dev, phy_name);
 			if (IS_ERR(dp->phy[i])) {
-				ret = PTR_ERR(dp->phy[i]);
+				ret = dev_err_probe(dp->dev, PTR_ERR(dp->phy[i]),
+						    "failed to get phy lane %s i %d\n",
+						    phy_name, i);
 				dp->phy[i] = NULL;
-				if (ret == -EPROBE_DEFER) {
-					dev_info(dp->dev,
-						 "xvphy not ready -EPROBE_DEFER\n");
-					return ret;
-				}
-				if (ret != -EPROBE_DEFER)
-					dev_err(dp->dev, "failed to get phy lane %s i %d, error %d\n",
-						phy_name, i, ret);
 				goto error_phy;
 			}
 		}
