@@ -1233,7 +1233,7 @@ static void xdprxss_set_training_params(struct xdprxss_state *xdprxss)
 	xdprxss_set(xdprxss, XDPRX_INTR_MASK_REG, XDPRX_INTR_ALL_MASK);
 	xdprxss_disable_allintr_1(xdprxss);
 
-	/* Enable trainng related interrupts */
+	/* Enable training related interrupts */
 	xdprxss_clr(xdprxss, XDPRX_INTR_MASK_REG, XDPRX_INTR_TRNG_MASK);
 	xdprxss_enable_training_intr_1(xdprxss);
 
@@ -1325,7 +1325,7 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 	u32 linkrate;
 	unsigned int i;
 
-	dev_dbg(state->dev, "Asserted traning pattern 1\n");
+	dev_dbg(state->dev, "Asserted training pattern 1\n");
 
 	linkrate = xdprxss_read(state, XDPRX_LINK_BW_REG);
 
@@ -1370,13 +1370,13 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 
 static void xdprxss_irq_tp2(struct xdprxss_state *state)
 {
-	dev_dbg(state->dev, "Asserted traning pattern 2\n");
+	dev_dbg(state->dev, "Asserted training pattern 2\n");
 	state->ltstate = 2;
 }
 
 static void xdprxss_training_failure(struct xdprxss_state *state)
 {
-	dev_dbg(state->dev, "Traning Lost !!\n");
+	dev_dbg(state->dev, "Training Lost !!\n");
 	state->valid_stream = false;
 
 	if (state->hdcp_enable)
@@ -1636,7 +1636,7 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
  * xdprxss_subscribe_event - Subscribe to video source change event
  * @sd: V4L2 Sub device
  * @fh: V4L2 File Handle
- * @sub: Subcribe event structure
+ * @sub: Subscribe event structure
  *
  * Return: 0 on success, errors otherwise
  */
@@ -1723,7 +1723,7 @@ __xdprxss_get_pad_format(struct xdprxss_state *xdprxss,
 }
 
 /**
- * xdprxss_init_state - Initialise the pad format config to default
+ * xdprxss_init_state - Initialize the pad format config to default
  * @sd: Pointer to V4L2 Sub device structure
  * @sd_state: Pointer to sub device pad information structure
  *
@@ -1820,7 +1820,7 @@ static int xdprxss_enum_mbus_code(struct v4l2_subdev *sd,
  * @sd: pointer to v4l2 subdev structure
  * @timings: DV timings structure to be returned.
  *
- * Return: -EINVAL incase of invalid index and pad or zero on success
+ * Return: -EINVAL in case of invalid index and pad or zero on success
  */
 static int xdprxss_enum_dv_timings(struct v4l2_subdev *sd,
 				   struct v4l2_enum_dv_timings *timings)
@@ -1842,7 +1842,7 @@ static int xdprxss_enum_dv_timings(struct v4l2_subdev *sd,
  * @subdev: Pointer to V4L2 Sub device structure
  * @cap: Pointer to dv timing capability structure
  *
- * Return: -EINVAL incase of invalid pad or zero on success
+ * Return: -EINVAL in case of invalid pad or zero on success
  */
 static int xdprxss_get_dv_timings_cap(struct v4l2_subdev *subdev,
 				      struct v4l2_dv_timings_cap *cap)
@@ -2474,7 +2474,7 @@ static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
 		return ret;
 	}
 	if (val > 0) {
-		dev_err(xdprxss->dev, "driver does't support MST mode\n");
+		dev_err(xdprxss->dev, "driver doesn't support MST mode\n");
 		return -EINVAL;
 	}
 
