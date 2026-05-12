@@ -3905,7 +3905,8 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 	if (dp->config.versal_gt_present) {
 		dp->phy[0] = devm_phy_get(dp->dev, "dp-gtquad");
 		if (IS_ERR(dp->phy[0]))
-			return dev_err_probe(dp->dev, ret, "failed to get phy\n");
+			return dev_err_probe(dp->dev, PTR_ERR(dp->phy[0]),
+					     "failed to get phy\n");
 
 		ret = phy_init(dp->phy[0]);
 		if (ret)
