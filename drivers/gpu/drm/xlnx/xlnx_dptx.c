@@ -4049,12 +4049,10 @@ error_clk_vid:
 error_clk_axi:
 	clk_disable_unprepare(dp->axi_lite_clk);
 error_phy:
-	if (!dp->config.versal_gt_present) {
-		dev_dbg(&pdev->dev, "xdprxss_probe() error_phy:\n");
+	if (!dp->config.versal_gt_present)
 		xlnx_dp_exit_phy(dp);
-	} else {
+	else
 		phy_exit(dp->phy[0]);
-	}
 
 	return ret;
 }
