@@ -645,8 +645,9 @@ static int spi_nor_write_ear(struct spi_nor *nor, u32 addr)
 
 #define OFFSET_16_MB 0x1000000
 	/* Wait until finished previous write command. */
-	if (spi_nor_wait_till_ready(nor))
-		return 1;
+	ret = spi_nor_wait_till_ready(nor);
+	if (ret)
+		return ret;
 
 	ret = spi_nor_write_enable(nor);
 	if (ret)
@@ -1208,6 +1209,31 @@ static int spi_nor_erase_die(struct spi_nor *nor, loff_t addr, size_t die_size)
 	int ret;
 
 	dev_dbg(nor->dev, " %lldKiB\n", (long long)(die_size >> 10));
+
+	/*
+	 * On 3-byte-only controllers the die-erase opcode can only reach
+	 * the first 16 MiB unless the high address byte is banked via the
+	 * Extended Address Register. Mirror the sector-erase pattern in
+	 * spi_nor_erase(): write the EAR, wait for it to latch, then let
+	 * the regular write-enable + die-erase sequence below run.
+	 *
+	 * The gate (multi_die && addr_nbytes == 3) requires n_dice >= 2.
+	 * All multi-die flashes currently in the SPI-NOR table (mt25qu512a
+	 * and larger) sit above spi_nor_write_ear()'s <=16 MiB / parallel
+	 * <=64 MiB early-return, so that path is not exercised in practice.
+	 * Were a future smaller multi-die part to trigger it, the dangling
+	 * WEL the early-return leaves is absorbed by the spi_nor_write_enable()
+	 * below.
+	 */
+	if (multi_die && nor->addr_nbytes == 3) {
+		ret = spi_nor_write_ear(nor, addr);
+		if (ret)
+			return ret;
+
+		ret = spi_nor_wait_till_ready(nor);
+		if (ret)
+			return ret;
+	}
 
 	ret = spi_nor_write_enable(nor);
 	if (ret)
@@ -3693,6 +3719,29 @@ int spi_nor_set_4byte_addr_mode(struct spi_nor *nor, bool enable)
 {
 	struct spi_nor_flash_parameter *params = nor->params;
 	int ret;
+
+	/*
+	 * Skip the EN4B/EX4B sequence on spi-mem controllers that declare
+	 * SPI_CONTROLLER_NO_4B. params->addr_nbytes and addr_mode_nbytes
+	 * remain at whatever value spi_nor_parse_bfpt() left them (at
+	 * most 3; the guard prevents this path from raising them to 4),
+	 * so the subsequent spi_nor_set_addr_nbytes() call takes its
+	 * 3-byte+EAR branch on these controllers. Legacy controller_ops
+	 * drivers (nor->spimem == NULL) are out of scope here; no such
+	 * driver currently sets SPI_CONTROLLER_NO_4B.
+	 *
+	 * The guard intercepts every caller of this wrapper, not only the
+	 * per-chip late_init hooks that motivated it: spi_nor_init() /
+	 * resume / restore, and vendor set_4byte_addr_mode callbacks that
+	 * recurse through it (e.g. ISSI is25wx256, GigaDevice gd25lx256e).
+	 * For the late_init path it leaves params->* alone so the later
+	 * spi_nor_set_addr_nbytes() call can take its 3-byte+EAR branch;
+	 * for all other callers it preserves the 3-byte state that branch
+	 * has already established.
+	 */
+	if (nor->spimem &&
+	    (nor->spimem->spi->controller->flags & SPI_CONTROLLER_NO_4B))
+		return 0;
 
 	if (enable) {
 		/*
