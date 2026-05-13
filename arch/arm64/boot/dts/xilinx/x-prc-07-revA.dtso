@@ -56,10 +56,9 @@
 	#address-cells = <1>;
 	#size-cells = <0>;
 
-	mt35xu02g: flash@0 { /* u97/u390 mt35xu02gcba */
-		compatible = "mt35xu02g", "micron,m25p80", "jedec,spi-nor";
-		reg = <0>, <1>;
-		stacked-memories = /bits/ 64 <0x8000000 0x8000000>; /* 128MB */
+	flash@0 { /* u97/u390 mt35xu02gcba */
+		compatible = "micron,m25p80", "jedec,spi-nor";
+		reg = <0>;
 		cdns,read-delay = <0>;
 		cdns,tshsl-ns = <0>;
 		cdns,tsd2d-ns = <0>;
@@ -81,7 +80,37 @@
 				reg = <0 0x200000>;
 			};
 			partition@1 {
+				part-concat-next = <&flash1_part0>;
 				label = "ospi-flash1";
+				reg = <0x200000 0x7E00000>;
+			};
+		};
+	};
+
+	flash@1 { /* u97/u390 mt35xu02gcba */
+		compatible = "micron,m25p80", "jedec,spi-nor";
+		reg = <1>;
+		cdns,read-delay = <0>;
+		cdns,tshsl-ns = <0>;
+		cdns,tsd2d-ns = <0>;
+		cdns,tchsh-ns = <1>;
+		cdns,tslch-ns = <1>;
+		spi-tx-bus-width = <8>;
+		spi-rx-bus-width = <8>;
+		spi-max-frequency = <20000000>;
+		no-wp;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			flash1_part0: partition@0 {
+				label = "ospi-flash2";
+				reg = <0 0x200000>;
+			};
+			partition@1 {
+				label = "ospi-flash3";
 				reg = <0x200000 0x7E00000>;
 			};
 		};
