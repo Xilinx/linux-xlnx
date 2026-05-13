@@ -82,15 +82,43 @@
 	flash@0 {
 		#address-cells = <1>;
 		#size-cells = <1>;
-		compatible = "m25p80", "jedec,spi-nor"; /* 512MB */
-		reg = <0>, <1>;
-		stacked-memories = /bits/ 64 <0x8000000 0x8000000>; /* 128MB */
+		compatible = "m25p80", "jedec,spi-nor"; /* 128MB */
+		reg = <0>;
 		spi-tx-bus-width = <4>;
 		spi-rx-bus-width = <4>;
 		spi-max-frequency = <108000000>;
-		partition@0 {
-			label = "spi0-flash0";
-			reg = <0x0 0x20000000>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				part-concat-next = <&flash1_part0>;
+				label = "spi0-flash0";
+				reg = <0x0 0x8000000>;
+			};
+		};
+	};
+
+	flash@1 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "m25p80", "jedec,spi-nor"; /* 128MB */
+		reg = <1>;
+		spi-tx-bus-width = <4>;
+		spi-rx-bus-width = <4>;
+		spi-max-frequency = <108000000>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			flash1_part0: partition@0 {
+				label = "spi0-flash1";
+				reg = <0x0 0x8000000>;
+			};
 		};
 	};
 };
