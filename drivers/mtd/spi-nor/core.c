@@ -509,7 +509,8 @@ int spi_nor_read_sr(struct spi_nor *nor, u8 *sr)
  * SPINOR_OP_RDCR (35h) command.
  * @nor:	pointer to 'struct spi_nor'
  * @cr:		pointer to a DMA-able buffer where the value of the
- *              Configuration Register will be written.
+ *              Configuration Register will be written. For parallel
+ *              memories, this buffer must be at least 2 bytes.
  *
  * Return: 0 on success, -errno otherwise.
  */
@@ -520,16 +521,28 @@ int spi_nor_read_cr(struct spi_nor *nor, u8 *cr)
 	if (nor->spimem) {
 		struct spi_mem_op op = SPI_NOR_RDCR_OP(cr);
 
+		if (nor->flags & SNOR_F_HAS_PARALLEL)
+			op.data.nbytes = 2;
+
 		spi_nor_spimem_setup_op(nor, &op, nor->reg_proto);
 
 		ret = spi_mem_exec_op(nor->spimem, &op);
 	} else {
-		ret = spi_nor_controller_ops_read_reg(nor, SPINOR_OP_RDCR, cr,
-						      1);
+		if (nor->flags & SNOR_F_HAS_PARALLEL)
+			ret = spi_nor_controller_ops_read_reg(nor,
+							      SPINOR_OP_RDCR,
+							      cr, 2);
+		else
+			ret = spi_nor_controller_ops_read_reg(nor,
+							      SPINOR_OP_RDCR,
+							      cr, 1);
 	}
 
 	if (ret)
 		dev_dbg(nor->dev, "error %d reading CR\n", ret);
+
+	if (nor->flags & SNOR_F_HAS_PARALLEL)
+		cr[0] |= cr[1];
 
 	return ret;
 }
@@ -1030,6 +1043,13 @@ static int spi_nor_write_16bit_sr_and_check(struct spi_nor *nor, u8 sr1)
 
 	sr_cr[0] = sr1;
 
+	/*
+	 * Save the CR value before spi_nor_read_sr() overwrites sr_cr[1].
+	 * In parallel mode, spi_nor_read_sr() reads 2 bytes into sr_cr[0]
+	 * and sr_cr[1], which would corrupt the CR value we want to verify.
+	 */
+	cr_written = sr_cr[1];
+
 	ret = spi_nor_write_sr(nor, sr_cr, 2);
 	if (ret)
 		return ret;
@@ -1045,8 +1065,6 @@ static int spi_nor_write_16bit_sr_and_check(struct spi_nor *nor, u8 sr1)
 
 	if (nor->flags & SNOR_F_NO_READ_CR)
 		return 0;
-
-	cr_written = sr_cr[1];
 
 	ret = spi_nor_read_cr(nor, &sr_cr[1]);
 	if (ret)
