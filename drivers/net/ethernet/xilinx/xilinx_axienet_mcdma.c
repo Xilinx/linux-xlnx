@@ -492,6 +492,8 @@ irqreturn_t __maybe_unused axienet_mcdma_rx_irq(int irq, void *_ndev)
 	status = axienet_dma_in32(q, XMCDMA_CHAN_SR_OFFSET(q->chan_id) +
 				  q->rx_offset);
 	if (status & (XMCDMA_IRQ_IOC_MASK | XMCDMA_IRQ_DELAY_MASK)) {
+		axienet_dma_out32(q, XMCDMA_CHAN_SR_OFFSET(q->chan_id) +
+				q->rx_offset, status);
 		cr = axienet_dma_in32(q, XMCDMA_CHAN_CR_OFFSET(q->chan_id) +
 				      q->rx_offset);
 		cr &= ~(XMCDMA_IRQ_IOC_MASK | XMCDMA_IRQ_DELAY_MASK);
