@@ -135,9 +135,6 @@ static int zynqmp_efuse_access(void *context, unsigned int offset,
 	if (flag == EFUSE_READ)
 		memcpy(val, data, bytes);
 efuse_access_err:
-	dma_free_coherent(dev, bytes,
-			  data, dma_buf);
-
 	kfree(efuse);
 	return ret;
 }
