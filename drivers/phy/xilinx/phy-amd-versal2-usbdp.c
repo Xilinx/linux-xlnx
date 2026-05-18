@@ -8,6 +8,7 @@
 #include <dt-bindings/phy/phy.h>
 #include <linux/cleanup.h>
 #include <linux/clk.h>
+#include <linux/io.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/of.h>
