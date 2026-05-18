@@ -6,6 +6,7 @@
  * Copyright (C) 2025, Advanced Micro Devices, Inc. All rights reserved.
  */
 
+#include <linux/bitfield.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/device.h>
