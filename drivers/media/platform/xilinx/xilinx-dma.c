@@ -443,7 +443,7 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 			"bpl: %u, padding_num: %u, padding_deno: %u, bpl_nume: %u, bpl_deno: %u\n",
 			bpl, padding_factor_nume, padding_factor_deno, bpl_nume, bpl_deno);
 		dev_dbg(dma->xdev->dev,
-			"xt.frame_size: %lu, sgl_size: %lu, ICG: %lu, numframes: %lu\n",
+			"xt.frame_size: %zu, sgl_size: %zu, ICG: %zu, numframes: %zu\n",
 			dma->xt.frame_size, dma->sgl.size, dma->sgl.icg, dma->xt.numf);
 		/*
 		 * dst_icg is the number of bytes to jump after last luma addr
