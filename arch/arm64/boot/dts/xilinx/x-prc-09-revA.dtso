@@ -2,7 +2,7 @@
 /*
  * dts file for Xilinx ZynqMP VN-P-B2197 (Tenzing2) X-PRC-09 RevA
  *
- * (C) Copyright 2022, Advanced Micro Devices, Inc.
+ * (C) Copyright 2022-2026, Advanced Micro Devices, Inc.
  *
  * Michal Simek <michal.simek@amd.com>
  */
@@ -41,7 +41,6 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		phy0: ethernet-phy@1 { /* u128 DP83867 */
-			#phy-cells = <1>;
 			compatible = "ethernet-phy-id2000.a231";
 			reg = <1>;
 			ti,rx-internal-delay = <0x8>;

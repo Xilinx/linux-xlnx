@@ -3,7 +3,7 @@
  * dts file for Xilinx ZynqMP Generic System Controller
  *
  * (C) Copyright 2021 - 2022, Xilinx, Inc.
- * (C) Copyright 2022 - 2024, Advanced Micro Devices, Inc.
+ * (C) Copyright 2022 - 2026, Advanced Micro Devices, Inc.
  *
  * Michal Simek <michal.simek@amd.com>
  */
@@ -136,7 +136,6 @@
 		#size-cells = <0>;
 
 		phy0: ethernet-phy@1 {
-			#phy-cells = <1>;
 			compatible = "ethernet-phy-id2000.a231";
 			reg = <1>;
 			ti,rx-internal-delay = <DP83867_RGMIIDCTL_2_25_NS>;

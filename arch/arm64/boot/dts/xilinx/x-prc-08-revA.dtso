@@ -2,7 +2,7 @@
 /*
  * dts file for Xilinx ZynqMP VN-P-B2197 (Tenzing2) X-PRC-08 RevA
  *
- * (C) Copyright 2022-2023, Advanced Micro Devices, Inc.
+ * (C) Copyright 2022-2026, Advanced Micro Devices, Inc.
  *
  * Michal Simek <michal.simek@amd.com>
  */
@@ -26,7 +26,6 @@
 		#size-cells = <0>;
 
 		phy0: ethernet-phy@1 { /* u37 VSC8540 */
-			#phy-cells = <1>;
 			compatible = "ethernet-phy-id0007.0760";
 			reg = <1>;
 			reset-gpios = <&gpio0 12 GPIO_ACTIVE_LOW>;

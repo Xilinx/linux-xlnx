@@ -110,7 +110,6 @@
 		#size-cells = <0>;
 
 		phy1: ethernet-phy@1 { /* u198 */
-			#phy-cells = <1>;
 			compatible = "ethernet-phy-id2000.a231";
 			reg = <1>;
 			ti,rx-internal-delay = <0xb>;
@@ -122,7 +121,6 @@
 			reset-gpios = <&gpio1 48 GPIO_ACTIVE_LOW>;
 		};
 		phy2: ethernet-phy@2 { /* u134 */
-			#phy-cells = <1>;
 			compatible = "ethernet-phy-id2000.a231";
 			reg = <2>;
 			ti,rx-internal-delay = <0xb>;
