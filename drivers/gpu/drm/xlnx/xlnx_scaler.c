@@ -31,8 +31,8 @@
 
 #include "xlnx_bridge.h"
 
-#define XSCALER_MAX_WIDTH		(3840)
-#define XSCALER_MAX_HEIGHT		(2160)
+#define XSCALER_MAX_WIDTH		(8192)
+#define XSCALER_MAX_HEIGHT		(4320)
 #define XSCALER_MAX_PHASES		(64)
 #define XSCALER_MIN_WIDTH		(64)
 #define XSCALER_MIN_HEIGHT		(64)
@@ -67,7 +67,6 @@
 
 #define XV_HSCALER_MAX_H_TAPS		(12)
 #define XV_HSCALER_MAX_H_PHASES		(64)
-#define XV_HSCALER_MAX_LINE_WIDTH	(3840)
 #define XV_VSCALER_MAX_V_TAPS		(12)
 #define XV_VSCALER_MAX_V_PHASES		(64)
 
@@ -87,7 +86,6 @@
 /* Mask definitions for Low and high 16 bits in a 32 bit number */
 #define XHSC_MASK_LOW_16BITS		GENMASK(15, 0)
 #define XHSC_MASK_HIGH_16BITS		GENMASK(31, 16)
-#define XHSC_MASK_LOW_32BITS		GENMASK(31, 0)
 #define XHSC_STEP_PRECISION_SHIFT	(16)
 #define XHSC_HPHASE_SHIFT_BY_6		(6)
 #define XHSC_HPHASE_MULTIPLIER		(9)
@@ -942,7 +940,8 @@ struct xscaler_feature {
  * @pix_per_clk: Pixels per Clock cycle the IP operates upon
  * @max_pixels: The maximum number of pixels that the H-scaler examines
  * @max_lines: The maximum number of lines that the V-scaler examines
- * @H_phases: The phases needed to program the H-scaler for different taps
+ * @num_phase_entries: Number of allocated H-phase entries per buffer
+ * @H_phases: Dynamically allocated phases for H-scaler programming
  * @hscaler_coeff: The complete array of H-scaler coefficients
  * @vscaler_coeff: The complete array of V-scaler coefficients
  * @is_polyphase: Track if scaling algorithm is polyphase or not
@@ -967,7 +966,8 @@ struct xilinx_scaler {
 	u32 pix_per_clk;
 	u32 max_pixels;
 	u32 max_lines;
-	u32 H_phases[XV_HSCALER_MAX_LINE_WIDTH];
+	u32 num_phase_entries;
+	u64 *H_phases;
 	short hscaler_coeff[XV_HSCALER_MAX_H_PHASES][XV_HSCALER_MAX_H_TAPS];
 	short vscaler_coeff[XV_VSCALER_MAX_V_PHASES][XV_VSCALER_MAX_V_TAPS];
 	bool is_polyphase;
@@ -1089,12 +1089,12 @@ xv_hscaler_calculate_phases(struct xilinx_scaler *scaler,
 
 			scaler->H_phases[x] |= (phaseH <<
 						(s * XHSC_HPHASE_MULTIPLIER));
-			scaler->H_phases[x] |= (array_idx <<
+			scaler->H_phases[x] |= ((u64)array_idx <<
 						(XHSC_HPHASE_SHIFT_BY_6 +
 						(s * XHSC_HPHASE_MULTIPLIER)));
 			if (output_write_en) {
 				scaler->H_phases[x] |=
-				(XV_HSCALER_PHASESH_V_OUTPUT_WR_EN <<
+				((u64)XV_HSCALER_PHASESH_V_OUTPUT_WR_EN <<
 				(s * XHSC_HPHASE_MULTIPLIER));
 			}
 
@@ -1410,9 +1410,7 @@ xv_vscaler_select_coeff(struct xilinx_scaler *scaler,
 static void
 xv_hscaler_set_phases(struct xilinx_scaler *scaler)
 {
-	u32 loop_width;
-	u32 index, val;
-	u32 offset, i, lsb, msb;
+	u32 loop_width, val, offset, i, lsb, msb;
 
 	loop_width = scaler->max_pixels / scaler->pix_per_clk;
 	if (scaler->cfg->flags & XSCALER_HPHASE_FIX) {
@@ -1425,19 +1423,25 @@ xv_hscaler_set_phases(struct xilinx_scaler *scaler)
 
 	switch (scaler->pix_per_clk) {
 	case XSCALER_PPC_1:
-		index = 0;
+		/*
+		 * Only lower 16 bits of each entry are valid. Pack two
+		 * 16-bit entries into one 32-bit register write.
+		 */
 		for (i = 0; i < loop_width; i += 2) {
-			lsb = scaler->H_phases[i] & XHSC_MASK_LOW_16BITS;
-			msb = scaler->H_phases[i + 1] & XHSC_MASK_LOW_16BITS;
+			lsb = (u32)(scaler->H_phases[i] & XHSC_MASK_LOW_16BITS);
+			msb = (u32)(scaler->H_phases[i + 1] & XHSC_MASK_LOW_16BITS);
 			val = (msb << 16 | lsb);
-			xilinx_scaler_write(scaler->base, offset +
-				(index * 4), val);
-			++index;
+			xilinx_scaler_write(scaler->base,
+					    offset + ((i / 2) * 4), val);
 		}
 		return;
 	case XSCALER_PPC_2:
+		/*
+		 * Only lower 32 bits of each entry are valid.
+		 * One 32-bit write per entry.
+		 */
 		for (i = 0; i < loop_width; i++) {
-			val = (scaler->H_phases[i] & XHSC_MASK_LOW_32BITS);
+			val = lower_32_bits(scaler->H_phases[i]);
 			xilinx_scaler_write(scaler->base, offset +
 				(i * 4), val);
 		}
@@ -1781,7 +1785,8 @@ static int xilinx_scaler_bridge_set_input(struct xlnx_bridge *bridge,
 	gpiod_set_value_cansleep(scaler->rst_gpio, XSCALER_RESET_ASSERT);
 	gpiod_set_value_cansleep(scaler->rst_gpio, XSCALER_RESET_DEASSERT);
 	xilinx_scaler_reset(scaler);
-	memset(scaler->H_phases, 0, sizeof(scaler->H_phases));
+	memset(scaler->H_phases, 0,
+	       scaler->num_phase_entries * sizeof(*scaler->H_phases));
 
 	xilinx_scaler_write(scaler->base, V_VSCALER_OFF +
 			    XV_VSCALER_CTRL_ADDR_HWREG_HEIGHTIN_DATA, height);
@@ -1909,6 +1914,15 @@ static int xilinx_scaler_probe(struct platform_device *pdev)
 		dev_info(scaler->dev, "parse_of failed\n");
 		return ret;
 	}
+
+	scaler->num_phase_entries = ALIGN(scaler->max_pixels +
+					      scaler->pix_per_clk - 1,
+					      scaler->pix_per_clk);
+
+	scaler->H_phases = devm_kcalloc(dev, scaler->num_phase_entries,
+					sizeof(*scaler->H_phases), GFP_KERNEL);
+	if (!scaler->H_phases)
+		return -ENOMEM;
 
 	ret = clk_prepare_enable(scaler->ctrl_clk);
 	if (ret) {
