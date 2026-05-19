@@ -64,6 +64,8 @@
 /* Video IP PPC */
 #define XSCALER_PPC_1			(1)
 #define XSCALER_PPC_2			(2)
+#define XSCALER_PPC_4			(4)
+#define XSCALER_PPC_8			(8)
 
 #define XV_HSCALER_MAX_H_TAPS		(12)
 #define XV_HSCALER_MAX_H_PHASES		(64)
@@ -86,10 +88,21 @@
 /* Mask definitions for Low and high 16 bits in a 32 bit number */
 #define XHSC_MASK_LOW_16BITS		GENMASK(15, 0)
 #define XHSC_MASK_HIGH_16BITS		GENMASK(31, 16)
+#define XHSC_MASK_LOW_20BITS		GENMASK(19, 0)
+#define XHSC_MASK_LOW_12BITS		GENMASK(11, 0)
 #define XHSC_STEP_PRECISION_SHIFT	(16)
+#define XHSC_HPHASE_STEP_4		(4)
 #define XHSC_HPHASE_SHIFT_BY_6		(6)
 #define XHSC_HPHASE_MULTIPLIER		(9)
+/* Write-enable bit offset within each PPC slot */
+#define XHSC_HPHASE_WR_EN_4PPC		(9)
+#define XHSC_HPHASE_WR_EN_8PPC		(10)
+/* Phase data stride (bits per slot) for 4PPC and 8PPC */
+#define XHSC_HPHASE_STRIDE_4PPC	(10)
+#define XHSC_HPHASE_STRIDE_8PPC	(11)
 #define XSCALER_BITSHIFT_16		(16)
+#define XSCALER_PHDATA_SHIFT		(12)
+#define XSCALER_PHDATA_H_SHIFT		(20)
 
 /* Mask definitions for Low and high 16 bits in a 32 bit number */
 #define XVSC_MASK_LOW_16BITS		GENMASK(15, 0)
@@ -941,7 +954,8 @@ struct xscaler_feature {
  * @max_pixels: The maximum number of pixels that the H-scaler examines
  * @max_lines: The maximum number of lines that the V-scaler examines
  * @num_phase_entries: Number of allocated H-phase entries per buffer
- * @H_phases: Dynamically allocated phases for H-scaler programming
+ * @H_phases: Phases for H-scaler
+ * @H_phases_h: Higher phases for 8 PPC H-scaler
  * @hscaler_coeff: The complete array of H-scaler coefficients
  * @vscaler_coeff: The complete array of V-scaler coefficients
  * @is_polyphase: Track if scaling algorithm is polyphase or not
@@ -968,6 +982,7 @@ struct xilinx_scaler {
 	u32 max_lines;
 	u32 num_phase_entries;
 	u64 *H_phases;
+	u64 *H_phases_h;
 	short hscaler_coeff[XV_HSCALER_MAX_H_PHASES][XV_HSCALER_MAX_H_TAPS];
 	short vscaler_coeff[XV_VSCALER_MAX_V_PHASES][XV_VSCALER_MAX_V_TAPS];
 	bool is_polyphase;
@@ -1041,6 +1056,27 @@ static void xilinx_scaler_reset(struct xilinx_scaler *scaler)
 }
 
 /**
+ * xv_hscaler_pack_phase - Pack phase data into a 64-bit phase register slot
+ * @dest: Pointer to the 64-bit destination phase word
+ * @phaseH: Phase value to pack
+ * @array_idx: Array index value to pack
+ * @output_write_en: Whether to set the output write-enable bit
+ * @slot: Slot position within the phase word (0-based)
+ * @stride: Number of bits per slot
+ * @wr_en_bit: Bit offset for the write-enable flag within a slot
+ */
+static void xv_hscaler_pack_phase(u64 *dest, u64 phaseH, u32 array_idx,
+				  bool output_write_en, unsigned int slot,
+				  unsigned int stride, unsigned int wr_en_bit)
+{
+	*dest |= (phaseH << (slot * stride));
+	*dest |= ((u64)array_idx << (XHSC_HPHASE_SHIFT_BY_6 +
+				      (slot * stride)));
+	if (output_write_en)
+		*dest |= ((u64)1 << (wr_en_bit + (slot * stride)));
+}
+
+/**
  * xv_hscaler_calculate_phases - Calculates h-scaler phases
  * @scaler: Pointer to scaler registers base
  * @width_in: input width
@@ -1087,15 +1123,38 @@ xv_hscaler_calculate_phases(struct xilinx_scaler *scaler,
 				xwrite_pos++;
 			}
 
-			scaler->H_phases[x] |= (phaseH <<
-						(s * XHSC_HPHASE_MULTIPLIER));
-			scaler->H_phases[x] |= ((u64)array_idx <<
-						(XHSC_HPHASE_SHIFT_BY_6 +
-						(s * XHSC_HPHASE_MULTIPLIER)));
-			if (output_write_en) {
+			if (nppc == XSCALER_PPC_8) {
+				if (s < XHSC_HPHASE_STEP_4)
+					xv_hscaler_pack_phase(&scaler->H_phases[x],
+							      phaseH, array_idx,
+							      output_write_en, s,
+							      XHSC_HPHASE_STRIDE_8PPC,
+							      XHSC_HPHASE_WR_EN_8PPC);
+				else
+					xv_hscaler_pack_phase(&scaler->H_phases_h[x],
+							      phaseH, array_idx,
+							      output_write_en,
+							      s - XHSC_HPHASE_STEP_4,
+							      XHSC_HPHASE_STRIDE_8PPC,
+							      XHSC_HPHASE_WR_EN_8PPC);
+			} else if (nppc == XSCALER_PPC_4) {
+				xv_hscaler_pack_phase(&scaler->H_phases[x],
+						      phaseH, array_idx,
+						      output_write_en, s,
+						      XHSC_HPHASE_STRIDE_4PPC,
+						      XHSC_HPHASE_WR_EN_4PPC);
+			} else {
 				scaler->H_phases[x] |=
-				((u64)XV_HSCALER_PHASESH_V_OUTPUT_WR_EN <<
-				(s * XHSC_HPHASE_MULTIPLIER));
+					(phaseH <<
+					 (s * XHSC_HPHASE_MULTIPLIER));
+				scaler->H_phases[x] |=
+					((u64)array_idx <<
+					 (XHSC_HPHASE_SHIFT_BY_6 +
+					  (s * XHSC_HPHASE_MULTIPLIER)));
+				if (output_write_en)
+					scaler->H_phases[x] |=
+						((u64)XV_HSCALER_PHASESH_V_OUTPUT_WR_EN <<
+						 (s * XHSC_HPHASE_MULTIPLIER));
 			}
 
 			if (get_new_pix)
@@ -1446,6 +1505,56 @@ xv_hscaler_set_phases(struct xilinx_scaler *scaler)
 				(i * 4), val);
 		}
 		return;
+	case XSCALER_PPC_4:
+		/*
+		 * Each 64-bit entry has valid upper and lower 32 bits.
+		 * Two 32-bit writes per entry.
+		 */
+		for (i = 0; i < loop_width; i++) {
+			lsb = lower_32_bits(scaler->H_phases[i]);
+			msb = upper_32_bits(scaler->H_phases[i]);
+			xilinx_scaler_write(scaler->base,
+					    offset + (2 * i * 4), lsb);
+			xilinx_scaler_write(scaler->base,
+					    offset + ((2 * i + 1) * 4), msb);
+		}
+		return;
+	case XSCALER_PPC_8: {
+		/*
+		 * Each entry uses 44 bits from H_phases (lower) and 44 bits
+		 * from H_phases_h (upper), totalling 88 bits packed into
+		 * 3 x 32-bit register writes per entry.
+		 */
+		u64 phasehdata, phasehdata_h;
+		u32 msb2;
+
+		for (i = 0; i < loop_width; i++) {
+			phasehdata = scaler->H_phases[i];
+			phasehdata_h = scaler->H_phases_h[i];
+
+			lsb = lower_32_bits(phasehdata);
+			msb = upper_32_bits(phasehdata);
+			val = (u32)(phasehdata_h & XHSC_MASK_LOW_20BITS);
+			msb |= (val << XSCALER_PHDATA_SHIFT);
+			msb2 = lower_32_bits(phasehdata_h) >>
+				XSCALER_PHDATA_H_SHIFT;
+			val = (u32)(upper_32_bits(phasehdata_h) &
+				    XHSC_MASK_LOW_12BITS);
+			msb2 |= (val << XSCALER_PHDATA_SHIFT);
+
+			xilinx_scaler_write(scaler->base,
+					    offset + (4 * i * 4), lsb);
+			xilinx_scaler_write(scaler->base,
+					    offset + ((4 * i + 1) * 4), msb);
+			xilinx_scaler_write(scaler->base,
+					    offset + ((4 * i + 2) * 4), msb2);
+			/* Skip reserved register at offset (4 * i + 3) * 4 */
+		}
+		return;
+	}
+	default:
+		WARN_ONCE(1, "unsupported pixels per clock %d\n",
+			  scaler->pix_per_clk);
 	}
 }
 
@@ -1622,8 +1731,9 @@ static int xilinx_scaler_parse_of(struct xilinx_scaler *scaler)
 		dev_info(scaler->dev, "PPC is missing in DT\n");
 		return ret;
 	}
-	if (dt_ppc != XSCALER_PPC_1 && dt_ppc != XSCALER_PPC_2) {
-		dev_info(scaler->dev, "Unsupported ppc: %d", dt_ppc);
+	if (dt_ppc != XSCALER_PPC_1 && dt_ppc != XSCALER_PPC_2 &&
+	    dt_ppc != XSCALER_PPC_4 && dt_ppc != XSCALER_PPC_8) {
+		dev_err(scaler->dev, "Unsupported ppc: %d\n", dt_ppc);
 		return -EINVAL;
 	}
 	scaler->pix_per_clk = dt_ppc;
@@ -1787,6 +1897,9 @@ static int xilinx_scaler_bridge_set_input(struct xlnx_bridge *bridge,
 	xilinx_scaler_reset(scaler);
 	memset(scaler->H_phases, 0,
 	       scaler->num_phase_entries * sizeof(*scaler->H_phases));
+	if (scaler->H_phases_h)
+		memset(scaler->H_phases_h, 0,
+		       scaler->num_phase_entries * sizeof(*scaler->H_phases_h));
 
 	xilinx_scaler_write(scaler->base, V_VSCALER_OFF +
 			    XV_VSCALER_CTRL_ADDR_HWREG_HEIGHTIN_DATA, height);
@@ -1923,6 +2036,15 @@ static int xilinx_scaler_probe(struct platform_device *pdev)
 					sizeof(*scaler->H_phases), GFP_KERNEL);
 	if (!scaler->H_phases)
 		return -ENOMEM;
+
+	if (scaler->pix_per_clk == XSCALER_PPC_8) {
+		scaler->H_phases_h = devm_kcalloc(dev,
+						  scaler->num_phase_entries,
+						  sizeof(*scaler->H_phases_h),
+						  GFP_KERNEL);
+		if (!scaler->H_phases_h)
+			return -ENOMEM;
+	}
 
 	ret = clk_prepare_enable(scaler->ctrl_clk);
 	if (ret) {
