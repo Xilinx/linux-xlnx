@@ -1126,6 +1126,21 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	int ret;
 
 	/*
+	 * Force a clean disable before programming the new mode. If the
+	 * previous client left the encoder enabled, MDL_CTRL has latched
+	 * the old MODE/MUX and the per-data-stream ST352 payload slots
+	 * still hold the previous values; both must be cleared so the
+	 * subsequent re-enable drives a clean EN rising edge.
+	 */
+	if (sdi->bridge)
+		xlnx_bridge_disable(sdi->bridge);
+	xlnx_sdi_set_display_disable(sdi);
+	xlnx_stc_disable(sdi->base);
+
+	/* HFR is a per-mode flag; re-evaluated from adjusted_mode below. */
+	sdi->is_hfr = 0;
+
+	/*
 	 * Transceiver TX: integer vs fractional frame rate clocking.
 	 * For non-SD modes, fractional uses 148.5/1.001 MHz.
 	 * Program clocks then reset GT if PICXO is disabled.
