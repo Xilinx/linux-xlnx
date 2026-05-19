@@ -1228,9 +1228,19 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	u32 payload, i;
 	u32 sditx_blank, vtc_blank;
 	unsigned long clkrate;
+	bool rate_changed;
 	int ret;
 
-	/* Promote the in-flight atomic property values into the driver cache. */
+	/*
+	 * Detect a line-rate change before refreshing the cache. Only
+	 * sdi_mode, sdi_data_strm and is_frac affect the GT line rate;
+	 * other property updates can skip the si5328/QPLL1 settle and
+	 * the matching GT reset.
+	 */
+	rate_changed = sdi->props.sdi_mode != xstate->props.sdi_mode ||
+		       sdi->props.sdi_data_strm != xstate->props.sdi_data_strm ||
+		       sdi->props.is_frac != xstate->props.is_frac;
+
 	sdi->props = xstate->props;
 
 	/*
@@ -1249,12 +1259,13 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	sdi->is_hfr = 0;
 
 	/*
-	 * Transceiver TX clock. For non-SD modes fractional uses
-	 * 148.5/1.001 MHz; otherwise 148.5 MHz. The GT itself is reset
-	 * further down, after the new MODE has been written into
-	 * MDL_CTRL, so the PHY re-locks in one shot.
+	 * Reprogram the SDI Tx reference clock only on a line-rate change.
+	 * For non-SD modes fractional uses 148.5/1.001 MHz; otherwise
+	 * 148.5 MHz. The matching GT reset further down is also gated on
+	 * rate_changed so lightweight property updates fit inside the DRM
+	 * vblank-wait window.
 	 */
-	if (!sdi->picxo_enabled) {
+	if (rate_changed && !sdi->picxo_enabled) {
 		if (sdi->props.is_frac && sdi->props.sdi_mode != XSDI_MODE_SD)
 			clkrate = (CLK_RATE * 1000) / 1001;
 		else
@@ -1310,13 +1321,11 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	xlnx_sdi_set_config_parameters(sdi);
 
 	/*
-	 * Wait for the si5328/QPLL1 to settle, then pulse the GT reset so
-	 * the PHY re-locks against the new MODE/MUX just written to
-	 * MDL_CTRL. A single GT reset here, after the mode bits are in
-	 * place, avoids re-locking against a stale mode and resetting
-	 * the PHY a second time.
+	 * On a line-rate change, wait for the si5328/QPLL1 to settle and
+	 * then pulse the GT reset so the PHY re-locks against the new
+	 * MODE/MUX just written to MDL_CTRL.
 	 */
-	if (!sdi->picxo_enabled) {
+	if (rate_changed && !sdi->picxo_enabled) {
 		mdelay(50);
 		if (sdi->gt_rst_gpio)
 			xlnx_sdi_gt_reset(sdi);
