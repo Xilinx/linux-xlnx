@@ -182,6 +182,42 @@ enum color_depths {
 };
 
 /**
+ * struct xlnx_sdi_props - Tunable SDI Tx parameter set
+ * @sdi_mode: SDI mode (XSDI_MODE_HD/SD/3GA/3GB/6G/12G)
+ * @sdi_data_strm: Number of SDI data streams (2, 4 or 8)
+ * @height_out: Bridge output height
+ * @width_out: Bridge output width
+ * @in_fmt: Bridge input media-bus format
+ * @out_fmt: Bridge output media-bus format
+ * @c_encoding: Color encoding (1 = BT.2020, 0 = Rec.709)
+ * @sdi_420_in: Input bus carries 4:2:0
+ * @sdi_420_out: Output bus carries 4:2:0
+ * @sdi_444_out: Output bus carries 4:4:4
+ * @is_frac: Fractional frame-rate clocking (148.5/1.001 MHz)
+ * @en_st352_c: Emit ST352 on the chroma stream
+ * @use_ds2_3ga: Use DS2 instead of DS3 in 3GA mode
+ *
+ * Holds the most recently committed values of the SDI Tx drm_properties
+ * for a connector. Embedded in &struct xlnx_sdi as a single sub-struct so
+ * the values can be carried around as one unit.
+ */
+struct xlnx_sdi_props {
+	u32 sdi_mode;
+	u32 sdi_data_strm;
+	u32 height_out;
+	u32 width_out;
+	u32 in_fmt;
+	u32 out_fmt;
+	u32 c_encoding;
+	bool sdi_420_in;
+	bool sdi_420_out;
+	bool sdi_444_out;
+	bool is_frac;
+	bool en_st352_c;
+	bool use_ds2_3ga;
+};
+
+/**
  * struct xlnx_sdi - Core configuration SDI Tx subsystem device structure
  * @encoder: DRM encoder structure
  * @connector: DRM connector structure
@@ -193,40 +229,21 @@ enum color_depths {
  * @event_received: wait event status
  * @enable_st352_chroma: Able to send ST352 packets in Chroma stream.
  * @enable_anc_data: Enable/Disable Ancillary Data insertion for Audio
- * @sdi_mode: configurable SDI mode parameter, supported values are:
- *		0 - HD
- *		1 - SD
- *		2 - 3GA
- *		3 - 3GB
- *		4 - 6G
- *		5 - 12G
- * @sdi_mod_prop_val: configurable SDI mode parameter value
- * @sdi_data_strm: configurable SDI data stream parameter
- * @sdi_data_strm_prop_val: configurable number of SDI data streams
- *			    value currently supported are 2, 4 and 8
- * @sdi_420_in: Specifying input bus color format parameter to SDI
- * @sdi_420_in_val: 1 for yuv420 and 0 for yuv422
- * @sdi_420_out: configurable SDI out color format parameter
- * @sdi_420_out_val: 1 for yuv420 and 0 for yuv422
- * @sdi_444_out: configurable SDI out color format parameter
- * @sdi_444_out_val: 1 for yuv444 and 0 for yuv422
- * @is_frac_prop: configurable SDI fractional fps parameter
- * @is_frac_prop_val: configurable SDI fractional fps parameter value
+ * @sdi_mode: drm_property handle for "sdi_mode"
+ * @sdi_data_strm: drm_property handle for "sdi_data_stream"
+ * @sdi_420_in: drm_property handle for "sdi_420_in"
+ * @sdi_420_out: drm_property handle for "sdi_420_out"
+ * @sdi_444_out: drm_property handle for "sdi_444_out"
+ * @is_frac_prop: drm_property handle for "is_frac"
  * @bridge: bridge structure
- * @height_out: configurable bridge output height parameter
- * @height_out_prop_val: configurable bridge output height parameter value
- * @width_out: configurable bridge output width parameter
- * @width_out_prop_val: configurable bridge output width parameter value
- * @in_fmt: configurable bridge input media format
- * @in_fmt_prop_val: configurable media bus format value
- * @out_fmt: configurable bridge output media format
- * @out_fmt_prop_val: configurable media bus format value
- * @en_st352_c_prop: configurable ST352 payload on Chroma stream parameter
- * @en_st352_c_val: configurable ST352 payload on Chroma parameter value
- * @use_ds2_3ga_prop: Use DS2 instead of DS3 in 3GA mode parameter
- * @use_ds2_3ga_val: Use DS2 instead of DS3 in 3GA mode parameter value
- * @c_encoding: configurable color encoding
- * @c_encoding_prop_val: 1 for UHDTV and 0 for Rec709
+ * @height_out: drm_property handle for "height_out"
+ * @width_out: drm_property handle for "width_out"
+ * @in_fmt: drm_property handle for "in_fmt"
+ * @out_fmt: drm_property handle for "out_fmt"
+ * @en_st352_c_prop: drm_property handle for "en_st352_c"
+ * @use_ds2_3ga_prop: drm_property handle for "use_ds2_3ga"
+ * @c_encoding: drm_property handle for "c_encoding"
+ * @props: Most recently committed property values
  * @video_mode: current display mode
  * @axi_clk: AXI Lite interface clock
  * @sditx_clk: SDI Tx Clock
@@ -251,32 +268,20 @@ struct xlnx_sdi {
 	bool enable_st352_chroma;
 	bool enable_anc_data;
 	struct drm_property *sdi_mode;
-	u32 sdi_mod_prop_val;
 	struct drm_property *sdi_data_strm;
-	u32 sdi_data_strm_prop_val;
 	struct drm_property *sdi_420_in;
-	bool sdi_420_in_val;
 	struct drm_property *sdi_420_out;
-	bool sdi_420_out_val;
 	struct drm_property *sdi_444_out;
-	bool sdi_444_out_val;
 	struct drm_property *is_frac_prop;
-	bool is_frac_prop_val;
 	struct xlnx_bridge *bridge;
 	struct drm_property *height_out;
-	u32 height_out_prop_val;
 	struct drm_property *width_out;
-	u32 width_out_prop_val;
 	struct drm_property *in_fmt;
-	u32 in_fmt_prop_val;
 	struct drm_property *out_fmt;
-	u32 out_fmt_prop_val;
 	struct drm_property *en_st352_c_prop;
-	bool en_st352_c_val;
 	struct drm_property *use_ds2_3ga_prop;
-	bool use_ds2_3ga_val;
 	struct drm_property *c_encoding;
-	u32 c_encoding_prop_val;
+	struct xlnx_sdi_props props;
 	struct drm_display_mode video_mode;
 	struct clk *axi_clk;
 	struct clk *sditx_clk;
@@ -383,7 +388,7 @@ static void xlnx_sdi_set_eotf(struct xlnx_sdi *sdi)
 		break;
 	}
 
-	colori = sdi->c_encoding_prop_val;
+	colori = sdi->props.c_encoding;
 	payload = xlnx_sdi_readl(sdi->base, XSDI_TX_ST352_DATA_CH0);
 
 	/*
@@ -392,7 +397,7 @@ static void xlnx_sdi_set_eotf(struct xlnx_sdi *sdi)
 	 * For other modes, its bit 21 and 20.
 	 * For BT709 & BT2020 - bit 20 is always zero
 	 */
-	if (sdi->sdi_mod_prop_val == XSDI_MODE_HD) {
+	if (sdi->props.sdi_mode == XSDI_MODE_HD) {
 		payload &= ~(XST352_BYTE2_EOTF_MASK |
 			     XST352_BYTE3_COLORIMETRY_HD);
 		payload |= FIELD_PREP(XST352_BYTE2_EOTF_MASK, eotf) |
@@ -405,7 +410,7 @@ static void xlnx_sdi_set_eotf(struct xlnx_sdi *sdi)
 	}
 
 	dev_dbg(sdi->dev, "payload = 0x%x, eotf = %d\n", payload, eotf);
-	for (i = 0; i < sdi->sdi_data_strm_prop_val / 2; i++)
+	for (i = 0; i < sdi->props.sdi_data_strm / 2; i++)
 		xlnx_sdi_writel(sdi->base,
 				(XSDI_TX_ST352_DATA_CH0 + (i * 4)), payload);
 	sdi->prev_eotf = eotf;
@@ -488,9 +493,9 @@ static void xlnx_sdi_set_payload_data(struct xlnx_sdi *sdi,
 	xlnx_sdi_writel(sdi->base,
 			(XSDI_TX_ST352_DATA_CH0 + (data_strm * 4)), payload);
 
-	dev_dbg(sdi->dev, "enable_st352_chroma = %d and en_st352_c_val = %d\n",
-		sdi->enable_st352_chroma, sdi->en_st352_c_val);
-	if (sdi->enable_st352_chroma && sdi->en_st352_c_val) {
+	dev_dbg(sdi->dev, "enable_st352_chroma = %d and en_st352_c = %d\n",
+		sdi->enable_st352_chroma, sdi->props.en_st352_c);
+	if (sdi->enable_st352_chroma && sdi->props.en_st352_c) {
 		xlnx_sdi_writel(sdi->base,
 				(XSDI_TX_ST352_DATA_DS2 + (data_strm * 4)),
 				payload);
@@ -577,11 +582,11 @@ static void xlnx_sdi_set_mode(struct xlnx_sdi *sdi, u32 mode,
 		(is_frac << XSDI_TX_CTRL_M_SHIFT) |
 		((mux_ptrn & XSDI_TX_CTRL_MUX) << XSDI_TX_CTRL_MUX_SHIFT));
 
-	dev_dbg(sdi->dev, "sdi_420_out_val = %d\n sdi_444_out_val = %d\n\r",
-		sdi->sdi_420_out_val, sdi->sdi_444_out_val);
-	if (sdi->sdi_420_out_val)
+	dev_dbg(sdi->dev, "sdi_420_out = %d sdi_444_out = %d\n",
+		sdi->props.sdi_420_out, sdi->props.sdi_444_out);
+	if (sdi->props.sdi_420_out)
 		data |= XSDI_TX_CTRL_420_BIT;
-	else if (sdi->sdi_444_out_val)
+	else if (sdi->props.sdi_444_out)
 		data |= XSDI_TX_CTRL_444_BIT;
 
 	if (sdi->is_hfr) {
@@ -604,7 +609,7 @@ static void xlnx_sdi_set_config_parameters(struct xlnx_sdi *sdi)
 {
 	int mux_ptrn = -EINVAL;
 
-	switch (sdi->sdi_mod_prop_val) {
+	switch (sdi->props.sdi_mode) {
 	case XSDI_MODE_3GA:
 		mux_ptrn = XSDI_TX_MUX_SD_HD_3GA;
 		break;
@@ -612,13 +617,13 @@ static void xlnx_sdi_set_config_parameters(struct xlnx_sdi *sdi)
 		mux_ptrn = XSDI_TX_MUX_3GB;
 		break;
 	case XSDI_MODE_6G:
-		if (sdi->sdi_data_strm_prop_val == 4)
+		if (sdi->props.sdi_data_strm == 4)
 			mux_ptrn = XSDI_TX_MUX_4STREAM_6G;
-		else if (sdi->sdi_data_strm_prop_val == 8)
+		else if (sdi->props.sdi_data_strm == 8)
 			mux_ptrn = XSDI_TX_MUX_8STREAM_6G_12G;
 		break;
 	case XSDI_MODE_12G:
-		if (sdi->sdi_data_strm_prop_val == 8)
+		if (sdi->props.sdi_data_strm == 8)
 			mux_ptrn = XSDI_TX_MUX_8STREAM_6G_12G;
 		break;
 	default:
@@ -627,10 +632,10 @@ static void xlnx_sdi_set_config_parameters(struct xlnx_sdi *sdi)
 	}
 	if (mux_ptrn == -EINVAL) {
 		dev_err(sdi->dev, "%d data stream not supported for %d mode",
-			sdi->sdi_data_strm_prop_val, sdi->sdi_mod_prop_val);
+			sdi->props.sdi_data_strm, sdi->props.sdi_mode);
 		return;
 	}
-	xlnx_sdi_set_mode(sdi, sdi->sdi_mod_prop_val, sdi->is_frac_prop_val,
+	xlnx_sdi_set_mode(sdi, sdi->props.sdi_mode, sdi->props.is_frac,
 			  mux_ptrn);
 }
 
@@ -657,31 +662,31 @@ xlnx_sdi_atomic_set_property(struct drm_connector *connector,
 	struct xlnx_sdi *sdi = connector_to_sdi(connector);
 
 	if (property == sdi->sdi_mode)
-		sdi->sdi_mod_prop_val = (unsigned int)val;
+		sdi->props.sdi_mode = (unsigned int)val;
 	else if (property == sdi->sdi_data_strm)
-		sdi->sdi_data_strm_prop_val = (unsigned int)val;
+		sdi->props.sdi_data_strm = (unsigned int)val;
 	else if (property == sdi->sdi_420_in)
-		sdi->sdi_420_in_val = val;
+		sdi->props.sdi_420_in = val;
 	else if (property == sdi->sdi_420_out)
-		sdi->sdi_420_out_val = val;
+		sdi->props.sdi_420_out = val;
 	else if (property == sdi->sdi_444_out)
-		sdi->sdi_444_out_val = val;
+		sdi->props.sdi_444_out = val;
 	else if (property == sdi->is_frac_prop)
-		sdi->is_frac_prop_val = !!val;
+		sdi->props.is_frac = !!val;
 	else if (property == sdi->height_out)
-		sdi->height_out_prop_val = (unsigned int)val;
+		sdi->props.height_out = (unsigned int)val;
 	else if (property == sdi->width_out)
-		sdi->width_out_prop_val = (unsigned int)val;
+		sdi->props.width_out = (unsigned int)val;
 	else if (property == sdi->in_fmt)
-		sdi->in_fmt_prop_val = (unsigned int)val;
+		sdi->props.in_fmt = (unsigned int)val;
 	else if (property == sdi->out_fmt)
-		sdi->out_fmt_prop_val = (unsigned int)val;
+		sdi->props.out_fmt = (unsigned int)val;
 	else if (property == sdi->en_st352_c_prop)
-		sdi->en_st352_c_val = !!val;
+		sdi->props.en_st352_c = !!val;
 	else if (property == sdi->use_ds2_3ga_prop)
-		sdi->use_ds2_3ga_val = !!val;
+		sdi->props.use_ds2_3ga = !!val;
 	else if (property == sdi->c_encoding)
-		sdi->c_encoding_prop_val = val;
+		sdi->props.c_encoding = val;
 	else
 		return -EINVAL;
 	return 0;
@@ -695,31 +700,31 @@ xlnx_sdi_atomic_get_property(struct drm_connector *connector,
 	struct xlnx_sdi *sdi = connector_to_sdi(connector);
 
 	if (property == sdi->sdi_mode)
-		*val = sdi->sdi_mod_prop_val;
+		*val = sdi->props.sdi_mode;
 	else if (property == sdi->sdi_data_strm)
-		*val =  sdi->sdi_data_strm_prop_val;
+		*val = sdi->props.sdi_data_strm;
 	else if (property == sdi->sdi_420_in)
-		*val = sdi->sdi_420_in_val;
+		*val = sdi->props.sdi_420_in;
 	else if (property == sdi->sdi_420_out)
-		*val = sdi->sdi_420_out_val;
+		*val = sdi->props.sdi_420_out;
 	else if (property == sdi->sdi_444_out)
-		*val = sdi->sdi_444_out_val;
+		*val = sdi->props.sdi_444_out;
 	else if (property == sdi->is_frac_prop)
-		*val =  sdi->is_frac_prop_val;
+		*val = sdi->props.is_frac;
 	else if (property == sdi->height_out)
-		*val = sdi->height_out_prop_val;
+		*val = sdi->props.height_out;
 	else if (property == sdi->width_out)
-		*val = sdi->width_out_prop_val;
+		*val = sdi->props.width_out;
 	else if (property == sdi->in_fmt)
-		*val = sdi->in_fmt_prop_val;
+		*val = sdi->props.in_fmt;
 	else if (property == sdi->out_fmt)
-		*val = sdi->out_fmt_prop_val;
+		*val = sdi->props.out_fmt;
 	else if (property == sdi->en_st352_c_prop)
-		*val =  sdi->en_st352_c_val;
+		*val = sdi->props.en_st352_c;
 	else if (property == sdi->use_ds2_3ga_prop)
-		*val =  sdi->use_ds2_3ga_val;
+		*val = sdi->props.use_ds2_3ga;
 	else if (property == sdi->c_encoding)
-		*val = sdi->c_encoding_prop_val;
+		*val = sdi->props.c_encoding;
 	else
 		return -EINVAL;
 
@@ -997,17 +1002,17 @@ static u32 xlnx_sdi_calc_st352_payld(struct xlnx_sdi *sdi,
 	u8 byt1, byt2;
 	u16 is_p;
 	int id;
-	u32 sdi_mode = sdi->sdi_mod_prop_val;
-	bool is_frac = sdi->is_frac_prop_val;
+	u32 sdi_mode = sdi->props.sdi_mode;
+	bool is_frac = sdi->props.is_frac;
 	u32 byt3 = ST352_BYTE3;
 
 	id = xlnx_sdi_get_mode_id(mode);
 	dev_dbg(sdi->dev, "mode id: %d\n", id);
 	if (mode->hdisplay == 2048 || mode->hdisplay == 4096)
 		byt3 |= XST352_2048_SHIFT;
-	if (sdi->sdi_420_in_val)
+	if (sdi->props.sdi_420_in)
 		byt3 |= XST352_YUV420_MASK;
-	else if (sdi->sdi_444_out_val)
+	else if (sdi->props.sdi_444_out)
 		byt3 |= XST352_YUV444_MASK;
 
 	/* byte 2 calculation */
@@ -1040,9 +1045,9 @@ static void xlnx_sdi_setup(struct xlnx_sdi *sdi)
 		reg |= XSDI_TX_CTRL_USE_ANC_IN;
 
 	if (sdi->enable_st352_chroma) {
-		if (sdi->en_st352_c_val) {
+		if (sdi->props.en_st352_c) {
 			reg |= XSDI_TX_CTRL_INS_ST352_CHROMA;
-			if (sdi->use_ds2_3ga_val)
+			if (sdi->props.use_ds2_3ga)
 				reg |= XSDI_TX_CTRL_USE_DS2_3GA;
 			else
 				reg &= ~XSDI_TX_CTRL_USE_DS2_3GA;
@@ -1147,7 +1152,7 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	 * MDL_CTRL, so the PHY re-locks in one shot.
 	 */
 	if (!sdi->picxo_enabled) {
-		if (sdi->is_frac_prop_val && sdi->sdi_mod_prop_val != XSDI_MODE_SD)
+		if (sdi->props.is_frac && sdi->props.sdi_mode != XSDI_MODE_SD)
 			clkrate = (CLK_RATE * 1000) / 1001;
 		else
 			clkrate = CLK_RATE;
@@ -1158,14 +1163,14 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 
 		clkrate = clk_get_rate(sdi->sditx_clk);
 		dev_dbg(sdi->dev, "clkrate = %lu is_frac = %d\n",
-			clkrate, sdi->is_frac_prop_val);
+			clkrate, sdi->props.is_frac);
 	}
 
 	/* Configure bridge input/output timing and formats */
 	xlnx_bridge_set_input(sdi->bridge, adjusted_mode->hdisplay,
-			      adjusted_mode->vdisplay, sdi->in_fmt_prop_val);
-	xlnx_bridge_set_output(sdi->bridge, sdi->width_out_prop_val,
-			       sdi->height_out_prop_val, sdi->out_fmt_prop_val);
+			      adjusted_mode->vdisplay, sdi->props.in_fmt);
+	xlnx_bridge_set_output(sdi->bridge, sdi->props.width_out,
+			       sdi->props.height_out, sdi->props.out_fmt);
 	xlnx_bridge_enable(sdi->bridge);
 
 	if (sdi->bridge) {
@@ -1173,8 +1178,8 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 			const struct drm_display_mode *sdi_ref_mode =
 				&xlnx_sdi_modes[i].mode;
 
-			if (sdi_ref_mode->hdisplay == sdi->width_out_prop_val &&
-			    sdi_ref_mode->vdisplay == sdi->height_out_prop_val &&
+			if (sdi_ref_mode->hdisplay == sdi->props.width_out &&
+			    sdi_ref_mode->vdisplay == sdi->props.height_out &&
 			    adjusted_mode->flags == sdi_ref_mode->flags &&
 			    drm_mode_vrefresh(sdi_ref_mode) ==
 			    drm_mode_vrefresh(adjusted_mode)) {
@@ -1193,7 +1198,7 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 
 	/* Dynamic stream BPC detection is valid only in 12 bpc mode */
 	if (sdi->dynamic_bpc && sdi->config_bpc == SDI_TX_BPC_12)
-		sdi->stream_bpc = xlnx_sdi_find_media_bus(sdi, sdi->out_fmt_prop_val);
+		sdi->stream_bpc = xlnx_sdi_find_media_bus(sdi, sdi->props.out_fmt);
 
 	dev_dbg(sdi->dev, "stream_bpc = %d config_bpc = %d\n",
 		sdi->stream_bpc, sdi->config_bpc);
@@ -1218,8 +1223,8 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	payload = xlnx_sdi_calc_st352_payld(sdi, adjusted_mode);
 	dev_dbg(sdi->dev, "payload : %08x\n", payload);
 
-	for (i = 0; i < sdi->sdi_data_strm_prop_val / 2; i++) {
-		if (sdi->sdi_mod_prop_val == XSDI_MODE_3GB)
+	for (i = 0; i < sdi->props.sdi_data_strm / 2; i++) {
+		if (sdi->props.sdi_mode == XSDI_MODE_3GB)
 			payload |= ((i << 1) << XSDI_CH_SHIFT); /* channel id bits per stream */
 
 		xlnx_sdi_set_payload_data(sdi, i, payload);
