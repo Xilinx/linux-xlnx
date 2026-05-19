@@ -69,6 +69,18 @@
 #define XSDI_TX_CTRL_DYNAMIC_BPC_MASK	GENMASK(27, 26)
 #define XSDI_TX_CTRL_DYNAMIC_BPC_10	0x1  /* HW uses same encoding for 8-bit and 10-bit */
 
+/*
+ * MDL_CTRL bits that depend on the current SDI mode and must be cleared
+ * before re-applying the new mode-set's values.
+ */
+#define XSDI_TX_CTRL_MODE_MASK						\
+	((XSDI_TX_CTRL_MODE << XSDI_TX_CTRL_MODE_SHIFT) |		\
+	 XSDI_TX_CTRL_M |						\
+	 (XSDI_TX_CTRL_MUX << XSDI_TX_CTRL_MUX_SHIFT) |			\
+	 XSDI_TX_CTRL_HFR |						\
+	 XSDI_TX_CTRL_420_BIT |						\
+	 XSDI_TX_CTRL_444_BIT)
+
 /* TX_ST352_LINE register masks */
 #define XSDI_TX_ST352_LINE_MASK		GENMASK(10, 0)
 #define XSDI_TX_ST352_LINE_F2_SHIFT	16
@@ -553,10 +565,13 @@ static void xlnx_sdi_set_mode(struct xlnx_sdi *sdi, u32 mode,
 	xlnx_sdi_payload_config(sdi, mode);
 
 	data = xlnx_sdi_readl(sdi->base, XSDI_TX_MDL_CTRL);
-	data &= ~(XSDI_TX_CTRL_MODE << XSDI_TX_CTRL_MODE_SHIFT);
-	data &= ~(XSDI_TX_CTRL_M);
-	data &= ~(XSDI_TX_CTRL_MUX << XSDI_TX_CTRL_MUX_SHIFT);
-	data &= ~XSDI_TX_CTRL_420_BIT;
+	/*
+	 * Clear every mode-dependent bit before re-applying the new values.
+	 * HFR and the 4:4:4 encoding bit are only ever OR'd in below, so
+	 * without an explicit clear they leak across mode-sets and corrupt
+	 * the framing of the next, unrelated mode.
+	 */
+	data &= ~XSDI_TX_CTRL_MODE_MASK;
 
 	data |= (((mode & XSDI_TX_CTRL_MODE) << XSDI_TX_CTRL_MODE_SHIFT) |
 		(is_frac << XSDI_TX_CTRL_M_SHIFT) |
