@@ -276,12 +276,14 @@ static int mmi_dp_handle_hotplug(struct dptx *dptx)
 	dptx->link.lanes = dptx->max_lanes;
 
 	/* Initiate link training */
-	if (dptx->rx_caps.no_aux_transaction_link_training) {
-		mmi_dp_fast_link_training(dptx);
-	} else {
-		retval = mmi_dp_full_link_training(dptx);
-		if (retval)
-			return retval;
+	if (dptx->enabled) {
+		if (dptx->rx_caps.no_aux_transaction_link_training) {
+			mmi_dp_fast_link_training(dptx);
+		} else {
+			retval = mmi_dp_full_link_training(dptx);
+			if (retval)
+				return retval;
+		}
 	}
 
 	dptx->conn_status = connector_status_connected;
