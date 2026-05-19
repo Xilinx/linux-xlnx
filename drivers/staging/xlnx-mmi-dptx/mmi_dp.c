@@ -1108,6 +1108,7 @@ static void mmi_dp_bridge_atomic_enable(struct drm_bridge *bridge,
 	}
 	mmi_dp_intr_en(dptx, DPTX_IEN_VIDEO_FIFO_OVERFLOW |
 		       DPTX_IEN_AUDIO_FIFO_OVERFLOW);
+	dptx->enabled = true;
 }
 
 static void mmi_dp_bridge_atomic_disable(struct drm_bridge *bridge,
@@ -1119,6 +1120,7 @@ static void mmi_dp_bridge_atomic_disable(struct drm_bridge *bridge,
 			DPTX_IEN_VIDEO_FIFO_OVERFLOW |
 			DPTX_IEN_AUDIO_FIFO_OVERFLOW);
 	mmi_dp_write_mask(dptx, DPTX_VSAMPLE_CTRL_N(0), VIDEO_STREAM_ENABLE_MASK, 0);
+	dptx->enabled = false;
 }
 
 static const struct drm_bridge_funcs mmi_dp_bridge_funcs = {

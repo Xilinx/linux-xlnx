@@ -241,6 +241,7 @@ struct rx_capabilities {
  * @edp: EDP flag
  * @dev: The struct device
  * @bridge: DRM Bridge
+ * @enabled: Is DRM bridge enabled?
  * @conn_status: connection status
  * @dp_aux: DRM DP Aux
  * @vparams: The video params to use
@@ -296,6 +297,7 @@ struct dptx {
 
 	struct device *dev;
 	struct drm_bridge bridge;
+	bool enabled;
 	/* struct drm_bridge *next_bridge; */
 	enum drm_connector_status conn_status;
 	struct drm_dp_aux dp_aux;
