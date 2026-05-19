@@ -11,6 +11,7 @@
 #include "mmi_dc_bridge.h"
 
 #include <linux/device.h>
+#include <linux/io.h>
 #include <drm/drm_modes.h>
 
 #define MMI_DC_MAX_BRIDGES		(4)
