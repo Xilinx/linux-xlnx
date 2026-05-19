@@ -1141,9 +1141,10 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	sdi->is_hfr = 0;
 
 	/*
-	 * Transceiver TX: integer vs fractional frame rate clocking.
-	 * For non-SD modes, fractional uses 148.5/1.001 MHz.
-	 * Program clocks then reset GT if PICXO is disabled.
+	 * Transceiver TX clock. For non-SD modes fractional uses
+	 * 148.5/1.001 MHz; otherwise 148.5 MHz. The GT itself is reset
+	 * further down, after the new MODE has been written into
+	 * MDL_CTRL, so the PHY re-locks in one shot.
 	 */
 	if (!sdi->picxo_enabled) {
 		if (sdi->is_frac_prop_val && sdi->sdi_mod_prop_val != XSDI_MODE_SD)
@@ -1156,12 +1157,8 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 			dev_err(sdi->dev, "failed to set clk rate = %lu\n", clkrate);
 
 		clkrate = clk_get_rate(sdi->sditx_clk);
-		dev_info(sdi->dev, "clkrate = %lu is_frac = %d\n", clkrate, sdi->is_frac_prop_val);
-
-		/* QPLL1 lock time (si5328 datasheet guidance) */
-		mdelay(50);
-		if (sdi->gt_rst_gpio)
-			xlnx_sdi_gt_reset(sdi);
+		dev_dbg(sdi->dev, "clkrate = %lu is_frac = %d\n",
+			clkrate, sdi->is_frac_prop_val);
 	}
 
 	/* Configure bridge input/output timing and formats */
@@ -1203,6 +1200,19 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 
 	xlnx_sdi_setup(sdi);
 	xlnx_sdi_set_config_parameters(sdi);
+
+	/*
+	 * Wait for the si5328/QPLL1 to settle, then pulse the GT reset so
+	 * the PHY re-locks against the new MODE/MUX just written to
+	 * MDL_CTRL. A single GT reset here, after the mode bits are in
+	 * place, avoids re-locking against a stale mode and resetting
+	 * the PHY a second time.
+	 */
+	if (!sdi->picxo_enabled) {
+		mdelay(50);
+		if (sdi->gt_rst_gpio)
+			xlnx_sdi_gt_reset(sdi);
+	}
 
 	/* ST352 payload composition and write to all streams */
 	payload = xlnx_sdi_calc_st352_payld(sdi, adjusted_mode);
