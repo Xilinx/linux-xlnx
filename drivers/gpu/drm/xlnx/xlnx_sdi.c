@@ -7,6 +7,7 @@
  * Contacts: Saurabh Sengar <saurabhs@xilinx.com>
  */
 
+#include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_probe_helper.h>
@@ -294,6 +295,22 @@ struct xlnx_sdi {
 	enum color_depths stream_bpc;
 	bool dynamic_bpc;
 };
+
+/**
+ * struct xlnx_sdi_connector_state - Driver-specific connector state
+ * @base: Parent &struct drm_connector_state
+ * @props: In-flight SDI Tx parameter set for this atomic transaction
+ *
+ * Holding the SDI properties in atomic state lets a property-only commit
+ * be detected in atomic_check and re-program the encoder.
+ */
+struct xlnx_sdi_connector_state {
+	struct drm_connector_state base;
+	struct xlnx_sdi_props props;
+};
+
+#define to_sdi_conn_state(s) \
+	container_of_const(s, struct xlnx_sdi_connector_state, base)
 
 #define connector_to_sdi(c) container_of(c, struct xlnx_sdi, connector)
 #define encoder_to_sdi(e) container_of(e, struct xlnx_sdi, encoder)
@@ -660,33 +677,34 @@ xlnx_sdi_atomic_set_property(struct drm_connector *connector,
 			     struct drm_property *property, uint64_t val)
 {
 	struct xlnx_sdi *sdi = connector_to_sdi(connector);
+	struct xlnx_sdi_props *p = &to_sdi_conn_state(state)->props;
 
 	if (property == sdi->sdi_mode)
-		sdi->props.sdi_mode = (unsigned int)val;
+		p->sdi_mode = (u32)val;
 	else if (property == sdi->sdi_data_strm)
-		sdi->props.sdi_data_strm = (unsigned int)val;
+		p->sdi_data_strm = (u32)val;
 	else if (property == sdi->sdi_420_in)
-		sdi->props.sdi_420_in = val;
+		p->sdi_420_in = !!val;
 	else if (property == sdi->sdi_420_out)
-		sdi->props.sdi_420_out = val;
+		p->sdi_420_out = !!val;
 	else if (property == sdi->sdi_444_out)
-		sdi->props.sdi_444_out = val;
+		p->sdi_444_out = !!val;
 	else if (property == sdi->is_frac_prop)
-		sdi->props.is_frac = !!val;
+		p->is_frac = !!val;
 	else if (property == sdi->height_out)
-		sdi->props.height_out = (unsigned int)val;
+		p->height_out = (u32)val;
 	else if (property == sdi->width_out)
-		sdi->props.width_out = (unsigned int)val;
+		p->width_out = (u32)val;
 	else if (property == sdi->in_fmt)
-		sdi->props.in_fmt = (unsigned int)val;
+		p->in_fmt = (u32)val;
 	else if (property == sdi->out_fmt)
-		sdi->props.out_fmt = (unsigned int)val;
+		p->out_fmt = (u32)val;
 	else if (property == sdi->en_st352_c_prop)
-		sdi->props.en_st352_c = !!val;
+		p->en_st352_c = !!val;
 	else if (property == sdi->use_ds2_3ga_prop)
-		sdi->props.use_ds2_3ga = !!val;
+		p->use_ds2_3ga = !!val;
 	else if (property == sdi->c_encoding)
-		sdi->props.c_encoding = val;
+		p->c_encoding = (u32)val;
 	else
 		return -EINVAL;
 	return 0;
@@ -698,35 +716,114 @@ xlnx_sdi_atomic_get_property(struct drm_connector *connector,
 			     struct drm_property *property, uint64_t *val)
 {
 	struct xlnx_sdi *sdi = connector_to_sdi(connector);
+	const struct xlnx_sdi_props *p = &to_sdi_conn_state(state)->props;
 
 	if (property == sdi->sdi_mode)
-		*val = sdi->props.sdi_mode;
+		*val = p->sdi_mode;
 	else if (property == sdi->sdi_data_strm)
-		*val = sdi->props.sdi_data_strm;
+		*val = p->sdi_data_strm;
 	else if (property == sdi->sdi_420_in)
-		*val = sdi->props.sdi_420_in;
+		*val = p->sdi_420_in;
 	else if (property == sdi->sdi_420_out)
-		*val = sdi->props.sdi_420_out;
+		*val = p->sdi_420_out;
 	else if (property == sdi->sdi_444_out)
-		*val = sdi->props.sdi_444_out;
+		*val = p->sdi_444_out;
 	else if (property == sdi->is_frac_prop)
-		*val = sdi->props.is_frac;
+		*val = p->is_frac;
 	else if (property == sdi->height_out)
-		*val = sdi->props.height_out;
+		*val = p->height_out;
 	else if (property == sdi->width_out)
-		*val = sdi->props.width_out;
+		*val = p->width_out;
 	else if (property == sdi->in_fmt)
-		*val = sdi->props.in_fmt;
+		*val = p->in_fmt;
 	else if (property == sdi->out_fmt)
-		*val = sdi->props.out_fmt;
+		*val = p->out_fmt;
 	else if (property == sdi->en_st352_c_prop)
-		*val = sdi->props.en_st352_c;
+		*val = p->en_st352_c;
 	else if (property == sdi->use_ds2_3ga_prop)
-		*val = sdi->props.use_ds2_3ga;
+		*val = p->use_ds2_3ga;
 	else if (property == sdi->c_encoding)
-		*val = sdi->props.c_encoding;
+		*val = p->c_encoding;
 	else
 		return -EINVAL;
+
+	return 0;
+}
+
+static void xlnx_sdi_connector_reset(struct drm_connector *connector)
+{
+	struct xlnx_sdi_connector_state *xstate;
+
+	if (connector->state) {
+		__drm_atomic_helper_connector_destroy_state(connector->state);
+		kfree(to_sdi_conn_state(connector->state));
+		connector->state = NULL;
+	}
+
+	xstate = kzalloc(sizeof(*xstate), GFP_KERNEL);
+	if (!xstate)
+		return;
+
+	__drm_atomic_helper_connector_reset(connector, &xstate->base);
+}
+
+static struct drm_connector_state *
+xlnx_sdi_atomic_duplicate_state(struct drm_connector *connector)
+{
+	struct xlnx_sdi_connector_state *xstate;
+
+	if (WARN_ON(!connector->state))
+		return NULL;
+
+	xstate = kmemdup(to_sdi_conn_state(connector->state),
+			 sizeof(*xstate), GFP_KERNEL);
+	if (!xstate)
+		return NULL;
+
+	__drm_atomic_helper_connector_duplicate_state(connector, &xstate->base);
+	return &xstate->base;
+}
+
+static void xlnx_sdi_atomic_destroy_state(struct drm_connector *connector,
+					  struct drm_connector_state *state)
+{
+	__drm_atomic_helper_connector_destroy_state(state);
+	kfree(to_sdi_conn_state(state));
+}
+
+/*
+ * Force a full mode-set when any vendor property changes so that
+ * property-only atomic commits re-program the SDI Tx IP through
+ * xlnx_sdi_encoder_atomic_mode_set(). memcmp() is safe: both states
+ * are kzalloc()'d or kmemdup()'d from a zero-initialised origin, so
+ * the struct padding compares equal.
+ */
+static int xlnx_sdi_connector_atomic_check(struct drm_connector *connector,
+					   struct drm_atomic_state *state)
+{
+	struct drm_connector_state *new_conn_state, *old_conn_state;
+	const struct xlnx_sdi_props *new_props, *old_props;
+	struct drm_crtc_state *crtc_state;
+
+	new_conn_state = drm_atomic_get_new_connector_state(state, connector);
+	if (!new_conn_state || !new_conn_state->crtc)
+		return 0;
+
+	old_conn_state = drm_atomic_get_old_connector_state(state, connector);
+	if (!old_conn_state)
+		return 0;
+
+	crtc_state = drm_atomic_get_new_crtc_state(state, new_conn_state->crtc);
+	if (!crtc_state)
+		return 0;
+
+	new_props = &to_sdi_conn_state(new_conn_state)->props;
+	old_props = &to_sdi_conn_state(old_conn_state)->props;
+
+	if (memcmp(new_props, old_props, sizeof(*new_props))) {
+		crtc_state->mode_changed = true;
+		crtc_state->connectors_changed = true;
+	}
 
 	return 0;
 }
@@ -795,9 +892,9 @@ static const struct drm_connector_funcs xlnx_sdi_connector_funcs = {
 	.detect = xlnx_sdi_detect,
 	.fill_modes = drm_helper_probe_single_connector_modes,
 	.destroy = xlnx_sdi_connector_destroy,
-	.atomic_duplicate_state	= drm_atomic_helper_connector_duplicate_state,
-	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
-	.reset = drm_atomic_helper_connector_reset,
+	.atomic_duplicate_state	= xlnx_sdi_atomic_duplicate_state,
+	.atomic_destroy_state = xlnx_sdi_atomic_destroy_state,
+	.reset = xlnx_sdi_connector_reset,
 	.atomic_set_property = xlnx_sdi_atomic_set_property,
 	.atomic_get_property = xlnx_sdi_atomic_get_property,
 };
@@ -841,6 +938,7 @@ static struct drm_connector_helper_funcs xlnx_sdi_connector_helper_funcs = {
 	.get_modes = xlnx_sdi_get_modes,
 	.best_encoder = xlnx_sdi_best_encoder,
 	.mode_valid = xlnx_sdi_mode_valid,
+	.atomic_check = xlnx_sdi_connector_atomic_check,
 };
 
 /**
@@ -1124,11 +1222,16 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 {
 	struct xlnx_sdi *sdi = encoder_to_sdi(encoder);
 	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
+	const struct xlnx_sdi_connector_state *xstate =
+		to_sdi_conn_state(connector_state);
 	struct videomode vm;
 	u32 payload, i;
 	u32 sditx_blank, vtc_blank;
 	unsigned long clkrate;
 	int ret;
+
+	/* Promote the in-flight atomic property values into the driver cache. */
+	sdi->props = xstate->props;
 
 	/*
 	 * Force a clean disable before programming the new mode. If the
