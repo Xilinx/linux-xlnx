@@ -1172,6 +1172,74 @@ bit, E is the exponent, and M is the mantissa (see also
 
     \normalsize
 
+16 Bits Per Component (FP16/BF16) (RGBA)
+========================================
+
+These formats store an RGBA triplet in eight bytes (64 bits per pixel) using
+``V4L2_PIX_FMT_RGBA_BF64`` or ``V4L2_PIX_FMT_RGBA_FP64``. Memory order is blue,
+green, then red (RGB within each 16-bit channel). For example,
+``V4L2_PIX_FMT_RGBA_BF64`` places R\ :sub:`7-0` in byte 0 and R\ :sub:`15-8` in
+byte 1, then the green, blue and alpha channels in the same little endian byte order per
+16-bit word (see the table below).
+
+Below is the bit layout for each float-related data type, where S is the sign
+bit, E is the exponent, and M is the mantissa (see also
+:doc:`pixfmt-float-bitfield-tables`):
+
+.. include:: pixfmt-float-bitfield-tables.rst
+   :start-after: FLOAT_BITFIELD_LIST_TABLES_BEGIN
+   :end-before: FLOAT_BITFIELD_FP32_START
+
+.. raw:: latex
+
+    \small
+
+.. flat-table:: RGBA Formats With 16 Bits Per Component
+    :header-rows:  1
+
+    * - Identifier
+      - Code
+      - Byte 0
+      - Byte 1
+      - Byte 2
+      - Byte 3
+      - Byte 4
+      - Byte 5
+      - Byte 6
+      - Byte 7
+
+    * .. _V4L2-PIX-FMT-RGBA-BF64:
+
+      - ``V4L2_PIX_FMT_RGBA_BF64``
+      - 'BB64'
+
+      - R\ :sub:`7-0`\ :sup:`BF16`
+      - R\ :sub:`15-8`\ :sup:`BF16`
+      - G\ :sub:`7-0`\ :sup:`BF16`
+      - G\ :sub:`15-8`\ :sup:`BF16`
+      - B\ :sub:`7-0`\ :sup:`BF16`
+      - B\ :sub:`15-8`\ :sup:`BF16`
+      - A\ :sub:`7-0`\ :sup:`BF16`
+      - A\ :sub:`15-8`\ :sup:`BF16`
+
+    * .. _V4L2-PIX-FMT-RGBA-FP64:
+
+      - ``V4L2_PIX_FMT_RGBA_FP64``
+      - 'BF64'
+
+      - R\ :sub:`7-0`\ :sup:`FP16`
+      - R\ :sub:`15-8`\ :sup:`FP16`
+      - G\ :sub:`7-0`\ :sup:`FP16`
+      - G\ :sub:`15-8`\ :sup:`FP16`
+      - B\ :sub:`7-0`\ :sup:`FP16`
+      - B\ :sub:`15-8`\ :sup:`FP16`
+      - A\ :sub:`7-0`\ :sup:`FP16`
+      - A\ :sub:`15-8`\ :sup:`FP16`
+
+.. raw:: latex
+
+    \normalsize
+
 32 Bits Per Component (FP32)
 ============================
 
