@@ -60,17 +60,22 @@
 	spi-tx-bus-width = <4>;
 
 	flash@0 {
-		#address-cells = <1>;
-		#size-cells = <1>;
 		compatible = "m25p80", "jedec,spi-nor"; /* 64Mb */
 		reg = <0>, <1>;
 		parallel-memories = /bits/ 64 <0x8000000 0x8000000>; /* 128MB */
 		spi-tx-bus-width = <4>;
 		spi-rx-bus-width = <4>;
 		spi-max-frequency = <108000000>;
-		partition@0 {
-			label = "spi0-flash0";
-			reg = <0x0 0x800000>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "spi0-flash0";
+				reg = <0x0 0x800000>;
+			};
 		};
 	};
 };
@@ -100,15 +105,19 @@
 	num-cs = <1>;
 
 	flash@0 { /* U6 - IS25LQ032B - 16Mb */
-		#address-cells = <1>;
-		#size-cells = <1>;
 		compatible = "issi,is25lq032b", "m25p80", "jedec,spi-nor";
 		spi-max-frequency = <104000000>;
 		reg = <0>;
 
-		partition@0 {
-			label = "spi0-flash0";
-			reg = <0 0x200000>;
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "spi0-flash0";
+				reg = <0 0x200000>;
+			};
 		};
 	};
 };

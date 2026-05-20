@@ -35,8 +35,6 @@
 	flash@0 {
 		compatible = "jedec,spi-nor";
 		reg = <0>;
-		#address-cells = <0x1>;
-		#size-cells = <0x1>;
 		cdns,read-delay = <0x0>;
 		cdns,tshsl-ns = <0x0>;
 		cdns,tsd2d-ns = <0x0>;
@@ -47,9 +45,16 @@
 		spi-max-frequency = <20000000>;
 		no-wp;
 		reset-gpios = <&gpio1 0xc GPIO_ACTIVE_LOW>;
-		partition@0 {
-			label = "spi0-flash0";
-			reg = <0x0 0x8000000>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "spi0-flash0";
+				reg = <0x0 0x8000000>;
+			};
 		};
 	};
 };
