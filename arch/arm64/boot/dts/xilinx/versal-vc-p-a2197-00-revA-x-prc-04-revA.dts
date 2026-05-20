@@ -114,15 +114,19 @@
 	num-cs = <1>;
 
 	flash@0 { /* U171 - IS25LP016B - 16Mb */
-		#address-cells = <1>;
-		#size-cells = <1>;
 		compatible = "issi,is25lp016b", "m25p80", "jedec,spi-nor";
 		spi-max-frequency = <104000000>;
 		reg = <0>;
 
-		partition@0 {
-			label = "spi0-flash0";
-			reg = <0 0x200000>;
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "spi0-flash0";
+				reg = <0 0x200000>;
+			};
 		};
 	};
 };
