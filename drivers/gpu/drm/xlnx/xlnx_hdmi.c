@@ -2292,13 +2292,13 @@ static int xlnx_hdmi_exec_frl_state_lts1(struct xlnx_hdmi *hdmi)
 static int xlnx_hdmi_exec_frl_state_lts2(struct xlnx_hdmi *hdmi)
 {
 	union phy_configure_opts phy_cfg = {0};
-	int status = 1, ret, i;
+	int status, ret, i;
 	u8 ddc_buf, index;
 
 	hdmi->stream.frl_config.timer_cnt += TIMEOUT_5MS;
+
 	status = xlnx_hdmi_ddc_readreg(hdmi, HDMI_TX_DDC_SLAVEADDR, 1,
 				       HDMI_TX_DDC_STCR_REG, (u8 *)&ddc_buf);
-
 	if (!status) {
 		if (ddc_buf & HDMI_TX_DDC_STCR_FLT_NO_TIMEOUT_MASK)
 			hdmi->stream.frl_config.flt_no_timeout = true;
@@ -2309,18 +2309,24 @@ static int xlnx_hdmi_exec_frl_state_lts2(struct xlnx_hdmi *hdmi)
 		if (ret)
 			dev_dbg(hdmi->dev,
 				"FRL[LTS_2]: SNK_STU write failed: %d\n", ret);
+
+		/* Wait for sink to process SNK_STU before reading STATUS_FLAGS. */
+		usleep_range(500, 600);
 	}
 
-	/* Read FLT_NO_UPDATE SCDC Register */
-	if (!status && (hdmi->stream.frl_config.flt_no_timeout ||
-			hdmi->stream.frl_config.timer_cnt < TIMEOUT_100MS)) {
+	/*
+	 * Poll STATUS_FLAGS; guard on timer only, not on the STCR result.
+	 * Re-arm on STAT_FLGS NAK; fall to LTS_L only on 100 ms timeout.
+	 */
+	if (hdmi->stream.frl_config.flt_no_timeout ||
+	    hdmi->stream.frl_config.timer_cnt < TIMEOUT_100MS) {
 		status = xlnx_hdmi_ddc_readreg(hdmi, HDMI_TX_DDC_SLAVEADDR, 1,
 					       HDMI_TX_DDC_STAT_FLGS_REG,
 					       (u8 *)&ddc_buf);
 		if (status) {
-			hdmi->stream.frl_config.frl_train_states =
-				HDMI_TX_FRLSTATE_LTS_L;
-			xlnx_hdmi_set_frl_timer(hdmi, TIMEOUT_10US);
+			dev_dbg(hdmi->dev,
+				"FRL[LTS_2]: STAT_FLGS read NAK, will retry\n");
+			xlnx_hdmi_set_frl_timer(hdmi, TIMEOUT_5MS);
 			return status;
 		}
 
@@ -2361,7 +2367,7 @@ static int xlnx_hdmi_exec_frl_state_lts2(struct xlnx_hdmi *hdmi)
 			xlnx_hdmi_set_frl_timer(hdmi, TIMEOUT_5MS);
 		}
 	} else {
-		/* Timeout, fallback to LTS:L training state */
+		/* 100 ms timeout expired - fall back to LTS:L */
 		hdmi->stream.frl_config.frl_train_states =
 			HDMI_TX_FRLSTATE_LTS_L;
 		xlnx_hdmi_set_frl_timer(hdmi, TIMEOUT_10US);
