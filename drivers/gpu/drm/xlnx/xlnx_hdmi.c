@@ -2198,6 +2198,8 @@ static int xlnx_hdmi_exec_frl_state_ltsl(struct xlnx_hdmi *hdmi)
 	int status;
 	u8 ddc_buf;
 
+	dev_dbg(hdmi->dev, "FRL[LTS_L]: entered - FRL training terminated\n");
+
 	xlnx_hdmi_set_frl_timer(hdmi, 0);
 	xlnx_hdmi_frl_reset_assert(hdmi);
 	xlnx_hdmi_frl_reset_deassert(hdmi);
@@ -2222,7 +2224,7 @@ static int xlnx_hdmi_exec_frl_state_ltsl(struct xlnx_hdmi *hdmi)
 
 /* Bounded retry for the SCDC Sink_Version read in LTS_1. */
 #define HDMI_TX_FRL_LTS1_SINKVER_RETRIES	10
-#define HDMI_TX_FRL_LTS1_SINKVER_RETRY_US	2500
+#define HDMI_TX_FRL_LTS1_SINKVER_RETRY_US	5000
 
 /**
  * xlnx_hdmi_exec_frl_state_lts1 - executes FRL LTS1 training state
@@ -2237,16 +2239,15 @@ static int xlnx_hdmi_exec_frl_state_lts1(struct xlnx_hdmi *hdmi)
 	int status;
 
 	/*
-	 * Ride out the "DDC ACK but value 0x00" transient that some sinks
-	 * exhibit shortly after leaving FRL.  A real disconnect returns a
-	 * DDC NAK on the first attempt and bails immediately.
+	 * Retry both NAK and zero-value responses; both are transient
+	 * immediately after a mode switch.  Total window: 10 x 5 ms.
 	 */
 	for (attempt = 0;
 	     attempt < HDMI_TX_FRL_LTS1_SINKVER_RETRIES; attempt++) {
 		status = xlnx_hdmi_ddc_readreg(hdmi, HDMI_TX_DDC_SLAVEADDR, 1,
 					       HDMI_TX_DDC_SINK_VER_REG,
 					       (u8 *)&ddc_buf);
-		if (status || ddc_buf != 0)
+		if (!status && ddc_buf != 0)
 			break;
 		usleep_range(HDMI_TX_FRL_LTS1_SINKVER_RETRY_US,
 			     HDMI_TX_FRL_LTS1_SINKVER_RETRY_US + 500);
@@ -2268,6 +2269,9 @@ static int xlnx_hdmi_exec_frl_state_lts1(struct xlnx_hdmi *hdmi)
 			hdmi->stream.frl_config.timer_cnt = 0;
 		}
 	} else {
+		dev_dbg(hdmi->dev,
+			"FRL[LTS_1]: failed status=%d ver=0x%02x retries=%d\n",
+			status, ddc_buf, attempt);
 		hdmi->stream.frl_config.frl_train_states =
 			HDMI_TX_FRLSTATE_LTS_L;
 		status = 1;
