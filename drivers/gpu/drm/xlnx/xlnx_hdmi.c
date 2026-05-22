@@ -2692,6 +2692,90 @@ xlnx_hdmi_start_frl_train(struct xlnx_hdmi *hdmi)
 }
 
 /**
+ * xlnx_hdmi_frl_lnk_clk_resync - recover FRL link-clock out-of-sync latch
+ * @hdmi: HDMI TX device state
+ *
+ * LNK_CLK_OOS in FRL_STA is a sticky latch set when the GT MMCM output
+ * and the FRL clock comparator are not yet phase-aligned at bridge-lock.
+ * Poll for a self-clear; if still set, toggle clkout1 and cycle the FRL
+ * reset to drain the latch.  Retry up to 3 times.
+ *
+ * Worst-case execution time: 20 ms (initial self-clear poll) +
+ * 3 x (1 ms clkout1 toggle + 1 ms FRL reset + 50 ms post-reset poll)
+ * = approx. 173 ms.
+ *
+ * May sleep; called from process context with hdmi_mutex held.
+ *
+ * Return: 0 on success, -ETIMEDOUT if the latch does not clear.
+ */
+static int xlnx_hdmi_frl_lnk_clk_resync(struct xlnx_hdmi *hdmi)
+{
+	union phy_configure_opts phy_cfg = { 0 };
+	u32 frl_sta;
+	int i, attempt;
+
+	/* Wait up to 20 ms for the OOS latch to self-clear. */
+	for (i = 0; i < 20; i++) {
+		frl_sta = xlnx_hdmi_readl(hdmi, HDMI_TX_FRL_STA);
+		if (!(frl_sta & HDMI_TX_FRL_STA_LNK_CLK_OOS))
+			return 0;
+		usleep_range(1000, 1100);
+	}
+
+	if (!(frl_sta & HDMI_TX_FRL_STA_LNK_CLK_OOS))
+		return 0;
+	/* Toggle clkout1 and cycle FRL reset; retry up to 3 times. */
+	for (attempt = 0; attempt < 3; attempt++) {
+		frl_sta = xlnx_hdmi_readl(hdmi, HDMI_TX_FRL_STA);
+		dev_dbg(hdmi->dev,
+			"FRL link clk OOS (FRL_STA=0x%08x), recovering (attempt %d/3)\n",
+			frl_sta, attempt + 1);
+
+		phy_cfg.hdmi.clkout1_obuftds = 1;
+		phy_cfg.hdmi.clkout1_obuftds_en = false;
+		for (i = 0; i < HDMI_MAX_LANES; i++) {
+			int ret = phy_configure(hdmi->phy[i], &phy_cfg);
+
+			if (ret)
+				dev_dbg(hdmi->dev,
+					"FRL OOS: clkout1 disable lane %d failed: %d\n",
+					i, ret);
+		}
+		usleep_range(1000, 1100);
+		phy_cfg.hdmi.clkout1_obuftds_en = true;
+		for (i = 0; i < HDMI_MAX_LANES; i++) {
+			int ret = phy_configure(hdmi->phy[i], &phy_cfg);
+
+			if (ret)
+				dev_dbg(hdmi->dev,
+					"FRL OOS: clkout1 enable lane %d failed: %d\n",
+					i, ret);
+		}
+
+		xlnx_hdmi_frl_reset_assert(hdmi);
+		usleep_range(1000, 1100);
+		xlnx_hdmi_frl_reset_deassert(hdmi);
+		xlnx_hdmi_frl_execute(hdmi);
+
+		for (i = 0; i < 50; i++) {
+			frl_sta = xlnx_hdmi_readl(hdmi, HDMI_TX_FRL_STA);
+			if (!(frl_sta & HDMI_TX_FRL_STA_LNK_CLK_OOS)) {
+				dev_dbg(hdmi->dev,
+					"FRL link clk OOS cleared after %d ms (attempt %d/3)\n",
+					i + 1, attempt + 1);
+				return 0;
+			}
+			usleep_range(1000, 1100);
+		}
+	}
+
+	dev_err(hdmi->dev,
+		"FRL link clk still OOS after clkout1+RST recovery (FRL_STA=0x%08x)\n",
+		xlnx_hdmi_readl(hdmi, HDMI_TX_FRL_STA));
+	return -ETIMEDOUT;
+}
+
+/**
  * xlnx_hdmi_piointr_handler - HDMI TX peripheral interrupt handler.
  * @hdmi: pointer to HDMI TX core instance
  *
@@ -3509,6 +3593,8 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 
 	if (xlnx_hdmi_is_lnk_vid_rdy(hdmi)) {
 		dev_dbg(hdmi->dev, "TX: Video ready interrupt received\n");
+		if (hdmi->stream.is_frl)
+			xlnx_hdmi_frl_lnk_clk_resync(hdmi);
 		if (!config->vid_interface)
 			xlnx_hdmi_vtc_set_timing(hdmi, adjusted_mode);
 		if (hdmi->stream.is_frl)
