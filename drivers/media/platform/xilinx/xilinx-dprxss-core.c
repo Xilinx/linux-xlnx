@@ -10,6 +10,7 @@
 #include <linux/bitfield.h>
 #include <linux/clk.h>
 #include <linux/device.h>
+#include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/mfd/syscon.h>
@@ -214,6 +215,10 @@ struct vidphy_cfg {
  * @hdcp1x_key_available: flag to indicate hdcp1x key availability
  * @hdcp2x_key_available: flag to indicate hdcp2x key availability
  * @versal_gt_present: flag to indicate versal-gt property in device tree
+ * @versal_2ve_2vm: flag set at probe when zynqmp_pm_get_family_info()
+ *	reports the platform is on Versal Gen 2 series silicon (Versal AI
+ *	Edge series Gen 2, e.g. VEK385). On this family the GT Quad needs
+ *	a small settling delay before each line-rate change.
  * @hdcp_enable: To indicate HDCP enabled or not
  * @hdcp22_enable: To indicate HDCP22 enabled or not
  * @audio_enable: To indicate audio enabled or not
@@ -272,6 +277,7 @@ struct xdprxss_state {
 	bool hdcp1x_key_available;
 	bool hdcp2x_key_available;
 	bool versal_gt_present;
+	bool versal_2ve_2vm;
 	bool hdcp_enable;
 	bool hdcp22_enable;
 	bool audio_enable;
@@ -582,7 +588,18 @@ static int xlnx_dp_phy_ready(struct xdprxss_state *dp)
 {
 	u32 i, reg, ready;
 
-	ready = XDPRX_PHYSTATUS_ALL_LANES_GOOD_MASK;
+	if (dp->versal_gt_present) {
+		/*
+		 * Versal GT Quad path: only the per-lane ready bits[3:0]
+		 * are driven by the GT Quad on this topology; bits[5:4]
+		 * are RC fabric flags and bit[6] (FPGA PLL lock) is not
+		 * driven at all. The legacy GENMASK(6, 0) therefore never
+		 * converges on Versal Gen 2 silicon.
+		 */
+		ready = XDPRX_PHYSTATUS_VERSAL_GT_LANE_MASK;
+	} else {
+		ready = XDPRX_PHYSTATUS_ALL_LANES_GOOD_MASK;
+	}
 
 	/* Wait for 100ms. This should be enough time for PHY to be ready */
 	for (i = 0; i < XDPRX_PHYSTATUS_READ_COUNT; i++) {
@@ -594,7 +611,9 @@ static int xlnx_dp_phy_ready(struct xdprxss_state *dp)
 	}
 
 	if (i == XDPRX_PHYSTATUS_READ_COUNT) {
-		dev_err(dp->dev, "PHY isn't ready\n");
+		dev_err(dp->dev,
+			"PHY isn't ready (PHYSTATUS=0x%08x want=0x%08x)\n",
+			reg, ready);
 		return -ENODEV;
 	}
 
@@ -826,6 +845,14 @@ static int config_gt_control_linerate(struct xdprxss_state *dp, int bw_code)
 static int xlnx_dp_rx_gt_control_init(struct xdprxss_state *dp)
 {
 	int ret;
+
+	/*
+	 * Versal Gen 2 series silicon: settle the GT before the initial
+	 * vswing write. The platform is detected at probe time via
+	 * zynqmp_pm_get_family_info().
+	 */
+	if (dp->versal_2ve_2vm)
+		usleep_range(500, 600);
 
 	/* setting initial vswing */
 	xdprxss_clrset(dp, XDPRX_GTCTL_REG, XDPRX_GTCTL_VSWING_MASK,
@@ -1514,6 +1541,15 @@ static void xdprxss_irq_access_linkqual(struct xdprxss_state *state)
 	struct retimer_cfg *rtmr_cfg;
 	struct vidphy_cfg *vphy_cfg;
 	u32 read_val;
+
+	/*
+	 * PRBS toggling is driven via the legacy VPHY / retimer hooks
+	 * which are not wired on Versal Gen 2 series designs (the GT Quad
+	 * replaces the VPHY). Skip the unnecessary PHYSTATUS register read
+	 * and the empty hook traversal on that path.
+	 */
+	if (state->versal_gt_present)
+		return;
 
 	read_val = xdprxss_read(state, XDPRX_DPC_LINK_QUAL_CONFIG);
 
@@ -2506,9 +2542,6 @@ static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
 	if (!xdprxss->audio_enable)
 		dev_info(xdprxss->dev, "audio not enabled\n");
 
-	xdprxss->versal_gt_present =
-		of_property_read_bool(node, "xlnx,versal-gt");
-
 	xdprxss->clkx5_wiz = false;
 	clkwiz_node = of_parse_phandle(node, "xlnx,clk-wiz", 0);
 	if (clkwiz_node) {
@@ -3057,6 +3090,7 @@ static int xdprxss_probe(struct platform_device *pdev)
 	struct device_node *node;
 	struct device *dev = &pdev->dev;
 	struct resource *res;
+	u32 family = 0;
 	int ret, irq;
 	unsigned int i = 0, j;
 	struct xlnx_dprx_audio_data *adata;
@@ -3068,15 +3102,37 @@ static int xdprxss_probe(struct platform_device *pdev)
 	xdprxss->dev = &pdev->dev;
 	node = xdprxss->dev->of_node;
 
+	/*
+	 * Read xlnx,versal-gt up front so the optional xlnx,vidphy phandle
+	 * lookup below can be skipped on Versal Gen 2 series designs, where
+	 * the Video PHY Controller is replaced by the GT Quad and no
+	 * xlnx,vidphy phandle exists in the device tree.
+	 */
+	xdprxss->versal_gt_present =
+		of_property_read_bool(node, "xlnx,versal-gt");
+
+	/*
+	 * Detect Versal Gen 2 series silicon via the ZynqMP firmware API
+	 * rather than a board-specific DT property. The flag is consumed by
+	 * xlnx_dp_rx_gt_control_init() to insert a small GT settling delay.
+	 * On non-firmware platforms the API returns an error and the flag
+	 * stays cleared, which is the safe default.
+	 */
+	if (zynqmp_pm_get_family_info(&family) == 0 &&
+	    family == PM_VERSAL2_FAMILY_CODE)
+		xdprxss->versal_2ve_2vm = true;
+
 	ret = xlnx_find_device(pdev, xdprxss, "xlnx,dp-retimer");
 	if (ret)
 		return ret;
 	xdprxss->retimer_prvdata = xdprxss->prvdata;
 
-	ret = xlnx_find_device(pdev, xdprxss, "xlnx,vidphy");
-	if (ret)
-		return ret;
-	xdprxss->vidphy_prvdata = xdprxss->prvdata;
+	if (!xdprxss->versal_gt_present) {
+		ret = xlnx_find_device(pdev, xdprxss, "xlnx,vidphy");
+		if (ret)
+			return ret;
+		xdprxss->vidphy_prvdata = xdprxss->prvdata;
+	}
 
 	xdprxss->rx_audio_data =
 		devm_kzalloc(&pdev->dev, sizeof(struct xlnx_dprx_audio_data),

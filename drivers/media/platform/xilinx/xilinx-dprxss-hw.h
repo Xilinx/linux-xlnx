@@ -152,6 +152,14 @@
 
 #define XDPRX_PHYSTATUS_REG			0x208
 #define XDPRX_PHYSTATUS_ALL_LANES_GOOD_MASK	GENMASK(6, 0)
+/*
+ * On Versal Gen 2 series silicon (e.g. VEK385 board) the GT Quad PHY
+ * drives only bits[5:0] of PHYSTATUS: bits[3:0] are the per-lane ready
+ * bits and bits[5:4] carry GT Quad readiness flags. Bit[6] (legacy
+ * FPGA PLL lock) is not connected on this topology, so the legacy
+ * GENMASK(6, 0) mask never converges.
+ */
+#define XDPRX_PHYSTATUS_VERSAL_GT_LANE_MASK	GENMASK(5, 0)
 #define XDPRX_PHYSTATUS_READ_COUNT	100
 
 #define XDPRX_MINVOLT_SWING_REG		0x214
