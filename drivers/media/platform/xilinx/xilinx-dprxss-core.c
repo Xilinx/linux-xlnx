@@ -2649,26 +2649,45 @@ static int xlnx_find_device(struct platform_device *pdev,
 	struct device_node *fnode;
 	struct platform_device *iface_pdev;
 
+	/*
+	 * Reset prvdata at the start of each lookup so the caller never sees
+	 * a stale value from a previous call. The original implementation
+	 * left prvdata untouched when the phandle was absent, which leaked
+	 * one lookup's pointer into another (vidphy_prvdata vs
+	 * retimer_prvdata).
+	 */
+	xdprxss->prvdata = NULL;
+
 	fnode = of_parse_phandle(pnode, name, 0);
 	if (!fnode) {
-		dev_err(&pdev->dev, "platform node %s not found\n", name);
-		of_node_put(fnode);
-	} else {
-		iface_pdev = of_find_device_by_node(fnode);
-		if (!iface_pdev) {
-			of_node_put(pnode);
-			return -ENODEV;
-		}
-
-		xdprxss->prvdata = dev_get_drvdata(&iface_pdev->dev);
-		if (!xdprxss->prvdata) {
-			dev_info(&pdev->dev,
-				 "platform device(%s) not found -EPROBE_DEFER\n", name);
-			of_node_put(fnode);
-			return -EPROBE_DEFER;
-		}
-		of_node_put(fnode);
+		dev_dbg(&pdev->dev, "platform node %s not found (optional)\n",
+			name);
+		return 0;
 	}
+
+	iface_pdev = of_find_device_by_node(fnode);
+	if (!iface_pdev) {
+		of_node_put(fnode);
+		return -ENODEV;
+	}
+
+	xdprxss->prvdata = dev_get_drvdata(&iface_pdev->dev);
+	/*
+	 * of_find_device_by_node() incremented the platform_device's
+	 * device refcount; we only need the drvdata pointer beyond this
+	 * point, so drop the reference here so it is balanced on every
+	 * exit path (including -EPROBE_DEFER, where the probe will be
+	 * retried and a new reference taken).
+	 */
+	put_device(&iface_pdev->dev);
+	if (!xdprxss->prvdata) {
+		dev_info(&pdev->dev,
+			 "platform device(%s) not found -EPROBE_DEFER\n",
+			 name);
+		of_node_put(fnode);
+		return -EPROBE_DEFER;
+	}
+	of_node_put(fnode);
 
 	return 0;
 }
