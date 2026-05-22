@@ -3263,6 +3263,37 @@ static void xlnx_hdmi_encoder_enable(struct drm_encoder *encoder)
 	xlnx_hdmi_ext_sysrst_deassert(hdmi);
 }
 
+/**
+ * xlnx_hdmi_frl_teardown - quiesce the FRL IP and return it to idle state
+ * @hdmi: pointer to HDMI TX core instance
+ *
+ * Stops the FRL timer, cycles the FRL reset to drain the LNK_CLK_OOS
+ * sticky latch, disables FRL mode, and puts the IP into sleep state.
+ * Sets is_frl to false.
+ *
+ * Acquires hdmi_mutex internally to serialise against the FRL IRQ thread
+ * (hdmitx_irq_thread -> xlnx_hdmi_frlintr_handler), which reads is_frl
+ * and mutates the FRL state machine.  Must not be called with hdmi_mutex
+ * already held.
+ */
+static void xlnx_hdmi_frl_teardown(struct xlnx_hdmi *hdmi)
+{
+	hdmi_mutex_lock(&hdmi->hdmi_mutex);
+	if (!hdmi->stream.is_frl) {
+		hdmi_mutex_unlock(&hdmi->hdmi_mutex);
+		return;
+	}
+
+	xlnx_hdmi_set_frl_timer(hdmi, 0);
+	xlnx_hdmi_frl_reset_assert(hdmi);
+	xlnx_hdmi_frl_reset_deassert(hdmi);
+	xlnx_hdmi_frl_mode_disable(hdmi);
+	xlnx_hdmi_frl_ext_vidsrc(hdmi);
+	xlnx_hdmi_frl_sleep(hdmi);
+	hdmi->stream.is_frl = false;
+	hdmi_mutex_unlock(&hdmi->hdmi_mutex);
+}
+
 static void xlnx_hdmi_encoder_disable(struct drm_encoder *encoder)
 {
 	struct xlnx_hdmi *hdmi = encoder_to_hdmi(encoder);
@@ -3283,6 +3314,8 @@ static void xlnx_hdmi_encoder_disable(struct drm_encoder *encoder)
 	} else {
 		dev_err(hdmi->dev, "No video/link clock! failed to disable vtc\n");
 	}
+
+	xlnx_hdmi_frl_teardown(hdmi);
 }
 
 /**
@@ -3534,10 +3567,10 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 
 		ret = xlnx_hdmi_start_frl_train(hdmi);
 		if (ret) {
-			dev_err(hdmi->dev, "FRL training is failed.switch to TMDS mode \r\n");
+			dev_err(hdmi->dev, "FRL training failed, switching to TMDS mode\n");
+			xlnx_hdmi_frl_teardown(hdmi);
 			xlnx_hdmi_set_hdmi_mode(hdmi);
 			hdmi->stream.is_hdmi = true;
-			hdmi->stream.is_frl = false;
 			xlnx_hdmi_auxintr_enable(hdmi);
 		} else {
 			dev_dbg(hdmi->dev, "FRL training passed !!\n");
@@ -3588,8 +3621,11 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	hdmi->wait_for_streamup = 0;
 	wait_event_timeout(hdmi->wait_event, hdmi->wait_for_streamup,
 			   msecs_to_jiffies(HDMI_TX_LNK_VID_RDY_DELAY));
-	if (!hdmi->wait_for_streamup)
+	if (!hdmi->wait_for_streamup) {
 		dev_err(hdmi->dev, "wait_for_streamup timeout\n");
+		xlnx_hdmi_frl_teardown(hdmi);
+		return;
+	}
 
 	if (xlnx_hdmi_is_lnk_vid_rdy(hdmi)) {
 		dev_dbg(hdmi->dev, "TX: Video ready interrupt received\n");
