@@ -207,6 +207,10 @@ struct vidphy_cfg {
  * @ce_req_val: Variable for storing channel status
  * @mst_enable: Flag to indicate MST enabled or not
  * @num_mst_streams: number of MST streams enabled
+ * @clkx5_wiz: true when the connected clock wizard is the new
+ *	"xlnx,clkx5-wiz-1.0" variant (used on Versal Gen 2 / Versal AI
+ *	Edge series Gen 2, e.g. VEK385); false for the legacy MMCM
+ *	"xlnx,clk-wizard-1.0".
  * @hdcp1x_key_available: flag to indicate hdcp1x key availability
  * @hdcp2x_key_available: flag to indicate hdcp2x key availability
  * @versal_gt_present: flag to indicate versal-gt property in device tree
@@ -264,6 +268,7 @@ struct xdprxss_state {
 	u32 ce_req_val;
 	bool mst_enable;
 	u8 num_mst_streams;
+	bool clkx5_wiz;
 	bool hdcp1x_key_available;
 	bool hdcp2x_key_available;
 	bool versal_gt_present;
@@ -596,11 +601,107 @@ static int xlnx_dp_phy_ready(struct xdprxss_state *dp)
 	return 0;
 }
 
+/**
+ * config_rx_dec_clk_clkx5 - Program CLKx5 wizard for the negotiated link rate
+ * @dp: driver state
+ * @bw_code: DP link bandwidth code (DP_LINK_BW_*)
+ *
+ * Versal Gen 2 series designs use the new clkx5-wiz-1.0 clock wizard for the
+ * decryption clock. Unlike the legacy MMCM the clkx5 wizard latches the
+ * per-link-rate register tables internally; no explicit reconfigure/load
+ * trigger and no MMCM lock readback are needed on this IP. This routine
+ * is therefore a temporary workaround in the DP Rx driver - it will be
+ * removed once the standalone clocking wizard driver gains native
+ * clkx5-wiz-1.0 support and can program the wizard via the clk API.
+ */
+static void config_rx_dec_clk_clkx5(struct xdprxss_state *dp, int bw_code)
+{
+	u32 reg2, reg3, reg4, reg11, reg15, reg17;
+	u32 prim_l, prim_h, sec_l, sec_h;
+
+	switch (bw_code) {
+	case DP_LINK_BW_8_1:
+		reg2 = XDPRX_CLKX5_REG2_810G;
+		reg3 = XDPRX_CLKX5_REG3_810G;
+		reg4 = XDPRX_CLKX5_REG4_810G;
+		reg11 = XDPRX_CLKX5_REG11_810G;
+		reg15 = XDPRX_CLKX5_REG15_810G;
+		reg17 = XDPRX_CLKX5_REG17_810G;
+		prim_l = XDPRX_CLKX5_PRIM_L_810G;
+		prim_h = XDPRX_CLKX5_PRIM_H_810G;
+		sec_l = XDPRX_CLKX5_SEC_L_810G;
+		sec_h = XDPRX_CLKX5_SEC_H_810G;
+		break;
+	case DP_LINK_BW_5_4:
+		reg2 = XDPRX_CLKX5_REG2_540G;
+		reg3 = XDPRX_CLKX5_REG3_540G;
+		reg4 = XDPRX_CLKX5_REG4_540G;
+		reg11 = XDPRX_CLKX5_REG11_540G;
+		reg15 = XDPRX_CLKX5_REG15_540G;
+		reg17 = XDPRX_CLKX5_REG17_540G;
+		prim_l = XDPRX_CLKX5_PRIM_L_540G;
+		prim_h = XDPRX_CLKX5_PRIM_H_540G;
+		sec_l = XDPRX_CLKX5_SEC_L_540G;
+		sec_h = XDPRX_CLKX5_SEC_H_540G;
+		break;
+	case DP_LINK_BW_2_7:
+		reg2 = XDPRX_CLKX5_REG2_270G;
+		reg3 = XDPRX_CLKX5_REG3_270G;
+		reg4 = XDPRX_CLKX5_REG4_270G;
+		reg11 = XDPRX_CLKX5_REG11_270G;
+		reg15 = XDPRX_CLKX5_REG15_270G;
+		reg17 = XDPRX_CLKX5_REG17_270G;
+		prim_l = XDPRX_CLKX5_PRIM_L_270G;
+		prim_h = XDPRX_CLKX5_PRIM_H_270G;
+		sec_l = XDPRX_CLKX5_SEC_L_270G;
+		sec_h = XDPRX_CLKX5_SEC_H_270G;
+		break;
+	default:
+		dev_dbg(dp->dev,
+			"unknown DP link bw_code 0x%x; falling back to 1.62 Gbps clkx5 table\n",
+			bw_code);
+		reg2 = XDPRX_CLKX5_REG2_162G;
+		reg3 = XDPRX_CLKX5_REG3_162G;
+		reg4 = XDPRX_CLKX5_REG4_162G;
+		reg11 = XDPRX_CLKX5_REG11_162G;
+		reg15 = XDPRX_CLKX5_REG15_162G;
+		reg17 = XDPRX_CLKX5_REG17_162G;
+		prim_l = XDPRX_CLKX5_PRIM_L_162G;
+		prim_h = XDPRX_CLKX5_PRIM_H_162G;
+		sec_l = XDPRX_CLKX5_SEC_L_162G;
+		sec_h = XDPRX_CLKX5_SEC_H_162G;
+		break;
+	}
+
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_REG2_OFFSET, reg2);
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_REG3_OFFSET, reg3);
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_REG4_OFFSET, reg4);
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_REG11_OFFSET, reg11);
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_REG15_OFFSET, reg15);
+	xdprxss_mmcm_write(dp, XDPRX_MMCM_REG17_OFFSET, reg17);
+	xdprxss_mmcm_write(dp, XDPRX_CLKX5_PRIM_L_OFFSET, prim_l);
+	xdprxss_mmcm_write(dp, XDPRX_CLKX5_PRIM_H_OFFSET, prim_h);
+	xdprxss_mmcm_write(dp, XDPRX_CLKX5_SEC_L_OFFSET, sec_l);
+	xdprxss_mmcm_write(dp, XDPRX_CLKX5_SEC_H_OFFSET, sec_h);
+}
+
 static void config_rx_dec_clk(struct xdprxss_state *dp, int bw_code)
 {
 	u8 p5_fedge_en, o_val, d_val, m_val;
 	u16 hightime, div_edge;
 	u32 reg;
+
+	/*
+	 * On Versal Gen 2 series silicon the clkx5-wiz-1.0 latches the
+	 * per-link-rate register table internally, so neither the MMCM
+	 * RECONFIG_LOAD trigger nor the get_rx_dec_clk_lock() readback
+	 * apply on this path: the MMCM reconfigure/lock registers are
+	 * not implemented on the clkx5 IP.
+	 */
+	if (dp->clkx5_wiz) {
+		config_rx_dec_clk_clkx5(dp, bw_code);
+		return;
+	}
 
 	/*
 	 * Configuring MMCM to give a /20 clock output for /16 clk input.
@@ -1216,7 +1317,7 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 
 		config_gt_control_linerate(state, linkrate);
 
-		if (get_rx_dec_clk_lock(state))
+		if (!state->clkx5_wiz && get_rx_dec_clk_lock(state))
 			dev_info(state->dev, "rx decryption clock failed to lock\n");
 
 		/* Initialize phy logic of DP-RX core */
@@ -2368,6 +2469,7 @@ static void dprx_unregister_aud_dev(struct device *dev)
 static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
 {
 	struct device_node *node = xdprxss->dev->of_node;
+	struct device_node *clkwiz_node;
 	u32 val = 0;
 	int ret;
 
@@ -2406,6 +2508,15 @@ static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
 
 	xdprxss->versal_gt_present =
 		of_property_read_bool(node, "xlnx,versal-gt");
+
+	xdprxss->clkx5_wiz = false;
+	clkwiz_node = of_parse_phandle(node, "xlnx,clk-wiz", 0);
+	if (clkwiz_node) {
+		xdprxss->clkx5_wiz =
+			of_device_is_compatible(clkwiz_node,
+						"xlnx,clkx5-wiz-1.0");
+		of_node_put(clkwiz_node);
+	}
 
 	ret = of_property_read_u32(node, "xlnx,link-rate", &val);
 	if (ret < 0) {
@@ -3040,7 +3151,7 @@ static int xdprxss_probe(struct platform_device *pdev)
 		if (ret < 0)
 			return ret;
 
-		if (get_rx_dec_clk_lock(xdprxss))
+		if (!xdprxss->clkx5_wiz && get_rx_dec_clk_lock(xdprxss))
 			dev_info(dev, "rx decryption clock failed to lock\n");
 	}
 
