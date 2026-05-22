@@ -124,6 +124,23 @@ properties:
       hdcp1x keymgmt registers.
     $ref: /schemas/types.yaml#/definitions/phandle
 
+  xlnx,clk-wiz:
+    description:
+      Phandle to the clock-wizard IP block that sources the DP Rx
+      decryption clock. The Versal Gen 2 series integrates the
+      xlnx,clkx5-wiz-1.0 variant; earlier Versal and ZynqMP families
+      integrate the MMCM-based xlnx,clk-wizard-1.0. The compatible
+      string of the referenced node distinguishes the variant.
+    $ref: /schemas/types.yaml#/definitions/phandle
+
+  xlnx,versal-gt:
+    description:
+      Present on designs where the DP Rx is wired to the in-FPGA GT
+      Quad PHY of the Versal Gen 2 series instead of the legacy
+      Video PHY Controller. The PHYSTATUS readiness mask and per-lane
+      semantics differ from the VPHY topology.
+    type: boolean
+
   xlnx,mode:
     description:
       Selects the DisplayPort transport mode. 0 selects Single Stream
@@ -204,26 +221,27 @@ additionalProperties: false
 examples:
   - |
    v-dp-rxss1@a0040000 {
-       clock-names = "s_axi_aclk", "rx_lnk_clk", "rx_vid_clk" ;
-       clocks = <&zynqmp_clk 71>, <&zynqmp_clk 72>, <&misc_clk_1>;
        compatible = "xlnx,v-dp-rxss-3.1", "xlnx,v-dp-rxss-3.0";
-       interrupt-names = "dprxss_dp_irq";
-       interrupt-parent = <&gic>;
-       interrupts = <0 89 4>;
        reg = <0xa0040000 0x40000>, <0xa0010000 0x1000>;
        reg-names = "dp_base", "edid_base";
-       xlnx,link-rate = <0x1e>;
-       xlnx,audio-enable = <1>;
-       xlnx,audio-channels = <2>;
-       xlnx,bpc = <10>;
-       xlnx,hdcp22-enable = <1>;
-       xlnx,hdcp-enable = <1>;
-       xlnx,hdcp1x-keymgmt = <&hdcp_keymngmt_blk_0>;
-       xlnx,lane-count = <4>;
-       xlnx,mode = <0>;
-       phy-names = "dp-phy0", "dp-phy1", "dp-phy2", "dp-phy3";
+       clocks = <&zynqmp_clk 71>, <&zynqmp_clk 72>, <&misc_clk_1>;
+       clock-names = "s_axi_aclk", "rx_lnk_clk", "rx_vid_clk";
+       interrupts = <0 89 4>;
+       interrupt-names = "dprxss_dp_irq";
+       interrupt-parent = <&gic>;
        phys = <&vphy_lane0 0 1 1 0>, <&vphy_lane1 0 1 1 0>,
               <&vphy_lane2 0 1 1 0>, <&vphy_lane3 0 1 1 0>;
+       phy-names = "dp-phy0", "dp-phy1", "dp-phy2", "dp-phy3";
+       xlnx,audio-channels = <2>;
+       xlnx,audio-enable = <1>;
+       xlnx,bpc = <10>;
+       xlnx,clk-wiz = <&clk_wiz_0>;
+       xlnx,hdcp-enable = <1>;
+       xlnx,hdcp1x-keymgmt = <&hdcp_keymngmt_blk_0>;
+       xlnx,hdcp22-enable = <1>;
+       xlnx,lane-count = <4>;
+       xlnx,link-rate = <0x1e>;
+       xlnx,mode = <0>;
 
        ports {
            #address-cells = <1>;
@@ -240,6 +258,56 @@ examples:
    hdcp_keymngmt_blk_0: hdcp-keymngmt-blk@a00c0000 {
        compatible = "xlnx,hdcp-keymngmt-blk-1.0", "syscon";
        reg = <0xa00c0000 0x10000>;
+   };
+   clk_wiz_0: clock-controller@a4000000 {
+       compatible = "xlnx,clk-wizard-1.0";
+       reg = <0xa4000000 0x10000>;
+       #clock-cells = <1>;
+       clocks = <&misc_clk_0>, <&zynqmp_clk 71>;
+       clock-names = "clk_in1", "s_axi_aclk";
+       clock-output-names = "clk_out1";
+   };
+
+  # Versal Gen 2 variant: clkx5-wiz-1.0 clocking wizard, GT Quad PHY.
+  - |
+   v-dp-rxss3@a0040000 {
+       compatible = "xlnx,v-dp-rxss-3.1", "xlnx,v-dp-rxss-3.0";
+       reg = <0xa0040000 0x40000>, <0xa0010000 0x1000>;
+       reg-names = "dp_base", "edid_base";
+       clocks = <&versal_clk 71>, <&versal_clk 72>, <&misc_clk_1>;
+       clock-names = "s_axi_aclk", "rx_lnk_clk", "rx_vid_clk";
+       interrupts = <0 89 4>;
+       interrupt-names = "dprxss_dp_irq";
+       interrupt-parent = <&gic>;
+       phys = <&dp_gtquad 0 1 1 0>, <&dp_gtquad 1 1 1 0>,
+              <&dp_gtquad 2 1 1 0>, <&dp_gtquad 3 1 1 0>;
+       phy-names = "dp-phy0", "dp-phy1", "dp-phy2", "dp-phy3";
+       xlnx,bpc = <10>;
+       xlnx,clk-wiz = <&clkx5_wiz_0>;
+       xlnx,lane-count = <4>;
+       xlnx,link-rate = <0x1e>;
+       xlnx,mode = <0>;
+       xlnx,versal-gt;
+
+       ports {
+           #address-cells = <1>;
+           #size-cells = <0>;
+
+           port@0 {
+               reg = <0>;
+               dp_rxss3_out: endpoint {
+                   remote-endpoint = <&remap1_in>;
+               };
+           };
+       };
+   };
+   clkx5_wiz_0: clock-controller@a4010000 {
+       compatible = "xlnx,clkx5-wiz-1.0";
+       reg = <0xa4010000 0x10000>;
+       #clock-cells = <1>;
+       clocks = <&misc_clk_0>, <&versal_clk 71>;
+       clock-names = "clk_in1", "s_axi_aclk";
+       clock-output-names = "clk_out1";
    };
   - |
    v-dp-rxss2@a0040000 {
