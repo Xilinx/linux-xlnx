@@ -244,6 +244,12 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 			xhdmiphy_set_lrate(phy_dev, phy_lane->direction,
 					   1, cfg->linerate,
 					   cfg->nchannels);
+			/*
+			 * GT reconfiguration (set_lrate -> GPO -> mmcm_start)
+			 * can leave clkout1 indeterminate; re-assert here to
+			 * guarantee it is stable for LTS_3 -> LTS_P.
+			 */
+			xhdmiphy_clkout1_obuftds_en(phy_dev, XHDMIPHY_DIR_TX, 1);
 			cfg->config_hdmi21 = 0;
 		} else if (cfg->resetgtpll) {
 			xhdmiphy_set(phy_dev, XHDMIPHY_TX_INIT_REG,
