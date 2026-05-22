@@ -2294,7 +2294,6 @@ static int xlnx_hdmi_exec_frl_state_lts2(struct xlnx_hdmi *hdmi)
 	hdmi->stream.frl_config.timer_cnt += TIMEOUT_5MS;
 	status = xlnx_hdmi_ddc_readreg(hdmi, HDMI_TX_DDC_SLAVEADDR, 1,
 				       HDMI_TX_DDC_STCR_REG, (u8 *)&ddc_buf);
-
 	/* Reset GTPLL before starting FRL Training */
 	phy_cfg.hdmi.resetgtpll = 1;
 	for (i = 0; i < HDMI_MAX_LANES; i++) {
@@ -2311,7 +2310,10 @@ static int xlnx_hdmi_exec_frl_state_lts2(struct xlnx_hdmi *hdmi)
 		else
 			hdmi->stream.frl_config.flt_no_timeout = false;
 
-		xlnx_hdmi_ddcwrite_field(hdmi, HDMI_TX_SCDC_FIELD_SNK_STU, 1);
+		ret = xlnx_hdmi_ddcwrite_field(hdmi, HDMI_TX_SCDC_FIELD_SNK_STU, 1);
+		if (ret)
+			dev_dbg(hdmi->dev,
+				"FRL[LTS_2]: SNK_STU write failed: %d\n", ret);
 	}
 
 	/* Read FLT_NO_UPDATE SCDC Register */
@@ -2320,8 +2322,12 @@ static int xlnx_hdmi_exec_frl_state_lts2(struct xlnx_hdmi *hdmi)
 		status = xlnx_hdmi_ddc_readreg(hdmi, HDMI_TX_DDC_SLAVEADDR, 1,
 					       HDMI_TX_DDC_STAT_FLGS_REG,
 					       (u8 *)&ddc_buf);
-		if (status)
+		if (status) {
+			hdmi->stream.frl_config.frl_train_states =
+				HDMI_TX_FRLSTATE_LTS_L;
+			xlnx_hdmi_set_frl_timer(hdmi, TIMEOUT_10US);
 			return status;
+		}
 
 		if (ddc_buf & HDMI_TX_DDC_STAT_FLGS_FLT_RDY_MASK) {
 			/* Set the training state as LTS_3_ARM */
@@ -2339,6 +2345,11 @@ static int xlnx_hdmi_exec_frl_state_lts2(struct xlnx_hdmi *hdmi)
 			}
 
 			xlnx_hdmi_frl_execute(hdmi);
+		} else {
+			/* FLT_RDY not set yet; re-arm timer to keep polling. */
+			dev_dbg(hdmi->dev,
+				"FRL[LTS_2]: FLT_RDY not set yet, polling again\n");
+			xlnx_hdmi_set_frl_timer(hdmi, TIMEOUT_5MS);
 		}
 	} else {
 		/* Timeout, fallback to LTS:L training state */
@@ -2362,7 +2373,8 @@ static int xlnx_hdmi_exec_frl_state_lts2_ratewr(struct xlnx_hdmi *hdmi)
 
 	status = xlnx_hdmi_frl_train_init(hdmi);
 	if (status) {
-		dev_err(hdmi->dev, "lts2 train init failed\n");
+		dev_dbg(hdmi->dev, "FRL[LTS_2_RATEWR]: train init failed: %d\n",
+			status);
 		hdmi->stream.frl_config.frl_train_states =
 			HDMI_TX_FRLSTATE_LTS_L;
 		return status;
@@ -2420,8 +2432,11 @@ static int xlnx_hdmi_exec_frl_state_lts3(struct xlnx_hdmi *hdmi)
 			hdmi->stream.frl_config.flt_no_timeout = false;
 
 		status = xlnx_hdmi_ddcwrite_field(hdmi,
-						  HDMI_TX_SCDC_FIELD_SNK_STU,
-						  1);
+						  HDMI_TX_SCDC_FIELD_SNK_STU, 1);
+		if (status)
+			dev_dbg(hdmi->dev,
+				"FRL[LTS_3]: SNK_STU write failed: %d\n",
+				status);
 	}
 
 	status = xlnx_hdmi_ddc_readreg(hdmi, HDMI_TX_DDC_SLAVEADDR, 2,
@@ -2586,8 +2601,9 @@ static int xlnx_hdmi_exec_frl_state_ltsp(struct xlnx_hdmi *hdmi)
 		xlnx_hdmi_set_frl_timer(hdmi, TIMEOUT_10US);
 	} else if (ddc_buf & HDMI_TX_DDC_UPDATE_FLGS_CED_UPDATE_MASK) {
 		/* W1C the CED_UPDATE bit on the sink. */
-		xlnx_hdmi_ddcwrite_field(hdmi,
-					 HDMI_TX_SCDC_FIELD_CED_UPDATE, 1);
+		status = xlnx_hdmi_ddcwrite_field(hdmi,
+						  HDMI_TX_SCDC_FIELD_CED_UPDATE,
+						  1);
 		/* Keep polling in LTS_P; only stop once FRL_INTR owns it. */
 		if (hdmi->stream.frl_config.frl_train_states ==
 		    HDMI_TX_FRLSTATE_LTS_P_FRL_RDY)
