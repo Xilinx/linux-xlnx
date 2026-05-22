@@ -13,6 +13,7 @@
 #include <linux/component.h>
 #include <linux/delay.h>
 #include <linux/device.h>
+#include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/gpio/consumer.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
@@ -179,6 +180,14 @@
 
 #define XDPTX_PHYSTATUS_REG			0x280
 #define XDPTX_PHYSTATUS_FPGAPLLLOCK_MASK	BIT(6)
+/*
+ * On Versal Gen 2 series silicon (e.g. VEK385 board) the DP Tx GT Quad
+ * drives only bits[5:0] of PHYSTATUS: bits[3:0] are the per-lane ready
+ * bits and bits[5:4] carry GT Quad readiness flags. Bit[6] (FPGA PLL
+ * lock) is not connected on this topology, so the legacy
+ * (BIT(MAX_LANES) - 1) | FPGAPLLLOCK_MASK never converges.
+ */
+#define XDPTX_PHYSTATUS_VERSAL_GT_LANE_MASK	GENMASK(5, 0)
 #define XDPTX_MAX_RATE(bw, lanecnt, bpp)	((bw) * (lanecnt) * 8 / (bpp))
 
 #define XDPTX_MISC0_RGB_MASK			(0)
@@ -471,6 +480,10 @@ struct xlnx_dp_mode {
  * @fmt: Color format
  * @audio_enabled: flag to indicate audio is enabled in device tree
  * @versal_gt_present: flag to indicate versal-gt property in device tree
+ * @versal_2ve_2vm: flag set at probe when zynqmp_pm_get_family_info()
+ *	reports the platform is on Versal Gen 2 series silicon (Versal AI
+ *	Edge series Gen 2, e.g. VEK385). On this family the GT Quad needs
+ *	a small settling delay before each line-rate change.
  * @hdcp2x_enable: flag to indicate hdcp22-enable property in device tree
  * @hdcp1x_enable: flag to indicate hdcp-enable property in device tree
  */
@@ -485,6 +498,7 @@ struct xlnx_dp_config {
 	u8 fmt;
 	bool audio_enabled;
 	bool versal_gt_present;
+	bool versal_2ve_2vm;
 	bool hdcp2x_enable;
 	bool hdcp1x_enable;
 };
@@ -938,8 +952,18 @@ static int xlnx_dp_phy_ready(struct xlnx_dp *dp)
 {
 	u32 i, reg, ready;
 
-	ready = (1 << XDPTX_MAX_LANES) - 1;
-	ready |= XDPTX_PHYSTATUS_FPGAPLLLOCK_MASK;
+	if (dp->config.versal_gt_present) {
+		/*
+		 * Versal Gen 2 series GT Quad path: only bits[5:0] of
+		 * PHYSTATUS are driven - bits[3:0] are the per-lane ready
+		 * bits and bits[5:4] are GT Quad readiness flags. Bit[6]
+		 * (FPGA PLL lock) is not connected on this topology.
+		 */
+		ready = XDPTX_PHYSTATUS_VERSAL_GT_LANE_MASK;
+	} else {
+		ready = (1 << XDPTX_MAX_LANES) - 1;
+		ready |= XDPTX_PHYSTATUS_FPGAPLLLOCK_MASK;
+	}
 
 	/* Wait for 100ms. This should be enough time for PHY to be ready */
 	for (i = 0; ; i++) {
@@ -947,7 +971,9 @@ static int xlnx_dp_phy_ready(struct xlnx_dp *dp)
 		if ((reg & ready) == ready)
 			return 0;
 		if (i == 100) {
-			dev_err(dp->dev, "PHY isn't ready\n");
+			dev_err(dp->dev,
+				"PHY isn't ready (PHYSTATUS=0x%08x want=0x%08x)\n",
+				reg, ready);
 			return -ENODEV;
 		}
 		usleep_range(1000, 1100);
@@ -1039,6 +1065,13 @@ static int xlnx_dp_tx_gt_control_init(struct xlnx_dp *dp)
 {
 	u32 data;
 	int ret;
+
+	/*
+	 * Versal Gen 2 series silicon: settle the GT before the initial
+	 * vswing write.
+	 */
+	if (dp->config.versal_2ve_2vm)
+		usleep_range(500, 600);
 
 	/* Setting initial vswing */
 	data = xlnx_dp_read(dp->dp_base, XDPTX_GTCTL_REG);
@@ -3867,6 +3900,7 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 	struct xlnx_dp *dp;
 	struct resource *res;
 	const struct of_device_id *match;
+	u32 family = 0;
 	unsigned int i;
 	int irq, ret;
 
@@ -3900,6 +3934,17 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 	ret = xlnx_dp_parse_of(dp);
 	if (ret < 0)
 		return ret;
+
+	/*
+	 * Detect Versal Gen 2 series silicon via the ZynqMP firmware API
+	 * rather than a board-specific DT property. The flag is consumed by
+	 * xlnx_dp_tx_gt_control_init() to insert a small GT settling delay.
+	 * On non-firmware platforms the API returns an error and the flag
+	 * stays cleared, which is the safe default.
+	 */
+	if (zynqmp_pm_get_family_info(&family) == 0 &&
+	    family == PM_VERSAL2_FAMILY_CODE)
+		dp->config.versal_2ve_2vm = true;
 
 	if (dp->config.versal_gt_present) {
 		dp->phy[0] = devm_phy_get(dp->dev, "dp-gtquad");
