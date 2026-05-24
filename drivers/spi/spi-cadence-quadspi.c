@@ -975,6 +975,19 @@ static void cqspi_periodictuning(struct work_struct *work)
 	}
 
 	/*
+	 * Wait for any ongoing flash operation to complete before tuning.
+	 * The request_completion is signaled when the flash is idle.
+	 */
+	if (!mem->request_completion.done)
+		wait_for_completion(&mem->request_completion);
+
+	/*
+	 * Block new operations during tuning by reinit'ing tuning_complete.
+	 * This ensures cqspi_exec_mem_op() will wait for tuning to finish.
+	 */
+	reinit_completion(&cqspi->tuning_complete);
+
+	/*
 	 * Tune only ONE CS per periodic tuning cycle, rotating through CSes.
 	 * This minimizes disruption to operations and reduces the chance of
 	 * tuning interfering with active I/O on other chip selects.
@@ -1016,6 +1029,9 @@ static void cqspi_periodictuning(struct work_struct *work)
 	 * reconfiguration on the next flash operation.
 	 */
 	cqspi->current_cs = -1;
+
+	/* Signal tuning complete so blocked operations can proceed */
+	complete_all(&cqspi->tuning_complete);
 
 	schedule_delayed_work(&mem->complete_work,
 			      msecs_to_jiffies(CQSPI_TUNING_PERIODICITY_MS));
