@@ -712,13 +712,17 @@ static int cqspi_setdlldelay(struct spi_mem *mem, const struct spi_mem_op *op, u
 	cqspi_configure(f_pdata, mem->spi->max_speed_hz);
 
 	/*
-	 * Reset READCAPTURE register to clean state before tuning.
-	 * In stacked flash configurations, prior tuning for another CS
-	 * may have left DQS settings that interfere with the new CS.
+	 * Reset READCAPTURE delay before tuning. For DTR (8D-8D-8D) mode,
+	 * DQS must remain enabled as it's required for data strobe timing.
+	 * Only clear the delay bits, not the DQS enable bit.
+	 * For SDR mode, also disable DQS as it's not needed.
 	 */
 	reg = readl(cqspi->iobase + CQSPI_REG_READCAPTURE);
-	reg &= ~(CQSPI_REG_READCAPTURE_DQS_ENABLE |
-		 (CQSPI_REG_READCAPTURE_DELAY_MASK << CQSPI_REG_READCAPTURE_DELAY_LSB));
+	reg &= ~(CQSPI_REG_READCAPTURE_DELAY_MASK << CQSPI_REG_READCAPTURE_DELAY_LSB);
+	if (!f_pdata->dtr)
+		reg &= ~CQSPI_REG_READCAPTURE_DQS_ENABLE;
+	else
+		reg |= CQSPI_REG_READCAPTURE_DQS_ENABLE;
 	writel(reg, cqspi->iobase + CQSPI_REG_READCAPTURE);
 
 	/* Drive DLL reset bit to low */
