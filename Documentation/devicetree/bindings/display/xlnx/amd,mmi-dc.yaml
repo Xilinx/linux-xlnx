@@ -85,11 +85,21 @@ properties:
   clocks:
     minItems: 1
     items:
-      - description: PS Pixel clock from mmi_aux0_ref_clk or ps_mmi_dc_t10mode_clk
-      - description: PS Audio clock from mmi_aux1_ref_clk or ps_mmi_dc_t10mode_i2s_clk
-      - description: PL Pixel clock from pl_mmi_dc_2x_clk for DMA mode
+      - description: PS Pixel clock from mmi_aux0_ref_clk
+      - description: PS Audio clock from mmi_aux1_ref_clk
+      - description: |
+          PL Pixel clock for DMA mode.
+          On T10 platforms, this clock is sourced from
+          ps_mmi_dc_t10mode_clk and routed through internal
+          silicon before reaching the MMI DC.
+          On other platforms, this is pl_mmi_dc_2x_clk.
       - description: PL Pixel clock from pl_mmi_dc_1x_clk for Bypass mode
-      - description: PL Audio clock from pl_mmi_i2s_s0_clk
+      - description: |
+          PL Audio clock.
+          On T10 platforms, this clock is sourced from
+          ps_mmi_dc_t10mode_i2s_clk and routed through internal
+          silicon before reaching the MMI DC.
+          On other platforms, this is pl_mmi_i2s_s0_clk.
       - description: APB Clock
       - description: 27 MHz clock for System Timestamp Counter
       - description: MMI PLL parent clock to aux0 and aux1 clocks
