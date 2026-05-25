@@ -373,6 +373,68 @@ allOf:
         clock-names:
           contains:
             const: pl_vid_bypass_clk
+      allOf:
+        - if:
+            properties:
+              xlnx,dc-streams:
+                const: 1
+            required:
+              - xlnx,dc-streams
+          then:
+            required:
+              - ports
+              - xlnx,dc-stream0-mode
+              - xlnx,dc-stream0-pixel-mode
+            properties:
+              ports:
+                required: [port@0]
+        - if:
+            properties:
+              xlnx,dc-streams:
+                const: 2
+            required:
+              - xlnx,dc-streams
+          then:
+            required:
+              - ports
+              - xlnx,dc-stream0-mode
+              - xlnx,dc-stream1-mode
+              - xlnx,dc-stream0-pixel-mode
+              - xlnx,dc-stream1-pixel-mode
+            properties:
+              ports:
+                required: [port@0, port@1, port@d]
+            oneOf:
+              - properties:
+                  xlnx,dc-stream0-pixel-mode: { const: 1 }
+                  xlnx,dc-stream1-pixel-mode: { const: 1 }
+              - properties:
+                  xlnx,dc-stream0-pixel-mode: { const: 2 }
+                  xlnx,dc-stream1-pixel-mode: { const: 2 }
+        - if:
+            properties:
+              xlnx,dc-streams:
+                const: 4
+            required:
+              - xlnx,dc-streams
+          then:
+            required:
+              - ports
+              - xlnx,dc-stream0-mode
+              - xlnx,dc-stream1-mode
+              - xlnx,dc-stream2-mode
+              - xlnx,dc-stream3-mode
+              - xlnx,dc-stream0-pixel-mode
+              - xlnx,dc-stream1-pixel-mode
+              - xlnx,dc-stream2-pixel-mode
+              - xlnx,dc-stream3-pixel-mode
+            properties:
+              xlnx,dc-stream0-pixel-mode: { const: 1 }
+              xlnx,dc-stream1-pixel-mode: { const: 1 }
+              xlnx,dc-stream2-pixel-mode: { const: 1 }
+              xlnx,dc-stream3-pixel-mode: { const: 1 }
+              ports:
+                required: [port@0, port@1, port@2, port@3, port@d, port@e, port@f]
 
 examples:
   - |
