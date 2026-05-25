@@ -543,6 +543,7 @@ allOf:
 
 examples:
   - |
+    /* Example: Functional + Non Live */
     axi {
         #address-cells = <2>;
         #size-cells = <2>;
@@ -554,10 +555,9 @@ examples:
             reg-names = "dp", "blend", "avbuf", "misc", "irq";
             interrupts = <0 179 4>;
             resets = <&versal2_reset 0xc104119>;
-            clocks = <&mmi_aux0_ref_clk>, <&mmi_aux1_ref_clk>, <&pl_mmi_dc_2x_clk>,
-                     <&pl_mmi_dc_1x_clk>, <&pl_mmi_i2s_s0_clk>, <&mmi_dc_apb_clk>, <&stc_clk>, <&mmi_pll>;
-            clock-names = "ps_vid_clk", "ps_aud_clk", "pl_vid_func_clk",
-                          "pl_vid_bypass_clk", "pl_aud_clk", "apb_clk", "stc_ref_clk", "mmi_pll";
+            clocks = <&mmi_aux0_ref_clk>, <&mmi_aux1_ref_clk>, <&mmi_dc_apb_clk>,
+                     <&stc_clk>, <&mmi_pll>;
+            clock-names = "ps_vid_clk", "ps_aud_clk", "apb_clk", "stc_ref_clk", "mmi_pll";
             dma-names = "vid.0.0", "vid.0.1", "vid.0.2", "vid.1.0", "vid.1.1", "vid.1.2", "aud", "cur";
             dmas = <&mmi_dcdma 0>, <&mmi_dcdma 1>, <&mmi_dcdma 2>, <&mmi_dcdma 3>, <&mmi_dcdma 4>,
                    <&mmi_dcdma 5>, <&mmi_dcdma 6>, <&mmi_dcdma 7>;
@@ -571,32 +571,8 @@ examples:
 
                 port@c {
                     reg = <12>;
-                    dc_out_0: endpoint {
+                    endpoint {
                         remote-endpoint = <&dptx_in_0>;
-                    };
-                };
-                port@d {
-                    reg = <13>;
-                    dc_out_1: endpoint {
-                        remote-endpoint = <&dptx_in_1>;
-                    };
-                };
-                port@e {
-                    reg = <14>;
-                    dc_out_2: endpoint {
-                        remote-endpoint = <&dptx_in_2>;
-                    };
-                };
-                port@f {
-                    reg = <15>;
-                    dc_out_3: endpoint {
-                        remote-endpoint = <&dptx_in_3>;
-                    };
-                };
-                port@10 {
-                    reg = <16>;
-                    dc_fb_vid_out: endpoint {
-                        remote-endpoint = <&pl_fb_rd>;
                     };
                 };
             };
