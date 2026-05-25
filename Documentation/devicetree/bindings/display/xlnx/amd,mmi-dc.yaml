@@ -87,6 +87,9 @@ properties:
     items:
       - description: PS Pixel clock from mmi_aux0_ref_clk
       - description: PS Audio clock from mmi_aux1_ref_clk
+      - description: APB Clock
+      - description: 27 MHz clock for System Timestamp Counter
+      - description: MMI PLL parent clock to aux0 and aux1 clocks
       - description: |
           PL Pixel clock for DMA mode.
           On T10 platforms, this clock is sourced from
@@ -100,21 +103,25 @@ properties:
           ps_mmi_dc_t10mode_i2s_clk and routed through internal
           silicon before reaching the MMI DC.
           On other platforms, this is pl_mmi_i2s_s0_clk.
-      - description: APB Clock
-      - description: 27 MHz clock for System Timestamp Counter
-      - description: MMI PLL parent clock to aux0 and aux1 clocks
 
   clock-names:
-    minItems: 1
-    items:
-      - const: ps_vid_clk
-      - const: ps_aud_clk
-      - const: pl_vid_func_clk
-      - const: pl_vid_bypass_clk
-      - const: pl_aud_clk
-      - const: apb_clk
-      - const: stc_ref_clk
-      - const: mmi_pll
+    description: |
+      List of clock input names. Entries are index-aligned with the
+      'clocks' property.
+      Each clock name shall appear at most once.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/string-array
+      - minItems: 1
+        items:
+          enum:
+            - ps_vid_clk
+            - ps_aud_clk
+            - apb_clk
+            - stc_ref_clk
+            - mmi_pll
+            - pl_vid_func_clk
+            - pl_vid_bypass_clk
+            - pl_aud_clk
 
   xlnx,dc-operating-mode:
     description: Blending of 2 streams happens in functional mode.
