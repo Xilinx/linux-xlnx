@@ -292,6 +292,37 @@ required:
 
 additionalProperties: false
 
+allOf:
+  - if:
+      required:
+        - xlnx,dc-operating-mode
+        - xlnx,dc-presentation-mode
+      properties:
+        xlnx,dc-operating-mode:
+          const: DC_Functional
+        xlnx,dc-presentation-mode:
+          enum: [Live, Mixed]
+    then:
+      required:
+        - xlnx,dc-live-video-select
+      properties:
+        clock-names:
+          contains:
+            const: pl_vid_func_clk
+  - if:
+      required:
+        - xlnx,dc-operating-mode
+      properties:
+        xlnx,dc-operating-mode:
+          const: DC_Bypass
+    then:
+      required:
+        - xlnx,dc-streams
+      properties:
+        clock-names:
+          contains:
+            const: pl_vid_bypass_clk
+
 examples:
   - |
     axi {
