@@ -360,6 +360,27 @@ allOf:
             properties:
               ports:
                 required: [port@1]
+        - if:
+            properties:
+              xlnx,dc-live-video01-mode:
+                const: Audio_&_Video
+            required:
+              - xlnx,dc-live-video01-mode
+          then:
+            properties:
+              ports:
+                required: [port@4]
+        - if:
+            properties:
+              xlnx,dc-live-video01-mode:
+                const: Video_only
+            required:
+              - xlnx,dc-live-video01-mode
+          then:
+            properties:
+              ports:
+                properties:
+                  port@4: false
   - if:
       required:
         - xlnx,dc-operating-mode
@@ -435,6 +456,90 @@ allOf:
               xlnx,dc-stream3-pixel-mode: { const: 1 }
               ports:
                 required: [port@0, port@1, port@2, port@3, port@d, port@e, port@f]
+        - if:
+            properties:
+              xlnx,dc-stream0-mode:
+                const: Audio_&_Video
+            required:
+              - xlnx,dc-stream0-mode
+          then:
+            properties:
+              ports:
+                required: [port@4]
+        - if:
+            properties:
+              xlnx,dc-stream0-mode:
+                const: Video_only
+            required:
+              - xlnx,dc-stream0-mode
+          then:
+            properties:
+              ports:
+                properties:
+                  port@4: false
+        - if:
+            properties:
+              xlnx,dc-stream1-mode:
+                const: Audio_&_Video
+            required:
+              - xlnx,dc-stream1-mode
+          then:
+            properties:
+              ports:
+                required: [port@5]
+        - if:
+            properties:
+              xlnx,dc-stream1-mode:
+                const: Video_only
+            required:
+              - xlnx,dc-stream1-mode
+          then:
+            properties:
+              ports:
+                properties:
+                  port@5: false
+        - if:
+            properties:
+              xlnx,dc-stream2-mode:
+                const: Audio_&_Video
+            required:
+              - xlnx,dc-stream2-mode
+          then:
+            properties:
+              ports:
+                required: [port@6]
+        - if:
+            properties:
+              xlnx,dc-stream2-mode:
+                const: Video_only
+            required:
+              - xlnx,dc-stream2-mode
+          then:
+            properties:
+              ports:
+                properties:
+                  port@6: false
+        - if:
+            properties:
+              xlnx,dc-stream3-mode:
+                const: Audio_&_Video
+            required:
+              - xlnx,dc-stream3-mode
+          then:
+            properties:
+              ports:
+                required: [port@7]
+        - if:
+            properties:
+              xlnx,dc-stream3-mode:
+                const: Video_only
+            required:
+              - xlnx,dc-stream3-mode
+          then:
+            properties:
+              ports:
+                properties:
+                  port@7: false
 
 examples:
   - |
