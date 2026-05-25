@@ -309,6 +309,57 @@ allOf:
         clock-names:
           contains:
             const: pl_vid_func_clk
+      allOf:
+        - if:
+            properties:
+              xlnx,dc-presentation-mode:
+                const: Live
+          then:
+            properties:
+              xlnx,dc-live-video-select:
+                const: Both
+        - if:
+            properties:
+              xlnx,dc-presentation-mode:
+                const: Mixed
+          then:
+            properties:
+              xlnx,dc-live-video-select:
+                enum: [V01, V02]
+        - if:
+            properties:
+              xlnx,dc-live-video-select:
+                const: Both
+          then:
+            required:
+              - xlnx,dc-live-video01-mode
+              - xlnx,dc-live-video02-mode
+              - ports
+            properties:
+              ports:
+                required: [port@0, port@1]
+        - if:
+            properties:
+              xlnx,dc-live-video-select:
+                const: V01
+          then:
+            required:
+              - xlnx,dc-live-video01-mode
+              - ports
+            properties:
+              ports:
+                required: [port@0]
+        - if:
+            properties:
+              xlnx,dc-live-video-select:
+                const: V02
+          then:
+            required:
+              - xlnx,dc-live-video02-mode
+              - ports
+            properties:
+              ports:
+                required: [port@1]
   - if:
       required:
         - xlnx,dc-operating-mode
