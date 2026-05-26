@@ -859,6 +859,9 @@ static void dwc3_xlnx_remove(struct platform_device *pdev)
 	struct dwc3_xlnx	*priv_data = platform_get_drvdata(pdev);
 	struct device		*dev = &pdev->dev;
 
+	if (!priv_data)
+		return;
+
 	of_platform_depopulate(dev);
 
 	if (priv_data->wakeup_irq > 0)
@@ -873,6 +876,31 @@ static void dwc3_xlnx_remove(struct platform_device *pdev)
 
 	pm_runtime_put_noidle(dev);
 	pm_runtime_set_suspended(dev);
+}
+
+/*
+ * Subsystem warm reboot can leave Versal PS USB in PM D3 while U-Boot
+ * expects D0. Request D0 via PM firmware after driver teardown on reboot.
+ */
+static void dwc3_xlnx_shutdown(struct platform_device *pdev)
+{
+	struct dwc3_xlnx *priv_data = platform_get_drvdata(pdev);
+	struct device *dev = &pdev->dev;
+#ifdef CONFIG_PM
+	int ret;
+#endif
+
+	dwc3_xlnx_remove(pdev);
+
+#ifdef CONFIG_PM
+	if (!priv_data || !of_device_is_compatible(dev->of_node, "xlnx,versal-dwc3"))
+		return;
+
+	priv_data->pmu_state = UNKNOWN_STATE;
+	ret = dwc3_versal_power_req(dev, true);
+	if (ret)
+		dev_warn(dev, "failed to force USB PM D0 on shutdown: %d\n", ret);
+#endif
 }
 
 static int __maybe_unused dwc3_xlnx_runtime_suspend(struct device *dev)
@@ -958,7 +986,7 @@ static const struct dev_pm_ops dwc3_xlnx_dev_pm_ops = {
 static struct platform_driver dwc3_xlnx_driver = {
 	.probe		= dwc3_xlnx_probe,
 	.remove		= dwc3_xlnx_remove,
-	.shutdown	= dwc3_xlnx_remove,
+	.shutdown	= dwc3_xlnx_shutdown,
 	.driver		= {
 		.name		= "dwc3-xilinx",
 		.of_match_table	= dwc3_xlnx_of_match,
