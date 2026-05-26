@@ -702,13 +702,15 @@ static int mmi_dc_probe(struct platform_device *pdev)
 static void mmi_dc_remove(struct platform_device *pdev)
 {
 	struct mmi_dc *dc = dev_get_drvdata(&pdev->dev);
-	struct drm_device *drm = &dc->drm->drm;
 
-	drm_dev_unregister(drm);
-	drm_atomic_helper_shutdown(drm);
-	drm_encoder_cleanup(&dc->drm->encoder);
-	drm_kms_helper_poll_fini(drm);
+	if (dc->drm) {
+		struct drm_device *drm = &dc->drm->drm;
 
+		drm_dev_unregister(drm);
+		drm_atomic_helper_shutdown(drm);
+		drm_encoder_cleanup(&dc->drm->encoder);
+		drm_kms_helper_poll_fini(drm);
+	}
 	mmi_dc_fini(dc);
 }
 
@@ -720,7 +722,8 @@ static void mmi_dc_shutdown(struct platform_device *pdev)
 {
 	struct mmi_dc *dc = dev_get_drvdata(&pdev->dev);
 
-	drm_atomic_helper_shutdown(&dc->drm->drm);
+	if (dc->drm)
+		drm_atomic_helper_shutdown(&dc->drm->drm);
 }
 
 static const struct of_device_id mmi_dc_of_match[] = {
