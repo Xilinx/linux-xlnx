@@ -2912,7 +2912,7 @@ static int cqspi_suspend(struct device *dev)
 static int cqspi_resume(struct device *dev)
 {
 	struct cqspi_st *cqspi = dev_get_drvdata(dev);
-	int ret;
+	int ret, i;
 
 	ret = pm_runtime_force_resume(dev);
 	if (ret) {
@@ -2922,9 +2922,30 @@ static int cqspi_resume(struct device *dev)
 	cqspi_controller_enable(cqspi, 0);
 	cqspi_controller_reset_phy(cqspi);
 	cqspi_controller_enable(cqspi, 1);
+
+	/*
+	 * Reset all controller state to force full reconfiguration.
+	 * This is critical for stacked flash configurations where
+	 * multiple chip selects need to be re-tuned after resume.
+	 */
+	cqspi->current_cs = -1;
+	cqspi->sclk = 0;
 	cqspi->extra_dummy = false;
 	cqspi->clk_tuned = 0;
 	cqspi->tuned_cs = -1;
+
+	/*
+	 * Reset per-CS PHY tuning state. After suspend/resume the PHY
+	 * configuration is lost and needs to be re-tuned.
+	 */
+	for (i = 0; i < cqspi->num_chipselect; i++)
+		cqspi->f_pdata[i].phy_tuned = false;
+
+	/*
+	 * Ensure tuning_complete is signaled so operations don't wait
+	 * for periodic tuning that was interrupted by suspend.
+	 */
+	complete_all(&cqspi->tuning_complete);
 
 	ret = cqspi_setup_flash(cqspi);
 	if (ret) {
