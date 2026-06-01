@@ -2287,8 +2287,11 @@ int dwc3_core_probe(const struct dwc3_probe_data *data)
 	}
 
 	dwc->usb_psy = dwc3_get_usb_power_supply(dwc);
-	if (IS_ERR(dwc->usb_psy))
-		return dev_err_probe(dev, PTR_ERR(dwc->usb_psy), "couldn't get usb power supply\n");
+	if (IS_ERR(dwc->usb_psy)) {
+		ret = dev_err_probe(dev, PTR_ERR(dwc->usb_psy),
+				    "couldn't get usb power supply\n");
+		goto err_disable_pmu;
+	}
 
 	if (!data->ignore_clocks_and_resets) {
 		dwc->reset = devm_reset_control_array_get_optional_shared(dev);
@@ -2409,6 +2412,10 @@ err_assert_reset:
 err_put_psy:
 	if (dwc->usb_psy)
 		power_supply_put(dwc->usb_psy);
+
+err_disable_pmu:
+	if (!IS_ERR(dwc->dwc3_pmu))
+		regulator_disable(dwc->dwc3_pmu);
 
 	return ret;
 }
