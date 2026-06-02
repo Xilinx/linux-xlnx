@@ -234,6 +234,16 @@ static void mmi_dc_bridge_enable(struct drm_bridge *drm_bridge,
 	const struct mmi_dc_format *format =
 		mmi_dc_find_live_format(new_state->input_bus_cfg.format);
 
+	/*
+	 * Bypass & live mode: live video is sourced from the PL through the AV
+	 * buffer manager. Force the DC video clock mux to PL here so we are not
+	 * at the mercy of probe-time clock-provider ordering: if mmi-dc probed
+	 * before the PL clock-wizard was registered, mmi_dc_init_clocks() would
+	 * have selected the PS clock, and AVBUF would never sample the live
+	 * stream.
+	 */
+	mmi_dc_set_vid_clk_src(bridge->dc, MMIDC_PL_CLK);
+
 	if (!bridge->plane)
 		return;
 
