@@ -968,10 +968,6 @@ static int xlnx_avpg_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	ret = xlnx_avpg_drm_init(&pdev->dev);
-	if (ret < 0)
-		return ret;
-
 	vtc_node = of_parse_phandle(node, "xlnx,bridge", 0);
 	if (!vtc_node) {
 		dev_err(&pdev->dev, "required vtc node is missing\n");
@@ -982,6 +978,12 @@ static int xlnx_avpg_probe(struct platform_device *pdev)
 	if (!avpg->vtc) {
 		dev_dbg(&pdev->dev, "didn't get vtc bridge instance\n");
 		return -EPROBE_DEFER;
+	}
+
+	ret = xlnx_avpg_drm_init(&pdev->dev);
+	if (ret < 0) {
+		of_xlnx_bridge_put(avpg->vtc);
+		return ret;
 	}
 
 	hrtimer_setup(&avpg->timer, xlnx_avpg_timer_cb, CLOCK_REALTIME,
