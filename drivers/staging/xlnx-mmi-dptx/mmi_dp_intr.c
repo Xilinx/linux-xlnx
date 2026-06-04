@@ -186,6 +186,7 @@ static int mmi_dp_handle_hotplug(struct dptx *dptx)
 	struct edp_alpm *alpm;
 	u32 hpd_ien;
 	u8 sink_cnt;
+	u8 rx_link_rate;
 	u8 byte;
 
 	dptx_info(dptx, "DPTX - Hotplug Detected");
@@ -272,8 +273,10 @@ static int mmi_dp_handle_hotplug(struct dptx *dptx)
 		mmi_dp_write_dpcd(dptx, DP_MSTM_CTRL, 0x0);
 	}
 
-	dptx->link.rate = dptx->max_rate;
-	dptx->link.lanes = dptx->max_lanes;
+	rx_link_rate = mmi_dp_bw_to_phy_rate(dptx->rx_caps.max_link_rate);
+	dptx->link.rate = min_t(u8, dptx->max_rate, rx_link_rate);
+	dptx->link.lanes = min_t(u8, dptx->max_lanes,
+				 dptx->rx_caps.max_lane_count);
 
 	/* Initiate link training */
 	if (dptx->enabled) {
