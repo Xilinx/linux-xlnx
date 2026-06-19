@@ -1098,10 +1098,13 @@ int tsn_switch_vlan_add(struct port_vlan *port, int add)
 		}
 	}
 
-	if (add)
+	if (add) {
 		u_value1 |= PORT_VLAN_PORT_LIST_VALID_BIT | port->port_num;
-	else
+	} else {
 		u_value1 &= ~(port->port_num);
+		if (!(u_value1 & PORT_STATUS_MASK))
+			u_value1 &= ~PORT_VLAN_PORT_LIST_VALID_BIT;
+	}
 	axienet_iow(&lp, XAS_VLAN_MEMB_DATA_REG, u_value1);
 
 	u_value = ((port->vlan_id & PORT_VLAN_ID_MASK) << PORT_VLAN_ID_SHIFT)
