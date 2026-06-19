@@ -1071,6 +1071,19 @@ int tsn_switch_vlan_add(struct port_vlan *port, int add)
 	u32 u_value, u_value1, reg, err;
 	u8 learning = 0;
 
+	u_value = ((port->vlan_id & PORT_VLAN_ID_MASK) << PORT_VLAN_ID_SHIFT)
+			| PORT_VLAN_READ;
+	axienet_iow(&lp, XAS_VLAN_MEMB_CTRL_REG, u_value);
+
+	/* wait for port vlan write completion */
+	err = readl_poll_timeout(lp.regs + XAS_VLAN_MEMB_CTRL_REG, reg,
+				 (!(reg & PORT_VLAN_WRITE_READ_EN_BIT)), 10,
+				 DELAY_OF_FIVE_MILLISEC);
+	if (err) {
+		pr_err("Port vlan write timed out\n");
+		return -ETIMEDOUT;
+	}
+
 	u_value1 = axienet_ior(&lp, XAS_VLAN_MEMB_DATA_REG);
 	learning = (u_value1 & PORT_VLAN_HW_ADDR_LEARN_BIT) ? 0 : 1;
 	if (learning) {
@@ -1083,18 +1096,6 @@ int tsn_switch_vlan_add(struct port_vlan *port, int add)
 			pr_err("When hardware address learning is disabled for a VLAN, port status cannot be set per VLAN\n");
 			return -EPERM;
 		}
-	}
-	u_value = ((port->vlan_id & PORT_VLAN_ID_MASK) << PORT_VLAN_ID_SHIFT)
-			| PORT_VLAN_READ;
-	axienet_iow(&lp, XAS_VLAN_MEMB_CTRL_REG, u_value);
-
-	/* wait for port vlan write completion */
-	err = readl_poll_timeout(lp.regs + XAS_VLAN_MEMB_CTRL_REG, reg,
-				 (!(reg & PORT_VLAN_WRITE_READ_EN_BIT)), 10,
-				 DELAY_OF_FIVE_MILLISEC);
-	if (err) {
-		pr_err("Port vlan write timed out\n");
-		return -ETIMEDOUT;
 	}
 
 	if (add)
