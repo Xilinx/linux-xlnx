@@ -689,8 +689,10 @@ static int mmi_dc_probe(struct platform_device *pdev)
 		return ret;
 
 	ret = mmi_dc_drm_pipeline_init(dc);
-	if (ret < 0)
+	if (ret < 0) {
+		mmi_dc_destroy_planes(dc);
 		return ret;
+	}
 
 	return 0;
 }
