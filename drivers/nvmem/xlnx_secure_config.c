@@ -695,9 +695,9 @@ static int sec_cfg_efuse_aes_key_write(void *context, void *val, size_t bytes,
 		if (keytype == EFUSE_AES_KEY_OFFSET ||
 		    keytype == EFUSE_USER_KEY0_OFFSET ||
 		    keytype == EFUSE_USER_KEY1_OFFSET) {
-			aeskey->prgmaeskey = keytype & 0x1;
-			aeskey->prgmuserkey0 = keytype & 0x2;
-			aeskey->prgmuserkey1 = keytype & 0x4;
+			aeskey->prgmaeskey = !!(keytype & 0x1);
+			aeskey->prgmuserkey0 = !!(keytype & 0x2);
+			aeskey->prgmuserkey1 = !!(keytype & 0x4);
 		} else {
 			ret = -EINVAL;
 			goto efuse_write_fail;
