@@ -1820,11 +1820,7 @@ static int tsn_switch_fdb_init(struct platform_device *pdev)
 	 * ports but are expected to be directed specifically to the Endpoint port
 	 * for appropriate handling.
 	 */
-	if (lp.packet_switch)
-		cam.fwd_port = FWD_TO_EP;
-	else
-	/* send it all, src mac filter will pick the port */
-		cam.fwd_port = DEFAULT_FWD_ALL;
+	cam.fwd_port = FWD_TO_EP;
 
 	cam.flags |= XAS_CAM_EP_MGMTQ_EN;
 	cam.vlanid = DEFAULT_PVID;
