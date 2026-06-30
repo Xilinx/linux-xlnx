@@ -150,6 +150,13 @@ err_clk:
 	return err;
 }
 
+static void xlnx_pr_decoupler_shutdown(struct platform_device *pdev)
+{
+	struct fpga_bridge *bridge = platform_get_drvdata(pdev);
+
+	xlnx_pr_decoupler_enable_set(bridge, false);
+}
+
 static void xlnx_pr_decoupler_remove(struct platform_device *pdev)
 {
 	struct fpga_bridge *bridge = platform_get_drvdata(pdev);
@@ -163,6 +170,7 @@ static void xlnx_pr_decoupler_remove(struct platform_device *pdev)
 static struct platform_driver xlnx_pr_decoupler_driver = {
 	.probe = xlnx_pr_decoupler_probe,
 	.remove = xlnx_pr_decoupler_remove,
+	.shutdown = xlnx_pr_decoupler_shutdown,
 	.driver = {
 		.name = "xlnx_pr_decoupler",
 		.of_match_table = xlnx_pr_decoupler_of_match,
