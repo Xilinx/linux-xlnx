@@ -2095,6 +2095,32 @@ static void xlnx_hdmi_hpd_work_func(struct work_struct *work)
 		drm_sysfs_hotplug_event(hdmi->connector.dev);
 }
 
+/**
+ * xlnx_hdmi_hpd_sync_from_hw - sync cable/connector state to PIO HPD level
+ * @hdmi: pointer to HDMI TX core instance
+ *
+ * HPD is edge-triggered, so after a driver reload with the sink already
+ * connected no edge arrives and cable_connected stays false. Read the live
+ * HPD level and update the software state.
+ *
+ * Caller must hold hdmi_mutex.
+ */
+static void xlnx_hdmi_hpd_sync_from_hw(struct xlnx_hdmi *hdmi)
+{
+	u32 data;
+	bool hpd;
+
+	lockdep_assert_held(&hdmi->hdmi_mutex);
+
+	data = xlnx_hdmi_readl(hdmi, HDMI_TX_PIO_IN);
+	hpd = !!(data & HDMI_TX_PIO_IN_HPD_CONNECT);
+
+	hdmi->cable_connected = hpd;
+	if (hdmi->connector.dev)
+		hdmi->connector.status = hpd ? connector_status_connected
+					   : connector_status_disconnected;
+}
+
 static void xlnx_hdmi_frl_config(struct xlnx_hdmi *hdmi)
 {
 	union phy_configure_opts phy_cfg = {0};
@@ -3768,9 +3794,18 @@ static int xlnx_hdmi_bind(struct device *dev, struct device *master,
 	if (ret) {
 		dev_err(hdmi->dev, "failed create connector, ret = %d\n", ret);
 		drm_encoder_cleanup(encoder);
+		return ret;
 	}
 
-	return ret;
+	hdmi_mutex_lock(&hdmi->hdmi_mutex);
+	xlnx_hdmi_hpd_sync_from_hw(hdmi);
+	if (hdmi->cable_connected)
+		xlnx_hdmi_connect_callback(hdmi);
+	hdmi_mutex_unlock(&hdmi->hdmi_mutex);
+	if (hdmi->connector.dev)
+		drm_sysfs_hotplug_event(hdmi->connector.dev);
+
+	return 0;
 }
 
 static void xlnx_hdmi_unbind(struct device *dev, struct device *master,
@@ -3891,6 +3926,10 @@ static int xlnx_hdmi_initialize(struct xlnx_hdmi *hdmi)
 	/* Enable Interrupts */
 	xlnx_hdmi_piointr_ie_enable(hdmi);
 	xlnx_hdmi_piointr_run_enable(hdmi);
+
+	hdmi_mutex_lock(&hdmi->hdmi_mutex);
+	xlnx_hdmi_hpd_sync_from_hw(hdmi);
+	hdmi_mutex_unlock(&hdmi->hdmi_mutex);
 
 	return 0;
 }
