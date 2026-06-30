@@ -357,9 +357,11 @@ void xlnx_fb_fini(struct drm_fb_helper *fb_helper)
 {
 	struct xlnx_fbdev *fbdev = to_fbdev(fb_helper);
 
-	drm_fb_helper_unregister_info(&fbdev->fb_helper);
-	if (fbdev->fb_helper.info)
+	/* info is NULL if initial_config skipped fb registration */
+	if (fbdev->fb_helper.info) {
+		drm_fb_helper_unregister_info(&fbdev->fb_helper);
 		xlnx_fbdev_defio_fini(fbdev->fb_helper.info);
+	}
 
 	if (fbdev->fb_helper.fb)
 		drm_framebuffer_remove(fbdev->fb_helper.fb);
