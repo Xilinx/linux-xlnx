@@ -283,6 +283,7 @@ static void xlnx_unbind(struct device *dev)
 	struct drm_device *drm = xlnx_drm->drm;
 
 	drm_dev_unregister(drm);
+	drm_atomic_helper_shutdown(drm);
 	component_unbind_all(&xlnx_drm->master->dev, drm);
 	if (xlnx_drm->fb) {
 		xlnx_fb_fini(xlnx_drm->fb);
