@@ -1107,26 +1107,15 @@ static int __maybe_unused zynqmp_runtime_resume(struct device *dev)
 	return 0;
 }
 
-static unsigned long zynqmp_qspi_timeout(struct zynqmp_qspi *xqspi, u8 bits,
-					 unsigned long bytes)
-{
-	unsigned long timeout;
-
-	/* Assume we are at most 2x slower than the nominal bus speed */
-	timeout = mult_frac(bytes, 2 * 8 * MSEC_PER_SEC,
-			    bits * xqspi->speed_hz);
-	/* And add 100 ms for scheduling delays */
-	return msecs_to_jiffies(timeout + 100);
-}
-
 /**
  * zynqmp_qspi_exec_op() - Initiates the QSPI transfer
  * @mem: The SPI memory
  * @op: The memory operation to execute
  *
- * Executes a memory operation.
- *
- * This function first selects the chip and starts the memory operation.
+ * This function selects the chip, queues all GENFIFO entries that make up
+ * the operation (command, address, dummy and data) and starts the GENFIFO
+ * only once. The controller therefore sees the whole access back-to-back
+ * with no gap between segments.
  *
  * Return: 0 in case of success, a negative error code otherwise.
  */
@@ -1135,7 +1124,6 @@ static int zynqmp_qspi_exec_op(struct spi_mem *mem,
 {
 	struct zynqmp_qspi *xqspi =
 		spi_controller_get_devdata(mem->spi->controller);
-	unsigned long timeout;
 	int err = 0, i;
 	u32 genfifoentry = 0;
 	u32 speed_hz = xqspi->speed_hz;
@@ -1158,19 +1146,6 @@ static int zynqmp_qspi_exec_op(struct spi_mem *mem,
 		xqspi->bytes_to_receive = 0;
 		/* Opcode always gets transmitted on single line */
 		zynqmp_qspi_write_op(xqspi, 0x1, genfifoentry);
-		zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST,
-				   zynqmp_gqspi_read(xqspi, GQSPI_CONFIG_OFST) |
-				   GQSPI_CFG_START_GEN_FIFO_MASK);
-		zynqmp_gqspi_write(xqspi, GQSPI_IER_OFST,
-				   GQSPI_IER_GENFIFOEMPTY_MASK |
-				   GQSPI_IER_TXNOT_FULL_MASK);
-		timeout = zynqmp_qspi_timeout(xqspi, op->cmd.buswidth,
-					      op->cmd.nbytes);
-		if (!wait_for_completion_timeout(&xqspi->data_completion,
-						 timeout)) {
-			err = -ETIMEDOUT;
-			goto return_err;
-		}
 	}
 
 	if (op->addr.nbytes) {
@@ -1185,21 +1160,6 @@ static int zynqmp_qspi_exec_op(struct spi_mem *mem,
 		xqspi->bytes_to_transfer = op->addr.nbytes;
 		xqspi->bytes_to_receive = 0;
 		zynqmp_qspi_write_op(xqspi, addrbuswidth, genfifoentry);
-		zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST,
-				   zynqmp_gqspi_read(xqspi,
-						     GQSPI_CONFIG_OFST) |
-				   GQSPI_CFG_START_GEN_FIFO_MASK);
-		zynqmp_gqspi_write(xqspi, GQSPI_IER_OFST,
-				   GQSPI_IER_TXEMPTY_MASK |
-				   GQSPI_IER_GENFIFOEMPTY_MASK |
-				   GQSPI_IER_TXNOT_FULL_MASK);
-		timeout = zynqmp_qspi_timeout(xqspi, op->addr.buswidth,
-					      op->addr.nbytes);
-		if (!wait_for_completion_timeout(&xqspi->data_completion,
-						 timeout)) {
-			err = -ETIMEDOUT;
-			goto return_err;
-		}
 	}
 
 	if (op->dummy.nbytes) {
@@ -1217,9 +1177,6 @@ static int zynqmp_qspi_exec_op(struct spi_mem *mem,
 		 */
 		zynqmp_qspi_write_op(xqspi, op->data.buswidth,
 				     genfifoentry);
-		zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST,
-				   zynqmp_gqspi_read(xqspi, GQSPI_CONFIG_OFST) |
-				   GQSPI_CFG_START_GEN_FIFO_MASK);
 	}
 
 	if (op->data.nbytes) {
@@ -1233,14 +1190,6 @@ static int zynqmp_qspi_exec_op(struct spi_mem *mem,
 			xqspi->bytes_to_receive = 0;
 			zynqmp_qspi_write_op(xqspi, op->data.buswidth,
 					     genfifoentry);
-			zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST,
-					   zynqmp_gqspi_read
-					   (xqspi, GQSPI_CONFIG_OFST) |
-					   GQSPI_CFG_START_GEN_FIFO_MASK);
-			zynqmp_gqspi_write(xqspi, GQSPI_IER_OFST,
-					   GQSPI_IER_TXEMPTY_MASK |
-					   GQSPI_IER_GENFIFOEMPTY_MASK |
-					   GQSPI_IER_TXNOT_FULL_MASK);
 		} else {
 			xqspi->txbuf = NULL;
 			xqspi->rxbuf = (u8 *)op->data.buf.in;
@@ -1248,50 +1197,72 @@ static int zynqmp_qspi_exec_op(struct spi_mem *mem,
 			xqspi->bytes_to_transfer = 0;
 			err = zynqmp_qspi_read_op(xqspi, op->data.buswidth,
 					    genfifoentry);
-			if (err)
-				goto return_err;
+			if (err) {
+				u32 rst = GQSPI_FIFO_CTRL_RST_GEN_FIFO_MASK |
+					  GQSPI_FIFO_CTRL_RST_TX_FIFO_MASK;
 
-			zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST,
-					   zynqmp_gqspi_read
-					   (xqspi, GQSPI_CONFIG_OFST) |
-					   GQSPI_CFG_START_GEN_FIFO_MASK);
-			if (xqspi->mode == GQSPI_MODE_DMA) {
-				zynqmp_gqspi_write
-					(xqspi, GQSPI_QSPIDMA_DST_I_EN_OFST,
-					 GQSPI_QSPIDMA_DST_I_EN_DONE_MASK);
-			} else {
-				zynqmp_gqspi_write(xqspi, GQSPI_IER_OFST,
-						   GQSPI_IER_GENFIFOEMPTY_MASK |
-						   GQSPI_IER_RXNEMPTY_MASK |
-						   GQSPI_IER_RXEMPTY_MASK);
+				/*
+				 * DMA setup failed. Clear the cmd, addr and
+				 * dummy entries we already queued so that they
+				 * do not go out on the bus during cleanup.
+				 */
+				zynqmp_gqspi_write(xqspi, GQSPI_FIFO_CTRL_OFST,
+						   rst);
+				goto return_err;
 			}
 		}
-
-		if (speed_hz)
-			speed_hz = 100000;
-
-		/*
-		 * For each byte we wait for 8 cycles of the SPI clock.
-		 * Since speed is defined in Hz and we want milliseconds,
-		 * use respective multiplier, but before the division,
-		 * otherwise we may get 0 for short transfers.
-		 */
-		ms = 8LL * MSEC_PER_SEC * op->data.nbytes;
-		do_div(ms, speed_hz);
-
-		/*
-		 * Increase it twice and add 10000 ms tolerance, use
-		 * predefined maximum in case of overflow.
-		 */
-		ms += ms + 10000;
-		if (ms > UINT_MAX)
-			ms = UINT_MAX;
-
-		if (!wait_for_completion_timeout
-		    (&xqspi->data_completion, msecs_to_jiffies(ms)))
-			err = -ETIMEDOUT;
-
 	}
+
+	/* All entries are queued now, so start the GENFIFO once */
+	zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST,
+			   zynqmp_gqspi_read(xqspi, GQSPI_CONFIG_OFST) |
+			   GQSPI_CFG_START_GEN_FIFO_MASK);
+
+	/*
+	 * Only a data read is a receive (using DMA or IO). All other cases
+	 * like cmd, addr, dummy and data write are transmit. So enable the
+	 * matching interrupt for each case.
+	 */
+	if (op->data.nbytes && op->data.dir == SPI_MEM_DATA_IN) {
+		if (xqspi->mode == GQSPI_MODE_DMA)
+			zynqmp_gqspi_write(xqspi, GQSPI_QSPIDMA_DST_I_EN_OFST,
+					   GQSPI_QSPIDMA_DST_I_EN_DONE_MASK);
+		else
+			zynqmp_gqspi_write(xqspi, GQSPI_IER_OFST,
+					   GQSPI_IER_GENFIFOEMPTY_MASK |
+					   GQSPI_IER_RXNEMPTY_MASK |
+					   GQSPI_IER_RXEMPTY_MASK);
+	} else {
+		zynqmp_gqspi_write(xqspi, GQSPI_IER_OFST,
+				   GQSPI_IER_TXEMPTY_MASK |
+				   GQSPI_IER_GENFIFOEMPTY_MASK |
+				   GQSPI_IER_TXNOT_FULL_MASK);
+	}
+
+	if (speed_hz)
+		speed_hz = 100000;
+
+	/*
+	 * For each byte we wait for 8 cycles of the SPI clock.
+	 * Since speed is defined in Hz and we want milliseconds,
+	 * use respective multiplier, but before the division,
+	 * otherwise we may get 0 for short transfers.
+	 */
+	ms = 8LL * MSEC_PER_SEC * (op->cmd.nbytes + op->addr.nbytes +
+				  op->dummy.nbytes + op->data.nbytes);
+	do_div(ms, speed_hz);
+
+	/*
+	 * Increase it twice and add 10000 ms tolerance, use
+	 * predefined maximum in case of overflow.
+	 */
+	ms += ms + 10000;
+	if (ms > UINT_MAX)
+		ms = UINT_MAX;
+
+	if (!wait_for_completion_timeout(&xqspi->data_completion,
+					 msecs_to_jiffies(ms)))
+		err = -ETIMEDOUT;
 
 return_err:
 
