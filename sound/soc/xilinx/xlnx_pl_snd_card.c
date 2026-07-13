@@ -56,6 +56,35 @@ static const char *dev_compat[][XLNX_MAX_IFACE] = {
 	},
 };
 
+/*
+ * Set the master clock rate and, for playback, hand it to the audio formatter
+ * so it programs its MM2S Fs multiplier. Only the formatter implements
+ * set_sysclk, so it is targeted explicitly; capture is skipped.
+ */
+static int xlnx_set_mclk(struct snd_pcm_substream *substream,
+			 struct pl_card_data *prv)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_component *component;
+	int ret;
+
+	ret = clk_set_rate(prv->mclk, prv->mclk_val);
+	if (ret)
+		return ret;
+
+	if (substream->stream != SNDRV_PCM_STREAM_PLAYBACK)
+		return 0;
+
+	component = snd_soc_rtdcom_lookup(rtd, "xlnx_formatter_pcm");
+	if (!component) {
+		dev_warn(rtd->dev, "formatter component not found\n");
+		return 0;
+	}
+
+	return snd_soc_component_set_sysclk(component, 0, 0, prv->mclk_val,
+					    SND_SOC_CLOCK_OUT);
+}
+
 static int xlnx_spdif_card_hw_params(struct snd_pcm_substream *substream,
 				     struct snd_pcm_hw_params *params)
 {
@@ -127,7 +156,7 @@ static int xlnx_hdmi_card_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	prv->mclk_val = prv->mclk_ratio * sample_rate;
-	return clk_set_rate(prv->mclk, prv->mclk_val);
+	return xlnx_set_mclk(substream, prv);
 }
 
 static int xlnx_i2s_card_hw_params(struct snd_pcm_substream *substream,
