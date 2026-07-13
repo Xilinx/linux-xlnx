@@ -287,7 +287,20 @@ u16 axienet_tsn_pcp_to_queue(struct net_device *ndev, struct sk_buff *skb)
 
 	if (skb_vlan_tag_present(skb)) {
 		vlan_tci = skb_vlan_tag_get(skb);
-	} else if (skb->protocol == htons(ETH_P_8021Q)) {
+	} else if (skb_headlen(skb) >= VLAN_ETH_HLEN &&
+		   skb_vlan_eth_hdr(skb)->h_vlan_proto == htons(ETH_P_8021Q)) {
+		/* Raw PF_PACKET frames carry the 802.1Q tag inline but with
+		 * skb->protocol set to the inner ethertype. Parse the tag
+		 * directly from the frame.
+		 *
+		 * skb_headlen() is used (not pskb_may_pull()) because
+		 * ndo_select_queue must not mutate the skb, and pskb_may_pull()
+		 * may reallocate skb->head. This is a read-only bounds check.
+		 * As a side effect, a non-linear jumbo SOCK_RAW frame whose
+		 * linear region is only hard_header_len (14) bytes defaults
+		 * to the best-effort queue even if it carries an inline tag.
+		 * That is rare, harmless (queue choice only), and pre-existing.
+		 */
 		veth = skb_vlan_eth_hdr(skb);
 		vlan_tci = ntohs(veth->h_vlan_TCI);
 	} else {
