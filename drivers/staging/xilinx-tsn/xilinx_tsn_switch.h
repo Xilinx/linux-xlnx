@@ -210,6 +210,14 @@
 #define XAE_EX_EP_EXT_CTRL_MASK			0xFFE00000
 #define XAE_EP_EXT_CTRL_MASK			0xFF1FF000
 
+/* STP port states */
+#define TSN_SW_STATE_DISABLED			0
+#define TSN_SW_STATE_BLOCKING			1
+#define TSN_SW_STATE_LISTENING			2
+#define TSN_SW_STATE_LEARNING			3
+#define TSN_SW_STATE_FORWARDING			4
+#define TSN_SW_STATE_FLUSH			5
+
 /* 64 bit counter*/
 struct static_cntr {
 	u32 msb;

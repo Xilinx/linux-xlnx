@@ -28,13 +28,6 @@
 	 ((s) == BR_STATE_FORWARDING) ? "forwarding" : \
 	 "und_blocked")
 
-#define TSN_SW_STATE_DISABLED		0
-#define TSN_SW_STATE_BLOCKING		1
-#define TSN_SW_STATE_LISTENING		2
-#define TSN_SW_STATE_LEARNING		3
-#define TSN_SW_STATE_FORWARDING		4
-#define TSN_SW_STATE_FLUSH		5
-
 static struct workqueue_struct *xlnx_sw_owq;
 static int
 xlnx_switchdev_port_attr_set_event(struct net_device *netdev,
