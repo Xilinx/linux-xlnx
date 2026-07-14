@@ -800,7 +800,7 @@ static u32 xhdmiphy_lcpll_param(struct xhdmiphy_dev *inst, enum chid chid,
 			    ((*refclk_ptr) <= XHDMIPHY_HDMI14_REFCLK_RANGE2)) {
 				inst->quad.lcpll.linerate_cfg = 1;
 			} else if ((XHDMIPHY_HDMI14_REFCLK_RANGE2 <= (*refclk_ptr)) &&
-						/* 297 MHz + 0.5% + 10 KHz error */
+						/* 340 MHz + 0.5% + 10 kHz error */
 						((*refclk_ptr) <=
 						 XHDMIPHY_HDMI14_REFCLK_RANGE3)) {
 				inst->quad.lcpll.linerate_cfg = 2;
