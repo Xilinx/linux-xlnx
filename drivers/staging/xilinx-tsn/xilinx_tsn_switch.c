@@ -1699,7 +1699,7 @@ static inline void tsn_switch_set_src_mac_filter(const u8 *mac, int port)
 /* initialize pre-configured fdbs in the system */
 static int tsn_switch_fdb_init(struct platform_device *pdev)
 {
-	u32 val, port;
+	u32 val, port, reg;
 	u8 mac_addr[ETH_ALEN];
 	struct device_node *np;
 	u16 num_ports;
@@ -1785,10 +1785,21 @@ static int tsn_switch_fdb_init(struct platform_device *pdev)
 		 * state change and port state bits.
 		 */
 		val = axienet_ior(&lp, XAS_PORT_STATE_CTRL_OFFSET);
-		val = val | (1 << EP_PORT_STATUS_EP_STATE_SHIFT) |
-			EP_PORT_STATUS_CHG_BIT |
-			(mac_addr[5] << EP_PORT_STATUS_EP_MAC_ADDR_SHIFT);
+		val &= ~(PORT_STATUS_MASK << EP_PORT_STATUS_SHIFT);
+		val |= (TSN_SW_STATE_BLOCKING << EP_PORT_STATUS_EP_STATE_SHIFT);
+		val &= ~(PORT_MAC_ADDR_LSB_MASK << EP_PORT_STATUS_EP_MAC_ADDR_SHIFT);
+		val |= ((mac_addr[5] & PORT_MAC_ADDR_LSB_MASK) <<
+			EP_PORT_STATUS_EP_MAC_ADDR_SHIFT);
+		val |= EP_PORT_STATUS_CHG_BIT;
 		axienet_iow(&lp, XAS_PORT_STATE_CTRL_OFFSET, val);
+
+		ret = readl_poll_timeout(lp.regs + XAS_PORT_STATE_CTRL_OFFSET, reg,
+					 !(reg & EP_PORT_STATUS_CHG_BIT), 10,
+					 DELAY_OF_FIVE_MILLISEC);
+		if (ret) {
+			dev_err(&pdev->dev, "port state CAM write timed out\n");
+			return ret;
+		}
 
 		/* Update Endpoint Extension Control Register with lower 4 bits of EP MAC */
 		if (lp.num_tc <= XAE_MAX_LEGACY_TSN_TC)
@@ -1917,6 +1928,10 @@ static int tsnswitch_probe(struct platform_device *pdev)
 	/* only support switchdev in sideband management */
 	if (!inband_mgmt_tag) {
 		ret = tsn_switch_fdb_init(pdev);
+		if (ret) {
+			dev_err(&pdev->dev, "FDB init failed\n");
+			goto err_fdb_init;
+		}
 		xlnx_switchdev_init();
 	} else {
 		pr_info("TSN IP with inband mgmt: Linux SWITCHDEV turned off\n");
@@ -2038,9 +2053,11 @@ static int tsnswitch_probe(struct platform_device *pdev)
 	 */
 	smp_store_release(&switch_probed, true);
 	return ret;
+
 err:
 	if (!inband_mgmt_tag)
 		xlnx_switchdev_remove();
+err_fdb_init:
 	misc_deregister(&switch_dev);
 	of_node_put(ep_node);
 	return ret;
