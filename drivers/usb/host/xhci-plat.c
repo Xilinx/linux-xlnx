@@ -324,9 +324,6 @@ int xhci_plat_probe(struct platform_device *pdev, struct device *sysdev, const s
 		if (device_property_read_bool(tmpdev, "xhci-skip-phy-init-quirk"))
 			xhci->quirks |= XHCI_SKIP_PHY_INIT;
 
-		if (device_property_read_bool(tmpdev, "xhci-reset-on-resume"))
-			xhci->quirks |= XHCI_RESET_ON_RESUME;
-
 		device_property_read_u32(tmpdev, "imod-interval-ns",
 					 &xhci->imod_interval);
 		device_property_read_u16(tmpdev, "num-hc-interrupters",
@@ -541,10 +538,8 @@ static int xhci_plat_suspend_common(struct device *dev)
 	if (device_may_wakeup(&hcd->self.root_hub->dev)) {
 		host_wakeup_capable(dev, true);
 		enable_irq_wake(hcd->irq);
-		xhci->quirks &= ~XHCI_RESET_ON_RESUME;
 	} else {
 		host_wakeup_capable(dev, false);
-		xhci->quirks |= XHCI_RESET_ON_RESUME;
 	}
 
 	/*
