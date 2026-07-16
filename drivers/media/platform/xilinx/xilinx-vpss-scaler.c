@@ -1399,12 +1399,14 @@ xv_vscaler_setup_video_fmt(struct xscaler_device *xscaler, u32 code_in)
 	switch (code_in) {
 	case MEDIA_BUS_FMT_VYYUYY8_1X24:
 	case MEDIA_BUS_FMT_VYYUYY10_4X20:
+	case MEDIA_BUS_FMT_UYYVYY12_4X24:
 		dev_dbg(xscaler->xvip.dev,
 			"Vscaler Input Media Format YUV 420");
 		video_in = XVIDC_CSF_YCRCB_420;
 		break;
 	case MEDIA_BUS_FMT_UYVY8_1X16:
 	case MEDIA_BUS_FMT_UYVY10_1X20:
+	case MEDIA_BUS_FMT_UYVY12_1X24:
 		dev_dbg(xscaler->xvip.dev,
 			"Vscaler Input Media Format YUV 422");
 		video_in = XVIDC_CSF_YCRCB_422;
@@ -1471,12 +1473,14 @@ static int xv_hscaler_setup_video_fmt(struct xscaler_device *xscaler,
 	switch (code_out) {
 	case MEDIA_BUS_FMT_VYYUYY8_1X24:
 	case MEDIA_BUS_FMT_VYYUYY10_4X20:
+	case MEDIA_BUS_FMT_UYYVYY12_4X24:
 		dev_dbg(xscaler->xvip.dev,
 			"Hscaler Output Media Format YUV 420\n");
 		video_out = XVIDC_CSF_YCRCB_420;
 		break;
 	case MEDIA_BUS_FMT_UYVY8_1X16:
 	case MEDIA_BUS_FMT_UYVY10_1X20:
+	case MEDIA_BUS_FMT_UYVY12_1X24:
 		dev_dbg(xscaler->xvip.dev,
 			"Hscaler Output Media Format YUV 422\n");
 		video_out = XVIDC_CSF_YCRCB_422;
