@@ -14,6 +14,8 @@
 #include <drm/drm_bridge_connector.h>
 #include <drm/drm_connector.h>
 #include <linux/media-bus-format.h>
+#include <linux/of.h>
+#include <linux/of_graph.h>
 
 #define MMI_DC_LIVE_VID_BPC8		(0x0001)
 #define MMI_DC_LIVE_VID_BPC10		(0x0002)
@@ -454,7 +456,32 @@ struct mmi_dc_bridge *mmi_dc_bridge_init(struct device *dev,
 					: 0;
 	drm_bridge->type = bridge->plane ? DRM_MODE_CONNECTOR_VIRTUAL
 					 : DRM_MODE_CONNECTOR_Unknown;
-	drm_bridge->of_node = dev->of_node;
+
+	/*
+	 * In mixed / live mode we may register multiple bridges. To distinguish
+	 * between them, we bind bridge registration to the device tree port
+	 * node. This is not conventional, but it is the only way to support
+	 * multiple bridges with the same device. Despite multiple video inputs
+	 * in MST mode, we register only one bridge, as the multiple display
+	 * routing will be handled by MST topology manager.
+	 */
+	if (plane) {
+		/*
+		 * The port node is a child of dev->of_node, which outlives the
+		 * bridge, so keep a borrowed reference: drop the refcount taken
+		 * by of_graph_get_port_by_id() while retaining the pointer
+		 * (mirrors the borrowed dev->of_node reference below).
+		 */
+		drm_bridge->of_node = of_graph_get_port_by_id(dev->of_node,
+							      plane->id);
+		of_node_put(drm_bridge->of_node);
+	} else {
+		drm_bridge->of_node = dev->of_node;
+	}
+	if (!drm_bridge->of_node) {
+		dev_err(dev, "failed to find bridge port node\n");
+		return ERR_PTR(-ENODEV);
+	}
 
 	bridge->connector_status = connector_status_disconnected;
 
