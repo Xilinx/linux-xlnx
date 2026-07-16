@@ -2189,7 +2189,7 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 		if (err || (xdev->ppc != 1 && xdev->ppc != 2 &&
 			    xdev->ppc != 4 && xdev->ppc != 8)) {
 			dev_err(&pdev->dev, "missing or invalid pixels per clock dts prop\n");
-			return err;
+			return -EINVAL;
 		}
 		err = of_property_read_u32(node, "xlnx,dma-align", &align);
 		if (err)
