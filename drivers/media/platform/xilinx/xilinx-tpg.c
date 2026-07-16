@@ -1044,7 +1044,8 @@ static int xtpg_parse_of(struct xtpg_device *xtpg)
 		xtpg->ppc = XTPG_MIN_PPC;
 		dev_dbg(dev, "failed to read ppc in dt\n");
 	} else if ((xtpg->ppc != 1) && (xtpg->ppc != 2) &&
-			(xtpg->ppc != 4) && (xtpg->ppc != 8)) {
+			(xtpg->ppc != 4) && (xtpg->ppc != 8) &&
+			(xtpg->ppc != 16)) {
 		dev_err(dev, "Invalid ppc config in dt\n");
 		return -EINVAL;
 	}
@@ -1296,6 +1297,7 @@ static const struct of_device_id xtpg_of_id_table[] = {
 	{ .compatible = "xlnx,v-tpg-5.0" },
 	{ .compatible = "xlnx,v-tpg-7.0" },
 	{ .compatible = "xlnx,v-tpg-8.0" },
+	{ .compatible = "xlnx,v-tpg-8.2" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, xtpg_of_id_table);
