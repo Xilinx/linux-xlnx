@@ -962,6 +962,8 @@ static const struct of_device_id xilinx_frmbuf_of_ids[] = {
 		.data = (void *)&xlnx_fbwr_cfg_v22},
 	{ .compatible = "xlnx,v-frmbuf-wr-v3.0",
 		.data = (void *)&xlnx_fbwr_cfg_v30},
+	{ .compatible = "xlnx,v-frmbuf-wr-v3.1",
+		.data = (void *)&xlnx_fbwr_cfg_v30},
 	{ .compatible = "xlnx,axi-frmbuf-rd-v2",
 		.data = (void *)&xlnx_fbrd_cfg_v20},
 	{ .compatible = "xlnx,axi-frmbuf-rd-v2.1",
@@ -969,6 +971,8 @@ static const struct of_device_id xilinx_frmbuf_of_ids[] = {
 	{ .compatible = "xlnx,axi-frmbuf-rd-v2.2",
 		.data = (void *)&xlnx_fbrd_cfg_v22},
 	{ .compatible = "xlnx,v-frmbuf-rd-v3.0",
+		.data = (void *)&xlnx_fbrd_cfg_v30},
+	{ .compatible = "xlnx,v-frmbuf-rd-v3.1",
 		.data = (void *)&xlnx_fbrd_cfg_v30},
 	{/* end of list */}
 };
@@ -2187,7 +2191,8 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 	if (xdev->cfg->flags & XILINX_PPC_PROP) {
 		err = of_property_read_u32(node, "xlnx,pixels-per-clock", &xdev->ppc);
 		if (err || (xdev->ppc != 1 && xdev->ppc != 2 &&
-			    xdev->ppc != 4 && xdev->ppc != 8)) {
+			    xdev->ppc != 4 && xdev->ppc != 8 &&
+			    xdev->ppc != 16)) {
 			dev_err(&pdev->dev, "missing or invalid pixels per clock dts prop\n");
 			return -EINVAL;
 		}
