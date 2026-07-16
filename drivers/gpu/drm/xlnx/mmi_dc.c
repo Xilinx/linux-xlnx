@@ -282,14 +282,40 @@ void mmi_dc_set_video_timing_source(struct mmi_dc *dc,
 {
 	enum mmi_dc_video_timing old_vt_source;
 
+	/*
+	 * external_vts_count is only ever updated from the atomic modeset path
+	 * (bridge enable/disable, under the CRTC/modeset locks), so it needs no
+	 * additional serialization here. The decrement is guarded by > 0, so the
+	 * counter never goes negative.
+	 */
+	if (vt_source == MMI_DC_VT_EXTERNAL)
+		dc->external_vts_count++;
+	else if (dc->external_vts_count > 0)
+		dc->external_vts_count--;
+
+	WARN_ON(dc->external_vts_count > 2);
+
 	old_vt_source = dc_read_avbuf(dc, MMI_DC_AV_BUF_AUD_VID_CLK_SOURCE) &
 			MMI_DC_AV_BUF_AUD_VID_TIMING_SRC_INT ?
 			MMI_DC_VT_INTERNAL : MMI_DC_VT_EXTERNAL;
 
-	if (old_vt_source != vt_source) {
-		u32 vt_reg = vt_source == MMI_DC_VT_INTERNAL ?
-				MMI_DC_AV_BUF_AUD_VID_TIMING_SRC_INT : 0;
-		dc_write_avbuf(dc, MMI_DC_AV_BUF_AUD_VID_CLK_SOURCE, vt_reg);
+	if (old_vt_source == vt_source)
+		return;
+
+	/*
+	 * Do not switch to internal video timing source if there are active
+	 * external sources
+	 */
+	if (vt_source == MMI_DC_VT_INTERNAL && dc->external_vts_count > 0)
+		return;
+
+	dc_write_avbuf(dc, MMI_DC_AV_BUF_AUD_VID_CLK_SOURCE,
+		       (vt_source == MMI_DC_VT_INTERNAL ?
+			MMI_DC_AV_BUF_AUD_VID_TIMING_SRC_INT : 0));
+	/* Reset & reconfigure hardware state */
+	if (dc->current_state) {
+		mmi_dc_reset_hw(dc);
+		mmi_dc_reconfig_planes(dc, dc->current_state);
 	}
 }
 

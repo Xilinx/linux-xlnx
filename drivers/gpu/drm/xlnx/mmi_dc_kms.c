@@ -269,16 +269,27 @@ static void mmi_dc_crtc_atomic_begin(struct drm_crtc *crtc,
 	drm_crtc_vblank_on(crtc);
 }
 
+static void mmi_dc_save_current_state(struct mmi_dc *dc,
+				      struct drm_atomic_state *state)
+{
+	if (dc->current_state)
+		drm_atomic_state_put(dc->current_state);
+
+	dc->current_state = drm_atomic_state_get(state);
+}
+
 static void mmi_dc_crtc_atomic_flush(struct drm_crtc *crtc,
 				     struct drm_atomic_state *state)
 {
 	struct drm_pending_vblank_event *vblank;
 	struct mmi_dc *dc = crtc_to_dc(crtc);
 
+	mmi_dc_save_current_state(dc, state);
+
 	if (dc->reconfig_hw || !mmi_dc_has_visible_planes(dc, state)) {
 		dc->reconfig_hw = false;
 		mmi_dc_reset_hw(dc);
-		mmi_dc_reconfig_planes(dc, state);
+		mmi_dc_reconfig_planes(dc, dc->current_state);
 	}
 
 	if (!crtc->state->event)
@@ -712,6 +723,10 @@ static void mmi_dc_remove(struct platform_device *pdev)
 		drm_atomic_helper_shutdown(drm);
 		drm_encoder_cleanup(&dc->drm->encoder);
 		drm_kms_helper_poll_fini(drm);
+	}
+	if (dc->current_state) {
+		drm_atomic_state_put(dc->current_state);
+		dc->current_state = NULL;
 	}
 	mmi_dc_fini(dc);
 }

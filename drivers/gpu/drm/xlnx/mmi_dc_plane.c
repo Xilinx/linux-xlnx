@@ -184,6 +184,14 @@ void mmi_dc_destroy_planes(struct mmi_dc *dc)
  * mmi_dc_disable_planes - Stop DMA transfers and disable all planes.
  * @dc: DC device
  * @state: New atomic state to apply
+ *
+ * Disable every plane that is driving the hardware, considering both the old
+ * and the new plane state. This is required because reconfiguration after a
+ * hardware reset restores the currently active configuration: a plane that is
+ * active in the new state already has a running DMA transfer that must be
+ * stopped before it is re-armed, otherwise a second descriptor would be
+ * stacked onto the still-running channel and the DMA engine would report a
+ * descriptor error.
  */
 static void mmi_dc_disable_planes(struct mmi_dc *dc,
 				  struct drm_atomic_state *state)
@@ -195,8 +203,12 @@ static void mmi_dc_disable_planes(struct mmi_dc *dc,
 		struct drm_plane *plane = &dc_plane->base;
 		struct drm_plane_state *old_state =
 			drm_atomic_get_old_plane_state(state, plane);
+		struct drm_plane_state *new_state =
+			drm_atomic_get_new_plane_state(state, plane);
+		bool active = (old_state && old_state->fb) ||
+			      (new_state && new_state->fb);
 
-		if (old_state && old_state->fb && dc_plane->funcs.disable)
+		if (active && dc_plane->funcs.disable)
 			dc_plane->funcs.disable(dc_plane);
 	}
 }
