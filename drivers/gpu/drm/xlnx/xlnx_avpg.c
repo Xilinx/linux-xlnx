@@ -32,6 +32,7 @@
 #include <linux/media-bus-format.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
+#include <linux/of_graph.h>
 #include <linux/of_irq.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
@@ -850,6 +851,43 @@ static void xlnx_avpg_drm_fini(struct device *dev)
 	of_xlnx_bridge_put(avpg->vtc);
 }
 
+/**
+ * xlnx_avpg_find_bridge - Find the downstream display bridge
+ * @avpg: The AVPG
+ *
+ * Resolve the bridge connected to AVPG output endpoint 0. Prefer the generic
+ * OF graph lookup through devm_drm_of_get_bridge(), which covers the standard
+ * case where the remote bridge is registered against its device node. If that
+ * lookup defers probe, retry against the exact remote port node, as some Xilinx
+ * DRM bridges register themselves against a DT port node instead.
+ *
+ * Return: A valid DRM bridge pointer on success or an ERR_PTR() on failure.
+ */
+static struct drm_bridge *xlnx_avpg_find_bridge(struct xlnx_avpg *avpg)
+{
+	struct device *dev = &avpg->pdev->dev;
+	struct device_node *endpoint, *port;
+	struct drm_bridge *bridge;
+
+	bridge = devm_drm_of_get_bridge(dev, dev->of_node, 0, 0);
+	if (!IS_ERR(bridge) || PTR_ERR(bridge) != -EPROBE_DEFER)
+		return bridge;
+
+	endpoint = of_graph_get_endpoint_by_regs(dev->of_node, 0, 0);
+	if (!endpoint)
+		return bridge;
+
+	port = of_graph_get_remote_port(endpoint);
+	of_node_put(endpoint);
+	if (!port)
+		return bridge;
+
+	bridge = of_drm_find_bridge(port);
+	of_node_put(port);
+
+	return bridge ? bridge : ERR_PTR(-EPROBE_DEFER);
+}
+
 static int xlnx_avpg_probe(struct platform_device *pdev)
 {
 	struct xlnx_avpg *avpg;
@@ -875,7 +913,7 @@ static int xlnx_avpg_probe(struct platform_device *pdev)
 		return dev_err_probe(&pdev->dev, PTR_ERR(avpg->video_clk),
 				     "failed to get video clock\n");
 
-	avpg->disp_bridge = devm_drm_of_get_bridge(&pdev->dev, node, 0, 0);
+	avpg->disp_bridge = xlnx_avpg_find_bridge(avpg);
 	if (IS_ERR(avpg->disp_bridge))
 		return dev_err_probe(&pdev->dev, PTR_ERR(avpg->disp_bridge),
 				     "failed to discover display bridge\n");
