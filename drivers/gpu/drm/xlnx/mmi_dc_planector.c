@@ -71,6 +71,9 @@ static void mmi_dc_planector_update(struct mmi_dc_plane *plane,
 		return;
 
 	mmi_dc_bridge_connect(planector->bridge, &crtc_state->adjusted_mode);
+	if (plane->base.type == DRM_PLANE_TYPE_OVERLAY)
+		mmi_dc_set_global_alpha(plane->dc, plane_state->alpha >> 8,
+					true);
 }
 
 static void mmi_dc_planector_disable(struct mmi_dc_plane *plane)
@@ -119,6 +122,9 @@ struct mmi_dc_plane *mmi_dc_create_planector(struct mmi_dc *dc,
 			     &mmi_dc_drm_plane_helper_funcs);
 
 	drm_plane_create_zpos_immutable_property(&planector->base.base, id);
+
+	if (plane_type == DRM_PLANE_TYPE_OVERLAY)
+		drm_plane_create_alpha_property(&planector->base.base);
 
 	planector->bridge = mmi_dc_bridge_init(dc->dev, &planector->base);
 	if (IS_ERR(planector->bridge))
