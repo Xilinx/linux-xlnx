@@ -75,6 +75,7 @@ enum mmi_dc_video_timing {
 	MMI_DC_VT_EXTERNAL,
 };
 
+struct drm_atomic_state;
 struct mmi_dc_drm;
 struct mmi_dc_plane;
 struct mmi_audio;
@@ -87,6 +88,8 @@ struct mmi_audio;
  * @planes: DC planes
  * @dma_align: DMA alignment
  * @reconfig_hw: reset and reconfig HW in crtc flush callback
+ * @current_state: current atomic state
+ * @external_vts_count: number of active external video timing sources
  * @dp: output to DP Tx control registers space
  * @blend: blender control register space
  * @avbuf: AV buffer manager control register space
@@ -109,6 +112,8 @@ struct mmi_dc {
 	struct mmi_dc_plane	*planes[MMI_DC_NUM_PLANES];
 	unsigned int		dma_align;
 	bool			reconfig_hw;
+	struct drm_atomic_state	*current_state;
+	int			external_vts_count;
 
 	void __iomem		*dp;
 	void __iomem		*blend;

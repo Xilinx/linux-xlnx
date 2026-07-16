@@ -253,8 +253,7 @@ static void mmi_dc_bridge_enable(struct drm_bridge *drm_bridge,
 		return;
 
 	mmi_dc_compositor_enable(bridge->plane, format);
-	/* TODO: enable external timing source here */
-	mmi_dc_set_video_timing_source(bridge->dc, MMI_DC_VT_INTERNAL);
+	mmi_dc_set_video_timing_source(bridge->dc, MMI_DC_VT_EXTERNAL);
 }
 
 static void mmi_dc_bridge_disable(struct drm_bridge *drm_bridge,
@@ -266,7 +265,6 @@ static void mmi_dc_bridge_disable(struct drm_bridge *drm_bridge,
 		return;
 
 	mmi_dc_compositor_disable(bridge->plane);
-	/* TODO: this should be ref counted for 2 live video case */
 	mmi_dc_set_video_timing_source(bridge->dc, MMI_DC_VT_INTERNAL);
 }
 
