@@ -38,7 +38,7 @@ properties:
   xlnx,ppc:
     description: Pixels per clock.
     $ref: /schemas/types.yaml#/definitions/uint32
-    enum: [1, 2, 4, 8]
+    enum: [1, 2, 4, 8, 16]
 
   xlnx,vtc:
     description: phandle of xilinx video timing controller.
@@ -114,6 +114,20 @@ required:
   - xlnx,ppc
   - xlnx,vtc
   - ports
+
+allOf:
+  # 16 pixels per clock is only supported from the v8.2 TPG IP. Older IP
+  # versions are limited to a maximum of 8 pixels per clock.
+  - if:
+      not:
+        properties:
+          compatible:
+            contains:
+              const: xlnx,v-tpg-8.2
+    then:
+      properties:
+        xlnx,ppc:
+          enum: [1, 2, 4, 8]
 
 additionalProperties: false
 
