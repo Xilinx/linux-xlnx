@@ -866,72 +866,55 @@ static int xlnx_avpg_probe(struct platform_device *pdev)
 	node = pdev->dev.of_node;
 
 	avpg->axi_clk = devm_clk_get_enabled(&pdev->dev, "av_axi_aclk");
-	if (IS_ERR(avpg->axi_clk)) {
-		dev_err(&pdev->dev, "failed to get axi clock\n");
-		return PTR_ERR(avpg->axi_clk);
-	}
+	if (IS_ERR(avpg->axi_clk))
+		return dev_err_probe(&pdev->dev, PTR_ERR(avpg->axi_clk),
+				     "failed to get axi clock\n");
 
 	avpg->video_clk = devm_clk_get(&pdev->dev, "vid_out_axi4s_aclk");
-	if (IS_ERR(avpg->video_clk)) {
-		dev_err(&pdev->dev, "failed to get video clock\n");
-		return PTR_ERR(avpg->video_clk);
-	}
+	if (IS_ERR(avpg->video_clk))
+		return dev_err_probe(&pdev->dev, PTR_ERR(avpg->video_clk),
+				     "failed to get video clock\n");
 
 	avpg->disp_bridge = devm_drm_of_get_bridge(&pdev->dev, node, 0, 0);
-	if (IS_ERR(avpg->disp_bridge)) {
-		ret = PTR_ERR(avpg->disp_bridge);
-		if (ret != -EPROBE_DEFER)
-			dev_err(&pdev->dev,
-				"failed to discover display bridge\n");
-		return ret;
-	}
+	if (IS_ERR(avpg->disp_bridge))
+		return dev_err_probe(&pdev->dev, PTR_ERR(avpg->disp_bridge),
+				     "failed to discover display bridge\n");
 
 	avpg->gpio_en_avpg = devm_gpiod_get_index(&pdev->dev, "clk-enable", 0,
 						  GPIOD_ASIS);
-	if (IS_ERR(avpg->gpio_en_avpg)) {
-		ret = PTR_ERR(avpg->gpio_en_avpg);
-		dev_err(&pdev->dev, "failed to get avpg en gpio: %d\n", ret);
-		return ret;
-	}
+	if (IS_ERR(avpg->gpio_en_avpg))
+		return dev_err_probe(&pdev->dev, PTR_ERR(avpg->gpio_en_avpg),
+				     "failed to get avpg en gpio\n");
 	ret = gpiod_direction_output(avpg->gpio_en_avpg, 0);
-	if (ret < 0) {
-		dev_err(&pdev->dev,
-			"failed to set avpg en gpio direction: %d\n", ret);
-		return ret;
-	}
+	if (ret < 0)
+		return dev_err_probe(&pdev->dev, ret,
+				     "failed to set avpg en gpio direction\n");
 
 	avpg->gpio_en_vtc = devm_gpiod_get_index(&pdev->dev, "clk-enable", 1,
 						 GPIOD_ASIS);
-	if (IS_ERR(avpg->gpio_en_vtc)) {
-		ret = PTR_ERR(avpg->gpio_en_vtc);
-		dev_err(&pdev->dev, "failed to get vtc en gpio: %d\n", ret);
-		return ret;
-	}
+	if (IS_ERR(avpg->gpio_en_vtc))
+		return dev_err_probe(&pdev->dev, PTR_ERR(avpg->gpio_en_vtc),
+				     "failed to get vtc en gpio\n");
 	ret = gpiod_direction_output(avpg->gpio_en_vtc, 0);
-	if (ret < 0) {
-		dev_err(&pdev->dev,
-			"failed to set vtc en gpio direction: %d\n", ret);
-		return ret;
-	}
+	if (ret < 0)
+		return dev_err_probe(&pdev->dev, ret,
+				     "failed to set vtc en gpio direction\n");
 
 	ret = of_property_read_u32(node, "xlnx,ppc", &avpg->pixels_per_clock);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "required ppc property is missing\n");
-		return ret;
-	}
+	if (ret < 0)
+		return dev_err_probe(&pdev->dev, ret,
+				     "required ppc property is missing\n");
 
 	if (avpg->pixels_per_clock != 1 && avpg->pixels_per_clock != 2 &&
-	    avpg->pixels_per_clock != 4) {
-		dev_err(&pdev->dev, "%d ppc not supported\n",
-			avpg->pixels_per_clock);
-		return -EINVAL;
-	}
+	    avpg->pixels_per_clock != 4)
+		return dev_err_probe(&pdev->dev, -EINVAL,
+				     "%d ppc not supported\n",
+				     avpg->pixels_per_clock);
 
 	ret = of_property_read_u32(node, "xlnx,bpc", &bpc);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "required bpc property is missing\n");
-		return ret;
-	}
+	if (ret < 0)
+		return dev_err_probe(&pdev->dev, ret,
+				     "required bpc property is missing\n");
 	switch (bpc) {
 	case 6:
 		avpg->bits_per_component = XLNX_AVPG_6BPC;
@@ -949,30 +932,27 @@ static int xlnx_avpg_probe(struct platform_device *pdev)
 		avpg->bits_per_component = XLNX_AVPG_16BPC;
 		break;
 	default:
-		dev_err(&pdev->dev, "%d bpc not supported\n", bpc);
-		return -EINVAL;
+		return dev_err_probe(&pdev->dev, -EINVAL,
+				     "%d bpc not supported\n", bpc);
 	}
 
 	ret = of_property_read_u32(node, "xlnx,video-format",
 				   &avpg->pixel_format);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "video-format property is missing\n");
-		return ret;
-	}
+	if (ret < 0)
+		return dev_err_probe(&pdev->dev, ret,
+				     "video-format property is missing\n");
 	avpg->output_bus_format =
 		xlnx_avpg_find_bus_format(avpg->pixel_format,
 					  avpg->bits_per_component,
 					  avpg->pixels_per_clock);
-	if (!avpg->output_bus_format) {
-		dev_err(&pdev->dev, "unsupported format / bpc combo\n");
-		return -EINVAL;
-	}
+	if (!avpg->output_bus_format)
+		return dev_err_probe(&pdev->dev, -EINVAL,
+				     "unsupported format / bpc combo\n");
 
 	vtc_node = of_parse_phandle(node, "xlnx,bridge", 0);
-	if (!vtc_node) {
-		dev_err(&pdev->dev, "required vtc node is missing\n");
-		return -EINVAL;
-	}
+	if (!vtc_node)
+		return dev_err_probe(&pdev->dev, -EINVAL,
+				     "required vtc node is missing\n");
 	avpg->vtc = of_xlnx_bridge_get(vtc_node);
 	of_node_put(vtc_node);
 	if (!avpg->vtc) {
