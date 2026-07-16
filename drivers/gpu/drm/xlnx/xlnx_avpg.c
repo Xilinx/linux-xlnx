@@ -848,7 +848,6 @@ static void xlnx_avpg_drm_fini(struct device *dev)
 	drm_atomic_helper_shutdown(&drm->dev);
 	drm_encoder_cleanup(&drm->encoder);
 	drm_kms_helper_poll_fini(&drm->dev);
-	of_xlnx_bridge_put(avpg->vtc);
 }
 
 /**
@@ -918,25 +917,31 @@ static int xlnx_avpg_probe(struct platform_device *pdev)
 		return dev_err_probe(&pdev->dev, PTR_ERR(avpg->disp_bridge),
 				     "failed to discover display bridge\n");
 
-	avpg->gpio_en_avpg = devm_gpiod_get_index(&pdev->dev, "clk-enable", 0,
-						  GPIOD_ASIS);
-	if (IS_ERR(avpg->gpio_en_avpg))
+	avpg->gpio_en_avpg = devm_gpiod_get_index_optional(&pdev->dev,
+							   "clk-enable", 0,
+							   GPIOD_ASIS);
+	if (IS_ERR(avpg->gpio_en_avpg)) {
 		return dev_err_probe(&pdev->dev, PTR_ERR(avpg->gpio_en_avpg),
 				     "failed to get avpg en gpio\n");
-	ret = gpiod_direction_output(avpg->gpio_en_avpg, 0);
-	if (ret < 0)
-		return dev_err_probe(&pdev->dev, ret,
-				     "failed to set avpg en gpio direction\n");
+	} else if (avpg->gpio_en_avpg) {
+		ret = gpiod_direction_output(avpg->gpio_en_avpg, 0);
+		if (ret < 0)
+			return dev_err_probe(&pdev->dev, ret,
+					     "failed to set avpg en gpio direction\n");
+	}
 
-	avpg->gpio_en_vtc = devm_gpiod_get_index(&pdev->dev, "clk-enable", 1,
-						 GPIOD_ASIS);
-	if (IS_ERR(avpg->gpio_en_vtc))
+	avpg->gpio_en_vtc = devm_gpiod_get_index_optional(&pdev->dev,
+							  "clk-enable", 1,
+							  GPIOD_ASIS);
+	if (IS_ERR(avpg->gpio_en_vtc)) {
 		return dev_err_probe(&pdev->dev, PTR_ERR(avpg->gpio_en_vtc),
 				     "failed to get vtc en gpio\n");
-	ret = gpiod_direction_output(avpg->gpio_en_vtc, 0);
-	if (ret < 0)
-		return dev_err_probe(&pdev->dev, ret,
-				     "failed to set vtc en gpio direction\n");
+	} else if (avpg->gpio_en_vtc) {
+		ret = gpiod_direction_output(avpg->gpio_en_vtc, 0);
+		if (ret < 0)
+			return dev_err_probe(&pdev->dev, ret,
+					     "failed to set vtc en gpio direction\n");
+	}
 
 	ret = of_property_read_u32(node, "xlnx,ppc", &avpg->pixels_per_clock);
 	if (ret < 0)
@@ -988,19 +993,19 @@ static int xlnx_avpg_probe(struct platform_device *pdev)
 				     "unsupported format / bpc combo\n");
 
 	vtc_node = of_parse_phandle(node, "xlnx,bridge", 0);
-	if (!vtc_node)
-		return dev_err_probe(&pdev->dev, -EINVAL,
-				     "required vtc node is missing\n");
-	avpg->vtc = of_xlnx_bridge_get(vtc_node);
-	of_node_put(vtc_node);
-	if (!avpg->vtc) {
-		dev_dbg(&pdev->dev, "didn't get vtc bridge instance\n");
-		return -EPROBE_DEFER;
+	if (vtc_node) {
+		avpg->vtc = of_xlnx_bridge_get(vtc_node);
+		of_node_put(vtc_node);
+		if (!avpg->vtc) {
+			dev_dbg(&pdev->dev, "didn't get vtc bridge instance\n");
+			return -EPROBE_DEFER;
+		}
 	}
 
 	ret = xlnx_avpg_drm_init(&pdev->dev);
 	if (ret < 0) {
-		of_xlnx_bridge_put(avpg->vtc);
+		if (avpg->vtc)
+			of_xlnx_bridge_put(avpg->vtc);
 		return ret;
 	}
 
@@ -1012,7 +1017,11 @@ static int xlnx_avpg_probe(struct platform_device *pdev)
 
 static void xlnx_avpg_remove(struct platform_device *pdev)
 {
+	struct xlnx_avpg *avpg = platform_get_drvdata(pdev);
+
 	xlnx_avpg_drm_fini(&pdev->dev);
+	if (avpg->vtc)
+		of_xlnx_bridge_put(avpg->vtc);
 }
 
 static const struct of_device_id xlnx_avpg_of_match[] = {
