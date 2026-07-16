@@ -25,9 +25,11 @@ properties:
       - xlnx,axi-frmbuf-wr-v2.1
       - xlnx,axi-frmbuf-wr-v2.2
       - xlnx,v-frmbuf-wr-v3.0
+      - xlnx,v-frmbuf-wr-v3.1
       - xlnx,axi-frmbuf-rd-v2.1
       - xlnx,axi-frmbuf-rd-v2.2
       - xlnx,v-frmbuf-rd-v3.0
+      - xlnx,v-frmbuf-rd-v3.1
 
   reg:
     maxItems: 1
@@ -174,7 +176,7 @@ properties:
   xlnx,pixels-per-clock:
     description: Pixels per clock set in IP
     $ref: /schemas/types.yaml#/definitions/uint32
-    enum: [1, 2, 4, 8]
+    enum: [1, 2, 4, 8, 16]
 
   xlnx,tile-formats:
     type: boolean
@@ -188,10 +190,10 @@ properties:
       pixels per clock * 8.
       If present it should be power of 2 and at least
       pixels per clock * 8.
-      Minimum is 8, 16, 32 when pixels-per-clock is
-      1, 2 or 4.
+      Minimum is 8, 16, 32, 64, 128 when pixels-per-clock is
+      1, 2, 4, 8 or 16.
     $ref: /schemas/types.yaml#/definitions/uint32
-    enum: [8, 16, 32]
+    enum: [8, 16, 32, 64, 128]
 
   xlnx,max-height:
     description: Maximum number pixels in a line.
@@ -219,6 +221,24 @@ required:
   - xlnx,max-width
 
 allOf:
+  # 16 pixels per clock (and the 128-byte dma-align it needs) is only
+  # supported from the v3.1 IP. Older IP versions are limited to a maximum
+  # of 8 pixels per clock and 64-byte dma-align.
+  - if:
+      not:
+        properties:
+          compatible:
+            contains:
+              enum:
+                - xlnx,v-frmbuf-wr-v3.1
+                - xlnx,v-frmbuf-rd-v3.1
+    then:
+      properties:
+        xlnx,pixels-per-clock:
+          enum: [1, 2, 4, 8]
+        xlnx,dma-align:
+          enum: [8, 16, 32, 64]
+
   # xlnx,tile-formats is only valid for v3.0 compatible strings
   - if:
       properties:
