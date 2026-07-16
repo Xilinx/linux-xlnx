@@ -31,7 +31,9 @@
 #include <linux/device.h>
 #include <linux/dma-buf.h>
 #include <linux/dma-resv.h>
+#include <linux/list.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/of_graph.h>
 #include <linux/platform_device.h>
 
@@ -217,7 +219,7 @@ static int xlnx_bind(struct device *dev)
 	ret = drm_vblank_init(drm, MAX_CRTC);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to initialize vblank\n");
-		goto err_xlnx_drm;
+		goto err_drm;
 	}
 
 	drm->dev_private = xlnx_drm;
@@ -229,7 +231,7 @@ static int xlnx_bind(struct device *dev)
 	xlnx_drm->crtc = xlnx_crtc_helper_init(drm);
 	if (IS_ERR(xlnx_drm->crtc)) {
 		ret = PTR_ERR(xlnx_drm->crtc);
-		goto err_xlnx_drm;
+		goto err_drm;
 	}
 
 	ret = component_bind_all(&master->dev, drm);
@@ -270,8 +272,6 @@ err_fb:
 	component_unbind_all(drm->dev, drm);
 err_crtc:
 	xlnx_crtc_helper_fini(drm, xlnx_drm->crtc);
-err_xlnx_drm:
-	drm_mode_config_cleanup(drm);
 err_drm:
 	drm_dev_put(drm);
 	return ret;
@@ -291,7 +291,6 @@ static void xlnx_unbind(struct device *dev)
 	}
 	xlnx_crtc_helper_fini(drm, xlnx_drm->crtc);
 	drm_kms_helper_poll_fini(drm);
-	drm_mode_config_cleanup(drm);
 	drm_dev_put(drm);
 }
 
@@ -344,19 +343,155 @@ static bool xlnx_check_compatible_component(struct device_node *node)
 	return false;
 }
 
-static int xlnx_of_component_probe(struct device *master_dev,
-				   int (*compare_of)(struct device *, void *),
-				   const struct component_master_ops *m_ops)
+static int xlnx_compare_of(struct device *dev, void *data)
 {
-	struct device *dev = master_dev->parent;
-	struct device_node *ep, *port, *remote, *parent;
+	return dev->of_node == data;
+}
+
+/**
+ * struct xlnx_component_node - Cached pipeline component device tree node
+ * @node: List node linking into &xlnx_master_entry.components
+ * @np: The component device tree node (holds a reference)
+ */
+struct xlnx_component_node {
+	struct list_head node;
+	struct device_node *np;
+};
+
+/**
+ * struct xlnx_master_entry - Global list entry tracking a master device
+ * @list: List node linking into @xlnx_master_list
+ * @master: The logical master platform device
+ * @components: Cached list of pipeline component device tree nodes
+ *
+ * The cached component node list is the recipe used to (re)build the master's
+ * component match. It is seeded by the initial topology walk and extended by
+ * xlnx_drm_register_component().
+ */
+struct xlnx_master_entry {
+	struct list_head list;
+	struct platform_device *master;
+	struct list_head components;
+};
+
+/* Global list of registered master devices, ordered by creation */
+static LIST_HEAD(xlnx_master_list);
+static DEFINE_MUTEX(xlnx_master_lock);
+
+/* Find the tracking entry for @master, or NULL if not registered. */
+static struct xlnx_master_entry *xlnx_master_find(struct platform_device *master)
+{
+	struct xlnx_master_entry *entry, *found = NULL;
+
+	mutex_lock(&xlnx_master_lock);
+	list_for_each_entry(entry, &xlnx_master_list, list)
+		if (entry->master == master) {
+			found = entry;
+			break;
+		}
+	mutex_unlock(&xlnx_master_lock);
+
+	return found;
+}
+
+/* devm action dropping the device tree reference of a cached component node. */
+static void xlnx_of_node_put(void *data)
+{
+	of_node_put(data);
+}
+
+/* Cache @np as a pipeline component of @entry, ignoring duplicates. */
+static int xlnx_master_add_component(struct xlnx_master_entry *entry,
+				     struct device_node *np)
+{
+	struct xlnx_component_node *cn;
+	int ret = 0;
+
+	if (!np)
+		return 0;
+
+	mutex_lock(&xlnx_master_lock);
+	list_for_each_entry(cn, &entry->components, node)
+		if (cn->np == np)
+			goto out;
+
+	cn = devm_kzalloc(&entry->master->dev, sizeof(*cn), GFP_KERNEL);
+	if (!cn) {
+		ret = -ENOMEM;
+		goto out;
+	}
+	cn->np = of_node_get(np);
+	ret = devm_add_action_or_reset(&entry->master->dev, xlnx_of_node_put,
+				       np);
+	if (ret)
+		goto out;
+	list_add_tail(&cn->node, &entry->components);
+out:
+	mutex_unlock(&xlnx_master_lock);
+
+	return ret;
+}
+
+/*
+ * Remove the cached component node matching @np from @entry's list. The backing
+ * devm allocation and OF reference are reclaimed when the master is torn down.
+ */
+static void xlnx_master_drop_component(struct xlnx_master_entry *entry,
+				       struct device_node *np)
+{
+	struct xlnx_component_node *cn;
+
+	if (!np)
+		return;
+
+	mutex_lock(&xlnx_master_lock);
+	list_for_each_entry(cn, &entry->components, node)
+		if (cn->np == np) {
+			list_del(&cn->node);
+			break;
+		}
+	mutex_unlock(&xlnx_master_lock);
+}
+
+/* Build a fresh component match from @entry's cached component node list. */
+static struct component_match *
+xlnx_master_build_match(struct xlnx_master_entry *entry)
+{
+	struct device *master_dev = &entry->master->dev;
 	struct component_match *match = NULL;
-	int i;
+	struct xlnx_component_node *cn;
 
-	if (!dev->of_node)
-		return -EINVAL;
+	mutex_lock(&xlnx_master_lock);
+	list_for_each_entry(cn, &entry->components, node) {
+		component_match_add(master_dev, &match, xlnx_compare_of, cn->np);
+		if (IS_ERR(match))
+			break;
+	}
+	mutex_unlock(&xlnx_master_lock);
 
-	component_match_add(master_dev, &match, compare_of, dev->of_node);
+	return match;
+}
+
+/**
+ * xlnx_of_collect_components - Discover and cache pipeline component nodes
+ * @dev: The real device owning the OF pipeline topology
+ * @entry: The master tracking entry to populate
+ *
+ * Walk the device tree ports and OF graph of @dev and cache every compatible
+ * component node, alongside @dev itself, into @entry. Pre-existing entries are
+ * preserved so the function may be called to refresh the topology.
+ *
+ * Return: 0 on success, or a negative error code otherwise
+ */
+static int xlnx_of_collect_components(struct device *dev,
+				      struct xlnx_master_entry *entry)
+{
+	struct device_node *ep, *port, *remote, *parent;
+	int i, ret;
+
+	ret = xlnx_master_add_component(entry, dev->of_node);
+	if (ret)
+		return ret;
 
 	for (i = 0; ; i++) {
 		port = of_parse_phandle(dev->of_node, "ports", i);
@@ -374,8 +509,14 @@ static int xlnx_of_component_probe(struct device *master_dev,
 			continue;
 		}
 
-		if (xlnx_check_compatible_component(parent))
-			component_match_add(master_dev, &match, compare_of, parent);
+		if (xlnx_check_compatible_component(parent)) {
+			ret = xlnx_master_add_component(entry, parent);
+			if (ret) {
+				of_node_put(parent);
+				of_node_put(port);
+				return ret;
+			}
+		}
 
 		of_node_put(parent);
 		of_node_put(port);
@@ -407,8 +548,15 @@ static int xlnx_of_component_probe(struct device *master_dev,
 				continue;
 			}
 
-			if (xlnx_check_compatible_component(remote))
-				component_match_add(master_dev, &match, compare_of, remote);
+			if (xlnx_check_compatible_component(remote)) {
+				ret = xlnx_master_add_component(entry, remote);
+				if (ret) {
+					of_node_put(remote);
+					of_node_put(ep);
+					of_node_put(parent);
+					return ret;
+				}
+			}
 
 			of_node_put(remote);
 		}
@@ -424,18 +572,47 @@ static int xlnx_of_component_probe(struct device *master_dev,
 		of_node_put(port);
 	}
 
-	return component_master_add_with_match(master_dev, m_ops, match);
+	return 0;
 }
 
-static int xlnx_compare_of(struct device *dev, void *data)
+/**
+ * xlnx_of_component_probe - Assemble the aggregate master from OF topology
+ * @master_dev: The logical master device being probed
+ *
+ * Cache the pipeline component nodes derived from the master's parent OF node
+ * and register the aggregate master with a match built from that cache.
+ *
+ * Return: 0 on success, or a negative error code otherwise
+ */
+static int xlnx_of_component_probe(struct device *master_dev)
 {
-	return dev->of_node == data;
+	struct device *dev = master_dev->parent;
+	struct xlnx_master_entry *entry;
+	struct component_match *match;
+	int ret;
+
+	if (!dev->of_node)
+		return -EINVAL;
+
+	entry = xlnx_master_find(to_platform_device(master_dev));
+	if (!entry)
+		return -ENODEV;
+
+	ret = xlnx_of_collect_components(dev, entry);
+	if (ret)
+		return ret;
+
+	match = xlnx_master_build_match(entry);
+	if (IS_ERR(match))
+		return PTR_ERR(match);
+
+	return component_master_add_with_match(master_dev, &xlnx_master_ops,
+					       match);
 }
 
 static int xlnx_platform_probe(struct platform_device *pdev)
 {
-	return xlnx_of_component_probe(&pdev->dev, xlnx_compare_of,
-				       &xlnx_master_ops);
+	return xlnx_of_component_probe(&pdev->dev);
 }
 
 static void xlnx_platform_remove(struct platform_device *pdev)
@@ -493,6 +670,47 @@ static struct platform_driver xlnx_driver = {
 static u32 xlnx_master_ids = GENMASK(31, 0);
 
 /**
+ * xlnx_drm_get_next_master - Get the next registered master device
+ * @master: The current master device, or NULL to get the first one
+ *
+ * Traverse the global list of master devices and return the master that
+ * follows @master. If @master is NULL, return the first master in the list.
+ *
+ * Return: The next master platform device, or NULL if @master is the last
+ * entry or the list is empty.
+ */
+struct platform_device *xlnx_drm_get_next_master(struct platform_device *master)
+{
+	struct xlnx_master_entry *entry;
+	struct platform_device *next = NULL;
+
+	mutex_lock(&xlnx_master_lock);
+
+	if (!master) {
+		entry = list_first_entry_or_null(&xlnx_master_list,
+						 struct xlnx_master_entry, list);
+		if (entry)
+			next = entry->master;
+		goto out;
+	}
+
+	list_for_each_entry(entry, &xlnx_master_list, list) {
+		if (entry->master != master)
+			continue;
+
+		if (!list_is_last(&entry->list, &xlnx_master_list))
+			next = list_next_entry(entry, list)->master;
+		break;
+	}
+
+out:
+	mutex_unlock(&xlnx_master_lock);
+
+	return next;
+}
+EXPORT_SYMBOL_GPL(xlnx_drm_get_next_master);
+
+/**
  * xlnx_drm_pipeline_init - Initialize the drm pipeline for the device
  * @pdev: The platform device to initialize the drm pipeline device
  *
@@ -508,6 +726,7 @@ static u32 xlnx_master_ids = GENMASK(31, 0);
  */
 struct platform_device *xlnx_drm_pipeline_init(struct platform_device *pdev)
 {
+	struct xlnx_master_entry *entry;
 	struct platform_device *master;
 	int id, ret;
 
@@ -519,17 +738,38 @@ struct platform_device *xlnx_drm_pipeline_init(struct platform_device *pdev)
 	if (!master)
 		return ERR_PTR(-ENOMEM);
 
+	/*
+	 * Track the master before adding it: platform_device_add() probes the
+	 * master synchronously, and that probe looks the entry up to cache the
+	 * pipeline topology and build the component match.
+	 */
+	entry = devm_kzalloc(&pdev->dev, sizeof(*entry), GFP_KERNEL);
+	if (!entry) {
+		ret = -ENOMEM;
+		goto err_put;
+	}
+	entry->master = master;
+	INIT_LIST_HEAD(&entry->components);
+
+	mutex_lock(&xlnx_master_lock);
+	list_add_tail(&entry->list, &xlnx_master_list);
+	mutex_unlock(&xlnx_master_lock);
+
 	master->dev.parent = &pdev->dev;
 	ret = platform_device_add(master);
 	if (ret)
-		goto err_out;
+		goto err_del;
 
 	WARN_ON(master->id != id - 1);
 	xlnx_master_ids &= ~BIT(master->id);
 	return master;
 
-err_out:
-	platform_device_unregister(master);
+err_del:
+	mutex_lock(&xlnx_master_lock);
+	list_del(&entry->list);
+	mutex_unlock(&xlnx_master_lock);
+err_put:
+	platform_device_put(master);
 	return ERR_PTR(ret);
 }
 EXPORT_SYMBOL_GPL(xlnx_drm_pipeline_init);
@@ -542,10 +782,84 @@ EXPORT_SYMBOL_GPL(xlnx_drm_pipeline_init);
  */
 void xlnx_drm_pipeline_exit(struct platform_device *master)
 {
+	struct xlnx_master_entry *entry, *tmp;
+
+	mutex_lock(&xlnx_master_lock);
+	list_for_each_entry_safe(entry, tmp, &xlnx_master_list, list) {
+		if (entry->master != master)
+			continue;
+		list_del(&entry->list);
+		break;
+	}
+	mutex_unlock(&xlnx_master_lock);
+
 	xlnx_master_ids |= BIT(master->id);
 	platform_device_unregister(master);
 }
 EXPORT_SYMBOL_GPL(xlnx_drm_pipeline_exit);
+
+/**
+ * xlnx_drm_register_component - Add a component to an existing aggregate master
+ * @master: The logical master device to extend
+ * @component: The component platform device to register with @master
+ *
+ * Cache @component's device tree node against @master, then rebuild the
+ * aggregate from scratch: tear the current master down (if already registered)
+ * and re-register it with a fresh component match built from the cached node
+ * list. A fresh match is mandatory because component_master_del() leaves stale
+ * component pointers in the old match that find_components() would skip.
+ *
+ * The caller must have registered @component with component_add() beforehand,
+ * and must not hold any lock taken by the master bind/unbind paths.
+ *
+ * Return: 0 on success, or a negative error code otherwise
+ */
+int xlnx_drm_register_component(struct platform_device *master,
+				struct platform_device *component)
+{
+	struct xlnx_master_entry *entry;
+	struct component_match *match;
+	int ret;
+
+	entry = xlnx_master_find(master);
+	if (!entry)
+		return -ENODEV;
+
+	ret = xlnx_master_add_component(entry, component->dev.of_node);
+	if (ret)
+		return ret;
+
+	match = xlnx_master_build_match(entry);
+	if (IS_ERR(match))
+		return PTR_ERR(match);
+
+	component_master_del(&master->dev, &xlnx_master_ops);
+
+	ret = component_master_add_with_match(&master->dev, &xlnx_master_ops,
+					      match);
+	if (ret) {
+		/*
+		 * Re-registration failed after the previously working aggregate
+		 * was already torn down. Drop the component we just added and
+		 * restore the master with the prior match so the existing
+		 * CRTC(s) keep running.
+		 */
+		dev_err(&master->dev,
+			"failed to re-register aggregate master: %d\n", ret);
+		xlnx_master_drop_component(entry, component->dev.of_node);
+
+		match = xlnx_master_build_match(entry);
+		if (!IS_ERR(match) &&
+		    !component_master_add_with_match(&master->dev,
+						     &xlnx_master_ops, match))
+			return ret;
+
+		dev_err(&master->dev, "failed to restore aggregate master\n");
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(xlnx_drm_register_component);
 
 static int __init xlnx_drm_drv_init(void)
 {
