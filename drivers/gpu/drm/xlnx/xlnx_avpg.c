@@ -449,8 +449,10 @@ static const struct drm_plane_funcs xlnx_avpg_plane_funcs = {
 /**
  * xlnx_avpg_create_properties - Create AVPG DRM properties
  * @avpg: The AVPG
+ *
+ * Return: 0 on success or error code
  */
-static void xlnx_avpg_create_properties(struct xlnx_avpg *avpg)
+static int xlnx_avpg_create_properties(struct xlnx_avpg *avpg)
 {
 	struct drm_device *drm = avpg->drm;
 	struct drm_mode_object *obj = &avpg->plane.base;
@@ -459,9 +461,12 @@ static void xlnx_avpg_create_properties(struct xlnx_avpg *avpg)
 		drm_property_create_enum(drm, 0, "pattern",
 					 xlnx_avpg_pattern_list,
 					 ARRAY_SIZE(xlnx_avpg_pattern_list));
+	if (!avpg->pattern_prop)
+		return -ENOMEM;
 	drm_object_attach_property(obj, avpg->pattern_prop,
 				   XLNX_AVPG_PAT_COLOR_RAMP);
 	avpg->pattern = XLNX_AVPG_PAT_COLOR_RAMP;
+	return 0;
 }
 
 /* -----------------------------------------------------------------------------
@@ -767,7 +772,11 @@ static int xlnx_avpg_bind(struct device *dev, struct device *master,
 		goto err_encoder;
 	}
 
-	xlnx_avpg_create_properties(avpg);
+	ret = xlnx_avpg_create_properties(avpg);
+	if (ret) {
+		dev_err(dev, "failed to create properties: %d\n", ret);
+		goto err_encoder;
+	}
 
 	xlnx_crtc_register(drm, &avpg->xlnx_crtc);
 
