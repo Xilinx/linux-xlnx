@@ -13827,6 +13827,16 @@ F:	Documentation/devicetree/bindings/interrupt-controller/
 F:	drivers/irqchip/
 F:	include/linux/irqchip.h
 
+XILINX SMMU CSR IRQ DRIVER
+M:	Anirudha Sarangi <anirudha.sarangi@amd.com>
+M:	Tushar Nimkar <tushar.nimkar@amd.com>
+L:	git@amd.com
+L:	linux-arm-kernel@lists.infradead.org
+L:	linux-kernel@vger.kernel.org
+S:	Maintained
+F:	Documentation/devicetree/bindings/interrupt-controller/xlnx,smmu-irq-csr.yaml
+F:	drivers/irqchip/irq-xilinx-smmu-csr.c
+
 ISA
 M:	William Breathitt Gray <wbg@kernel.org>
 S:	Maintained
