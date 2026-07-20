@@ -6225,12 +6225,6 @@ static void axienet_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
 	struct axienet_local *lp = netdev_priv(ndev);
-	int i;
-
-	for_each_rx_dma_queue(lp, i) {
-		netif_napi_del(&lp->dq[i]->napi_rx);
-		netif_napi_del(&lp->dq[i]->napi_tx);
-	}
 
 	if (lp->eoe_features & RX_HW_UDP_GRO)
 		unregister_inetaddr_notifier(&lp->inetaddr_notifier);
