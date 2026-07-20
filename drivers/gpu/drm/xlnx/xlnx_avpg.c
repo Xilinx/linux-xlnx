@@ -15,10 +15,6 @@
 #include <drm/drm_bridge_connector.h>
 #include <drm/drm_fourcc.h>
 #include <drm/drm_device.h>
-#include <drm/drm_drv.h>
-#include <drm/drm_gem_atomic_helper.h>
-#include <drm/drm_gem_shmem_helper.h>
-#include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_modes.h>
 #include <drm/drm_modeset_helper_vtables.h>
 #include <drm/drm_probe_helper.h>
@@ -39,11 +35,11 @@
 #include <video/videomode.h>
 
 #include "xlnx_bridge.h"
+#include "xlnx_crtc.h"
+#include "xlnx_drv.h"
 
-#define DRIVER_NAME	"xlnx-avpg"
-#define DRIVER_DESC	"Xilinx AV Pattern Generator DRM KMS Driver"
-#define DRIVER_MAJOR	1
-#define DRIVER_MINOR	0
+#define XLNX_AVPG_MAX_WIDTH		8192
+#define XLNX_AVPG_MAX_HEIGHT		8192
 
 #define XLNX_AVPG_ENABLE		0x0000
 #define XLNX_AVPG_VRES			0x001c
@@ -92,34 +88,17 @@ static const struct drm_prop_enum_list xlnx_avpg_pattern_list[] = {
 	{ XLNX_AVPG_PAT_SOLID_YELLOW, "yellow" },
 };
 
-struct xlnx_avpg;
-
 /**
- * struct xlnx_avpg_drm - AVPG CRTC DRM/KMS data
- * @avpg: Back pointer to parent AVPG
- * @dev: DRM device
- * @crtc: DRM CRTC
+ * struct xlnx_avpg - AV Pattern Generator data
+ * @pdev: Platform device
+ * @master: Logical master device from xlnx drm
+ * @drm: DRM device
+ * @xlnx_crtc: Xilinx DRM CRTC object
  * @plane: DRM primary plane
  * @encoder: DRM encoder
  * @connector: DRM connector
  * @pattern_prop: DRM property representing TPG video pattern
  * @event: Pending DRM VBLANK event
- */
-struct xlnx_avpg_drm {
-	struct xlnx_avpg		*avpg;
-	struct drm_device		dev;
-	struct drm_crtc			crtc;
-	struct drm_plane		plane;
-	struct drm_encoder		encoder;
-	struct drm_connector		*connector;
-	struct drm_property		*pattern_prop;
-	struct drm_pending_vblank_event	*event;
-};
-
-/**
- * struct xlnx_avpg - AV Pattern Generator data
- * @pdev: Platform device
- * @drm: AVPG DRM data
  * @vtc: Video timing controller interface
  * @disp_bridge: DRM display bridge
  * @regs: Mapped TPG IP register space
@@ -137,7 +116,14 @@ struct xlnx_avpg_drm {
  */
 struct xlnx_avpg {
 	struct platform_device		*pdev;
-	struct xlnx_avpg_drm		*drm;
+	struct platform_device		*master;
+	struct drm_device		*drm;
+	struct xlnx_crtc		xlnx_crtc;
+	struct drm_plane		plane;
+	struct drm_encoder		encoder;
+	struct drm_connector		*connector;
+	struct drm_property		*pattern_prop;
+	struct drm_pending_vblank_event	*event;
 	struct xlnx_bridge		*vtc;
 	struct drm_bridge		*disp_bridge;
 	void __iomem			*regs;
@@ -162,17 +148,17 @@ static inline struct xlnx_avpg *timer_to_avpg(struct hrtimer *timer)
 
 static inline struct xlnx_avpg *crtc_to_avpg(struct drm_crtc *crtc)
 {
-	return container_of(crtc, struct xlnx_avpg_drm, crtc)->avpg;
+	return container_of(to_xlnx_crtc(crtc), struct xlnx_avpg, xlnx_crtc);
 }
 
 static inline struct xlnx_avpg *plane_to_avpg(struct drm_plane *plane)
 {
-	return container_of(plane, struct xlnx_avpg_drm, plane)->avpg;
+	return container_of(plane, struct xlnx_avpg, plane);
 }
 
 static inline struct xlnx_avpg *encoder_to_avpg(struct drm_encoder *encoder)
 {
-	return container_of(encoder, struct xlnx_avpg_drm, encoder)->avpg;
+	return container_of(encoder, struct xlnx_avpg, encoder);
 }
 
 /* -----------------------------------------------------------------------------
@@ -183,7 +169,7 @@ static enum hrtimer_restart xlnx_avpg_timer_cb(struct hrtimer *timer)
 {
 	struct xlnx_avpg *avpg = timer_to_avpg(timer);
 
-	drm_crtc_handle_vblank(&avpg->drm->crtc);
+	drm_crtc_handle_vblank(&avpg->xlnx_crtc.crtc);
 	hrtimer_forward_now(&avpg->timer, avpg->period);
 
 	return HRTIMER_RESTART;
@@ -387,7 +373,7 @@ static int xlnx_avpg_plane_atomic_check(struct drm_plane *plane,
 	struct xlnx_avpg *avpg = plane_to_avpg(plane);
 	struct drm_crtc_state *crtc_state;
 
-	crtc_state = drm_atomic_get_new_crtc_state(state, &avpg->drm->crtc);
+	crtc_state = drm_atomic_get_new_crtc_state(state, &avpg->xlnx_crtc.crtc);
 
 	/* Force CRTC shutdown when the plane is detached */
 	if (crtc_state && crtc_state->enable && !plane_state->crtc)
@@ -406,7 +392,6 @@ static void xlnx_avpg_plane_atomic_update(struct drm_plane *plane,
 }
 
 static const struct drm_plane_helper_funcs xlnx_avpg_plane_helper_funcs = {
-	.prepare_fb	= drm_gem_plane_helper_prepare_fb,
 	.atomic_check	= xlnx_avpg_plane_atomic_check,
 	.atomic_update	= xlnx_avpg_plane_atomic_update,
 };
@@ -424,7 +409,7 @@ static int xlnx_avpg_plane_set_property(struct drm_plane *plane,
 {
 	struct xlnx_avpg *avpg = plane_to_avpg(plane);
 
-	if (property == avpg->drm->pattern_prop) {
+	if (property == avpg->pattern_prop) {
 		avpg->pattern = val;
 		xlnx_avpg_set_pattern(avpg);
 	} else {
@@ -441,7 +426,7 @@ static int xlnx_avpg_plane_get_property(struct drm_plane *plane,
 {
 	struct xlnx_avpg *avpg = plane_to_avpg(plane);
 
-	if (property == avpg->drm->pattern_prop)
+	if (property == avpg->pattern_prop)
 		*val = avpg->pattern;
 	else
 		return -EINVAL;
@@ -467,14 +452,14 @@ static const struct drm_plane_funcs xlnx_avpg_plane_funcs = {
  */
 static void xlnx_avpg_create_properties(struct xlnx_avpg *avpg)
 {
-	struct drm_device *drm = &avpg->drm->dev;
-	struct drm_mode_object *obj = &avpg->drm->plane.base;
+	struct drm_device *drm = avpg->drm;
+	struct drm_mode_object *obj = &avpg->plane.base;
 
-	avpg->drm->pattern_prop =
+	avpg->pattern_prop =
 		drm_property_create_enum(drm, 0, "pattern",
 					 xlnx_avpg_pattern_list,
 					 ARRAY_SIZE(xlnx_avpg_pattern_list));
-	drm_object_attach_property(obj, avpg->drm->pattern_prop,
+	drm_object_attach_property(obj, avpg->pattern_prop,
 				   XLNX_AVPG_PAT_COLOR_RAMP);
 	avpg->pattern = XLNX_AVPG_PAT_COLOR_RAMP;
 }
@@ -664,6 +649,26 @@ static void xlnx_avpg_crtc_disable_vblank(struct drm_crtc *crtc)
 	hrtimer_cancel(&avpg->timer);
 }
 
+static unsigned int xlnx_avpg_crtc_get_align(struct xlnx_crtc *crtc)
+{
+	return 1;
+}
+
+static int xlnx_avpg_crtc_get_max_width(struct xlnx_crtc *crtc)
+{
+	return XLNX_AVPG_MAX_WIDTH;
+}
+
+static int xlnx_avpg_crtc_get_max_height(struct xlnx_crtc *crtc)
+{
+	return XLNX_AVPG_MAX_HEIGHT;
+}
+
+static uint32_t xlnx_avpg_crtc_get_format(struct xlnx_crtc *crtc)
+{
+	return DRM_FORMAT_XRGB8888;
+}
+
 static const struct drm_crtc_funcs xlnx_avpg_crtc_funcs = {
 	.reset			= drm_atomic_helper_crtc_reset,
 	.destroy		= drm_crtc_cleanup,
@@ -675,19 +680,20 @@ static const struct drm_crtc_funcs xlnx_avpg_crtc_funcs = {
 	.disable_vblank		= xlnx_avpg_crtc_disable_vblank,
 };
 
-/* -----------------------------------------------------------------------------
- * Setup & Init
- */
-
 /**
- * xlnx_avpg_pipeline_init - Initialize DRM pipeline
- * @drm: DRM device
+ * xlnx_avpg_bind - Bind AVPG component to the aggregate DRM device
+ * @dev: AVPG device
+ * @master: Aggregate master device
+ * @data: DRM device shared by the pipeline
  *
- * Create and link CRTC, plane, and encoder. Attach external DRM bridge.
+ * Create and link CRTC, plane, and encoder against the shared DRM device.
+ * Attach the external DRM display bridge and register the CRTC with the Xilinx
+ * CRTC helper.
  *
  * Return: 0 on success, or a negative error code otherwise
  */
-static int xlnx_avpg_pipeline_init(struct drm_device *drm)
+static int xlnx_avpg_bind(struct device *dev, struct device *master,
+			  void *data)
 {
 	static const u32 xlnx_avpg_formats[] = {
 		DRM_FORMAT_XRGB8888,
@@ -696,16 +702,15 @@ static int xlnx_avpg_pipeline_init(struct drm_device *drm)
 		DRM_FORMAT_MOD_LINEAR,
 		DRM_FORMAT_MOD_INVALID,
 	};
-	struct xlnx_avpg *avpg = dev_get_drvdata(drm->dev);
+	struct xlnx_avpg *avpg = dev_get_drvdata(dev);
+	struct drm_device *drm = data;
 	struct drm_connector *connector;
-	struct drm_encoder *encoder = &avpg->drm->encoder;
-	struct drm_plane *plane = &avpg->drm->plane;
-	struct drm_crtc *crtc = &avpg->drm->crtc;
+	struct drm_encoder *encoder = &avpg->encoder;
+	struct drm_plane *plane = &avpg->plane;
+	struct drm_crtc *crtc = &avpg->xlnx_crtc.crtc;
 	int ret;
 
-	ret = xlnx_avpg_map_resources(avpg);
-	if (ret < 0)
-		return ret;
+	avpg->drm = drm;
 
 	drm_plane_helper_add(plane, &xlnx_avpg_plane_helper_funcs);
 	ret = drm_universal_plane_init(drm, plane, 0,
@@ -715,7 +720,7 @@ static int xlnx_avpg_pipeline_init(struct drm_device *drm)
 				       xlnx_avpg_modifiers,
 				       DRM_PLANE_TYPE_PRIMARY, NULL);
 	if (ret) {
-		dev_err(drm->dev, "failed to init plane: %d\n", ret);
+		dev_err(dev, "failed to init plane: %d\n", ret);
 		return ret;
 	}
 
@@ -723,132 +728,81 @@ static int xlnx_avpg_pipeline_init(struct drm_device *drm)
 	ret = drm_crtc_init_with_planes(drm, crtc, plane, NULL,
 					&xlnx_avpg_crtc_funcs, NULL);
 	if (ret) {
-		dev_err(drm->dev, "failed to init crtc: %d\n", ret);
-		return ret;
+		dev_err(dev, "failed to init crtc: %d\n", ret);
+		goto err_plane;
 	}
 	drm_crtc_vblank_off(crtc);
+
+	avpg->xlnx_crtc.get_align = xlnx_avpg_crtc_get_align;
+	avpg->xlnx_crtc.get_format = xlnx_avpg_crtc_get_format;
+	avpg->xlnx_crtc.get_max_width = xlnx_avpg_crtc_get_max_width;
+	avpg->xlnx_crtc.get_max_height = xlnx_avpg_crtc_get_max_height;
 
 	encoder->possible_crtcs = drm_crtc_mask(crtc);
 	ret = drm_simple_encoder_init(drm, encoder, DRM_MODE_ENCODER_NONE);
 	if (ret) {
-		dev_err(drm->dev, "failed to init encoder: %d\n", ret);
-		return ret;
+		dev_err(dev, "failed to init encoder: %d\n", ret);
+		goto err_crtc;
 	}
 
 	ret = drm_bridge_attach(encoder, avpg->disp_bridge, NULL,
 				DRM_BRIDGE_ATTACH_NO_CONNECTOR);
 	if (ret < 0) {
-		dev_err(drm->dev, "failed to attach bridge to encoder: %d\n",
+		dev_err(dev, "failed to attach bridge to encoder: %d\n",
 			ret);
-		return ret;
+		goto err_encoder;
 	}
 
 	connector = drm_bridge_connector_init(drm, encoder);
 	if (IS_ERR(connector)) {
 		ret = PTR_ERR(connector);
-		dev_err(drm->dev, "failed to init connector: %d\n", ret);
-		return ret;
+		dev_err(dev, "failed to init connector: %d\n", ret);
+		goto err_encoder;
 	}
+	avpg->connector = connector;
 
 	ret = drm_connector_attach_encoder(connector, encoder);
 	if (ret < 0) {
-		dev_err(drm->dev, "failed to attach encoder: %d\n", ret);
-		return ret;
+		dev_err(dev, "failed to attach encoder: %d\n", ret);
+		goto err_encoder;
 	}
 
 	xlnx_avpg_create_properties(avpg);
 
+	xlnx_crtc_register(drm, &avpg->xlnx_crtc);
+
 	return 0;
-}
 
-static const struct drm_mode_config_funcs xlnx_avpg_mode_config_funcs = {
-	.fb_create	= drm_gem_fb_create,
-	.atomic_check	= drm_atomic_helper_check,
-	.atomic_commit	= drm_atomic_helper_commit,
-};
-
-DEFINE_DRM_GEM_FOPS(xlnx_avpg_gem_fops);
-static struct drm_driver xlnx_avpg_drm_driver = {
-	.driver_features	= DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC,
-	.fops			= &xlnx_avpg_gem_fops,
-	.name			= DRIVER_NAME,
-	.desc			= DRIVER_DESC,
-	.major			= DRIVER_MAJOR,
-	.minor			= DRIVER_MINOR,
-	DRM_GEM_SHMEM_DRIVER_OPS,
-};
-
-/**
- * xlnx_avpg_drm_init - Initialize DRM device
- * @dev: The device
- *
- * Allocate and initialize DRM device. Configure mode config and initialize
- * AVPG DRM pipeline.
- *
- * Return: 0 on success, or a negative error code otherwise
- */
-static int xlnx_avpg_drm_init(struct device *dev)
-{
-	struct xlnx_avpg *avpg = dev_get_drvdata(dev);
-	struct drm_device *drm;
-	int ret;
-
-	avpg->drm = devm_drm_dev_alloc(dev, &xlnx_avpg_drm_driver,
-				       struct xlnx_avpg_drm, dev);
-	if (IS_ERR(avpg->drm))
-		return PTR_ERR(avpg->drm);
-
-	avpg->drm->avpg = avpg;
-	drm = &avpg->drm->dev;
-
-	ret = drm_mode_config_init(drm);
-	if (ret < 0)
-		return ret;
-
-	avpg->drm->dev.mode_config.funcs = &xlnx_avpg_mode_config_funcs;
-	avpg->drm->dev.mode_config.min_width = 0;
-	avpg->drm->dev.mode_config.min_height = 0;
-	avpg->drm->dev.mode_config.max_width = 8192;
-	avpg->drm->dev.mode_config.max_height = 8192;
-
-	ret = drm_vblank_init(drm, 1);
-	if (ret < 0)
-		return ret;
-
-	drm_kms_helper_poll_init(drm);
-
-	ret = xlnx_avpg_pipeline_init(drm);
-	if (ret < 0)
-		goto err_poll_fini;
-
-	drm_mode_config_reset(drm);
-
-	ret = drm_dev_register(drm, 0);
-	if (ret < 0)
-		goto err_poll_fini;
-
-	return ret;
-
-err_poll_fini:
-	drm_kms_helper_poll_fini(drm);
-
+err_encoder:
+	drm_encoder_cleanup(encoder);
+err_crtc:
+	drm_crtc_cleanup(crtc);
+err_plane:
+	drm_plane_cleanup(plane);
 	return ret;
 }
 
 /**
- * xlnx_avpg_drm_fini - Finalize DRM device
- * @dev: The device
+ * xlnx_avpg_unbind - Unbind AVPG component from the aggregate DRM device
+ * @dev: AVPG device
+ * @master: Aggregate master device
+ * @data: DRM device shared by the pipeline
  */
-static void xlnx_avpg_drm_fini(struct device *dev)
+static void xlnx_avpg_unbind(struct device *dev, struct device *master,
+			     void *data)
 {
 	struct xlnx_avpg *avpg = dev_get_drvdata(dev);
-	struct xlnx_avpg_drm *drm = avpg->drm;
 
-	drm_dev_unregister(&drm->dev);
-	drm_atomic_helper_shutdown(&drm->dev);
-	drm_encoder_cleanup(&drm->encoder);
-	drm_kms_helper_poll_fini(&drm->dev);
+	xlnx_crtc_unregister(avpg->drm, &avpg->xlnx_crtc);
+	drm_encoder_cleanup(&avpg->encoder);
+	drm_crtc_cleanup(&avpg->xlnx_crtc.crtc);
+	drm_plane_cleanup(&avpg->plane);
 }
+
+static const struct component_ops xlnx_avpg_component_ops = {
+	.bind	= xlnx_avpg_bind,
+	.unbind	= xlnx_avpg_unbind,
+};
 
 /**
  * xlnx_avpg_find_bridge - Find the downstream display bridge
@@ -902,6 +856,13 @@ static int xlnx_avpg_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, avpg);
 	node = pdev->dev.of_node;
 
+	ret = xlnx_avpg_map_resources(avpg);
+	if (ret < 0)
+		return ret;
+
+	hrtimer_setup(&avpg->timer, xlnx_avpg_timer_cb, CLOCK_REALTIME,
+		      HRTIMER_MODE_REL);
+
 	avpg->axi_clk = devm_clk_get_enabled(&pdev->dev, "av_axi_aclk");
 	if (IS_ERR(avpg->axi_clk))
 		return dev_err_probe(&pdev->dev, PTR_ERR(avpg->axi_clk),
@@ -920,28 +881,24 @@ static int xlnx_avpg_probe(struct platform_device *pdev)
 	avpg->gpio_en_avpg = devm_gpiod_get_index_optional(&pdev->dev,
 							   "clk-enable", 0,
 							   GPIOD_ASIS);
-	if (IS_ERR(avpg->gpio_en_avpg)) {
+	if (IS_ERR(avpg->gpio_en_avpg))
 		return dev_err_probe(&pdev->dev, PTR_ERR(avpg->gpio_en_avpg),
 				     "failed to get avpg en gpio\n");
-	} else if (avpg->gpio_en_avpg) {
-		ret = gpiod_direction_output(avpg->gpio_en_avpg, 0);
-		if (ret < 0)
-			return dev_err_probe(&pdev->dev, ret,
-					     "failed to set avpg en gpio direction\n");
-	}
+	ret = gpiod_direction_output(avpg->gpio_en_avpg, 0);
+	if (ret < 0)
+		return dev_err_probe(&pdev->dev, ret,
+				     "failed to set avpg en gpio direction\n");
 
 	avpg->gpio_en_vtc = devm_gpiod_get_index_optional(&pdev->dev,
 							  "clk-enable", 1,
 							  GPIOD_ASIS);
-	if (IS_ERR(avpg->gpio_en_vtc)) {
+	if (IS_ERR(avpg->gpio_en_vtc))
 		return dev_err_probe(&pdev->dev, PTR_ERR(avpg->gpio_en_vtc),
 				     "failed to get vtc en gpio\n");
-	} else if (avpg->gpio_en_vtc) {
-		ret = gpiod_direction_output(avpg->gpio_en_vtc, 0);
-		if (ret < 0)
-			return dev_err_probe(&pdev->dev, ret,
-					     "failed to set vtc en gpio direction\n");
-	}
+	ret = gpiod_direction_output(avpg->gpio_en_vtc, 0);
+	if (ret < 0)
+		return dev_err_probe(&pdev->dev, ret,
+				     "failed to set vtc en gpio direction\n");
 
 	ret = of_property_read_u32(node, "xlnx,ppc", &avpg->pixels_per_clock);
 	if (ret < 0)
@@ -1002,24 +959,56 @@ static int xlnx_avpg_probe(struct platform_device *pdev)
 		}
 	}
 
-	ret = xlnx_avpg_drm_init(&pdev->dev);
-	if (ret < 0) {
-		if (avpg->vtc)
-			of_xlnx_bridge_put(avpg->vtc);
-		return ret;
+	ret = component_add(&pdev->dev, &xlnx_avpg_component_ops);
+	if (ret)
+		goto err_bridge;
+
+	/* Register master device for only one CRTC instance that owns VTC */
+	if (avpg->vtc) {
+		avpg->master = xlnx_drm_pipeline_init(pdev);
+		if (IS_ERR(avpg->master)) {
+			ret = PTR_ERR(avpg->master);
+			dev_err(&pdev->dev,
+				"failed to initialize the drm pipeline\n");
+			goto err_component;
+		}
+	} else {
+		/*
+		 * Non-VTC AVPG instances attach to the first registered
+		 * master pipeline. This assumes a single PL DRM master is
+		 * present in the system; there is currently no way in the
+		 * xlnx-drm design to associate a component with a specific
+		 * master when multiple pipelines exist.
+		 */
+		struct platform_device *master = xlnx_drm_get_next_master(NULL);
+
+		if (!master) {
+			ret = -EPROBE_DEFER;
+			goto err_component;
+		}
+
+		ret = xlnx_drm_register_component(master, pdev);
+		if (ret)
+			goto err_component;
 	}
 
-	hrtimer_setup(&avpg->timer, xlnx_avpg_timer_cb, CLOCK_REALTIME,
-		      HRTIMER_MODE_REL);
-
 	return 0;
+
+err_component:
+	component_del(&pdev->dev, &xlnx_avpg_component_ops);
+err_bridge:
+	if (avpg->vtc)
+		of_xlnx_bridge_put(avpg->vtc);
+	return ret;
 }
 
 static void xlnx_avpg_remove(struct platform_device *pdev)
 {
 	struct xlnx_avpg *avpg = platform_get_drvdata(pdev);
 
-	xlnx_avpg_drm_fini(&pdev->dev);
+	if (avpg->master)
+		xlnx_drm_pipeline_exit(avpg->master);
+	component_del(&pdev->dev, &xlnx_avpg_component_ops);
 	if (avpg->vtc)
 		of_xlnx_bridge_put(avpg->vtc);
 }
