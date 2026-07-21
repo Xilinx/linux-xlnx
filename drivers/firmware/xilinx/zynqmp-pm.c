@@ -1131,38 +1131,36 @@ int zynqmp_pm_start_rpu(const u32 node, const u64 bootaddr)
 	 * is non-secured, then the Cortex-R5F processor cannot access the
 	 * HIVEC exception vectors in the OCM.
 	 */
-	if (bootaddr != 0x0) {
-		if (upper_32_bits(bootaddr)) {
-			pr_err("invalid bootaddr = 0x%llx\n", bootaddr);
-			return -EINVAL;
-		}
+	if (upper_32_bits(bootaddr)) {
+		pr_err("invalid bootaddr = 0x%llx\n", bootaddr);
+		return -EINVAL;
+	}
 
-		/*
-		 * New platforms can boot from DDR and require the DDR address
-		 * to be configured explicitly. If the correct version of the
-		 * IOCTL_RPU_BOOT_ADDR_CONFIG ioctl is not supported, do not
-		 * treat it as a failure. If a DDR address is passed on other
-		 * platforms, the PM request wake EEMI call will still fail and
-		 * the RPU won't boot.
-		 */
-		ret = zynqmp_pm_is_function_supported(PM_IOCTL,
-						      IOCTL_RPU_BOOT_ADDR_CONFIG);
-		if (!ret) {
-			/* config ddr boot address */
-			ret = zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 3,
-						  prepare_node_id(node),
-						  IOCTL_RPU_BOOT_ADDR_CONFIG,
-						  bootaddr);
-			if (ret < 0) {
-				pr_err("failed to set RPU Boot address 0x%llx\n",
-				       bootaddr);
-				return ret;
-			}
-		} else if (ret != -EOPNOTSUPP && ret != -ENODATA) {
-			pr_err("ioctl rpu boot addr config ver check failed %d\n",
-			       ret);
+	/*
+	 * New platforms can boot from DDR and require the DDR address
+	 * to be configured explicitly. If the correct version of the
+	 * IOCTL_RPU_BOOT_ADDR_CONFIG ioctl is not supported, do not
+	 * treat it as a failure. If a DDR address is passed on other
+	 * platforms, the PM request wake EEMI call will still fail and
+	 * the RPU won't boot.
+	 */
+	ret = zynqmp_pm_is_function_supported(PM_IOCTL,
+					      IOCTL_RPU_BOOT_ADDR_CONFIG);
+	if (!ret) {
+		/* config ddr boot address */
+		ret = zynqmp_pm_invoke_fn(PM_IOCTL, NULL, 3,
+					  prepare_node_id(node),
+					  IOCTL_RPU_BOOT_ADDR_CONFIG,
+					  bootaddr);
+		if (ret < 0) {
+			pr_err("failed to set RPU Boot address 0x%llx\n",
+			       bootaddr);
 			return ret;
 		}
+	} else if (ret != -EOPNOTSUPP && ret != -ENODATA) {
+		pr_err("ioctl rpu boot addr config ver check failed %d\n",
+		       ret);
+		return ret;
 	}
 
 	/* Request node before starting RPU core if new version of API is supported */
