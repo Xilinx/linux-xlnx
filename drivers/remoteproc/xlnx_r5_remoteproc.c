@@ -5,6 +5,8 @@
  */
 
 #include <linux/dma-mapping.h>
+#include <linux/elf.h>
+#include <linux/firmware.h>
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/kernel.h>
 #include <linux/mailbox_client.h>
@@ -17,6 +19,7 @@
 #include <linux/remoteproc.h>
 
 #include "remoteproc_internal.h"
+#include "remoteproc_elf_helpers.h"
 
 #define		PD_R5_0_ATCM	15
 #define		PD_R5_0_BTCM	16
@@ -32,6 +35,8 @@
 
 #define RSC_TBL_XLNX_MAGIC	((uint32_t)'x' << 24 | (uint32_t)'a' << 16 | \
 				 (uint32_t)'m' << 8 | (uint32_t)'p')
+
+#define MAX_LOAD_FW_ATTEMPT 10
 
 /*
  * settings for RPU cluster mode which
@@ -390,6 +395,92 @@ static void zynqmp_r5_rproc_kick(struct rproc *rproc, int vqid)
 	ret = mbox_send_message(ipi->tx_chan, mb_msg);
 	if (ret < 0)
 		dev_warn(dev, "failed to send message\n");
+}
+
+static int zynqmp_r5_verify_load_segments(struct rproc *rproc, const struct firmware *fw)
+{
+	struct device *dev = &rproc->dev;
+	const void *ehdr, *phdr;
+	int i, ret = 0;
+	u16 phnum;
+	const u8 *elf_data = fw->data;
+	u8 class = fw_elf_get_class(fw);
+	u32 elf_phdr_get_size = elf_size_of_phdr(class);
+
+	ehdr = elf_data;
+	phnum = elf_hdr_get_e_phnum(class, ehdr);
+	phdr = elf_data + elf_hdr_get_e_phoff(class, ehdr);
+
+	/* go through the available ELF segments and verify */
+	for (i = 0; i < phnum; i++, phdr += elf_phdr_get_size) {
+		u64 da = elf_phdr_get_p_paddr(class, phdr);
+		u64 memsz = elf_phdr_get_p_memsz(class, phdr);
+		u64 filesz = elf_phdr_get_p_filesz(class, phdr);
+		u64 offset = elf_phdr_get_p_offset(class, phdr);
+		u32 type = elf_phdr_get_p_type(class, phdr);
+		void *ptr;
+
+		if (type != PT_LOAD || !memsz)
+			continue;
+
+		dev_dbg(dev,
+			"verify phdr: type %d da 0x%llx memsz 0x%llx filesz 0x%llx\n",
+			type, da, memsz, filesz);
+
+		/* grab the kernel address for this device address */
+		ptr = rproc_da_to_va(rproc, da, memsz, NULL);
+
+		/* compare the segment where the remote processor loaded it */
+		if (filesz) {
+			ret = memcmp(ptr, elf_data + offset, filesz);
+			if (ret) {
+				dev_err(dev, "failed to verify elf segment at da 0x%llx\n",
+					da);
+				return ret;
+			}
+		}
+	}
+
+	return ret;
+}
+
+/**
+ * zynqmp_r5_rproc_elf_load_segments() - load firmware segments to memory
+ *
+ * @rproc: remote processor which will be booted using these fw segments
+ * @fw: the ELF firmware image
+ *
+ * This function uses default rproc_elf_load_segments() to load the firmware
+ * in the remote processor's memory. Additionally it also reads back each
+ * segment and verifies the loaded firmware. If the firmware verification
+ * fails then it retries for 10 times. After that we consider loading of the
+ * firmware failed. 10 is an arbitrary number. We can reduce number of
+ * attemtps in future if needed.
+ *
+ * Return: 0 on success and an appropriate error code otherwise
+ */
+static int zynqmp_r5_rproc_elf_load_segments(struct rproc *rproc,
+					     const struct firmware *fw)
+{
+	int ret, i;
+
+	for (i = 0; i < MAX_LOAD_FW_ATTEMPT; i++) {
+		ret = rproc_elf_load_segments(rproc, fw);
+		if (ret) {
+			dev_err(&rproc->dev, "failed to load segments, err %d\n", ret);
+			return ret;
+		}
+
+		/* verify loaded fw data */
+		ret = zynqmp_r5_verify_load_segments(rproc, fw);
+		if (!ret)
+			return 0;
+
+		/* verification failed */
+		dev_err(&rproc->dev, "verify segment try %d\n", i + 1);
+	}
+
+	return -EIO;
 }
 
 /*
@@ -896,7 +987,7 @@ static const struct rproc_ops zynqmp_r5_rproc_ops = {
 	.unprepare	= zynqmp_r5_rproc_unprepare,
 	.start		= zynqmp_r5_rproc_start,
 	.stop		= zynqmp_r5_rproc_stop,
-	.load		= rproc_elf_load_segments,
+	.load		= zynqmp_r5_rproc_elf_load_segments,
 	.parse_fw	= zynqmp_r5_parse_fw,
 	.find_loaded_rsc_table = rproc_elf_find_loaded_rsc_table,
 	.sanity_check	= rproc_elf_sanity_check,
