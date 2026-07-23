@@ -5,7 +5,6 @@
  * Copyright (C) 2022 - 2025 Advanced Micro Devices, Inc.
  */
 
-#include <asm/cacheflush.h>
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
 #include <linux/firmware.h>
@@ -61,10 +60,6 @@ static ssize_t secure_load_store(struct device *dev,
 
 	if (keyptr)
 		memcpy(kbuf + fw->size, key, ZYNQMP_AES_KEY_SIZE);
-
-	/* To ensure cache coherency */
-	caches_clean_inval_user_pou((unsigned long)kbuf,
-				    (unsigned long)kbuf + dma_size);
 
 	if (keyptr)
 		ret = zynqmp_pm_secure_load(dma_addr, dma_addr + fw->size,
