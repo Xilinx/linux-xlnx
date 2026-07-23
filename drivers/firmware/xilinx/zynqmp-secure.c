@@ -85,7 +85,7 @@ static ssize_t secure_load_store(struct device *dev,
 		dev_err(dev, "Failed to load secure image\n");
 		return ret;
 	}
-	dev_info(dev, "Verified image at 0x%llx\n", dst);
+	dev_info(dev, "Secure image loaded successfully\n");
 
 	return count;
 }
