@@ -10,12 +10,14 @@
 #include <linux/firmware.h>
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/init.h>
+#include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/of_device.h>
 #include <linux/slab.h>
 
 #define ZYNQMP_AES_KEY_SIZE	64
+#define ZYNQMP_SECURE_DATA_FILE_NAME	"xlnx_secure_data.bin"
 
 struct secure_driver_data {
 	u8 key[ZYNQMP_AES_KEY_SIZE];
@@ -28,27 +30,27 @@ static ssize_t secure_load_store(struct device *dev,
 {
 	struct secure_driver_data *drv_data = dev_get_drvdata(dev);
 	const struct firmware *fw;
-	char image_name[NAME_MAX];
+	unsigned int trigger;
 	dma_addr_t dma_addr;
 	size_t dma_size;
-	u64 dst, ret;
 	char *kbuf;
-	int len;
+	int ret;
+	u64 dst;
 
 	if (!drv_data)
 		return -ENODEV;
 
-	len = strscpy(image_name, buf, NAME_MAX - 1);
-	if (len > 0) {
-		if (image_name[len - 1] == '\n')
-			image_name[len - 1] = 0;
-	} else {
-		return -E2BIG;
-	}
+	ret = kstrtouint(buf, 10, &trigger);
+	if (ret)
+		return -EINVAL;
 
-	ret = request_firmware(&fw, image_name, dev);
+	if (trigger != 1)
+		return -EINVAL;
+
+	ret = request_firmware(&fw, ZYNQMP_SECURE_DATA_FILE_NAME, dev);
 	if (ret) {
-		dev_err(dev, "Error requesting firmware %s\n", image_name);
+		dev_err(dev, "Error requesting firmware %s\n",
+			ZYNQMP_SECURE_DATA_FILE_NAME);
 		return ret;
 	}
 	dma_size = fw->size;
