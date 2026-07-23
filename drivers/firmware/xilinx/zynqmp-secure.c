@@ -87,8 +87,13 @@ static ssize_t key_store(struct device *dev,
 			 struct device_attribute *attr,
 			 const char *buf, size_t count)
 {
+	if (!count || count > ZYNQMP_AES_KEY_SIZE)
+		return -EINVAL;
+
 	memcpy(key, buf, count);
-	keyptr = &key[0];
+	if (count < ZYNQMP_AES_KEY_SIZE)
+		memzero_explicit(key + count, ZYNQMP_AES_KEY_SIZE - count);
+	has_key = true;
 	return count;
 }
 
