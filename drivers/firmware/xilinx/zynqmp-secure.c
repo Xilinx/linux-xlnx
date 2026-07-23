@@ -17,7 +17,7 @@
 #define ZYNQMP_AES_KEY_SIZE	64
 
 static u8 key[ZYNQMP_AES_KEY_SIZE] = {0};
-static u8 *keyptr;
+static bool has_key;
 
 static ssize_t secure_load_store(struct device *dev,
 				 struct device_attribute *attr,
@@ -46,7 +46,7 @@ static ssize_t secure_load_store(struct device *dev,
 	}
 	dma_size = fw->size;
 
-	if (keyptr)
+	if (has_key)
 		dma_size = fw->size + ZYNQMP_AES_KEY_SIZE;
 
 	kbuf = dma_alloc_coherent(dev, dma_size,
@@ -58,14 +58,17 @@ static ssize_t secure_load_store(struct device *dev,
 
 	memcpy(kbuf, fw->data, fw->size);
 
-	if (keyptr)
+	if (has_key) {
 		memcpy(kbuf + fw->size, key, ZYNQMP_AES_KEY_SIZE);
 
-	if (keyptr)
 		ret = zynqmp_pm_secure_load(dma_addr, dma_addr + fw->size,
 					    &dst);
-	else
+		has_key = false;
+		memzero_explicit(key, ZYNQMP_AES_KEY_SIZE);
+		memzero_explicit(kbuf + fw->size, ZYNQMP_AES_KEY_SIZE);
+	} else {
 		ret = zynqmp_pm_secure_load(dma_addr, 0, &dst);
+	}
 
 	release_firmware(fw);
 
