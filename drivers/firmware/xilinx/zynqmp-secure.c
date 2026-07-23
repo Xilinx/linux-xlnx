@@ -129,8 +129,6 @@ static int securefw_probe(struct platform_device *pdev)
 	int ret;
 
 	securefw_pdev = pdev;
-
-	securefw_pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
 	drv_data = devm_kzalloc(&pdev->dev, sizeof(*drv_data), GFP_KERNEL);
 	if (!drv_data)
 		return -ENOMEM;
@@ -140,6 +138,12 @@ static int securefw_probe(struct platform_device *pdev)
 	ret = of_dma_configure(&securefw_pdev->dev, NULL, true);
 	if (ret < 0) {
 		dev_err(&securefw_pdev->dev, "Cannot setup DMA ops\n");
+		return ret;
+	}
+
+	ret = dma_set_mask_and_coherent(&securefw_pdev->dev, DMA_BIT_MASK(32));
+	if (ret < 0) {
+		dev_err(&securefw_pdev->dev, "No usable DMA configuration\n");
 		return ret;
 	}
 
