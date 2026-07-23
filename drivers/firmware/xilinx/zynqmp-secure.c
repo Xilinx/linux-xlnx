@@ -82,7 +82,7 @@ static ssize_t secure_load_store(struct device *dev,
 	dma_free_coherent(dev, dma_size, kbuf, dma_addr);
 
 	if (ret) {
-		dev_info(dev, "Failed to load secure image\n");
+		dev_err(dev, "Failed to load secure image\n");
 		return ret;
 	}
 	dev_info(dev, "Verified image at 0x%llx\n", dst);
@@ -137,7 +137,7 @@ static int securefw_probe(struct platform_device *pdev)
 
 	ret = of_dma_configure(&securefw_pdev->dev, NULL, true);
 	if (ret < 0) {
-		dev_info(&securefw_pdev->dev, "Cannot setup DMA ops\n");
+		dev_err(&securefw_pdev->dev, "Cannot setup DMA ops\n");
 		return ret;
 	}
 
