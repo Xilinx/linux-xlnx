@@ -722,6 +722,43 @@ static void xilinx_ai_engine_remove(struct platform_device *pdev)
 	put_device(&adev->dev);
 }
 
+/**
+ * xilinx_ai_engine_shutdown() - quiesce the AI engine on reboot/poweroff/kexec
+ * @pdev: AI engine platform device
+ *
+ * Called by the device core via device_shutdown() on warm reboot, poweroff and
+ * kexec. Tears down every AI engine partition.
+ */
+static void xilinx_ai_engine_shutdown(struct platform_device *pdev)
+{
+	struct aie_device *adev = platform_get_drvdata(pdev);
+	struct aie_aperture *aperture;
+
+	if (!adev)
+		return;
+
+	mutex_lock(&adev->mlock);
+	list_for_each_entry(aperture, &adev->apertures, node) {
+		struct aie_partition *apart;
+
+		mutex_lock(&aperture->mlock);
+		list_for_each_entry(apart, &aperture->partitions, node) {
+			int ret;
+
+			if (!apart->adev->ops->part_teardown)
+				continue;
+
+			ret = apart->adev->ops->part_teardown(apart);
+			if (ret)
+				dev_warn(&apart->dev,
+					 "shutdown: failed to teardown partition %u: %d\n",
+					 apart->partition_id, ret);
+		}
+		mutex_unlock(&aperture->mlock);
+	}
+	mutex_unlock(&adev->mlock);
+}
+
 static const struct of_device_id xilinx_ai_engine_of_match[] = {
 	{ .compatible = "xlnx,ai-engine-v2.0", },
 	{ .compatible = "xlnx,ai-engine-v1.0", },
@@ -732,6 +769,7 @@ MODULE_DEVICE_TABLE(of, xilinx_ai_engine_of_match);
 static struct platform_driver xilinx_ai_engine_driver = {
 	.probe			= xilinx_ai_engine_probe,
 	.remove			= xilinx_ai_engine_remove,
+	.shutdown		= xilinx_ai_engine_shutdown,
 	.driver			= {
 		.name		= "xilinx-ai-engine",
 		.of_match_table	= xilinx_ai_engine_of_match,
