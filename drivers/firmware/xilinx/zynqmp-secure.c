@@ -12,6 +12,7 @@
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/platform_device.h>
 #include <linux/of_device.h>
 #include <linux/slab.h>
@@ -21,6 +22,7 @@
 
 struct secure_driver_data {
 	u8 key[ZYNQMP_AES_KEY_SIZE];
+	struct mutex fw_lock; /* protects key and has_key */
 	bool has_key;
 };
 
@@ -47,11 +49,13 @@ static ssize_t secure_load_store(struct device *dev,
 	if (trigger != 1)
 		return -EINVAL;
 
+	mutex_lock(&drv_data->fw_lock);
+
 	ret = request_firmware(&fw, ZYNQMP_SECURE_DATA_FILE_NAME, dev);
 	if (ret) {
 		dev_err(dev, "Error requesting firmware %s\n",
 			ZYNQMP_SECURE_DATA_FILE_NAME);
-		return ret;
+		goto out_unlock;
 	}
 	dma_size = fw->size;
 
@@ -62,7 +66,8 @@ static ssize_t secure_load_store(struct device *dev,
 				  &dma_addr, GFP_KERNEL);
 	if (!kbuf) {
 		release_firmware(fw);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto out_unlock;
 	}
 
 	memcpy(kbuf, fw->data, fw->size);
@@ -85,11 +90,15 @@ static ssize_t secure_load_store(struct device *dev,
 
 	if (ret) {
 		dev_err(dev, "Failed to load secure image\n");
-		return ret;
+		goto out_unlock;
 	}
 	dev_info(dev, "Secure image loaded successfully\n");
 
-	return count;
+	ret = count;
+
+out_unlock:
+	mutex_unlock(&drv_data->fw_lock);
+	return ret;
 }
 
 static ssize_t key_store(struct device *dev,
@@ -104,10 +113,12 @@ static ssize_t key_store(struct device *dev,
 	if (!count || count > ZYNQMP_AES_KEY_SIZE)
 		return -EINVAL;
 
+	mutex_lock(&drv_data->fw_lock);
 	memcpy(drv_data->key, buf, count);
 	if (count < ZYNQMP_AES_KEY_SIZE)
 		memzero_explicit(drv_data->key + count, ZYNQMP_AES_KEY_SIZE - count);
 	drv_data->has_key = true;
+	mutex_unlock(&drv_data->fw_lock);
 	return count;
 }
 
@@ -134,6 +145,10 @@ static int securefw_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	platform_set_drvdata(securefw_pdev, drv_data);
+
+	ret = devm_mutex_init(&pdev->dev, &drv_data->fw_lock);
+	if (ret)
+		return ret;
 
 	ret = of_dma_configure(&securefw_pdev->dev, NULL, true);
 	if (ret < 0) {
@@ -164,8 +179,10 @@ static void securefw_remove(struct platform_device *pdev)
 	if (!drv_data)
 		return;
 
+	mutex_lock(&drv_data->fw_lock);
 	if (drv_data->has_key)
 		memzero_explicit(drv_data->key, ZYNQMP_AES_KEY_SIZE);
+	mutex_unlock(&drv_data->fw_lock);
 }
 
 static struct platform_driver securefw_driver = {
