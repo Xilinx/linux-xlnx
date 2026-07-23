@@ -204,3 +204,7 @@ static void __exit zynqmp_secure_exit(void)
 
 module_init(zynqmp_secure_init);
 module_exit(zynqmp_secure_exit);
+
+MODULE_DESCRIPTION("Xilinx ZynqMP Secure Driver");
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Kalyani Akula <kalyani.akula@amd.com>");
