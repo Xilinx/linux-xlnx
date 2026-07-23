@@ -17,10 +17,7 @@
 #define ZYNQMP_AES_KEY_SIZE	64
 
 static u8 key[ZYNQMP_AES_KEY_SIZE] = {0};
-static dma_addr_t dma_addr;
 static u8 *keyptr;
-static size_t dma_size;
-static char *kbuf;
 
 static ssize_t secure_load_store(struct device *dev,
 				 struct device_attribute *attr,
@@ -28,7 +25,10 @@ static ssize_t secure_load_store(struct device *dev,
 {
 	const struct firmware *fw;
 	char image_name[NAME_MAX];
+	dma_addr_t dma_addr;
+	size_t dma_size;
 	u64 dst, ret;
+	char *kbuf;
 	int len;
 
 	len = strscpy(image_name, buf, NAME_MAX - 1);
