@@ -83,13 +83,6 @@ static ssize_t secure_load_store(struct device *dev,
 	return count;
 }
 
-static ssize_t key_show(struct device *dev,
-			struct device_attribute *attr,
-			char *buf)
-{
-	return snprintf(buf, ZYNQMP_AES_KEY_SIZE + 1, "%s\n", key);
-}
-
 static ssize_t key_store(struct device *dev,
 			 struct device_attribute *attr,
 			 const char *buf, size_t count)
@@ -115,7 +108,7 @@ static ssize_t secure_load_done_store(struct device *dev,
 	return count;
 }
 
-static DEVICE_ATTR_RW(key);
+static DEVICE_ATTR_WO(key);
 static DEVICE_ATTR_WO(secure_load);
 static DEVICE_ATTR_WO(secure_load_done);
 
