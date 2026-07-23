@@ -74,6 +74,8 @@ static ssize_t secure_load_store(struct device *dev,
 
 	release_firmware(fw);
 
+	dma_free_coherent(dev, dma_size, kbuf, dma_addr);
+
 	if (ret) {
 		dev_info(dev, "Failed to load secure image \r\n");
 		return ret;
@@ -92,28 +94,10 @@ static ssize_t key_store(struct device *dev,
 	return count;
 }
 
-static ssize_t secure_load_done_store(struct device *dev,
-				      struct device_attribute *attr,
-				      const char *buf, size_t count)
-{
-	int ret;
-	unsigned int value;
-
-	ret = kstrtouint(buf, 10, &value);
-	if (ret)
-		return ret;
-	if (value)
-		dma_free_coherent(dev, dma_size, kbuf, dma_addr);
-
-	return count;
-}
-
 static DEVICE_ATTR_WO(key);
 static DEVICE_ATTR_WO(secure_load);
-static DEVICE_ATTR_WO(secure_load_done);
 
 static struct attribute *securefw_attrs[] = {
-	&dev_attr_secure_load_done.attr,
 	&dev_attr_secure_load.attr,
 	&dev_attr_key.attr,
 	NULL,
