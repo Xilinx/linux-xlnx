@@ -13,16 +13,20 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/of_device.h>
+#include <linux/slab.h>
 
 #define ZYNQMP_AES_KEY_SIZE	64
 
-static u8 key[ZYNQMP_AES_KEY_SIZE] = {0};
-static bool has_key;
+struct secure_driver_data {
+	u8 key[ZYNQMP_AES_KEY_SIZE];
+	bool has_key;
+};
 
 static ssize_t secure_load_store(struct device *dev,
 				 struct device_attribute *attr,
 				 const char *buf, size_t count)
 {
+	struct secure_driver_data *drv_data = dev_get_drvdata(dev);
 	const struct firmware *fw;
 	char image_name[NAME_MAX];
 	dma_addr_t dma_addr;
@@ -30,6 +34,9 @@ static ssize_t secure_load_store(struct device *dev,
 	u64 dst, ret;
 	char *kbuf;
 	int len;
+
+	if (!drv_data)
+		return -ENODEV;
 
 	len = strscpy(image_name, buf, NAME_MAX - 1);
 	if (len > 0) {
@@ -46,7 +53,7 @@ static ssize_t secure_load_store(struct device *dev,
 	}
 	dma_size = fw->size;
 
-	if (has_key)
+	if (drv_data->has_key)
 		dma_size = fw->size + ZYNQMP_AES_KEY_SIZE;
 
 	kbuf = dma_alloc_coherent(dev, dma_size,
@@ -58,13 +65,13 @@ static ssize_t secure_load_store(struct device *dev,
 
 	memcpy(kbuf, fw->data, fw->size);
 
-	if (has_key) {
-		memcpy(kbuf + fw->size, key, ZYNQMP_AES_KEY_SIZE);
+	if (drv_data->has_key) {
+		memcpy(kbuf + fw->size, drv_data->key, ZYNQMP_AES_KEY_SIZE);
 
 		ret = zynqmp_pm_secure_load(dma_addr, dma_addr + fw->size,
 					    &dst);
-		has_key = false;
-		memzero_explicit(key, ZYNQMP_AES_KEY_SIZE);
+		drv_data->has_key = false;
+		memzero_explicit(drv_data->key, ZYNQMP_AES_KEY_SIZE);
 		memzero_explicit(kbuf + fw->size, ZYNQMP_AES_KEY_SIZE);
 	} else {
 		ret = zynqmp_pm_secure_load(dma_addr, 0, &dst);
@@ -87,13 +94,18 @@ static ssize_t key_store(struct device *dev,
 			 struct device_attribute *attr,
 			 const char *buf, size_t count)
 {
+	struct secure_driver_data *drv_data = dev_get_drvdata(dev);
+
+	if (!drv_data)
+		return -ENODEV;
+
 	if (!count || count > ZYNQMP_AES_KEY_SIZE)
 		return -EINVAL;
 
-	memcpy(key, buf, count);
+	memcpy(drv_data->key, buf, count);
 	if (count < ZYNQMP_AES_KEY_SIZE)
-		memzero_explicit(key + count, ZYNQMP_AES_KEY_SIZE - count);
-	has_key = true;
+		memzero_explicit(drv_data->key + count, ZYNQMP_AES_KEY_SIZE - count);
+	drv_data->has_key = true;
 	return count;
 }
 
@@ -110,12 +122,18 @@ ATTRIBUTE_GROUPS(securefw);
 
 static int securefw_probe(struct platform_device *pdev)
 {
-	int ret;
 	struct platform_device *securefw_pdev;
+	struct secure_driver_data *drv_data;
+	int ret;
 
 	securefw_pdev = pdev;
 
 	securefw_pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
+	drv_data = devm_kzalloc(&pdev->dev, sizeof(*drv_data), GFP_KERNEL);
+	if (!drv_data)
+		return -ENOMEM;
+
+	platform_set_drvdata(securefw_pdev, drv_data);
 
 	ret = of_dma_configure(&securefw_pdev->dev, NULL, true);
 	if (ret < 0) {
@@ -133,7 +151,15 @@ static int securefw_probe(struct platform_device *pdev)
 
 static void securefw_remove(struct platform_device *pdev)
 {
+	struct secure_driver_data *drv_data = platform_get_drvdata(pdev);
+
 	sysfs_remove_groups(&pdev->dev.kobj, securefw_groups);
+
+	if (!drv_data)
+		return;
+
+	if (drv_data->has_key)
+		memzero_explicit(drv_data->key, ZYNQMP_AES_KEY_SIZE);
 }
 
 static struct platform_driver securefw_driver = {
