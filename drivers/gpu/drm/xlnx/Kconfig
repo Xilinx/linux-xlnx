@@ -64,7 +64,6 @@ config DRM_XLNX
 config DRM_XLNX_AVPG
 	tristate "Xilinx DRM AVPG Driver"
 	depends on DRM && OF
-	select DRM_XLNX_BRIDGE_VTC
 	select VIDEOMODE_HELPERS
 	select DRM_GEM_SHMEM_HELPER
 	help
