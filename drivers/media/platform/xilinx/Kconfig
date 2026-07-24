@@ -157,8 +157,6 @@ config VIDEO_XILINX_VTC
 config VIDEO_XILINX_DPRXSS
 	tristate "Xilinx DP Rx Subsystem"
 	depends on VIDEO_XILINX
-	select DRM_DISPLAY_HELPER
-	select DRM_DISPLAY_DP_HELPER
 	select MFD_SYSCON
 	help
 	  Driver for Xilinx DisplayPort Rx Subsystem. This is a V4L sub-device
