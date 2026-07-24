@@ -769,9 +769,10 @@ static int zynqmp_clear_pm_state(struct device *dev)
 	if (ret < 0)
 		return ret;
 
-	/* Supporting on Versal and Versal Net platforms only */
+	/* Supporting on Versal, Versal Net and Versal Gen2 platforms only */
 	if (pm_family_code == PM_VERSAL_FAMILY_CODE ||
-	    pm_family_code == PM_VERSAL_NET_FAMILY_CODE) {
+	    pm_family_code == PM_VERSAL_NET_FAMILY_CODE ||
+	    pm_family_code == PM_VERSAL2_FAMILY_CODE) {
 		/* Check if the TF-A supports the TF_A_CLEAR_PM_STATE */
 		ret = do_feature_check_call(TF_A_CLEAR_PM_STATE);
 		if ((ret & FIRMWARE_VERSION_MASK) >= PM_API_VERSION_1) {
