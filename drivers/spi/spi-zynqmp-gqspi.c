@@ -1425,7 +1425,7 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	ctlr->auto_runtime_pm = true;
 	ctlr->flags |= SPI_CONTROLLER_MULTI_CS;
 
-	ret = devm_spi_register_controller(&pdev->dev, ctlr);
+	ret = spi_register_controller(ctlr);
 	if (ret) {
 		dev_err(&pdev->dev, "spi_register_controller failed\n");
 		goto clk_dis_all;
@@ -1462,6 +1462,8 @@ static void zynqmp_qspi_remove(struct platform_device *pdev)
 	struct zynqmp_qspi *xqspi = platform_get_drvdata(pdev);
 
 	pm_runtime_get_sync(&pdev->dev);
+
+	spi_unregister_controller(xqspi->ctlr);
 
 	zynqmp_gqspi_write(xqspi, GQSPI_EN_OFST, 0x0);
 

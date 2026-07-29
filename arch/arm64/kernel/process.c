@@ -26,6 +26,7 @@
 #include <linux/reboot.h>
 #include <linux/interrupt.h>
 #include <linux/init.h>
+#include <linux/cpumask.h>
 #include <linux/cpu.h>
 #include <linux/elfcore.h>
 #include <linux/pm.h>
@@ -339,8 +340,41 @@ void flush_thread(void)
 	flush_gcs();
 }
 
+#ifdef CONFIG_ARM64_ERRATUM_4193714
+
+static void arch_dup_tlbbatch_mask(struct task_struct *dst)
+{
+	/*
+	 * Clear the inherited cpumask with memset() to cover both cases where
+	 * cpumask_var_t is a pointer or an array. It will be allocated lazily
+	 * in sme_dvmsync_add_pending() if CPUMASK_OFFSTACK=y.
+	 */
+	if (alternative_has_cap_unlikely(ARM64_WORKAROUND_4193714))
+		memset(&dst->tlb_ubc.arch.cpumask, 0,
+		       sizeof(dst->tlb_ubc.arch.cpumask));
+}
+
+static void arch_release_tlbbatch_mask(struct task_struct *tsk)
+{
+	if (alternative_has_cap_unlikely(ARM64_WORKAROUND_4193714))
+		free_cpumask_var(tsk->tlb_ubc.arch.cpumask);
+}
+
+#else
+
+static void arch_dup_tlbbatch_mask(struct task_struct *dst)
+{
+}
+
+static void arch_release_tlbbatch_mask(struct task_struct *tsk)
+{
+}
+
+#endif /* CONFIG_ARM64_ERRATUM_4193714 */
+
 void arch_release_task_struct(struct task_struct *tsk)
 {
+	arch_release_tlbbatch_mask(tsk);
 	fpsimd_release_task(tsk);
 }
 
@@ -355,6 +389,8 @@ int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src)
 	fpsimd_sync_from_effective_state(src);
 
 	*dst = *src;
+
+	arch_dup_tlbbatch_mask(dst);
 
 	/*
 	 * Drop stale reference to src's sve_state and convert dst to

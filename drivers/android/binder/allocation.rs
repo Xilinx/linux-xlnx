@@ -56,7 +56,6 @@ pub(crate) struct Allocation {
     pub(crate) process: Arc<Process>,
     allocation_info: Option<AllocationInfo>,
     free_on_drop: bool,
-    pub(crate) oneway_spam_detected: bool,
     #[allow(dead_code)]
     pub(crate) debug_id: usize,
 }
@@ -68,7 +67,6 @@ impl Allocation {
         offset: usize,
         size: usize,
         ptr: usize,
-        oneway_spam_detected: bool,
     ) -> Self {
         Self {
             process,
@@ -76,7 +74,6 @@ impl Allocation {
             size,
             ptr,
             debug_id,
-            oneway_spam_detected,
             allocation_info: None,
             free_on_drop: true,
         }
@@ -158,6 +155,14 @@ impl Allocation {
 
     pub(crate) fn set_info_target_node(&mut self, target_node: NodeRef) {
         self.get_or_init_info().target_node = Some(target_node);
+    }
+
+    pub(crate) fn take_oneway_node(&mut self) -> Option<DArc<Node>> {
+        if let Some(info) = self.allocation_info.as_mut() {
+            info.oneway_node.take()
+        } else {
+            None
+        }
     }
 
     /// Reserve enough space to push at least `num_fds` fds.
@@ -253,7 +258,7 @@ impl Drop for Allocation {
 
             if let Some(offsets) = info.offsets.clone() {
                 let view = AllocationView::new(self, offsets.start);
-                for i in offsets.step_by(size_of::<usize>()) {
+                for i in offsets.step_by(size_of::<u64>()) {
                     if view.cleanup_object(i).is_err() {
                         pr_warn!("Error cleaning up object at offset {}\n", i)
                     }
@@ -411,7 +416,8 @@ impl<'a> AllocationView<'a> {
     }
 
     fn cleanup_object(&self, index_offset: usize) -> Result {
-        let offset = self.alloc.read(index_offset)?;
+        let offset = self.alloc.read::<u64>(index_offset)?;
+        let offset: usize = offset.try_into().map_err(|_| EINVAL)?;
         let header = self.read::<BinderObjectHeader>(offset)?;
         match header.type_ {
             BINDER_TYPE_WEAK_BINDER | BINDER_TYPE_BINDER => {

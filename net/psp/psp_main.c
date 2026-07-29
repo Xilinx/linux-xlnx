@@ -165,9 +165,46 @@ static void psp_write_headers(struct net *net, struct sk_buff *skb, __be32 spi,
 {
 	struct udphdr *uh = udp_hdr(skb);
 	struct psphdr *psph = (struct psphdr *)(uh + 1);
+	const struct sock *sk = skb->sk;
 
 	uh->dest = htons(PSP_DEFAULT_UDP_PORT);
-	uh->source = udp_flow_src_port(net, skb, 0, 0, false);
+
+	/* A bit of theory: Selection of the source port.
+	 *
+	 * We need some entropy, so that multiple flows use different
+	 * source ports for better RSS spreading at the receiver.
+	 *
+	 * We also need that all packets belonging to one TCP flow
+	 * use the same source port through their duration,
+	 * so that all these packets land in the same receive queue.
+	 *
+	 * udp_flow_src_port() is using sk_txhash, inherited from
+	 * skb_set_hash_from_sk() call in __tcp_transmit_skb().
+	 * This field is subject to reshuffling, thanks to
+	 * sk_rethink_txhash() calls in various TCP functions.
+	 *
+	 * Instead, use sk->sk_hash which is constant through
+	 * the whole flow duration.
+	 */
+	if (likely(sk)) {
+		u32 hash = sk->sk_hash;
+		int min, max;
+
+		/* These operations are cheap, no need to cache the result
+		 * in another socket field.
+		 */
+		inet_get_local_port_range(net, &min, &max);
+		/* Since this is being sent on the wire obfuscate hash a bit
+		 * to minimize possibility that any useful information to an
+		 * attacker is leaked. Only upper 16 bits are relevant in the
+		 * computation for 16 bit port value because we use a
+		 * reciprocal divide.
+		 */
+		hash ^= hash << 16;
+		uh->source = htons((((u64)hash * (max - min)) >> 32) + min);
+	} else {
+		uh->source = udp_flow_src_port(net, skb, 0, 0, false);
+	}
 	uh->check = 0;
 	uh->len = htons(udp_len);
 
@@ -225,15 +262,16 @@ EXPORT_SYMBOL(psp_dev_encapsulate);
 
 /* Receive handler for PSP packets.
  *
- * Presently it accepts only already-authenticated packets and does not
- * support optional fields, such as virtualization cookies. The caller should
- * ensure that skb->data is pointing to the mac header, and that skb->mac_len
- * is set. This function does not currently adjust skb->csum (CHECKSUM_COMPLETE
- * is not supported).
+ * Accepts only already-authenticated packets. The full PSP header is
+ * stripped according to psph->hdrlen; any optional fields it advertises
+ * (virtualization cookies, etc.) are ignored and discarded along with the
+ * rest of the header. The caller should ensure that skb->data is pointing
+ * to the mac header, and that skb->mac_len is set. This function does not
+ * currently adjust skb->csum (CHECKSUM_COMPLETE is not supported).
  */
 int psp_dev_rcv(struct sk_buff *skb, u16 dev_id, u8 generation, bool strip_icv)
 {
-	int l2_hlen = 0, l3_hlen, encap;
+	int l2_hlen = 0, l3_hlen, encap, psp_hlen;
 	struct psp_skb_ext *pse;
 	struct psphdr *psph;
 	struct ethhdr *eth;
@@ -274,18 +312,36 @@ int psp_dev_rcv(struct sk_buff *skb, u16 dev_id, u8 generation, bool strip_icv)
 	if (unlikely(uh->dest != htons(PSP_DEFAULT_UDP_PORT)))
 		return -EINVAL;
 
-	pse = skb_ext_add(skb, SKB_EXT_PSP);
-	if (!pse)
+	psph = (struct psphdr *)(skb->data + l2_hlen + l3_hlen +
+				 sizeof(struct udphdr));
+
+	/* Strip the full PSP header per psph->hdrlen; VC/options are pulled
+	 * into the linear region only so they can be discarded with the
+	 * rest of the header.
+	 */
+	psp_hlen = (psph->hdrlen + 1) * 8;
+
+	if (unlikely(psp_hlen < sizeof(struct psphdr)))
+		return -EINVAL;
+
+	if (psp_hlen > sizeof(struct psphdr) &&
+	    !pskb_may_pull(skb, l2_hlen + l3_hlen +
+				sizeof(struct udphdr) + psp_hlen))
 		return -EINVAL;
 
 	psph = (struct psphdr *)(skb->data + l2_hlen + l3_hlen +
 				 sizeof(struct udphdr));
+
+	pse = skb_ext_add(skb, SKB_EXT_PSP);
+	if (!pse)
+		return -EINVAL;
+
 	pse->spi = psph->spi;
 	pse->dev_id = dev_id;
 	pse->generation = generation;
 	pse->version = FIELD_GET(PSPHDR_VERFL_VERSION, psph->verfl);
 
-	encap = PSP_ENCAP_HLEN;
+	encap = sizeof(struct udphdr) + psp_hlen;
 	encap += strip_icv ? PSP_TRL_SIZE : 0;
 
 	if (proto == htons(ETH_P_IP)) {
@@ -302,8 +358,9 @@ int psp_dev_rcv(struct sk_buff *skb, u16 dev_id, u8 generation, bool strip_icv)
 		ipv6h->payload_len = htons(ntohs(ipv6h->payload_len) - encap);
 	}
 
-	memmove(skb->data + PSP_ENCAP_HLEN, skb->data, l2_hlen + l3_hlen);
-	skb_pull(skb, PSP_ENCAP_HLEN);
+	memmove(skb->data + sizeof(struct udphdr) + psp_hlen,
+		skb->data, l2_hlen + l3_hlen);
+	skb_pull(skb, sizeof(struct udphdr) + psp_hlen);
 
 	if (strip_icv)
 		pskb_trim(skb, skb->len - PSP_TRL_SIZE);

@@ -22,6 +22,81 @@ static struct ksmbd_conn_ops default_conn_ops;
 DEFINE_HASHTABLE(conn_list, CONN_HASH_BITS);
 DECLARE_RWSEM(conn_list_lock);
 
+static struct workqueue_struct *ksmbd_conn_wq;
+
+int ksmbd_conn_wq_init(void)
+{
+	ksmbd_conn_wq = alloc_workqueue("ksmbd-conn-release",
+					WQ_UNBOUND | WQ_MEM_RECLAIM, 0);
+	if (!ksmbd_conn_wq)
+		return -ENOMEM;
+	return 0;
+}
+
+void ksmbd_conn_wq_destroy(void)
+{
+	if (ksmbd_conn_wq) {
+		destroy_workqueue(ksmbd_conn_wq);
+		ksmbd_conn_wq = NULL;
+	}
+}
+
+/*
+ * __ksmbd_conn_release_work() - perform the final, once-per-struct cleanup
+ * of a ksmbd_conn whose refcount has just dropped to zero.
+ *
+ * This is the common release path used by ksmbd_conn_put() for the embedded
+ * state that outlives the connection thread: async_ida and the attached
+ * transport (which owns the socket and iov for TCP).  Called from a workqueue
+ * so that sleep-allowed teardown (sock_release -> tcp_close ->
+ * lock_sock_nested) never runs from an RCU softirq callback (free_opinfo_rcu)
+ * or any other non-sleeping putter context.
+ */
+static void __ksmbd_conn_release_work(struct work_struct *work)
+{
+	struct ksmbd_conn *conn =
+		container_of(work, struct ksmbd_conn, release_work);
+
+	ida_destroy(&conn->async_ida);
+	conn->transport->ops->free_transport(conn->transport);
+	kfree(conn);
+}
+
+/**
+ * ksmbd_conn_get() - take a reference on @conn and return it.
+ *
+ * Returns @conn unchanged so callers can write
+ * "fp->conn = ksmbd_conn_get(work->conn);" in one expression.  Returns NULL
+ * if @conn is NULL.
+ */
+struct ksmbd_conn *ksmbd_conn_get(struct ksmbd_conn *conn)
+{
+	if (!conn)
+		return NULL;
+
+	atomic_inc(&conn->refcnt);
+	return conn;
+}
+
+/**
+ * ksmbd_conn_put() - drop a reference and, if it was the last, queue the
+ * release onto ksmbd_conn_wq so it runs from process context.
+ *
+ * Callable from any context including RCU softirq callbacks and non-sleeping
+ * locks; the actual release is deferred to the workqueue.  ksmbd_conn_wq is
+ * created in ksmbd_server_init() before any conn can be allocated and is
+ * destroyed in ksmbd_server_exit() after rcu_barrier(), so it is always
+ * non-NULL while a conn reference is held.
+ */
+void ksmbd_conn_put(struct ksmbd_conn *conn)
+{
+	if (!conn)
+		return;
+
+	if (atomic_dec_and_test(&conn->refcnt))
+		queue_work(ksmbd_conn_wq, &conn->release_work);
+}
+
 /**
  * ksmbd_conn_free() - free resources of the connection instance
  *
@@ -36,13 +111,19 @@ void ksmbd_conn_free(struct ksmbd_conn *conn)
 	hash_del(&conn->hlist);
 	up_write(&conn_list_lock);
 
+	/*
+	 * request_buf / preauth_info / mechToken are only ever accessed by the
+	 * connection handler thread that owns @conn.  ksmbd_conn_free() is
+	 * called from the transport free_transport() path when that thread is
+	 * exiting, so it is safe to release them unconditionally even when
+	 * ksmbd_conn_put() below is not the final putter (oplock / ksmbd_file
+	 * holders only retain the conn pointer, not these per-thread buffers).
+	 */
 	xa_destroy(&conn->sessions);
 	kvfree(conn->request_buf);
 	kfree(conn->preauth_info);
-	if (atomic_dec_and_test(&conn->refcnt)) {
-		conn->transport->ops->free_transport(conn->transport);
-		kfree(conn);
-	}
+	kfree(conn->mechToken);
+	ksmbd_conn_put(conn);
 }
 
 /**
@@ -69,6 +150,7 @@ struct ksmbd_conn *ksmbd_conn_alloc(void)
 		conn->um = ERR_PTR(-EOPNOTSUPP);
 	if (IS_ERR(conn->um))
 		conn->um = NULL;
+	INIT_WORK(&conn->release_work, __ksmbd_conn_release_work);
 	atomic_set(&conn->req_running, 0);
 	atomic_set(&conn->r_count, 0);
 	atomic_set(&conn->refcnt, 1);
@@ -179,7 +261,7 @@ int ksmbd_conn_wait_idle_sess_id(struct ksmbd_conn *curr_conn, u64 sess_id)
 {
 	struct ksmbd_conn *conn;
 	int rc, retry_count = 0, max_timeout = 120;
-	int rcount = 1, bkt;
+	int rcount, bkt;
 
 retry_idle:
 	if (retry_count >= max_timeout)
@@ -188,8 +270,7 @@ retry_idle:
 	down_read(&conn_list_lock);
 	hash_for_each(conn_list, bkt, conn, hlist) {
 		if (conn->binding || xa_load(&conn->sessions, sess_id)) {
-			if (conn == curr_conn)
-				rcount = 2;
+			rcount = (conn == curr_conn) ? 2 : 1;
 			if (atomic_read(&conn->req_running) >= rcount) {
 				rc = wait_event_timeout(conn->req_running_q,
 					atomic_read(&conn->req_running) < rcount,
@@ -449,8 +530,7 @@ void ksmbd_conn_r_count_dec(struct ksmbd_conn *conn)
 	if (!atomic_dec_return(&conn->r_count) && waitqueue_active(&conn->r_count_q))
 		wake_up(&conn->r_count_q);
 
-	if (atomic_dec_and_test(&conn->refcnt))
-		kfree(conn);
+	ksmbd_conn_put(conn);
 }
 
 int ksmbd_conn_transport_init(void)
@@ -476,24 +556,54 @@ out:
 
 static void stop_sessions(void)
 {
-	struct ksmbd_conn *conn;
+	struct ksmbd_conn *conn, *target;
 	struct ksmbd_transport *t;
+	bool any;
 	int bkt;
 
+	/*
+	 * Serialised via init_lock; no concurrent stop_sessions() can
+	 * touch conn->stop_called, so writing it under the read lock is
+	 * safe.
+	 */
 again:
+	target = NULL;
+	any = false;
 	down_read(&conn_list_lock);
 	hash_for_each(conn_list, bkt, conn, hlist) {
-		t = conn->transport;
-		ksmbd_conn_set_exiting(conn);
-		if (t->ops->shutdown) {
-			up_read(&conn_list_lock);
-			t->ops->shutdown(t);
-			down_read(&conn_list_lock);
-		}
+		any = true;
+		if (conn->stop_called)
+			continue;
+		atomic_inc(&conn->refcnt);
+		conn->stop_called = true;
+		/*
+		 * Mark the connection EXITING while still holding the
+		 * read lock so the selection and the status transition
+		 * happen together.  Do not regress a connection that has
+		 * already advanced to RELEASING on its own (e.g. the
+		 * handler exited its receive loop for an unrelated
+		 * reason).
+		 */
+		if (READ_ONCE(conn->status) != KSMBD_SESS_RELEASING)
+			ksmbd_conn_set_exiting(conn);
+		target = conn;
+		break;
 	}
 	up_read(&conn_list_lock);
 
-	if (!hash_empty(conn_list)) {
+	if (target) {
+		t = target->transport;
+		if (t->ops->shutdown)
+			t->ops->shutdown(t);
+		if (atomic_dec_and_test(&target->refcnt)) {
+			ida_destroy(&target->async_ida);
+			t->ops->free_transport(t);
+			kfree(target);
+		}
+		goto again;
+	}
+
+	if (any) {
 		msleep(100);
 		goto again;
 	}

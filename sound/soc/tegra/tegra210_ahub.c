@@ -60,12 +60,14 @@ static int tegra_ahub_put_value_enum(struct snd_kcontrol *kctl,
 	struct soc_enum *e = (struct soc_enum *)kctl->private_value;
 	struct snd_soc_dapm_update update[TEGRA_XBAR_UPDATE_MAX_REG] = { };
 	unsigned int *item = uctl->value.enumerated.item;
-	unsigned int value = e->values[item[0]];
+	unsigned int value;
 	unsigned int i, bit_pos, reg_idx = 0, reg_val = 0;
 	int change = 0;
 
 	if (item[0] >= e->items)
 		return -EINVAL;
+
+	value = e->values[item[0]];
 
 	if (value) {
 		/* Get the register index and value to set */
@@ -2049,6 +2051,61 @@ static const struct snd_soc_component_driver tegra264_ahub_component = {
 	.num_dapm_routes	= ARRAY_SIZE(tegra264_ahub_routes),
 };
 
+static bool tegra210_ahub_wr_reg(struct device *dev, unsigned int reg)
+{
+	int part;
+
+	if (reg % TEGRA210_XBAR_RX_STRIDE)
+		return false;
+
+	for (part = 0; part < TEGRA210_XBAR_UPDATE_MAX_REG; part++) {
+		switch (reg & ~(part * TEGRA210_XBAR_PART1_RX)) {
+		case TEGRA210_AXBAR_PART_0_ADMAIF_RX1_0 ... TEGRA210_AXBAR_PART_0_ADMAIF_RX10_0:
+		case TEGRA210_AXBAR_PART_0_I2S1_RX1_0 ... TEGRA210_AXBAR_PART_0_I2S5_RX1_0:
+		case TEGRA210_AXBAR_PART_0_SFC1_RX1_0 ... TEGRA210_AXBAR_PART_0_SFC4_RX1_0:
+		case TEGRA210_AXBAR_PART_0_MIXER1_RX1_0 ... TEGRA210_AXBAR_PART_0_MIXER1_RX10_0:
+		case TEGRA210_AXBAR_PART_0_SPDIF1_RX1_0 ... TEGRA210_AXBAR_PART_0_SPDIF1_RX2_0:
+		case TEGRA210_AXBAR_PART_0_AFC1_RX1_0 ... TEGRA210_AXBAR_PART_0_AFC6_RX1_0:
+		case TEGRA210_AXBAR_PART_0_OPE1_RX1_0 ... TEGRA210_AXBAR_PART_0_OPE2_RX1_0:
+		case TEGRA210_AXBAR_PART_0_SPKPROT1_RX1_0:
+		case TEGRA210_AXBAR_PART_0_MVC1_RX1_0 ... TEGRA210_AXBAR_PART_0_MVC2_RX1_0:
+		case TEGRA210_AXBAR_PART_0_AMX1_RX1_0 ... TEGRA210_AXBAR_PART_0_ADX2_RX1_0:
+			return true;
+		default:
+			break;
+		}
+	}
+
+	return false;
+}
+
+static bool tegra186_ahub_wr_reg(struct device *dev, unsigned int reg)
+{
+	int part;
+
+	if (reg % TEGRA210_XBAR_RX_STRIDE)
+		return false;
+
+	for (part = 0; part < TEGRA186_XBAR_UPDATE_MAX_REG; part++) {
+		switch (reg & ~(part * TEGRA210_XBAR_PART1_RX)) {
+		case TEGRA210_AXBAR_PART_0_ADMAIF_RX1_0 ... TEGRA186_AXBAR_PART_0_I2S6_RX1_0:
+		case TEGRA210_AXBAR_PART_0_SFC1_RX1_0 ... TEGRA210_AXBAR_PART_0_SFC4_RX1_0:
+		case TEGRA210_AXBAR_PART_0_MIXER1_RX1_0 ... TEGRA210_AXBAR_PART_0_MIXER1_RX10_0:
+		case TEGRA186_AXBAR_PART_0_DSPK1_RX1_0 ... TEGRA186_AXBAR_PART_0_DSPK2_RX1_0:
+		case TEGRA210_AXBAR_PART_0_AFC1_RX1_0 ... TEGRA210_AXBAR_PART_0_AFC6_RX1_0:
+		case TEGRA210_AXBAR_PART_0_OPE1_RX1_0:
+		case TEGRA186_AXBAR_PART_0_MVC1_RX1_0 ... TEGRA186_AXBAR_PART_0_MVC2_RX1_0:
+		case TEGRA186_AXBAR_PART_0_AMX1_RX1_0 ... TEGRA186_AXBAR_PART_0_AMX3_RX4_0:
+		case TEGRA210_AXBAR_PART_0_ADX1_RX1_0 ... TEGRA186_AXBAR_PART_0_ASRC1_RX7_0:
+			return true;
+		default:
+			break;
+		}
+	}
+
+	return false;
+}
+
 static bool tegra264_ahub_wr_reg(struct device *dev, unsigned int reg)
 {
 	int part;
@@ -2076,6 +2133,7 @@ static const struct regmap_config tegra210_ahub_regmap_config = {
 	.reg_bits		= 32,
 	.val_bits		= 32,
 	.reg_stride		= 4,
+	.writeable_reg		= tegra210_ahub_wr_reg,
 	.max_register		= TEGRA210_MAX_REGISTER_ADDR,
 	.cache_type		= REGCACHE_FLAT,
 };
@@ -2084,6 +2142,7 @@ static const struct regmap_config tegra186_ahub_regmap_config = {
 	.reg_bits		= 32,
 	.val_bits		= 32,
 	.reg_stride		= 4,
+	.writeable_reg		= tegra186_ahub_wr_reg,
 	.max_register		= TEGRA186_MAX_REGISTER_ADDR,
 	.cache_type		= REGCACHE_FLAT,
 };

@@ -316,15 +316,15 @@ void psp_dev_destroy(struct sp_device *sp)
 	if (!psp)
 		return;
 
-	sev_dev_destroy(psp);
-
-	tee_dev_destroy(psp);
-
-	sfs_dev_destroy(psp);
-
 	dbc_dev_destroy(psp);
 
 	platform_access_dev_destroy(psp);
+
+	sfs_dev_destroy(psp);
+
+	tee_dev_destroy(psp);
+
+	sev_dev_destroy(psp);
 
 	sp_free_psp_irq(sp, psp);
 
@@ -349,6 +349,17 @@ struct psp_device *psp_get_master_device(void)
 	struct sp_device *sp = sp_get_psp_master_device();
 
 	return sp ? sp->psp_data : NULL;
+}
+
+int psp_restore(struct sp_device *sp)
+{
+	struct psp_device *psp = sp->psp_data;
+	int ret = 0;
+
+	if (psp->tee_data)
+		ret = tee_restore(psp);
+
+	return ret;
 }
 
 void psp_pci_init(void)

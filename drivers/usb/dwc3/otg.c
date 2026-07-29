@@ -486,7 +486,7 @@ static void host_release(struct dwc3_otg *otg)
 
 static void dwc3_otg_setup_event_buffers(struct dwc3_otg *otg)
 {
-	if (dwc3_readl(otg->dwc->regs, DWC3_GEVNTADRLO(0)) == 0x0) {
+	if (dwc3_readl(otg->dwc, DWC3_GEVNTADRLO(0)) == 0x0) {
 
 		otg_dbg(otg, "setting up event buffers\n");
 		dwc3_event_buffers_setup(otg->dwc);
@@ -2092,7 +2092,7 @@ void dwc3_otg_init(struct dwc3 *dwc)
 	 * GHWPARAMS6[10] bit is SRPSupport.
 	 * This bit also reflects DWC_USB3_EN_OTG
 	 */
-	reg = dwc3_readl(dwc->regs, DWC3_GHWPARAMS6);
+	reg = dwc3_readl(dwc, DWC3_GHWPARAMS6);
 	if (!(reg & GHWPARAMS6_SRP_SUPPORT_ENABLED)) {
 		/*
 		 * No OTG support in the HW core.

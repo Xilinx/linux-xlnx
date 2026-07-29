@@ -154,6 +154,10 @@ static int path_name(const char *op, const struct cred *subj_cred,
 	const char *info = NULL;
 	int error;
 
+	/* don't reaudit files closed during inheritance */
+	if (unlikely(path->dentry == aa_null.dentry))
+		return -EACCES;
+
 	error = aa_path_name(path, flags, buffer, name, &info,
 			     labels_profile(label)->disconnected);
 	if (error) {
@@ -245,7 +249,7 @@ static int profile_path_perm(const char *op, const struct cred *subj_cred,
 			     struct path_cond *cond, int flags,
 			     struct aa_perms *perms)
 {
-	const char *name;
+	const char *name = NULL;
 	int error;
 
 	if (profile_unconfined(profile))
@@ -323,7 +327,7 @@ static int profile_path_link(const struct cred *subj_cred,
 			     struct path_cond *cond)
 {
 	struct aa_ruleset *rules = profile->label.rules[0];
-	const char *lname, *tname = NULL;
+	const char *lname = NULL, *tname = NULL;
 	struct aa_perms lperms = {}, perms;
 	const char *info = NULL;
 	u32 request = AA_MAY_LINK;
@@ -578,6 +582,9 @@ static bool __unix_needs_revalidation(struct file *file, struct aa_label *label,
 		return false;
 	if (request & NET_PEER_MASK)
 		return false;
+	/* sock and sock->sk can be NULL for sockets being set up or torn down */
+	if (!sock || !sock->sk)
+		return false;
 	if (sock->sk->sk_family == PF_UNIX) {
 		struct aa_sk_ctx *ctx = aa_sock(sock->sk);
 
@@ -612,6 +619,10 @@ int aa_file_perm(const char *op, const struct cred *subj_cred,
 
 	AA_BUG(!label);
 	AA_BUG(!file);
+
+	/* don't reaudit files closed during inheritance */
+	if (unlikely(file->f_path.dentry == aa_null.dentry))
+		return -EACCES;
 
 	fctx = file_ctx(file);
 

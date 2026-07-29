@@ -10,9 +10,12 @@
 #include <linux/delay.h>
 #include <linux/time64.h>
 #include <linux/ulpi/regs.h>
+#include <linux/ulpi/driver.h>
 
 #include "core.h"
 #include "io.h"
+
+#define USB_VENDOR_MICROCHIP 0x0424
 
 #define DWC3_ULPI_ADDR(a) \
 		((a >= ULPI_EXT_VENDOR_SPECIFIC) ? \
@@ -33,13 +36,13 @@ static int dwc3_ulpi_busyloop(struct dwc3 *dwc, u8 addr, bool read)
 	if (read)
 		ns += DWC3_ULPI_BASE_DELAY;
 
-	reg = dwc3_readl(dwc->regs, DWC3_GUSB2PHYCFG(0));
+	reg = dwc3_readl(dwc, DWC3_GUSB2PHYCFG(0));
 	if (reg & DWC3_GUSB2PHYCFG_SUSPHY)
 		usleep_range(1000, 1200);
 
 	while (count--) {
 		ndelay(ns);
-		reg = dwc3_readl(dwc->regs, DWC3_GUSB2PHYACC(0));
+		reg = dwc3_readl(dwc, DWC3_GUSB2PHYACC(0));
 		if (reg & DWC3_GUSB2PHYACC_DONE)
 			return 0;
 		cpu_relax();
@@ -55,13 +58,13 @@ static int dwc3_ulpi_read(struct device *dev, u8 addr)
 	int ret;
 
 	reg = DWC3_GUSB2PHYACC_NEWREGREQ | DWC3_ULPI_ADDR(addr);
-	dwc3_writel(dwc->regs, DWC3_GUSB2PHYACC(0), reg);
+	dwc3_writel(dwc, DWC3_GUSB2PHYACC(0), reg);
 
 	ret = dwc3_ulpi_busyloop(dwc, addr, true);
 	if (ret)
 		return ret;
 
-	reg = dwc3_readl(dwc->regs, DWC3_GUSB2PHYACC(0));
+	reg = dwc3_readl(dwc, DWC3_GUSB2PHYACC(0));
 
 	return DWC3_GUSB2PHYACC_DATA(reg);
 }
@@ -73,7 +76,7 @@ static int dwc3_ulpi_write(struct device *dev, u8 addr, u8 val)
 
 	reg = DWC3_GUSB2PHYACC_NEWREGREQ | DWC3_ULPI_ADDR(addr);
 	reg |= DWC3_GUSB2PHYACC_WRITE | val;
-	dwc3_writel(dwc->regs, DWC3_GUSB2PHYACC(0), reg);
+	dwc3_writel(dwc, DWC3_GUSB2PHYACC(0), reg);
 
 	return dwc3_ulpi_busyloop(dwc, addr, false);
 }
@@ -83,6 +86,26 @@ static const struct ulpi_ops dwc3_ulpi_ops = {
 	.write = dwc3_ulpi_write,
 };
 
+static void dwc3_ulpi_detect_config(struct dwc3 *dwc)
+{
+	struct ulpi *ulpi = dwc->ulpi;
+
+	switch (ulpi->id.vendor) {
+	case USB_VENDOR_MICROCHIP:
+		switch (ulpi->id.product) {
+		case 0x0009:
+			/* Microchip USB3340 ULPI PHY */
+			dwc->enable_usb2_transceiver_delay = true;
+			break;
+		default:
+			break;
+		}
+		break;
+	default:
+		break;
+	}
+}
+
 int dwc3_ulpi_init(struct dwc3 *dwc)
 {
 	/* Register the interface */
@@ -91,6 +114,8 @@ int dwc3_ulpi_init(struct dwc3 *dwc)
 		dev_err(dwc->dev, "failed to register ULPI interface");
 		return PTR_ERR(dwc->ulpi);
 	}
+
+	dwc3_ulpi_detect_config(dwc);
 
 	return 0;
 }

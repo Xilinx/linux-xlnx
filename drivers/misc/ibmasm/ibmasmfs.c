@@ -303,6 +303,8 @@ static ssize_t command_file_write(struct file *file, const char __user *ubuff, s
 		return -EINVAL;
 	if (count == 0 || count > IBMASM_CMD_MAX_BUFFER_SIZE)
 		return 0;
+	if (count < sizeof(struct dot_command_header))
+		return -EINVAL;
 	if (*offset != 0)
 		return 0;
 
@@ -317,6 +319,11 @@ static ssize_t command_file_write(struct file *file, const char __user *ubuff, s
 	if (copy_from_user(cmd->buffer, ubuff, count)) {
 		command_put(cmd);
 		return -EFAULT;
+	}
+
+	if (count < get_dot_command_size(cmd->buffer)) {
+		command_put(cmd);
+		return -EINVAL;
 	}
 
 	spin_lock_irqsave(&command_data->sp->lock, flags);

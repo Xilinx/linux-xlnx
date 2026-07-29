@@ -303,9 +303,9 @@ static void mei_wd(struct mei_cl_device *cldev)
 {
 	struct pci_dev *pdev = to_pci_dev(cldev->dev.parent);
 
-	if (pdev->device == MEI_DEV_ID_WPT_LP ||
-	    pdev->device == MEI_DEV_ID_SPT ||
-	    pdev->device == MEI_DEV_ID_SPT_H)
+	if (pdev->device == PCI_DEVICE_ID_INTEL_MEI_WPT_LP ||
+	    pdev->device == PCI_DEVICE_ID_INTEL_MEI_SPT ||
+	    pdev->device == PCI_DEVICE_ID_INTEL_MEI_SPT_H)
 		cldev->me_cl->props.protocol_version = 0x2;
 
 	cldev->do_match = 1;

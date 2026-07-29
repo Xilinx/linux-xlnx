@@ -459,7 +459,8 @@ static struct page *llbitmap_read_page(struct llbitmap *llbitmap, int idx)
 	rdev_for_each(rdev, mddev) {
 		sector_t sector;
 
-		if (rdev->raid_disk < 0 || test_bit(Faulty, &rdev->flags))
+		if (rdev->raid_disk < 0 || test_bit(Faulty, &rdev->flags) ||
+		    !test_bit(In_sync, &rdev->flags))
 			continue;
 
 		sector = mddev->bitmap_info.offset +
@@ -712,8 +713,10 @@ static int llbitmap_suspend_timeout(struct llbitmap *llbitmap, int page_idx)
 	percpu_ref_kill(&pctl->active);
 
 	if (!wait_event_timeout(pctl->wait, percpu_ref_is_zero(&pctl->active),
-			llbitmap->mddev->bitmap_info.daemon_sleep * HZ))
+			llbitmap->mddev->bitmap_info.daemon_sleep * HZ)) {
+		percpu_ref_resurrect(&pctl->active);
 		return -ETIMEDOUT;
+	}
 
 	return 0;
 }
@@ -1067,12 +1070,12 @@ static void llbitmap_start_write(struct mddev *mddev, sector_t offset,
 	int page_start = (start + BITMAP_DATA_OFFSET) >> PAGE_SHIFT;
 	int page_end = (end + BITMAP_DATA_OFFSET) >> PAGE_SHIFT;
 
-	llbitmap_state_machine(llbitmap, start, end, BitmapActionStartwrite);
-
 	while (page_start <= page_end) {
 		llbitmap_raise_barrier(llbitmap, page_start);
 		page_start++;
 	}
+
+	llbitmap_state_machine(llbitmap, start, end, BitmapActionStartwrite);
 }
 
 static void llbitmap_end_write(struct mddev *mddev, sector_t offset,
@@ -1099,12 +1102,12 @@ static void llbitmap_start_discard(struct mddev *mddev, sector_t offset,
 	int page_start = (start + BITMAP_DATA_OFFSET) >> PAGE_SHIFT;
 	int page_end = (end + BITMAP_DATA_OFFSET) >> PAGE_SHIFT;
 
-	llbitmap_state_machine(llbitmap, start, end, BitmapActionDiscard);
-
 	while (page_start <= page_end) {
 		llbitmap_raise_barrier(llbitmap, page_start);
 		page_start++;
 	}
+
+	llbitmap_state_machine(llbitmap, start, end, BitmapActionDiscard);
 }
 
 static void llbitmap_end_discard(struct mddev *mddev, sector_t offset,
@@ -1429,16 +1432,19 @@ static void llbitmap_end_behind_write(struct mddev *mddev)
 		wake_up(&llbitmap->behind_wait);
 }
 
-static void llbitmap_wait_behind_writes(struct mddev *mddev)
+static bool llbitmap_wait_behind_writes(struct mddev *mddev, bool nowait)
 {
 	struct llbitmap *llbitmap = mddev->bitmap;
 
-	if (!llbitmap)
-		return;
+	if (llbitmap && atomic_read(&llbitmap->behind_writes) > 0) {
+		if (nowait)
+			return false;
 
-	wait_event(llbitmap->behind_wait,
-		   atomic_read(&llbitmap->behind_writes) == 0);
+		wait_event(llbitmap->behind_wait,
+			   atomic_read(&llbitmap->behind_writes) == 0);
+	}
 
+	return true;
 }
 
 static ssize_t bits_show(struct mddev *mddev, char *page)
@@ -1559,6 +1565,11 @@ static struct attribute_group md_llbitmap_group = {
 	.attrs = md_llbitmap_attrs,
 };
 
+static const struct attribute_group *md_llbitmap_groups[] = {
+	&md_llbitmap_group,
+	NULL,
+};
+
 static struct bitmap_operations llbitmap_ops = {
 	.head = {
 		.type	= MD_BITMAP,
@@ -1595,7 +1606,7 @@ static struct bitmap_operations llbitmap_ops = {
 	.dirty_bits		= llbitmap_dirty_bits,
 	.write_all		= llbitmap_write_all,
 
-	.group			= &md_llbitmap_group,
+	.groups			= md_llbitmap_groups,
 };
 
 int md_llbitmap_init(void)

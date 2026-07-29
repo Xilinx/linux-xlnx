@@ -19,8 +19,8 @@ void txgbe_gpio_init_aml(struct wx *wx)
 {
 	u32 status;
 
-	wr32(wx, WX_GPIO_INTTYPE_LEVEL, TXGBE_GPIOBIT_2 | TXGBE_GPIOBIT_3);
-	wr32(wx, WX_GPIO_INTEN, TXGBE_GPIOBIT_2 | TXGBE_GPIOBIT_3);
+	wr32(wx, WX_GPIO_INTTYPE_LEVEL, TXGBE_GPIOBIT_2);
+	wr32(wx, WX_GPIO_INTEN, TXGBE_GPIOBIT_2);
 
 	status = rd32(wx, WX_GPIO_INTSTATUS);
 	for (int i = 0; i < 6; i++) {
@@ -38,14 +38,9 @@ irqreturn_t txgbe_gpio_irq_handler_aml(int irq, void *data)
 	wr32(wx, WX_GPIO_INTMASK, 0xFF);
 	status = rd32(wx, WX_GPIO_INTSTATUS);
 	if (status & TXGBE_GPIOBIT_2) {
-		set_bit(WX_FLAG_NEED_SFP_RESET, wx->flags);
+		set_bit(WX_FLAG_NEED_MODULE_RESET, wx->flags);
 		wr32(wx, WX_GPIO_EOI, TXGBE_GPIOBIT_2);
 		wx_service_event_schedule(wx);
-	}
-	if (status & TXGBE_GPIOBIT_3) {
-		set_bit(WX_FLAG_NEED_LINK_CONFIG, wx->flags);
-		wx_service_event_schedule(wx);
-		wr32(wx, WX_GPIO_EOI, TXGBE_GPIOBIT_3);
 	}
 
 	wr32(wx, WX_GPIO_INTMASK, 0);
@@ -68,15 +63,16 @@ int txgbe_test_hostif(struct wx *wx)
 					 WX_HI_COMMAND_TIMEOUT, false);
 }
 
-static int txgbe_identify_sfp_hostif(struct wx *wx, struct txgbe_hic_i2c_read *buffer)
+static int txgbe_identify_module_hostif(struct wx *wx,
+					struct txgbe_hic_get_module_info *buffer)
 {
-	buffer->hdr.cmd = FW_READ_SFP_INFO_CMD;
-	buffer->hdr.buf_len = sizeof(struct txgbe_hic_i2c_read) -
+	buffer->hdr.cmd = FW_GET_MODULE_INFO_CMD;
+	buffer->hdr.buf_len = sizeof(struct txgbe_hic_get_module_info) -
 			      sizeof(struct wx_hic_hdr);
 	buffer->hdr.cmd_or_resp.cmd_resv = FW_CEM_CMD_RESERVED;
 
 	return wx_host_interface_command(wx, (u32 *)buffer,
-					 sizeof(struct txgbe_hic_i2c_read),
+					 sizeof(struct txgbe_hic_get_module_info),
 					 WX_HI_COMMAND_TIMEOUT, true);
 }
 
@@ -96,6 +92,9 @@ static int txgbe_set_phy_link_hostif(struct wx *wx, int speed, int autoneg, int 
 	case SPEED_10000:
 		buffer.speed = TXGBE_LINK_SPEED_10GB_FULL;
 		break;
+	default:
+		buffer.speed = TXGBE_LINK_SPEED_UNKNOWN;
+		break;
 	}
 
 	buffer.fec_mode = TXGBE_PHY_FEC_AUTO;
@@ -106,19 +105,20 @@ static int txgbe_set_phy_link_hostif(struct wx *wx, int speed, int autoneg, int 
 					 WX_HI_COMMAND_TIMEOUT, false);
 }
 
-static void txgbe_get_link_capabilities(struct wx *wx)
+static void txgbe_get_link_capabilities(struct wx *wx, int *speed,
+					int *autoneg, int *duplex)
 {
 	struct txgbe *txgbe = wx->priv;
 
-	if (test_bit(PHY_INTERFACE_MODE_25GBASER, txgbe->sfp_interfaces))
-		wx->adv_speed = SPEED_25000;
-	else if (test_bit(PHY_INTERFACE_MODE_10GBASER, txgbe->sfp_interfaces))
-		wx->adv_speed = SPEED_10000;
+	if (test_bit(PHY_INTERFACE_MODE_25GBASER, txgbe->link_interfaces))
+		*speed = SPEED_25000;
+	else if (test_bit(PHY_INTERFACE_MODE_10GBASER, txgbe->link_interfaces))
+		*speed = SPEED_10000;
 	else
-		wx->adv_speed = SPEED_UNKNOWN;
+		*speed = SPEED_UNKNOWN;
 
-	wx->adv_duplex = wx->adv_speed == SPEED_UNKNOWN ?
-			 DUPLEX_HALF : DUPLEX_FULL;
+	*autoneg = phylink_test(txgbe->advertising, Autoneg);
+	*duplex = *speed == SPEED_UNKNOWN ? DUPLEX_HALF : DUPLEX_FULL;
 }
 
 static void txgbe_get_phy_link(struct wx *wx, int *speed)
@@ -138,23 +138,11 @@ static void txgbe_get_phy_link(struct wx *wx, int *speed)
 
 int txgbe_set_phy_link(struct wx *wx)
 {
-	int speed, err;
-	u32 gpio;
+	int speed, autoneg, duplex, err;
 
-	/* Check RX signal */
-	gpio = rd32(wx, WX_GPIO_EXT);
-	if (gpio & TXGBE_GPIOBIT_3)
-		return -ENODEV;
+	txgbe_get_link_capabilities(wx, &speed, &autoneg, &duplex);
 
-	txgbe_get_link_capabilities(wx);
-	if (wx->adv_speed == SPEED_UNKNOWN)
-		return -ENODEV;
-
-	txgbe_get_phy_link(wx, &speed);
-	if (speed == wx->adv_speed)
-		return 0;
-
-	err = txgbe_set_phy_link_hostif(wx, wx->adv_speed, 0, wx->adv_duplex);
+	err = txgbe_set_phy_link_hostif(wx, speed, autoneg, duplex);
 	if (err) {
 		wx_err(wx, "Failed to setup link\n");
 		return err;
@@ -163,25 +151,49 @@ int txgbe_set_phy_link(struct wx *wx)
 	return 0;
 }
 
-static int txgbe_sfp_to_linkmodes(struct wx *wx, struct txgbe_sfp_id *id)
+static int txgbe_sfp_to_linkmodes(struct wx *wx, struct txgbe_sff_id *id)
 {
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(modes) = { 0, };
 	DECLARE_PHY_INTERFACE_MASK(interfaces);
 	struct txgbe *txgbe = wx->priv;
 
-	if (id->com_25g_code & (TXGBE_SFF_25GBASESR_CAPABLE |
-				TXGBE_SFF_25GBASEER_CAPABLE |
-				TXGBE_SFF_25GBASELR_CAPABLE)) {
-		phylink_set(modes, 25000baseSR_Full);
+	if (id->cable_tech & TXGBE_SFF_DA_PASSIVE_CABLE) {
+		txgbe->link_port = PORT_DA;
+		phylink_set(modes, Autoneg);
+		if (id->com_25g_code == TXGBE_SFF_25GBASECR_91FEC ||
+		    id->com_25g_code == TXGBE_SFF_25GBASECR_74FEC ||
+		    id->com_25g_code == TXGBE_SFF_25GBASECR_NOFEC) {
+			phylink_set(modes, 25000baseCR_Full);
+			phylink_set(modes, 10000baseCR_Full);
+			__set_bit(PHY_INTERFACE_MODE_25GBASER, interfaces);
+			__set_bit(PHY_INTERFACE_MODE_10GBASER, interfaces);
+		} else {
+			phylink_set(modes, 10000baseCR_Full);
+			__set_bit(PHY_INTERFACE_MODE_10GBASER, interfaces);
+		}
+	} else if (id->cable_tech & TXGBE_SFF_DA_ACTIVE_CABLE) {
+		txgbe->link_port = PORT_DA;
+		phylink_set(modes, Autoneg);
+		phylink_set(modes, 25000baseCR_Full);
 		__set_bit(PHY_INTERFACE_MODE_25GBASER, interfaces);
-	}
-	if (id->com_10g_code & TXGBE_SFF_10GBASESR_CAPABLE) {
-		phylink_set(modes, 10000baseSR_Full);
-		__set_bit(PHY_INTERFACE_MODE_10GBASER, interfaces);
-	}
-	if (id->com_10g_code & TXGBE_SFF_10GBASELR_CAPABLE) {
-		phylink_set(modes, 10000baseLR_Full);
-		__set_bit(PHY_INTERFACE_MODE_10GBASER, interfaces);
+	} else {
+		if (id->com_25g_code == TXGBE_SFF_25GBASESR_CAPABLE ||
+		    id->com_25g_code == TXGBE_SFF_25GBASEER_CAPABLE ||
+		    id->com_25g_code == TXGBE_SFF_25GBASELR_CAPABLE) {
+			txgbe->link_port = PORT_FIBRE;
+			phylink_set(modes, 25000baseSR_Full);
+			__set_bit(PHY_INTERFACE_MODE_25GBASER, interfaces);
+		}
+		if (id->com_10g_code & TXGBE_SFF_10GBASESR_CAPABLE) {
+			txgbe->link_port = PORT_FIBRE;
+			phylink_set(modes, 10000baseSR_Full);
+			__set_bit(PHY_INTERFACE_MODE_10GBASER, interfaces);
+		}
+		if (id->com_10g_code & TXGBE_SFF_10GBASELR_CAPABLE) {
+			txgbe->link_port = PORT_FIBRE;
+			phylink_set(modes, 10000baseLR_Full);
+			__set_bit(PHY_INTERFACE_MODE_10GBASER, interfaces);
+		}
 	}
 
 	if (phy_interface_empty(interfaces)) {
@@ -192,11 +204,10 @@ static int txgbe_sfp_to_linkmodes(struct wx *wx, struct txgbe_sfp_id *id)
 	phylink_set(modes, Pause);
 	phylink_set(modes, Asym_Pause);
 	phylink_set(modes, FIBRE);
-	txgbe->link_port = PORT_FIBRE;
 
-	if (!linkmode_equal(txgbe->sfp_support, modes)) {
-		linkmode_copy(txgbe->sfp_support, modes);
-		phy_interface_and(txgbe->sfp_interfaces,
+	if (!linkmode_equal(txgbe->link_support, modes)) {
+		linkmode_copy(txgbe->link_support, modes);
+		phy_interface_and(txgbe->link_interfaces,
 				  wx->phylink_config.supported_interfaces,
 				  interfaces);
 		linkmode_copy(txgbe->advertising, modes);
@@ -207,10 +218,10 @@ static int txgbe_sfp_to_linkmodes(struct wx *wx, struct txgbe_sfp_id *id)
 	return 0;
 }
 
-int txgbe_identify_sfp(struct wx *wx)
+int txgbe_identify_module(struct wx *wx)
 {
-	struct txgbe_hic_i2c_read buffer;
-	struct txgbe_sfp_id *id;
+	struct txgbe_hic_get_module_info buffer = { 0 };
+	struct txgbe_sff_id *id;
 	int err = 0;
 	u32 gpio;
 
@@ -218,9 +229,9 @@ int txgbe_identify_sfp(struct wx *wx)
 	if (gpio & TXGBE_GPIOBIT_2)
 		return -ENODEV;
 
-	err = txgbe_identify_sfp_hostif(wx, &buffer);
+	err = txgbe_identify_module_hostif(wx, &buffer);
 	if (err) {
-		wx_err(wx, "Failed to identify SFP module\n");
+		wx_err(wx, "Failed to identify module\n");
 		return err;
 	}
 
@@ -230,24 +241,17 @@ int txgbe_identify_sfp(struct wx *wx)
 		return -ENODEV;
 	}
 
-	err = txgbe_sfp_to_linkmodes(wx, id);
-	if (err)
-		return err;
-
-	if (gpio & TXGBE_GPIOBIT_3)
-		set_bit(WX_FLAG_NEED_LINK_CONFIG, wx->flags);
-
-	return 0;
+	return txgbe_sfp_to_linkmodes(wx, id);
 }
 
 void txgbe_setup_link(struct wx *wx)
 {
 	struct txgbe *txgbe = wx->priv;
 
-	phy_interface_zero(txgbe->sfp_interfaces);
-	linkmode_zero(txgbe->sfp_support);
+	phy_interface_zero(txgbe->link_interfaces);
+	linkmode_zero(txgbe->link_support);
 
-	txgbe_identify_sfp(wx);
+	txgbe_identify_module(wx);
 }
 
 static void txgbe_get_link_state(struct phylink_config *config,

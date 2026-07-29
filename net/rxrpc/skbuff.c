@@ -47,15 +47,6 @@ void rxrpc_get_skb(struct sk_buff *skb, enum rxrpc_skb_trace why)
 }
 
 /*
- * Note the dropping of a ref on a socket buffer by the core.
- */
-void rxrpc_eaten_skb(struct sk_buff *skb, enum rxrpc_skb_trace why)
-{
-	int n = atomic_inc_return(&rxrpc_n_rx_skbs);
-	trace_rxrpc_skb(skb, 0, n, why);
-}
-
-/*
  * Note the destruction of a socket buffer.
  */
 void rxrpc_free_skb(struct sk_buff *skb, enum rxrpc_skb_trace why)

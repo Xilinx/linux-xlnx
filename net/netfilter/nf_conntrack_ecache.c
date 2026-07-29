@@ -77,7 +77,7 @@ next:
 		hlist_nulls_del_rcu(&ct->tuplehash[IP_CT_DIR_ORIGINAL].hnnode);
 		hlist_nulls_add_head(&ct->tuplehash[IP_CT_DIR_REPLY].hnnode, &evicted_list);
 
-		if (time_after(stop, jiffies)) {
+		if (time_after(jiffies, stop)) {
 			ret = STATE_RESTART;
 			break;
 		}
@@ -246,6 +246,8 @@ void nf_ct_expect_event_report(enum ip_conntrack_expect_events event,
 	struct net *net = nf_ct_exp_net(exp);
 	struct nf_ct_event_notifier *notify;
 	struct nf_conntrack_ecache *e;
+
+	lockdep_nfct_expect_lock_held();
 
 	rcu_read_lock();
 	notify = rcu_dereference(net->ct.nf_conntrack_event_cb);

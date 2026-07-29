@@ -55,29 +55,27 @@ struct ks8851_net_par {
 /**
  * ks8851_lock_par - register access lock
  * @ks: The chip state
- * @flags: Spinlock flags
  *
  * Claim chip register access lock
  */
-static void ks8851_lock_par(struct ks8851_net *ks, unsigned long *flags)
+static void ks8851_lock_par(struct ks8851_net *ks)
 {
 	struct ks8851_net_par *ksp = to_ks8851_par(ks);
 
-	spin_lock_irqsave(&ksp->lock, *flags);
+	spin_lock_bh(&ksp->lock);
 }
 
 /**
  * ks8851_unlock_par - register access unlock
  * @ks: The chip state
- * @flags: Spinlock flags
  *
  * Release chip register access lock
  */
-static void ks8851_unlock_par(struct ks8851_net *ks, unsigned long *flags)
+static void ks8851_unlock_par(struct ks8851_net *ks)
 {
 	struct ks8851_net_par *ksp = to_ks8851_par(ks);
 
-	spin_unlock_irqrestore(&ksp->lock, *flags);
+	spin_unlock_bh(&ksp->lock);
 }
 
 /**
@@ -233,7 +231,6 @@ static netdev_tx_t ks8851_start_xmit_par(struct sk_buff *skb,
 {
 	struct ks8851_net *ks = netdev_priv(dev);
 	netdev_tx_t ret = NETDEV_TX_OK;
-	unsigned long flags;
 	unsigned int txqcr;
 	u16 txmir;
 	int err;
@@ -241,7 +238,7 @@ static netdev_tx_t ks8851_start_xmit_par(struct sk_buff *skb,
 	netif_dbg(ks, tx_queued, ks->netdev,
 		  "%s: skb %p, %d@%p\n", __func__, skb, skb->len, skb->data);
 
-	ks8851_lock_par(ks, &flags);
+	ks8851_lock_par(ks);
 
 	txmir = ks8851_rdreg16_par(ks, KS_TXMIR) & 0x1fff;
 
@@ -262,7 +259,7 @@ static netdev_tx_t ks8851_start_xmit_par(struct sk_buff *skb,
 		ret = NETDEV_TX_BUSY;
 	}
 
-	ks8851_unlock_par(ks, &flags);
+	ks8851_unlock_par(ks);
 
 	return ret;
 }

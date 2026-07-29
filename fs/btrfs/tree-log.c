@@ -29,6 +29,7 @@
 #include "orphan.h"
 #include "print-tree.h"
 #include "tree-checker.h"
+#include "delayed-inode.h"
 
 #define MAX_CONFLICT_INODES 10
 
@@ -198,9 +199,9 @@ static void do_abort_log_replay(struct walk_control *wc, const char *function,
 
 	if (wc->log_leaf) {
 		btrfs_crit(fs_info,
-	  "log tree (for root %llu) leaf currently being processed (slot %d key %llu %u %llu):",
+"log tree (for root %llu) leaf currently being processed (slot %d key " BTRFS_KEY_FMT "):",
 			   btrfs_root_id(wc->root), wc->log_slot,
-			   wc->log_key.objectid, wc->log_key.type, wc->log_key.offset);
+			   BTRFS_KEY_FMT_VALUE(&wc->log_key));
 		btrfs_print_leaf(wc->log_leaf);
 	}
 
@@ -510,9 +511,9 @@ static int overwrite_item(struct walk_control *wc)
 	ret = btrfs_search_slot(NULL, root, &wc->log_key, wc->subvol_path, 0, 0);
 	if (ret < 0) {
 		btrfs_abort_log_replay(wc, ret,
-		"failed to search subvolume tree for key (%llu %u %llu) root %llu",
-				       wc->log_key.objectid, wc->log_key.type,
-				       wc->log_key.offset, btrfs_root_id(root));
+		"failed to search subvolume tree for key " BTRFS_KEY_FMT " root %llu",
+				       BTRFS_KEY_FMT_VALUE(&wc->log_key),
+				       btrfs_root_id(root));
 		return ret;
 	}
 
@@ -618,9 +619,8 @@ insert:
 			btrfs_extend_item(trans, wc->subvol_path, item_size - found_size);
 	} else if (ret) {
 		btrfs_abort_log_replay(wc, ret,
-				       "failed to insert item for key (%llu %u %llu)",
-				       wc->log_key.objectid, wc->log_key.type,
-				       wc->log_key.offset);
+				       "failed to insert item for key " BTRFS_KEY_FMT,
+				       BTRFS_KEY_FMT_VALUE(&wc->log_key));
 		return ret;
 	}
 	dst_ptr = btrfs_item_ptr_offset(dst_eb, dst_slot);
@@ -829,9 +829,9 @@ static noinline int replay_one_extent(struct walk_control *wc)
 				      &wc->log_key, sizeof(*item));
 	if (ret) {
 		btrfs_abort_log_replay(wc, ret,
-		       "failed to insert item with key (%llu %u %llu) root %llu",
-				       wc->log_key.objectid, wc->log_key.type,
-				       wc->log_key.offset, btrfs_root_id(root));
+		       "failed to insert item with key " BTRFS_KEY_FMT " root %llu",
+				       BTRFS_KEY_FMT_VALUE(&wc->log_key),
+				       btrfs_root_id(root));
 		goto out;
 	}
 	dest_offset = btrfs_item_ptr_offset(wc->subvol_path->nodes[0],
@@ -1348,9 +1348,9 @@ again:
 	ret = btrfs_search_slot(NULL, root, &search_key, wc->subvol_path, 0, 0);
 	if (ret < 0) {
 		btrfs_abort_log_replay(wc, ret,
-	       "failed to search subvolume tree for key (%llu %u %llu) root %llu",
-				       search_key.objectid, search_key.type,
-				       search_key.offset, btrfs_root_id(root));
+	       "failed to search subvolume tree for key " BTRFS_KEY_FMT " root %llu",
+				       BTRFS_KEY_FMT_VALUE(&search_key),
+				       btrfs_root_id(root));
 		return ret;
 	} else if (ret == 0) {
 		/*
@@ -1483,9 +1483,9 @@ again:
 	}
 	if (ret < 0) {
 		btrfs_abort_log_replay(wc, ret,
-	       "failed to search subvolume tree for key (%llu %u %llu) root %llu",
-				       wc->log_key.objectid, wc->log_key.type,
-				       wc->log_key.offset, btrfs_root_id(root));
+	       "failed to search subvolume tree for key " BTRFS_KEY_FMT " root %llu",
+				       BTRFS_KEY_FMT_VALUE(&wc->log_key),
+				       btrfs_root_id(root));
 		goto out;
 	}
 
@@ -2647,7 +2647,7 @@ static noinline int replay_dir_deletes(struct walk_control *wc,
 	int ret = 0;
 	struct btrfs_key dir_key;
 	struct btrfs_key found_key;
-	struct btrfs_path *log_path;
+	BTRFS_PATH_AUTO_FREE(log_path);
 	struct btrfs_inode *dir;
 
 	dir_key.objectid = dirid;
@@ -2664,7 +2664,6 @@ static noinline int replay_dir_deletes(struct walk_control *wc,
 	 * we replay the deletes before we copy in the inode item from the log.
 	 */
 	if (IS_ERR(dir)) {
-		btrfs_free_path(log_path);
 		ret = PTR_ERR(dir);
 		if (ret == -ENOENT)
 			ret = 0;
@@ -2700,10 +2699,9 @@ static noinline int replay_dir_deletes(struct walk_control *wc,
 						wc->subvol_path, 0, 0);
 			if (ret < 0) {
 				btrfs_abort_log_replay(wc, ret,
-			       "failed to search root %llu for key (%llu %u %llu)",
+			       "failed to search root %llu for key " BTRFS_KEY_FMT,
 						       btrfs_root_id(root),
-						       dir_key.objectid, dir_key.type,
-						       dir_key.offset);
+						       BTRFS_KEY_FMT_VALUE(&dir_key));
 				goto out;
 			}
 
@@ -2745,7 +2743,6 @@ static noinline int replay_dir_deletes(struct walk_control *wc,
 	ret = 0;
 out:
 	btrfs_release_path(wc->subvol_path);
-	btrfs_free_path(log_path);
 	iput(&dir->vfs_inode);
 	return ret;
 }
@@ -4607,20 +4604,31 @@ static void fill_inode_item(struct btrfs_trans_handle *trans,
 			    struct inode *inode, bool log_inode_only,
 			    u64 logged_isize)
 {
+	u64 gen = BTRFS_I(inode)->generation;
 	u64 flags;
 
 	if (log_inode_only) {
-		/* set the generation to zero so the recover code
-		 * can tell the difference between an logging
-		 * just to say 'this inode exists' and a logging
-		 * to say 'update this inode with these values'
+		/*
+		 * Set the generation to zero so the recover code can tell the
+		 * difference between a logging just to say 'this inode exists'
+		 * and a logging to say 'update this inode with these values'.
+		 * But only if the inode was not already logged before.
+		 * We access ->logged_trans directly since it was already set
+		 * up in the call chain by btrfs_log_inode(), and data_race()
+		 * to avoid false alerts from KCSAN and since it was set already
+		 * and one can set it to 0 since that only happens on eviction
+		 * and we are holding a ref on the inode.
 		 */
-		btrfs_set_inode_generation(leaf, item, 0);
+		ASSERT(data_race(BTRFS_I(inode)->logged_trans) > 0);
+		if (data_race(BTRFS_I(inode)->logged_trans) < trans->transid)
+			gen = 0;
+
 		btrfs_set_inode_size(leaf, item, logged_isize);
 	} else {
-		btrfs_set_inode_generation(leaf, item, BTRFS_I(inode)->generation);
 		btrfs_set_inode_size(leaf, item, inode->i_size);
 	}
+
+	btrfs_set_inode_generation(leaf, item, gen);
 
 	btrfs_set_inode_uid(leaf, item, i_uid_read(inode));
 	btrfs_set_inode_gid(leaf, item, i_gid_read(inode));
@@ -5427,41 +5435,62 @@ process:
 	return 0;
 }
 
-static int logged_inode_size(struct btrfs_root *log, struct btrfs_inode *inode,
-			     struct btrfs_path *path, u64 *size_ret)
+static int get_inode_size_to_log(struct btrfs_trans_handle *trans,
+				 struct btrfs_inode *inode,
+				 struct btrfs_path *path, u64 *size_ret)
 {
 	struct btrfs_key key;
+	struct btrfs_inode_item *item;
 	int ret;
 
 	key.objectid = btrfs_ino(inode);
 	key.type = BTRFS_INODE_ITEM_KEY;
 	key.offset = 0;
 
-	ret = btrfs_search_slot(NULL, log, &key, path, 0, 0);
-	if (ret < 0) {
-		return ret;
-	} else if (ret > 0) {
-		*size_ret = 0;
-	} else {
-		struct btrfs_inode_item *item;
+	/*
+	 * Our caller called inode_logged(), so logged_trans is up to date.
+	 * Use data_race() to silence any warning from KCSAN. Once logged_trans
+	 * is set, it can only be reset to 0 after inode eviction.
+	 */
+	if (data_race(inode->logged_trans) == trans->transid) {
+		ret = btrfs_search_slot(NULL, inode->root->log_root, &key, path, 0, 0);
+	} else if (inode->generation < trans->transid) {
+		path->search_commit_root = true;
+		path->skip_locking = true;
+		ret = btrfs_search_slot(NULL, inode->root, &key, path, 0, 0);
+		path->search_commit_root = false;
+		path->skip_locking = false;
 
-		item = btrfs_item_ptr(path->nodes[0], path->slots[0],
-				      struct btrfs_inode_item);
-		*size_ret = btrfs_inode_size(path->nodes[0], item);
-		/*
-		 * If the in-memory inode's i_size is smaller then the inode
-		 * size stored in the btree, return the inode's i_size, so
-		 * that we get a correct inode size after replaying the log
-		 * when before a power failure we had a shrinking truncate
-		 * followed by addition of a new name (rename / new hard link).
-		 * Otherwise return the inode size from the btree, to avoid
-		 * data loss when replaying a log due to previously doing a
-		 * write that expands the inode's size and logging a new name
-		 * immediately after.
-		 */
-		if (*size_ret > inode->vfs_inode.i_size)
-			*size_ret = inode->vfs_inode.i_size;
+	} else {
+		*size_ret = 0;
+		return 0;
 	}
+
+	/*
+	 * If the inode was logged before or is from a past transaction, then
+	 * its inode item must exist in the log root or in the commit root.
+	 */
+	ASSERT(ret <= 0);
+	if (WARN_ON_ONCE(ret > 0))
+		ret = -ENOENT;
+
+	if (ret < 0)
+		return ret;
+
+	item = btrfs_item_ptr(path->nodes[0], path->slots[0],
+			      struct btrfs_inode_item);
+	*size_ret = btrfs_inode_size(path->nodes[0], item);
+	/*
+	 * If the in-memory inode's i_size is smaller then the inode size stored
+	 * in the btree, return the inode's i_size, so that we get a correct
+	 * inode size after replaying the log when before a power failure we had
+	 * a shrinking truncate followed by addition of a new name (rename / new
+	 * hard link). Otherwise return the inode size from the btree, to avoid
+	 * data loss when replaying a log due to previously doing a write that
+	 * expands the inode's size and logging a new name immediately after.
+	 */
+	if (*size_ret > inode->vfs_inode.i_size)
+		*size_ret = inode->vfs_inode.i_size;
 
 	btrfs_release_path(path);
 	return 0;
@@ -6202,6 +6231,7 @@ static int log_conflicting_inodes(struct btrfs_trans_handle *trans,
 				  struct btrfs_root *root,
 				  struct btrfs_log_ctx *ctx)
 {
+	const bool orig_log_new_dentries = ctx->log_new_dentries;
 	int ret = 0;
 
 	/*
@@ -6263,7 +6293,11 @@ static int log_conflicting_inodes(struct btrfs_trans_handle *trans,
 			 * dir index key range logged for the directory. So we
 			 * must make sure the deletion is recorded.
 			 */
+			ctx->log_new_dentries = false;
 			ret = btrfs_log_inode(trans, inode, LOG_INODE_ALL, ctx);
+			if (!ret && ctx->log_new_dentries)
+				ret = log_new_dir_dentries(trans, inode, ctx);
+
 			btrfs_add_delayed_iput(inode);
 			if (ret)
 				break;
@@ -6298,6 +6332,7 @@ static int log_conflicting_inodes(struct btrfs_trans_handle *trans,
 			break;
 	}
 
+	ctx->log_new_dentries = orig_log_new_dentries;
 	ctx->logging_conflict_inodes = false;
 	if (ret)
 		free_conflicting_inodes(ctx);
@@ -6971,7 +7006,7 @@ static int btrfs_log_inode(struct btrfs_trans_handle *trans,
 			ret = drop_inode_items(trans, log, path, inode,
 					       BTRFS_XATTR_ITEM_KEY);
 	} else {
-		if (inode_only == LOG_INODE_EXISTS && ctx->logged_before) {
+		if (inode_only == LOG_INODE_EXISTS) {
 			/*
 			 * Make sure the new inode item we write to the log has
 			 * the same isize as the current one (if it exists).
@@ -6985,7 +7020,7 @@ static int btrfs_log_inode(struct btrfs_trans_handle *trans,
 			 * (zeroes), as if an expanding truncate happened,
 			 * instead of getting a file of 4Kb only.
 			 */
-			ret = logged_inode_size(log, inode, path, &logged_isize);
+			ret = get_inode_size_to_log(trans, inode, path, &logged_isize);
 			if (ret)
 				goto out_unlock;
 		}

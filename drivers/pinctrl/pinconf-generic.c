@@ -261,12 +261,17 @@ int pinconf_generic_parse_dt_pinmux(struct device_node *np, struct device *dev,
 		return -ENOENT;
 	}
 
+	npins_t = prop->length / sizeof(u32);
+	if (npins_t == 0) {
+		dev_info(dev, "pinmux property doesn't have entries\n");
+		return -ENODATA;
+	}
+
 	if (!pid || !pmux || !npins) {
 		dev_err(dev, "parameters error\n");
 		return -EINVAL;
 	}
 
-	npins_t = prop->length / sizeof(u32);
 	pid_t = devm_kcalloc(dev, npins_t, sizeof(*pid_t), GFP_KERNEL);
 	pmux_t = devm_kcalloc(dev, npins_t, sizeof(*pmux_t), GFP_KERNEL);
 	if (!pid_t || !pmux_t) {
@@ -355,75 +360,6 @@ out:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(pinconf_generic_parse_dt_config);
-
-int pinconf_generic_dt_node_to_map_pinmux(struct pinctrl_dev *pctldev,
-					  struct device_node *np,
-					  struct pinctrl_map **map,
-					  unsigned int *num_maps)
-{
-	struct device *dev = pctldev->dev;
-	struct device_node *pnode;
-	unsigned long *configs = NULL;
-	unsigned int num_configs = 0;
-	struct property *prop;
-	unsigned int reserved_maps;
-	int reserve;
-	int ret;
-
-	prop = of_find_property(np, "pinmux", NULL);
-	if (!prop) {
-		dev_info(dev, "Missing pinmux property\n");
-		return -ENOENT;
-	}
-
-	pnode = of_get_parent(np);
-	if (!pnode) {
-		dev_info(dev, "Missing function node\n");
-		return -EINVAL;
-	}
-
-	reserved_maps = 0;
-	*map = NULL;
-	*num_maps = 0;
-
-	ret = pinconf_generic_parse_dt_config(np, pctldev, &configs,
-					      &num_configs);
-	if (ret < 0) {
-		dev_err(dev, "%pOF: could not parse node property\n", np);
-		return ret;
-	}
-
-	reserve = 1;
-	if (num_configs)
-		reserve++;
-
-	ret = pinctrl_utils_reserve_map(pctldev, map, &reserved_maps,
-					num_maps, reserve);
-	if (ret < 0)
-		goto exit;
-
-	ret = pinctrl_utils_add_map_mux(pctldev, map,
-					&reserved_maps, num_maps, np->name,
-					pnode->name);
-	if (ret < 0)
-		goto exit;
-
-	if (num_configs) {
-		ret = pinctrl_utils_add_map_configs(pctldev, map, &reserved_maps,
-						    num_maps, np->name, configs,
-						    num_configs, PIN_MAP_TYPE_CONFIGS_GROUP);
-		if (ret < 0)
-			goto exit;
-	}
-
-exit:
-	kfree(configs);
-	if (ret)
-		pinctrl_utils_free_map(pctldev, *map, *num_maps);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(pinconf_generic_dt_node_to_map_pinmux);
 
 int pinconf_generic_dt_subnode_to_map(struct pinctrl_dev *pctldev,
 		struct device_node *np, struct pinctrl_map **map,

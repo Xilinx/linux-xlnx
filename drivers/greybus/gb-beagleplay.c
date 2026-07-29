@@ -242,30 +242,26 @@ static void hdlc_write(struct gb_beagleplay *bg)
 }
 
 /**
- * hdlc_append() - Queue HDLC data for sending.
+ * hdlc_append() - Queue a single HDLC byte for sending.
  * @bg: beagleplay greybus driver
  * @value: hdlc byte to transmit
  *
- * Assumes that producer lock as been acquired.
+ * Caller must hold tx_producer_lock and must have ensured sufficient
+ * space in the circular buffer before calling (see hdlc_tx_frames()).
  */
 static void hdlc_append(struct gb_beagleplay *bg, u8 value)
 {
-	int tail, head = bg->tx_circ_buf.head;
+	int head = bg->tx_circ_buf.head;
+	int tail = READ_ONCE(bg->tx_circ_buf.tail);
 
-	while (true) {
-		tail = READ_ONCE(bg->tx_circ_buf.tail);
+	lockdep_assert_held(&bg->tx_producer_lock);
+	if (WARN_ON_ONCE(CIRC_SPACE(head, tail, TX_CIRC_BUF_SIZE) < 1))
+		return;
 
-		if (CIRC_SPACE(head, tail, TX_CIRC_BUF_SIZE) >= 1) {
-			bg->tx_circ_buf.buf[head] = value;
-
-			/* Finish producing HDLC byte */
-			smp_store_release(&bg->tx_circ_buf.head,
-					  (head + 1) & (TX_CIRC_BUF_SIZE - 1));
-			return;
-		}
-		dev_warn(&bg->sd->dev, "Tx circ buf full");
-		usleep_range(3000, 5000);
-	}
+	bg->tx_circ_buf.buf[head] = value;
+	/* Ensure buffer write is visible before advancing head. */
+	smp_store_release(&bg->tx_circ_buf.head,
+			  (head + 1) & (TX_CIRC_BUF_SIZE - 1));
 }
 
 static void hdlc_append_escaped(struct gb_beagleplay *bg, u8 value)
@@ -313,12 +309,89 @@ static void hdlc_transmit(struct work_struct *work)
 	spin_unlock_bh(&bg->tx_consumer_lock);
 }
 
+/**
+ * hdlc_encoded_length() - Calculate worst-case encoded length of an HDLC frame.
+ * @payloads: array of payload buffers
+ * @count: number of payloads
+ *
+ * Returns the maximum number of bytes needed in the circular buffer.
+ */
+static size_t hdlc_encoded_length(const struct hdlc_payload payloads[],
+				  size_t count)
+{
+	size_t i, payload_len = 0;
+
+	for (i = 0; i < count; i++)
+		payload_len += payloads[i].len;
+
+	/*
+	 * Worst case: every data byte needs escaping (doubles in size).
+	 * data bytes = address(1) + control(1) + payload + crc(2)
+	 * framing    = opening flag(1) + closing flag(1)
+	 */
+	return 2 + (1 + 1 + payload_len + 2) * 2;
+}
+
+#define HDLC_TX_BUF_WAIT_RETRIES	500
+#define HDLC_TX_BUF_WAIT_US_MIN	3000
+#define HDLC_TX_BUF_WAIT_US_MAX	5000
+
+/**
+ * hdlc_tx_frames() - Encode and queue an HDLC frame for transmission.
+ * @bg: beagleplay greybus driver
+ * @address: HDLC address field
+ * @control: HDLC control field
+ * @payloads: array of payload buffers
+ * @count: number of payloads
+ *
+ * Sleeps outside the spinlock until enough circular-buffer space is
+ * available, then verifies space under the lock and writes the entire
+ * frame atomically.  Either a complete frame is enqueued or nothing is
+ * written, avoiding both sleeping in atomic context and partial frames.
+ */
 static void hdlc_tx_frames(struct gb_beagleplay *bg, u8 address, u8 control,
 			   const struct hdlc_payload payloads[], size_t count)
 {
+	size_t needed = hdlc_encoded_length(payloads, count);
+	int retries = HDLC_TX_BUF_WAIT_RETRIES;
 	size_t i;
+	int head, tail;
+
+	/* Wait outside the lock for sufficient buffer space. */
+	while (retries--) {
+		/* Pairs with smp_store_release() in hdlc_append(). */
+		head = smp_load_acquire(&bg->tx_circ_buf.head);
+		tail = READ_ONCE(bg->tx_circ_buf.tail);
+
+		if (CIRC_SPACE(head, tail, TX_CIRC_BUF_SIZE) >= needed)
+			break;
+
+		/* Kick the consumer and sleep — no lock held. */
+		schedule_work(&bg->tx_work);
+		usleep_range(HDLC_TX_BUF_WAIT_US_MIN, HDLC_TX_BUF_WAIT_US_MAX);
+	}
+
+	if (retries < 0) {
+		dev_warn_ratelimited(&bg->sd->dev,
+				     "Tx circ buf full, dropping frame\n");
+		return;
+	}
 
 	spin_lock(&bg->tx_producer_lock);
+
+	/*
+	 * Re-check under the lock.  Should not fail since
+	 * tx_producer_lock serialises all producers and the
+	 * consumer only frees space, but guard against it.
+	 */
+	head = bg->tx_circ_buf.head;
+	tail = READ_ONCE(bg->tx_circ_buf.tail);
+	if (unlikely(CIRC_SPACE(head, tail, TX_CIRC_BUF_SIZE) < needed)) {
+		spin_unlock(&bg->tx_producer_lock);
+		dev_warn_ratelimited(&bg->sd->dev,
+				     "Tx circ buf space lost, dropping frame\n");
+		return;
+	}
 
 	hdlc_append_tx_frame(bg);
 	hdlc_append_tx_u8(bg, address);
@@ -534,6 +607,13 @@ static size_t cc1352_bootloader_rx(struct gb_beagleplay *bg, const u8 *data,
 {
 	int ret;
 	size_t off = 0;
+
+	if (count > sizeof(bg->rx_buffer) - bg->rx_buffer_len) {
+		dev_warn(&bg->sd->dev,
+			 "dropping oversized bootloader receive chunk");
+		bg->rx_buffer_len = 0;
+		return count;
+	}
 
 	memcpy(bg->rx_buffer + bg->rx_buffer_len, data, count);
 	bg->rx_buffer_len += count;

@@ -56,7 +56,8 @@ static bool rt_mt6(const struct sk_buff *skb, struct xt_action_param *par)
 
 	hdrlen = ipv6_optlen(rh);
 	if (skb->len - ptr < hdrlen) {
-		/* Pcket smaller than its length field */
+		/* Packet smaller than its length field */
+		par->hotdrop = true;
 		return false;
 	}
 
@@ -155,6 +156,10 @@ static int rt_mt6_check(const struct xt_mtchk_param *par)
 
 	if (rtinfo->invflags & ~IP6T_RT_INV_MASK) {
 		pr_debug("unknown flags %X\n", rtinfo->invflags);
+		return -EINVAL;
+	}
+	if (rtinfo->addrnr > IP6T_RT_HOPS) {
+		pr_debug("too many addresses specified\n");
 		return -EINVAL;
 	}
 	if ((rtinfo->flags & (IP6T_RT_RES | IP6T_RT_FST_MASK)) &&

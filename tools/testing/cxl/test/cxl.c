@@ -403,11 +403,15 @@ static void depopulate_all_mock_resources(void)
 
 static struct cxl_mock_res *alloc_mock_res(resource_size_t size, int align)
 {
-	struct cxl_mock_res *res = kzalloc(sizeof(*res), GFP_KERNEL);
 	struct genpool_data_align data = {
 		.align = align,
 	};
 	unsigned long phys;
+
+	struct cxl_mock_res *res __free(kfree) = kzalloc(sizeof(*res),
+							 GFP_KERNEL);
+	if (!res)
+		return NULL;
 
 	INIT_LIST_HEAD(&res->list);
 	phys = gen_pool_alloc_algo(cxl_mock_pool, size,
@@ -423,7 +427,7 @@ static struct cxl_mock_res *alloc_mock_res(resource_size_t size, int align)
 	list_add(&res->list, &mock_res);
 	mutex_unlock(&mock_res_lock);
 
-	return res;
+	return no_free_ptr(res);
 }
 
 static int populate_cedt(void)
@@ -1132,6 +1136,23 @@ static void mock_companion(struct acpi_device *adev, struct device *dev)
 #define SZ_64G (SZ_32G * 2)
 #endif
 
+static int cxl_mock_platform_device_add(struct platform_device *pdev,
+					struct platform_device **ppdev)
+{
+	int rc;
+
+	if (ppdev)
+		*ppdev = pdev;
+	rc = platform_device_add(pdev);
+	if (rc) {
+		platform_device_put(pdev);
+		if (ppdev)
+			*ppdev = NULL;
+	}
+
+	return rc;
+}
+
 static __init int cxl_rch_topo_init(void)
 {
 	int rc, i;
@@ -1146,13 +1167,10 @@ static __init int cxl_rch_topo_init(void)
 			goto err_bridge;
 
 		mock_companion(adev, &pdev->dev);
-		rc = platform_device_add(pdev);
-		if (rc) {
-			platform_device_put(pdev);
+		rc = cxl_mock_platform_device_add(pdev, &cxl_rch[i]);
+		if (rc)
 			goto err_bridge;
-		}
 
-		cxl_rch[i] = pdev;
 		mock_pci_bus[idx].bridge = &pdev->dev;
 		rc = sysfs_create_link(&pdev->dev.kobj, &pdev->dev.kobj,
 				       "firmware_node");
@@ -1204,13 +1222,10 @@ static __init int cxl_single_topo_init(void)
 			goto err_bridge;
 
 		mock_companion(adev, &pdev->dev);
-		rc = platform_device_add(pdev);
-		if (rc) {
-			platform_device_put(pdev);
+		rc = cxl_mock_platform_device_add(pdev, &cxl_hb_single[i]);
+		if (rc)
 			goto err_bridge;
-		}
 
-		cxl_hb_single[i] = pdev;
 		mock_pci_bus[i + NR_CXL_HOST_BRIDGES].bridge = &pdev->dev;
 		rc = sysfs_create_link(&pdev->dev.kobj, &pdev->dev.kobj,
 				       "physical_node");
@@ -1229,12 +1244,9 @@ static __init int cxl_single_topo_init(void)
 			goto err_port;
 		pdev->dev.parent = &bridge->dev;
 
-		rc = platform_device_add(pdev);
-		if (rc) {
-			platform_device_put(pdev);
+		rc = cxl_mock_platform_device_add(pdev, &cxl_root_single[i]);
+		if (rc)
 			goto err_port;
-		}
-		cxl_root_single[i] = pdev;
 	}
 
 	for (i = 0; i < ARRAY_SIZE(cxl_swu_single); i++) {
@@ -1247,12 +1259,9 @@ static __init int cxl_single_topo_init(void)
 			goto err_uport;
 		pdev->dev.parent = &root_port->dev;
 
-		rc = platform_device_add(pdev);
-		if (rc) {
-			platform_device_put(pdev);
+		rc = cxl_mock_platform_device_add(pdev, &cxl_swu_single[i]);
+		if (rc)
 			goto err_uport;
-		}
-		cxl_swu_single[i] = pdev;
 	}
 
 	for (i = 0; i < ARRAY_SIZE(cxl_swd_single); i++) {
@@ -1266,12 +1275,9 @@ static __init int cxl_single_topo_init(void)
 			goto err_dport;
 		pdev->dev.parent = &uport->dev;
 
-		rc = platform_device_add(pdev);
-		if (rc) {
-			platform_device_put(pdev);
+		rc = cxl_mock_platform_device_add(pdev, &cxl_swd_single[i]);
+		if (rc)
 			goto err_dport;
-		}
-		cxl_swd_single[i] = pdev;
 	}
 
 	return 0;
@@ -1344,12 +1350,9 @@ static int cxl_mem_init(void)
 		pdev->dev.parent = &dport->dev;
 		set_dev_node(&pdev->dev, i % 2);
 
-		rc = platform_device_add(pdev);
-		if (rc) {
-			platform_device_put(pdev);
+		rc = cxl_mock_platform_device_add(pdev, &cxl_mem[i]);
+		if (rc)
 			goto err_mem;
-		}
-		cxl_mem[i] = pdev;
 	}
 
 	for (i = 0; i < ARRAY_SIZE(cxl_mem_single); i++) {
@@ -1362,12 +1365,9 @@ static int cxl_mem_init(void)
 		pdev->dev.parent = &dport->dev;
 		set_dev_node(&pdev->dev, i % 2);
 
-		rc = platform_device_add(pdev);
-		if (rc) {
-			platform_device_put(pdev);
+		rc = cxl_mock_platform_device_add(pdev, &cxl_mem_single[i]);
+		if (rc)
 			goto err_single;
-		}
-		cxl_mem_single[i] = pdev;
 	}
 
 	for (i = 0; i < ARRAY_SIZE(cxl_rcd); i++) {
@@ -1381,12 +1381,9 @@ static int cxl_mem_init(void)
 		pdev->dev.parent = &rch->dev;
 		set_dev_node(&pdev->dev, i % 2);
 
-		rc = platform_device_add(pdev);
-		if (rc) {
-			platform_device_put(pdev);
+		rc = cxl_mock_platform_device_add(pdev, &cxl_rcd[i]);
+		if (rc)
 			goto err_rcd;
-		}
-		cxl_rcd[i] = pdev;
 	}
 
 	return 0;
@@ -1451,13 +1448,10 @@ static __init int cxl_test_init(void)
 			goto err_bridge;
 
 		mock_companion(adev, &pdev->dev);
-		rc = platform_device_add(pdev);
-		if (rc) {
-			platform_device_put(pdev);
+		rc = cxl_mock_platform_device_add(pdev, &cxl_host_bridge[i]);
+		if (rc)
 			goto err_bridge;
-		}
 
-		cxl_host_bridge[i] = pdev;
 		mock_pci_bus[i].bridge = &pdev->dev;
 		rc = sysfs_create_link(&pdev->dev.kobj, &pdev->dev.kobj,
 				       "physical_node");
@@ -1475,12 +1469,9 @@ static __init int cxl_test_init(void)
 			goto err_port;
 		pdev->dev.parent = &bridge->dev;
 
-		rc = platform_device_add(pdev);
-		if (rc) {
-			platform_device_put(pdev);
+		rc = cxl_mock_platform_device_add(pdev, &cxl_root_port[i]);
+		if (rc)
 			goto err_port;
-		}
-		cxl_root_port[i] = pdev;
 	}
 
 	BUILD_BUG_ON(ARRAY_SIZE(cxl_switch_uport) != ARRAY_SIZE(cxl_root_port));
@@ -1493,12 +1484,9 @@ static __init int cxl_test_init(void)
 			goto err_uport;
 		pdev->dev.parent = &root_port->dev;
 
-		rc = platform_device_add(pdev);
-		if (rc) {
-			platform_device_put(pdev);
+		rc = cxl_mock_platform_device_add(pdev, &cxl_switch_uport[i]);
+		if (rc)
 			goto err_uport;
-		}
-		cxl_switch_uport[i] = pdev;
 	}
 
 	for (i = 0; i < ARRAY_SIZE(cxl_switch_dport); i++) {
@@ -1511,12 +1499,9 @@ static __init int cxl_test_init(void)
 			goto err_dport;
 		pdev->dev.parent = &uport->dev;
 
-		rc = platform_device_add(pdev);
-		if (rc) {
-			platform_device_put(pdev);
+		rc = cxl_mock_platform_device_add(pdev, &cxl_switch_dport[i]);
+		if (rc)
 			goto err_dport;
-		}
-		cxl_switch_dport[i] = pdev;
 	}
 
 	rc = cxl_single_topo_init();
@@ -1534,9 +1519,9 @@ static __init int cxl_test_init(void)
 	mock_companion(&acpi0017_mock, &cxl_acpi->dev);
 	acpi0017_mock.dev.bus = &platform_bus_type;
 
-	rc = platform_device_add(cxl_acpi);
+	rc = cxl_mock_platform_device_add(cxl_acpi, NULL);
 	if (rc)
-		goto err_root;
+		goto err_rch;
 
 	rc = cxl_mem_init();
 	if (rc)
@@ -1545,7 +1530,7 @@ static __init int cxl_test_init(void)
 	return 0;
 
 err_root:
-	platform_device_put(cxl_acpi);
+	platform_device_unregister(cxl_acpi);
 err_rch:
 	cxl_rch_topo_exit();
 err_single:

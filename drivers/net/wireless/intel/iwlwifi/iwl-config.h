@@ -385,7 +385,7 @@ struct iwl_mac_cfg {
 #define IWL_NUM_RBDS_EHT		(512 * 8)
 
 /**
- * struct iwl_rf_cfg
+ * struct iwl_rf_cfg - RF/CRF configuration data
  * @fw_name_pre: Firmware filename prefix. The api version and extension
  *	(.ucode) will be added to filename before loading from disk. The
  *	filename is constructed as <fw_name_pre>-<api>.ucode.
@@ -418,6 +418,7 @@ struct iwl_mac_cfg {
  * @vht_mu_mimo_supported: VHT MU-MIMO support
  * @nvm_type: see &enum iwl_nvm_type
  * @uhb_supported: ultra high band channels supported
+ * @eht_supported: EHT supported
  * @num_rbds: number of receive buffer descriptors to use
  *	(only used for multi-queue capable devices)
  *
@@ -450,7 +451,8 @@ struct iwl_rf_cfg {
 	    host_interrupt_operation_mode:1,
 	    lp_xtal_workaround:1,
 	    vht_mu_mimo_supported:1,
-	    uhb_supported:1;
+	    uhb_supported:1,
+	    eht_supported:1;
 	u8 valid_tx_ant;
 	u8 valid_rx_ant;
 	u8 non_shared_ant;
@@ -688,6 +690,7 @@ extern const char iwl_killer_bn1850i_name[];
 extern const char iwl_bn201_name[];
 extern const char iwl_be221_name[];
 extern const char iwl_be223_name[];
+extern const char iwl_ax221_name[];
 #if IS_ENABLED(CONFIG_IWLDVM)
 extern const struct iwl_rf_cfg iwl5300_agn_cfg;
 extern const struct iwl_rf_cfg iwl5350_agn_cfg;
@@ -743,6 +746,7 @@ extern const struct iwl_rf_cfg iwl_rf_fm;
 extern const struct iwl_rf_cfg iwl_rf_fm_160mhz;
 #define iwl_rf_wh iwl_rf_fm
 #define iwl_rf_wh_160mhz iwl_rf_fm_160mhz
+extern const struct iwl_rf_cfg iwl_rf_wh_non_eht;
 #define iwl_rf_pe iwl_rf_fm
 #endif /* CONFIG_IWLMLD */
 

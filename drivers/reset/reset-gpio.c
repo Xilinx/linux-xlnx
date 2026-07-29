@@ -110,6 +110,7 @@ static struct platform_driver reset_gpio_driver = {
 	.id_table	= reset_gpio_ids,
 	.driver	= {
 		.name = "reset-gpio",
+		.suppress_bind_attrs = true,
 	},
 };
 module_platform_driver(reset_gpio_driver);

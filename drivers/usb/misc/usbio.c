@@ -344,6 +344,10 @@ read:
 	if (ibuf_len < bpkt_len)
 		return -ENOSPC;
 
+	/* The device must not claim more payload than it actually sent. */
+	if (bpkt_len > act - sizeof(*bpkt))
+		return -EPROTO;
+
 	memcpy(ibuf, bpkt->data, bpkt_len);
 
 	return bpkt_len;
@@ -518,7 +522,7 @@ static int usbio_resume(struct usb_interface *intf)
 static void usbio_disconnect(struct usb_interface *intf)
 {
 	struct usbio_device *usbio = usb_get_intfdata(intf);
-	struct usbio_client *client;
+	struct usbio_client *client, *next;
 
 	/* Wakeup any clients waiting for a reply */
 	usbio->rxdat_len = 0;
@@ -535,7 +539,7 @@ static void usbio_disconnect(struct usb_interface *intf)
 	usb_kill_urb(usbio->urb);
 	usb_free_urb(usbio->urb);
 
-	list_for_each_entry_reverse(client, &usbio->cli_list, link) {
+	list_for_each_entry_safe_reverse(client, next, &usbio->cli_list, link) {
 		auxiliary_device_delete(&client->auxdev);
 		auxiliary_device_uninit(&client->auxdev);
 	}
@@ -614,8 +618,10 @@ static int usbio_probe(struct usb_interface *intf, const struct usb_device_id *i
 	usb_fill_bulk_urb(usbio->urb, udev, usbio->rx_pipe, usbio->rxbuf,
 			  usbio->rxbuf_len, usbio_bulk_recv, usbio);
 	ret = usb_submit_urb(usbio->urb, GFP_KERNEL);
-	if (ret)
-		return dev_err_probe(dev, ret, "Submitting usb urb\n");
+	if (ret) {
+		dev_err_probe(dev, ret, "Submitting usb urb\n");
+		goto err_free_urb;
+	}
 
 	mutex_lock(&usbio->ctrl_mutex);
 
@@ -663,6 +669,7 @@ static int usbio_probe(struct usb_interface *intf, const struct usb_device_id *i
 err_unlock:
 	mutex_unlock(&usbio->ctrl_mutex);
 	usb_kill_urb(usbio->urb);
+err_free_urb:
 	usb_free_urb(usbio->urb);
 
 	return ret;

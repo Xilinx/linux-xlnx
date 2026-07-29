@@ -115,10 +115,9 @@ static void bq257xx_reg_dt_parse_gpio(struct platform_device *pdev)
 		return;
 
 	subchild = of_get_child_by_name(child, pdata->desc.of_match);
+	of_node_put(child);
 	if (!subchild)
 		return;
-
-	of_node_put(child);
 
 	pdata->otg_en_gpio = devm_fwnode_gpiod_get_index(&pdev->dev,
 							 of_fwnode_handle(subchild),
@@ -143,8 +142,7 @@ static int bq257xx_regulator_probe(struct platform_device *pdev)
 	struct device_node *np = dev->of_node;
 	struct regulator_config cfg = {};
 
-	pdev->dev.of_node = pdev->dev.parent->of_node;
-	pdev->dev.of_node_reused = true;
+	device_set_of_node_from_dev(&pdev->dev, pdev->dev.parent);
 
 	pdata = devm_kzalloc(&pdev->dev, sizeof(struct bq257xx_reg_data), GFP_KERNEL);
 	if (!pdata)

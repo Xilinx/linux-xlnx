@@ -81,7 +81,7 @@ static int ip6t_nat_register_lookups(struct net *net)
 			while (i)
 				nf_nat_ipv6_unregister_fn(net, &ops[--i]);
 
-			kfree(ops);
+			kfree_rcu(ops, rcu);
 			return ret;
 		}
 	}
@@ -102,7 +102,7 @@ static void ip6t_nat_unregister_lookups(struct net *net)
 	for (i = 0; i < ARRAY_SIZE(nf_nat_ipv6_ops); i++)
 		nf_nat_ipv6_unregister_fn(net, &ops[i]);
 
-	kfree(ops);
+	kfree_rcu(ops, rcu);
 }
 
 static int ip6table_nat_table_init(struct net *net)
@@ -121,8 +121,11 @@ static int ip6table_nat_table_init(struct net *net)
 	}
 
 	ret = ip6t_nat_register_lookups(net);
-	if (ret < 0)
+	if (ret < 0) {
+		xt_unregister_table_pre_exit(net, NFPROTO_IPV6, "nat");
+		synchronize_rcu();
 		ip6t_unregister_table_exit(net, "nat");
+	}
 
 	kfree(repl);
 	return ret;
@@ -131,6 +134,7 @@ static int ip6table_nat_table_init(struct net *net)
 static void __net_exit ip6table_nat_net_pre_exit(struct net *net)
 {
 	ip6t_nat_unregister_lookups(net);
+	xt_unregister_table_pre_exit(net, NFPROTO_IPV6, "nat");
 }
 
 static void __net_exit ip6table_nat_net_exit(struct net *net)

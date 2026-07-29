@@ -45,7 +45,7 @@ static inline void __ns_tree_add(struct ns_common *ns, struct ns_tree *ns_tree)
 
 /**
  * ns_tree_add_raw - Add a namespace to a namespace
- * @ns: Namespace to add
+ * @__ns: Namespace to add
  *
  * This function adds a namespace to the appropriate namespace tree
  * without assigning a id.
@@ -54,7 +54,7 @@ static inline void __ns_tree_add(struct ns_common *ns, struct ns_tree *ns_tree)
 
 /**
  * ns_tree_add - Add a namespace to a namespace tree
- * @ns: Namespace to add
+ * @__ns: Namespace to add
  *
  * This function assigns a new id to the namespace and adds it to the
  * appropriate namespace tree and list.
@@ -63,7 +63,7 @@ static inline void __ns_tree_add(struct ns_common *ns, struct ns_tree *ns_tree)
 
 /**
  * ns_tree_remove - Remove a namespace from a namespace tree
- * @ns: Namespace to remove
+ * @__ns: Namespace to remove
  *
  * This function removes a namespace from the appropriate namespace
  * tree and list.
