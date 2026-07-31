@@ -331,8 +331,8 @@ static int ulpi_phy_probe(struct platform_device *pdev)
 	}
 
 	uphy->regs = devm_ioremap(&pdev->dev, res->start, resource_size(res));
-	if (IS_ERR(uphy->regs))
-		return PTR_ERR(uphy->regs);
+	if (!uphy->regs)
+		return -ENOMEM;
 
 	if (of_property_read_bool(np, "external-drv-vbus") ||
 	    of_property_read_bool(np, "drv-vbus"))
