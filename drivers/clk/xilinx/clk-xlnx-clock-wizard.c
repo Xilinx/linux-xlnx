@@ -134,7 +134,8 @@ enum clk_wzrd_int_clks {
 /**
  * struct clk_wzrd - Clock wizard private data structure
  *
- * @nb:			Notifier block
+ * @nb:			Notifier block for clk_in1
+ * @nb_axi:		Notifier block for s_axi_aclk
  * @base:		Memory base
  * @clk_in1:		Handle to input clock 'clk_in1'
  * @axi_clk:		Handle to input clock 's_axi_aclk'
@@ -145,6 +146,7 @@ enum clk_wzrd_int_clks {
  */
 struct clk_wzrd {
 	struct notifier_block nb;
+	struct notifier_block nb_axi;
 	void __iomem *base;
 	struct clk *clk_in1;
 	struct clk *axi_clk;
@@ -192,6 +194,7 @@ struct versal_clk_data {
 };
 
 #define to_clk_wzrd(_nb) container_of(_nb, struct clk_wzrd, nb)
+#define to_clk_wzrd_axi(_nb) container_of(_nb, struct clk_wzrd, nb_axi)
 
 /* maximum frequencies for input/output clocks per speed grade */
 static const unsigned long clk_wzrd_max_freq[] = {
@@ -1159,6 +1162,30 @@ static struct clk_hw *clk_wzrd_register_divider(struct device *dev,
 static int clk_wzrd_clk_notifier(struct notifier_block *nb, unsigned long event,
 				 void *data)
 {
+	struct clk_wzrd *clk_wzrd = to_clk_wzrd_axi(nb);
+	struct clk_notifier_data *ndata = data;
+	unsigned long max;
+
+	if (clk_wzrd->suspended)
+		return NOTIFY_OK;
+
+	max = WZRD_ACLK_MAX_FREQ;
+
+	switch (event) {
+	case PRE_RATE_CHANGE:
+		if (ndata->new_rate > max)
+			return NOTIFY_BAD;
+		return NOTIFY_OK;
+	case POST_RATE_CHANGE:
+	case ABORT_RATE_CHANGE:
+	default:
+		return NOTIFY_DONE;
+	}
+}
+
+static int clk_wzrd_clk_notifier_in1(struct notifier_block *nb, unsigned long event,
+				     void *data)
+{
 	unsigned long max;
 	struct clk_notifier_data *ndata = data;
 	struct clk_wzrd *clk_wzrd = to_clk_wzrd(nb);
@@ -1166,12 +1193,7 @@ static int clk_wzrd_clk_notifier(struct notifier_block *nb, unsigned long event,
 	if (clk_wzrd->suspended)
 		return NOTIFY_OK;
 
-	if (ndata->clk == clk_wzrd->clk_in1)
-		max = clk_wzrd_max_freq[clk_wzrd->speed_grade - 1];
-	else if (ndata->clk == clk_wzrd->axi_clk)
-		max = WZRD_ACLK_MAX_FREQ;
-	else
-		return NOTIFY_DONE;	/* should never happen */
+	max = clk_wzrd_max_freq[clk_wzrd->speed_grade - 1];
 
 	switch (event) {
 	case PRE_RATE_CHANGE:
@@ -1444,7 +1466,7 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 		}
 
 		if (clk_wzrd->speed_grade) {
-			clk_wzrd->nb.notifier_call = clk_wzrd_clk_notifier;
+			clk_wzrd->nb.notifier_call = clk_wzrd_clk_notifier_in1;
 
 			ret = devm_clk_notifier_register(&pdev->dev, clk_wzrd->clk_in1,
 							 &clk_wzrd->nb);
@@ -1452,8 +1474,10 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 				dev_warn(&pdev->dev,
 					 "unable to register clock notifier\n");
 
+			clk_wzrd->nb_axi.notifier_call = clk_wzrd_clk_notifier;
+
 			ret = devm_clk_notifier_register(&pdev->dev, clk_wzrd->axi_clk,
-							 &clk_wzrd->nb);
+							 &clk_wzrd->nb_axi);
 			if (ret)
 				dev_warn(&pdev->dev,
 					 "unable to register clock notifier\n");
