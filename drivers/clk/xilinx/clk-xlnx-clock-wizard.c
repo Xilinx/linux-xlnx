@@ -304,7 +304,7 @@ static int clk_wzrd_dynamic_reconfig(struct clk_hw *hw, unsigned long rate,
 	value = DIV_ROUND_CLOSEST(parent_rate, rate);
 
 	/* Cap the value to max */
-	min_t(u32, value, WZRD_DR_MAX_INT_DIV_VALUE);
+	value = min_t(u32, value, WZRD_DR_MAX_INT_DIV_VALUE);
 
 	/* Set divisor and clear phase offset */
 	writel(value, div_addr);
@@ -342,6 +342,8 @@ static int clk_wzrd_determine_rate(struct clk_hw *hw,
 	 * achievable
 	 */
 	div = DIV_ROUND_CLOSEST(req->best_parent_rate, req->rate);
+	if (!div)
+		div = 1;
 
 	req->rate = req->best_parent_rate / div;
 
@@ -355,6 +357,9 @@ static int clk_wzrd_get_divisors_ver(struct clk_hw *hw, unsigned long rate,
 	u64 vco_freq, freq, diff, vcomin, vcomax, best_diff = -1ULL;
 	u32 m, d, o;
 	u32 mmin, mmax, dmin, dmax, omin, omax;
+
+	if (!rate)
+		return -EINVAL;
 
 	mmin = VER_WZRD_M_MIN;
 	mmax = VER_WZRD_M_MAX;
@@ -397,6 +402,9 @@ static int clk_wzrd_get_divisors(struct clk_hw *hw, unsigned long rate,
 	u64 vco_freq, freq, diff, vcomin, vcomax, best_diff = -1ULL;
 	u64 m, d, o;
 	u64 mmin, mmax, dmin, dmax, omin, omax, mdmin, mdmax;
+
+	if (!rate)
+		return -EINVAL;
 
 	mmin = WZRD_M_MIN << 3;
 	mmax = WZRD_M_MAX << 3;
