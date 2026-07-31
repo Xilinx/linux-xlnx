@@ -322,6 +322,8 @@ static int ulpi_phy_probe(struct platform_device *pdev)
 	if (!uphy)
 		return -ENOMEM;
 
+	platform_set_drvdata(pdev, uphy);
+
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
 		dev_err(&pdev->dev, "no phy I/O memory resource defined\n");
