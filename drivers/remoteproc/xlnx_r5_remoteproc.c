@@ -822,6 +822,8 @@ static int zynqmp_r5_parse_fw(struct rproc *rproc, const struct firmware *fw)
  */
 static int zynqmp_r5_rproc_prepare(struct rproc *rproc)
 {
+	struct zynqmp_r5_core *r5_core = rproc->priv;
+	struct mbox_info *ipi;
 	int ret;
 
 	ret = add_tcm_banks(rproc);
@@ -842,12 +844,22 @@ static int zynqmp_r5_rproc_prepare(struct rproc *rproc)
 		return ret;
 	}
 
+	/*
+	 * If mailbox nodes are disabled using "status" property then
+	 * setting up mailbox channels will fail.
+	 */
+	ipi = zynqmp_r5_setup_mbox(r5_core->dev);
+	if (ipi) {
+		r5_core->ipi = ipi;
+		ipi->r5_core = r5_core;
+	}
+
 	return 0;
 }
 
 /**
  * zynqmp_r5_rproc_unprepare() - programming sequence after stop/detach.
- * Turns off TCM banks using power-domain id
+ * Turns off TCM banks using power-domain id, frees mbox channels.
  *
  * @rproc: Device node of each rproc
  *
@@ -860,6 +872,9 @@ static int zynqmp_r5_rproc_unprepare(struct rproc *rproc)
 	int i;
 
 	r5_core = rproc->priv;
+
+	zynqmp_r5_free_mbox(r5_core->ipi);
+	r5_core->ipi = NULL;
 
 	for (i = 0; i < r5_core->tcm_bank_count; i++) {
 		pm_domain_id = r5_core->tcm_banks[i]->pm_domain_id;
@@ -1414,7 +1429,6 @@ static int zynqmp_r5_cluster_init(struct zynqmp_r5_cluster *cluster)
 	struct device **child_devs;
 	enum rpu_tcm_comb tcm_mode;
 	int core_count, ret, i, j;
-	struct mbox_info *ipi;
 
 	ret = of_property_read_u32(dev_node, "xlnx,cluster-mode", &cluster_mode);
 
@@ -1508,16 +1522,6 @@ static int zynqmp_r5_cluster_init(struct zynqmp_r5_cluster *cluster)
 		}
 
 		/*
-		 * If mailbox nodes are disabled using "status" property then
-		 * setting up mailbox channels will fail.
-		 */
-		ipi = zynqmp_r5_setup_mbox(&child_pdev->dev);
-		if (ipi) {
-			r5_cores[i]->ipi = ipi;
-			ipi->r5_core = r5_cores[i];
-		}
-
-		/*
 		 * If two child nodes are available in dts in lockstep mode,
 		 * then ignore second child node.
 		 */
@@ -1592,7 +1596,6 @@ static void zynqmp_r5_cluster_exit(void *data)
 
 	for (i = 0; i < cluster->core_count; i++) {
 		r5_core = cluster->r5_cores[i];
-		zynqmp_r5_free_mbox(r5_core->ipi);
 		iounmap(r5_core->rsc_tbl_va);
 		of_reserved_mem_device_release(r5_core->dev);
 		put_device(r5_core->dev);
@@ -1641,8 +1644,6 @@ static void zynqmp_r5_remoteproc_shutdown(struct platform_device *pdev)
 			dev_err(cluster->dev, "failed to %s rproc %d\n",
 				rproc_state_str, rproc->index);
 		}
-
-		zynqmp_r5_free_mbox(r5_core->ipi);
 	}
 }
 
