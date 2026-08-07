@@ -2737,7 +2737,7 @@ static u32 aie2ps_get_uc_core_status(struct aie_partition *apart,
 {
 	u32 regoff, regvalue;
 
-	regoff = aie_cal_regoff(apart->adev, *loc, aie2ps_uc_core_sts.regoff);
+	regoff = aie_aperture_cal_regoff(apart->aperture, *loc, aie2ps_uc_core_sts.regoff);
 	regvalue = ioread32(apart->aperture->base + regoff);
 
 	return aie_get_reg_field(&aie2ps_uc_core_sts, regvalue);
@@ -2754,7 +2754,7 @@ static u32 aie2ps_get_uc_core_intr(struct aie_partition *apart,
 {
 	u32 regoff, regvalue;
 
-	regoff = aie_cal_regoff(apart->adev, *loc, aie2ps_uc_core_intr.regoff);
+	regoff = aie_aperture_cal_regoff(apart->aperture, *loc, aie2ps_uc_core_intr.regoff);
 	regvalue = ioread32(apart->aperture->base + regoff);
 
 	return aie_get_reg_field(&aie2ps_uc_core_intr, regvalue);
@@ -2771,7 +2771,7 @@ static u32 aie2ps_get_uc_mdm_dbg_sts(struct aie_partition *apart,
 {
 	u32 regoff, regvalue;
 
-	regoff = aie_cal_regoff(apart->adev, *loc, aie2ps_uc_mdm_dbg_sts.regoff);
+	regoff = aie_aperture_cal_regoff(apart->aperture, *loc, aie2ps_uc_mdm_dbg_sts.regoff);
 	regvalue = ioread32(apart->aperture->base + regoff);
 
 	return aie_get_reg_field(&aie2ps_uc_mdm_dbg_sts, regvalue);
@@ -2788,7 +2788,7 @@ static u32 aie2ps_get_uc_dma_dm2mm_sts(struct aie_partition *apart,
 {
 	u32 regoff, regvalue;
 
-	regoff = aie_cal_regoff(apart->adev, *loc, aie2ps_uc_dma_dm2mm_sts.regoff);
+	regoff = aie_aperture_cal_regoff(apart->aperture, *loc, aie2ps_uc_dma_dm2mm_sts.regoff);
 	regvalue = ioread32(apart->aperture->base + regoff);
 
 	return aie_get_reg_field(&aie2ps_uc_dma_dm2mm_sts, regvalue);
@@ -2805,7 +2805,7 @@ static u32 aie2ps_get_uc_dma_mm2dm_sts(struct aie_partition *apart,
 {
 	u32 regoff, regvalue;
 
-	regoff = aie_cal_regoff(apart->adev, *loc, aie2ps_uc_dma_mm2dm_sts.regoff);
+	regoff = aie_aperture_cal_regoff(apart->aperture, *loc, aie2ps_uc_dma_mm2dm_sts.regoff);
 	regvalue = ioread32(apart->aperture->base + regoff);
 
 	return aie_get_reg_field(&aie2ps_uc_dma_mm2dm_sts, regvalue);
@@ -2822,7 +2822,7 @@ static u32 aie2ps_get_uc_mod_aximm(struct aie_partition *apart,
 {
 	u32 regoff, regvalue;
 
-	regoff = aie_cal_regoff(apart->adev, *loc, aie2ps_uc_mod_aximm.regoff);
+	regoff = aie_aperture_cal_regoff(apart->aperture, *loc, aie2ps_uc_mod_aximm.regoff);
 	regvalue = ioread32(apart->aperture->base + regoff);
 
 	return aie_get_reg_field(&aie2ps_uc_mod_aximm, regvalue);
@@ -2840,7 +2840,8 @@ static u32 aie2ps_get_uc_mod_aximm_out_trans(struct aie_partition *apart,
 {
 	u32 regoff, regvalue;
 
-	regoff = aie_cal_regoff(apart->adev, *loc, aie2ps_uc_mod_aximm_out_trans.regoff);
+	regoff = aie_aperture_cal_regoff(apart->aperture, *loc,
+					 aie2ps_uc_mod_aximm_out_trans.regoff);
 	regvalue = ioread32(apart->aperture->base + regoff);
 
 	return aie_get_reg_field(&aie2ps_uc_mod_aximm_out_trans, regvalue);
@@ -3126,7 +3127,7 @@ static u32 aie2ps_get_core_status(struct aie_partition *apart, struct aie_locati
 {
 	u32 regoff, regvalue;
 
-	regoff = aie_cal_regoff(apart->adev, *loc, aie2ps_core_sts.regoff);
+	regoff = aie_aperture_cal_regoff(apart->aperture, *loc, aie2ps_core_sts.regoff);
 	regvalue = ioread32(apart->aperture->base + regoff);
 
 	return aie_get_reg_field(&aie2ps_core_sts, regvalue);
@@ -3147,7 +3148,7 @@ static u32 aie2ps_get_lock_status(struct aie_partition *apart,
 		attr = &aie2ps_pl_lock;
 
 	stsoff = attr->sts.regoff * lock + attr->sts_regoff;
-	regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+	regoff = aie_aperture_cal_regoff(apart->aperture, *loc, stsoff);
 	value = ioread32(apart->aperture->base + regoff);
 
 	return aie_get_reg_field(&attr->sts, value);
@@ -3203,16 +3204,16 @@ static u64 aie2ps_get_lock_overflow_status(struct aie_partition *apart,
 
 	if (ttype != AIE_TILE_TYPE_MEMORY) {
 		stsoff = attr->overflow_regoff;
-		regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+		regoff = aie_aperture_cal_regoff(apart->aperture, *loc, stsoff);
 		value = ioread32(apart->aperture->base + regoff);
 		value = aie_get_reg_field(&attr->overflow, value);
 	} else {
 		stsoff = attr->overflow_regoff;
-		regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+		regoff = aie_aperture_cal_regoff(apart->aperture, *loc, stsoff);
 		value = ioread32(apart->aperture->base + regoff);
 
 		stsoff = attr->overflow.regoff * 1U + attr->overflow_regoff;
-		regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+		regoff = aie_aperture_cal_regoff(apart->aperture, *loc, stsoff);
 		value |= ((u64)ioread32(apart->aperture->base + regoff)) << 32;
 	}
 	return value;
@@ -3235,16 +3236,16 @@ static u64 aie2ps_get_lock_underflow_status(struct aie_partition *apart,
 
 	if (ttype != AIE_TILE_TYPE_MEMORY) {
 		stsoff = attr->underflow_regoff;
-		regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+		regoff = aie_aperture_cal_regoff(apart->aperture, *loc, stsoff);
 		value = ioread32(apart->aperture->base + regoff);
 		value = aie_get_reg_field(&attr->underflow, value);
 	} else {
 		stsoff = attr->underflow_regoff;
-		regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+		regoff = aie_aperture_cal_regoff(apart->aperture, *loc, stsoff);
 		value = ioread32(apart->aperture->base + regoff);
 
 		stsoff = attr->underflow.regoff * 1U + attr->underflow_regoff;
-		regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+		regoff = aie_aperture_cal_regoff(apart->aperture, *loc, stsoff);
 		value |= ((u64)ioread32(apart->aperture->base + regoff)) << 32;
 	}
 	return value;
@@ -3336,7 +3337,7 @@ static u32 aie2ps_get_dma_mm2s_status(struct aie_partition *apart,
 	aie2ps_get_tile_dma_attr(apart, loc, &attr);
 
 	stsoff = attr->mm2s_sts_regoff + chanid * attr->chansts.regoff;
-	regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+	regoff = aie_aperture_cal_regoff(apart->aperture, *loc, stsoff);
 
 	return ioread32(apart->aperture->base + regoff);
 }
@@ -3374,7 +3375,7 @@ static u32 aie2ps_get_dma_s2mm_status(struct aie_partition *apart,
 	aie2ps_get_tile_dma_attr(apart, loc, &attr);
 
 	stsoff = attr->s2mm_sts_regoff + chanid * attr->chansts.regoff;
-	regoff = aie_cal_regoff(apart->adev, *loc, stsoff);
+	regoff = aie_aperture_cal_regoff(apart->aperture, *loc, stsoff);
 
 	return ioread32(apart->aperture->base + regoff);
 }
@@ -3720,7 +3721,7 @@ static ssize_t aie2ps_get_tile_sysfs_bd_metadata(struct aie_partition *apart,
 		for (i = 0; i < dma_attr->num_bd_regs; i++) {
 			u32 regoff;
 
-			regoff = aie_cal_regoff(apart->adev, *loc,
+			regoff = aie_aperture_cal_regoff(apart->aperture, *loc,
 						base_bdoff + (i * 4U));
 			bd_data[i] = ioread32(apart->aperture->base + regoff);
 		}

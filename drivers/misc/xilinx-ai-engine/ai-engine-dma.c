@@ -300,7 +300,7 @@ int aie_part_push_bd(struct aie_partition *apart, struct aie_location *loc,
 		(dma_attr->chan_idx_offset * chan_id) +
 		(dma_attr->chan_dir_offset * dir);
 	regval = aie_get_field_val(&dma_attr->taskq_bd, bd_id);
-	va = apart->aperture->base + aie_cal_regoff(adev, *loc, offset);
+	va = apart->aperture->base + aie_aperture_cal_regoff(apart->aperture, *loc, offset);
 
 	writel(regval, va);
 	return 0;
