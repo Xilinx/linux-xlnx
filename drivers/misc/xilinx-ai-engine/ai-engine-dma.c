@@ -825,9 +825,10 @@ long aie_part_update_dmabuf_bd_from_user(struct aie_partition *apart,
 {
 	const struct aie_dma_attr *shim_dma = apart->adev->shim_dma;
 	struct aie_aperture *aperture = apart->aperture;
-	struct aie_device *adev = apart->adev;
 	u32 len, regval, *off, laddr, haddr;
 	struct aie_dmabuf_bd_args args;
+	struct aie_location adjust_loc;
+	u32 intile_regoff;
 	void __iomem *va;
 	dma_addr_t addr;
 	long ret;
@@ -852,10 +853,13 @@ long aie_part_update_dmabuf_bd_from_user(struct aie_partition *apart,
 		goto exit;
 	}
 
+	adjust_loc.col = args.loc.col + apart->range.start.col;
+	adjust_loc.row = args.loc.row + apart->range.start.row;
+	intile_regoff = shim_dma->bd_regoff + shim_dma->bd_len * args.bd_id;
+
 	va = aperture->base +
-	     aie_cal_regoff(adev, args.loc, shim_dma->bd_regoff) +
-	     shim_dma->bd_len * args.bd_id +
-	     shim_dma->buflen.regoff;
+	     aie_aperture_cal_regoff(aperture, adjust_loc,
+				     intile_regoff + shim_dma->buflen.regoff);
 	regval = ioread32(va);
 	len = aie_get_reg_field(&shim_dma->buflen, regval);
 
@@ -871,8 +875,8 @@ long aie_part_update_dmabuf_bd_from_user(struct aie_partition *apart,
 	/* Set low 32bit address */
 	laddr = lower_32_bits(addr);
 	va = aperture->base +
-	     aie_cal_regoff(adev, args.loc, shim_dma->bd_regoff) +
-	     shim_dma->bd_len * args.bd_id + shim_dma->laddr.regoff;
+	     aie_aperture_cal_regoff(aperture, adjust_loc,
+				     intile_regoff + shim_dma->laddr.regoff);
 	regval = ioread32(va);
 	regval &= ~shim_dma->laddr.mask;
 	laddr |= aie_get_field_val(&shim_dma->laddr, laddr);
@@ -881,8 +885,8 @@ long aie_part_update_dmabuf_bd_from_user(struct aie_partition *apart,
 	/* Set high 32bit address */
 	haddr = upper_32_bits(addr);
 	va = aperture->base +
-	     aie_cal_regoff(adev, args.loc, shim_dma->bd_regoff) +
-	     shim_dma->bd_len * args.bd_id + shim_dma->haddr.regoff;
+	     aie_aperture_cal_regoff(aperture, adjust_loc,
+				     intile_regoff + shim_dma->haddr.regoff);
 	regval = ioread32(va);
 	regval &= ~shim_dma->haddr.mask;
 	haddr |= aie_get_field_val(&shim_dma->haddr, haddr);
