@@ -1278,11 +1278,15 @@ static void aie_part_release_device(struct device *dev)
 {
 	struct aie_partition *apart = dev_to_aiepart(dev);
 	struct aie_aperture *aperture = apart->aperture;
+	u32 aperture_relative_col;
 
 	trace_aie_part_release_device(apart);
 	mutex_lock(&aperture->mlock);
 
-	aie_resource_put_region(&aperture->cols_res, apart->range.start.col,
+	/* Convert absolute column to aperture-relative for bitmap operation */
+	aperture_relative_col = apart->range.start.col - aperture->range.start.col;
+
+	aie_resource_put_region(&aperture->cols_res, aperture_relative_col,
 				apart->range.size.col);
 	aie_part_release_event_bitmap(apart);
 	list_del(&apart->node);
