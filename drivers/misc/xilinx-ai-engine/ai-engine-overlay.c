@@ -31,19 +31,21 @@ static int of_aie_notify_pre_remove(struct aie_device *adev,
 		struct list_head *node, *pos;
 		int ret;
 
-		if (!of_node_test_and_set_flag(nc, OF_POPULATED))
-			continue;
-
 		mutex_lock(&adev->mlock);
 
 		list_for_each_safe(pos, node, &adev->apertures) {
 			struct aie_aperture *aperture;
 
 			aperture = list_entry(pos, struct aie_aperture, node);
-			ret = aie_aperture_remove(aperture);
-			if (ret) {
-				mutex_unlock(&adev->mlock);
-				return ret;
+
+			/* Match the aperture by its device node */
+			if (aperture->dev.of_node == nc) {
+				ret = aie_aperture_remove(aperture);
+				if (ret) {
+					mutex_unlock(&adev->mlock);
+					return ret;
+				}
+				break; /* found and removed the matching aperture */
 			}
 		}
 
