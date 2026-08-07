@@ -23,6 +23,7 @@ static void aie_part_core_regs_clr_iowrite(struct aie_partition *apart,
 	const struct aie_device *adev = apart->adev;
 	void __iomem *base = apart->aperture->base;
 	const struct aie_range *range = &apart->range;
+	const struct aie_aperture *aperture = apart->aperture;
 	struct aie_location loc;
 	u32 start_col = range->start.col;
 	u32 start_row = range->start.row;
@@ -38,7 +39,9 @@ static void aie_part_core_regs_clr_iowrite(struct aie_partition *apart,
 		u32 addr_row = loc.row << adev->row_shift;
 
 		for (loc.col = start_col; loc.col < num_col; loc.col++) {
-			u32 addr_col = loc.col << adev->col_shift;
+			/* Convert to aperture-relative column for address calculation */
+			u32 rel_col = loc.col - aperture->range.start.col;
+			u32 addr_col = rel_col << adev->col_shift;
 
 			ttype = get_tile_type(apart->adev, &loc);
 			if (ttype == AIE_TILE_TYPE_TILE &&
@@ -74,6 +77,7 @@ static void aie_part_core_regs_clr_memset_io(struct aie_partition *apart,
 	const struct aie_device *adev = apart->adev;
 	void __iomem *base = apart->aperture->base + addr;
 	const struct aie_range *range = &apart->range;
+	const struct aie_aperture *aperture = apart->aperture;
 	struct aie_location loc;
 	u32 start_col = range->start.col;
 	u32 start_row = range->start.row;
@@ -89,7 +93,9 @@ static void aie_part_core_regs_clr_memset_io(struct aie_partition *apart,
 		u32 addr_row = loc.row << adev->row_shift;
 
 		for (loc.col = start_col; loc.col < num_col; loc.col++) {
-			u32 addr_col = loc.col << adev->col_shift;
+			/* Convert to aperture-relative column for address calculation */
+			u32 rel_col = loc.col - aperture->range.start.col;
+			u32 addr_col = rel_col << adev->col_shift;
 
 			ttype = get_tile_type(apart->adev, &loc);
 			if (ttype == AIE_TILE_TYPE_TILE &&
@@ -157,7 +163,7 @@ static int aie_part_clear_data_mem(struct aie_partition *apart)
 
 			loc.col = c;
 			loc.row = r;
-			memoff = aie_cal_regoff(adev, loc, mem->offset);
+			memoff = aie_aperture_cal_regoff(apart->aperture, loc, mem->offset);
 			memset_io(apart->aperture->base + memoff, 0, mem->size);
 		}
 	}
