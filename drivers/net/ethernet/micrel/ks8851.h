@@ -408,10 +408,8 @@ struct ks8851_net {
 	struct gpio_desc	*gpio;
 	struct mii_bus		*mii_bus;
 
-	void			(*lock)(struct ks8851_net *ks,
-					unsigned long *flags);
-	void			(*unlock)(struct ks8851_net *ks,
-					  unsigned long *flags);
+	void			(*lock)(struct ks8851_net *ks);
+	void			(*unlock)(struct ks8851_net *ks);
 	unsigned int		(*rdreg16)(struct ks8851_net *ks,
 					   unsigned int reg);
 	void			(*wrreg16)(struct ks8851_net *ks,

@@ -34,6 +34,13 @@
 #include "led.h"
 #include "wep.h"
 
+struct ieee80211_elem_defrag {
+	const struct element *elem;
+	/* container start/len */
+	const u8 *start;
+	size_t len;
+};
+
 struct ieee80211_elems_parse {
 	/* must be first for kfree to work */
 	struct ieee802_11_elems elems;
@@ -41,11 +48,7 @@ struct ieee80211_elems_parse {
 	/* The basic Multi-Link element in the original elements */
 	const struct element *ml_basic_elem;
 
-	/* The reconfiguration Multi-Link element in the original elements */
-	const struct element *ml_reconf_elem;
-
-	/* The EPCS Multi-Link element in the original elements */
-	const struct element *ml_epcs_elem;
+	struct ieee80211_elem_defrag ml_reconf, ml_epcs;
 
 	bool multi_link_inner;
 	bool skip_vendor;
@@ -162,10 +165,14 @@ ieee80211_parse_extension_element(u32 *crc,
 				}
 				break;
 			case IEEE80211_ML_CONTROL_TYPE_RECONF:
-				elems_parse->ml_reconf_elem = elem;
+				elems_parse->ml_reconf.elem = elem;
+				elems_parse->ml_reconf.start = params->start;
+				elems_parse->ml_reconf.len = params->len;
 				break;
 			case IEEE80211_ML_CONTROL_TYPE_PRIO_ACCESS:
-				elems_parse->ml_epcs_elem = elem;
+				elems_parse->ml_epcs.elem = elem;
+				elems_parse->ml_epcs.start = params->start;
+				elems_parse->ml_epcs.len = params->len;
 				break;
 			default:
 				break;
@@ -950,46 +957,27 @@ ieee80211_prep_mle_link_parse(struct ieee80211_elems_parse *elems_parse,
 				      sub->start, sub->len);
 }
 
-static void
-ieee80211_mle_defrag_reconf(struct ieee80211_elems_parse *elems_parse)
+static const void *
+ieee80211_mle_defrag(struct ieee80211_elems_parse *elems_parse,
+		     struct ieee80211_elem_defrag *defrag,
+		     size_t *out_len)
 {
-	struct ieee802_11_elems *elems = &elems_parse->elems;
+	const void *ret;
 	ssize_t ml_len;
 
-	ml_len = cfg80211_defragment_element(elems_parse->ml_reconf_elem,
-					     elems->ie_start,
-					     elems->total_len,
+	ml_len = cfg80211_defragment_element(defrag->elem,
+					     defrag->start, defrag->len,
 					     elems_parse->scratch_pos,
 					     elems_parse->scratch +
 						elems_parse->scratch_len -
 						elems_parse->scratch_pos,
 					     WLAN_EID_FRAGMENT);
 	if (ml_len < 0)
-		return;
-	elems->ml_reconf = (void *)elems_parse->scratch_pos;
-	elems->ml_reconf_len = ml_len;
+		return NULL;
+	ret = elems_parse->scratch_pos;
+	*out_len = ml_len;
 	elems_parse->scratch_pos += ml_len;
-}
-
-static void
-ieee80211_mle_defrag_epcs(struct ieee80211_elems_parse *elems_parse)
-{
-	struct ieee802_11_elems *elems = &elems_parse->elems;
-	ssize_t ml_len;
-
-	ml_len = cfg80211_defragment_element(elems_parse->ml_epcs_elem,
-					     elems->ie_start,
-					     elems->total_len,
-					     elems_parse->scratch_pos,
-					     elems_parse->scratch +
-						elems_parse->scratch_len -
-						elems_parse->scratch_pos,
-					     WLAN_EID_FRAGMENT);
-	if (ml_len < 0)
-		return;
-	elems->ml_epcs = (void *)elems_parse->scratch_pos;
-	elems->ml_epcs_len = ml_len;
-	elems_parse->scratch_pos += ml_len;
+	return ret;
 }
 
 struct ieee802_11_elems *
@@ -1069,9 +1057,12 @@ ieee802_11_parse_elems_full(struct ieee80211_elems_parse_params *params)
 		_ieee802_11_parse_elems_full(&sub, elems_parse, NULL);
 	}
 
-	ieee80211_mle_defrag_reconf(elems_parse);
-
-	ieee80211_mle_defrag_epcs(elems_parse);
+	elems->ml_reconf = ieee80211_mle_defrag(elems_parse,
+						&elems_parse->ml_reconf,
+						&elems->ml_reconf_len);
+	elems->ml_epcs = ieee80211_mle_defrag(elems_parse,
+					      &elems_parse->ml_epcs,
+					      &elems->ml_epcs_len);
 
 	if (elems->tim && !elems->parse_error) {
 		const struct ieee80211_tim_ie *tim_ie = elems->tim;

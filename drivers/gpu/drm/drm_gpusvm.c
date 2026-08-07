@@ -944,6 +944,11 @@ drm_gpusvm_range_find_or_insert(struct drm_gpusvm *gpusvm,
 		goto err_notifier_remove;
 	}
 
+	if (vas->vm_flags & (VM_IO | VM_PFNMAP)) {
+		err = -EIO;
+		goto err_notifier_remove;
+	}
+
 	range = drm_gpusvm_range_find(notifier, fault_addr, fault_addr + 1);
 	if (range)
 		goto out_mmunlock;
@@ -1443,6 +1448,7 @@ set_seqno:
 	return 0;
 
 err_unmap:
+	svm_pages->flags.has_dma_mapping = true;
 	__drm_gpusvm_unmap_pages(gpusvm, svm_pages, num_dma_mapped);
 	drm_gpusvm_notifier_unlock(gpusvm);
 err_free:

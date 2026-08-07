@@ -203,7 +203,11 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	uio = platform_device_alloc(DRIVER_NAME, PLATFORM_DEVID_NONE);
 	if (!uio)
 		return -ENOMEM;
-	uio->driver_override = "uio_dmem_genirq";
+
+	ret = device_set_driver_override(&uio->dev, "uio_dmem_genirq");
+	if (ret)
+		goto err_out;
+
 	uio->dev.parent = &pdev->dev;
 
 	pdata = devm_kzalloc(&pdev->dev, sizeof(*pdata), GFP_KERNEL);

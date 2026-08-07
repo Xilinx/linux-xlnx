@@ -829,7 +829,10 @@ static void edt_ft5x06_ts_prepare_debugfs(struct edt_ft5x06_ts_data *tsdata)
 
 static void edt_ft5x06_ts_teardown_debugfs(struct edt_ft5x06_ts_data *tsdata)
 {
+	guard(mutex)(&tsdata->mutex);
+
 	kfree(tsdata->raw_buffer);
+	tsdata->raw_buffer = NULL;
 }
 
 #else

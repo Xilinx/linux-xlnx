@@ -144,6 +144,8 @@ void __ns_common_free(struct ns_common *ns);
 
 #define ns_common_free(__ns) __ns_common_free(to_ns_common((__ns)))
 
+bool may_see_all_namespaces(void);
+
 static __always_inline __must_check bool __ns_ref_put(struct ns_common *ns)
 {
 	return refcount_dec_and_test(&ns->__ns_ref);

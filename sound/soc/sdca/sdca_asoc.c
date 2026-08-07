@@ -16,6 +16,7 @@
 #include <linux/minmax.h>
 #include <linux/module.h>
 #include <linux/overflow.h>
+#include <linux/pm_runtime.h>
 #include <linux/regmap.h>
 #include <linux/soundwire/sdw_registers.h>
 #include <linux/string_helpers.h>
@@ -50,6 +51,25 @@ static bool readonly_control(struct sdca_control *control)
 	return control->has_fixed || control->mode == SDCA_ACCESS_MODE_RO;
 }
 
+static int ge_count_routes(struct sdca_entity *entity)
+{
+	int count = 0;
+	int i, j;
+
+	for (i = 0; i < entity->ge.num_modes; i++) {
+		struct sdca_ge_mode *mode = &entity->ge.modes[i];
+
+		for (j = 0; j < mode->num_controls; j++) {
+			struct sdca_ge_control *affected = &mode->controls[j];
+
+			if (affected->sel != SDCA_CTL_SU_SELECTOR || affected->val)
+				count++;
+		}
+	}
+
+	return count;
+}
+
 /**
  * sdca_asoc_count_component - count the various component parts
  * @dev: Pointer to the device against which allocations will be done.
@@ -73,6 +93,7 @@ int sdca_asoc_count_component(struct device *dev, struct sdca_function_data *fun
 			      int *num_widgets, int *num_routes, int *num_controls,
 			      int *num_dais)
 {
+	struct sdca_control *control;
 	int i, j;
 
 	*num_widgets = function->num_entities - 1;
@@ -82,6 +103,7 @@ int sdca_asoc_count_component(struct device *dev, struct sdca_function_data *fun
 
 	for (i = 0; i < function->num_entities - 1; i++) {
 		struct sdca_entity *entity = &function->entities[i];
+		bool skip_primary_routes = false;
 
 		/* Add supply/DAI widget connections */
 		switch (entity->type) {
@@ -95,6 +117,17 @@ int sdca_asoc_count_component(struct device *dev, struct sdca_function_data *fun
 		case SDCA_ENTITY_TYPE_PDE:
 			*num_routes += entity->pde.num_managed;
 			break;
+		case SDCA_ENTITY_TYPE_GE:
+			*num_routes += ge_count_routes(entity);
+			skip_primary_routes = true;
+			break;
+		case SDCA_ENTITY_TYPE_SU:
+			control = sdca_selector_find_control(dev, entity, SDCA_CTL_SU_SELECTOR);
+			if (!control)
+				return -EINVAL;
+
+			skip_primary_routes = (control->layers == SDCA_ACCESS_LAYER_DEVICE);
+			break;
 		default:
 			break;
 		}
@@ -103,7 +136,8 @@ int sdca_asoc_count_component(struct device *dev, struct sdca_function_data *fun
 			(*num_routes)++;
 
 		/* Add primary entity connections from DisCo */
-		*num_routes += entity->num_sources;
+		if (!skip_primary_routes)
+			*num_routes += entity->num_sources;
 
 		for (j = 0; j < entity->num_controls; j++) {
 			if (exported_control(entity, &entity->controls[j]))
@@ -450,7 +484,6 @@ static int entity_parse_su_device(struct device *dev,
 				  struct snd_soc_dapm_route **route)
 {
 	struct sdca_control_range *range;
-	int num_routes = 0;
 	int i, j;
 
 	if (!entity->group) {
@@ -483,11 +516,6 @@ static int entity_parse_su_device(struct device *dev,
 			if (affected->val - 1 >= entity->num_sources) {
 				dev_err(dev, "%s: bad control value: %#x\n",
 					entity->label, affected->val);
-				return -EINVAL;
-			}
-
-			if (++num_routes > entity->num_sources) {
-				dev_err(dev, "%s: too many input routes\n", entity->label);
 				return -EINVAL;
 			}
 
@@ -836,6 +864,48 @@ static int control_limit_kctl(struct device *dev,
 	return 0;
 }
 
+static int volatile_get_volsw(struct snd_kcontrol *kcontrol,
+			      struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
+	struct device *dev = component->dev;
+	int ret;
+
+	ret = pm_runtime_resume_and_get(dev);
+	if (ret < 0) {
+		dev_err(dev, "failed to resume reading %s: %d\n",
+			kcontrol->id.name, ret);
+		return ret;
+	}
+
+	ret = snd_soc_get_volsw(kcontrol, ucontrol);
+
+	pm_runtime_put(dev);
+
+	return ret;
+}
+
+static int volatile_put_volsw(struct snd_kcontrol *kcontrol,
+			      struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
+	struct device *dev = component->dev;
+	int ret;
+
+	ret = pm_runtime_resume_and_get(dev);
+	if (ret < 0) {
+		dev_err(dev, "failed to resume writing %s: %d\n",
+			kcontrol->id.name, ret);
+		return ret;
+	}
+
+	ret = snd_soc_put_volsw(kcontrol, ucontrol);
+
+	pm_runtime_put(dev);
+
+	return ret;
+}
+
 static int populate_control(struct device *dev,
 			    struct sdca_function_data *function,
 			    struct sdca_entity *entity,
@@ -890,8 +960,13 @@ static int populate_control(struct device *dev,
 	(*kctl)->private_value = (unsigned long)mc;
 	(*kctl)->iface = SNDRV_CTL_ELEM_IFACE_MIXER;
 	(*kctl)->info = snd_soc_info_volsw;
-	(*kctl)->get = snd_soc_get_volsw;
-	(*kctl)->put = snd_soc_put_volsw;
+	if (control->is_volatile) {
+		(*kctl)->get = volatile_get_volsw;
+		(*kctl)->put = volatile_put_volsw;
+	} else {
+		(*kctl)->get = snd_soc_get_volsw;
+		(*kctl)->put = snd_soc_put_volsw;
+	}
 
 	if (readonly_control(control))
 		(*kctl)->access = SNDRV_CTL_ELEM_ACCESS_READ;
@@ -1519,7 +1594,7 @@ static int set_usage(struct device *dev, struct regmap *regmap,
 		unsigned int rate = sdca_range(range, SDCA_USAGE_SAMPLE_RATE, i);
 		unsigned int width = sdca_range(range, SDCA_USAGE_SAMPLE_WIDTH, i);
 
-		if ((!rate || rate == target_rate) && width == target_width) {
+		if ((!rate || rate == target_rate) && (!width || width == target_width)) {
 			unsigned int usage = sdca_range(range, SDCA_USAGE_NUMBER, i);
 			unsigned int reg = SDW_SDCA_CTL(function->desc->adr,
 							entity->id, sel, 0);

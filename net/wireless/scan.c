@@ -326,8 +326,11 @@ cfg80211_gen_new_ie(const u8 *ie, size_t ielen,
 		/* For ML probe response, match the MLE in the frame body with
 		 * MLD id being 'bssid_index'
 		 */
-		if (parent->id == WLAN_EID_EXTENSION && parent->datalen > 1 &&
+		if (parent->id == WLAN_EID_EXTENSION &&
 		    parent->data[0] == WLAN_EID_EXT_EHT_MULTI_LINK &&
+		    ieee80211_mle_type_ok(parent->data + 1,
+					  IEEE80211_ML_CONTROL_TYPE_BASIC,
+					  parent->datalen - 1) &&
 		    bssid_index == ieee80211_mle_get_mld_id(parent->data + 1)) {
 			if (!cfg80211_copy_elem_with_frags(parent,
 							   ie, ielen,
@@ -1071,6 +1074,7 @@ int cfg80211_scan(struct cfg80211_registered_device *rdev)
 	struct cfg80211_scan_request_int *request;
 	struct cfg80211_scan_request_int *rdev_req = rdev->scan_req;
 	u32 n_channels = 0, idx, i;
+	int err;
 
 	if (!(rdev->wiphy.flags & WIPHY_FLAG_SPLIT_SCAN_6GHZ)) {
 		rdev_req->req.first_part = true;
@@ -1101,8 +1105,14 @@ int cfg80211_scan(struct cfg80211_registered_device *rdev)
 
 	rdev_req->req.scan_6ghz = false;
 	rdev_req->req.first_part = true;
+	err = rdev_scan(rdev, request);
+	if (err) {
+		kfree(request);
+		return err;
+	}
+
 	rdev->int_scan_req = request;
-	return rdev_scan(rdev, request);
+	return 0;
 }
 
 void ___cfg80211_scan_done(struct cfg80211_registered_device *rdev,
@@ -1959,7 +1969,7 @@ cfg80211_update_known_bss(struct cfg80211_registered_device *rdev,
 	ether_addr_copy(known->parent_bssid, new->parent_bssid);
 	known->pub.max_bssid_indicator = new->pub.max_bssid_indicator;
 	known->pub.bssid_index = new->pub.bssid_index;
-	known->pub.use_for &= new->pub.use_for;
+	known->pub.use_for = new->pub.use_for;
 	known->pub.cannot_use_reasons = new->pub.cannot_use_reasons;
 	known->bss_source = new->bss_source;
 
@@ -2475,6 +2485,9 @@ size_t cfg80211_merge_profile(const u8 *ie, size_t ielen,
 		memcpy(merged_ie + copied_len, next_sub->data,
 		       next_sub->datalen);
 		copied_len += next_sub->datalen;
+
+		mbssid_elem = next_mbssid;
+		sub_elem = next_sub;
 	}
 
 	return copied_len;

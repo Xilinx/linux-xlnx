@@ -290,7 +290,7 @@ int snd_usb_caiaq_set_auto_msg(struct snd_usb_caiaqdev *cdev,
 					  tmp, sizeof(tmp));
 }
 
-static void setup_card(struct snd_usb_caiaqdev *cdev)
+static int setup_card(struct snd_usb_caiaqdev *cdev)
 {
 	int ret;
 	char val[4];
@@ -325,8 +325,10 @@ static void setup_card(struct snd_usb_caiaqdev *cdev)
 		snd_usb_caiaq_send_command(cdev, EP1_CMD_READ_IO, NULL, 0);
 
 		if (!wait_event_timeout(cdev->ep1_wait_queue,
-					cdev->control_state[0] != 0xff, HZ))
-			return;
+					cdev->control_state[0] != 0xff, HZ)) {
+			dev_err(dev, "Read timeout for control state\n");
+			return -EINVAL;
+		}
 
 		/* fix up some defaults */
 		if ((cdev->control_state[1] != 2) ||
@@ -347,33 +349,43 @@ static void setup_card(struct snd_usb_caiaqdev *cdev)
 	    cdev->spec.num_digital_audio_out +
 	    cdev->spec.num_digital_audio_in > 0) {
 		ret = snd_usb_caiaq_audio_init(cdev);
-		if (ret < 0)
+		if (ret < 0) {
 			dev_err(dev, "Unable to set up audio system (ret=%d)\n", ret);
+			return ret;
+		}
 	}
 
 	if (cdev->spec.num_midi_in +
 	    cdev->spec.num_midi_out > 0) {
 		ret = snd_usb_caiaq_midi_init(cdev);
-		if (ret < 0)
+		if (ret < 0) {
 			dev_err(dev, "Unable to set up MIDI system (ret=%d)\n", ret);
+			return ret;
+		}
 	}
 
 #ifdef CONFIG_SND_USB_CAIAQ_INPUT
 	ret = snd_usb_caiaq_input_init(cdev);
-	if (ret < 0)
+	if (ret < 0 && ret != -ENODEV) {
 		dev_err(dev, "Unable to set up input system (ret=%d)\n", ret);
+		return ret;
+	}
 #endif
 
 	/* finally, register the card and all its sub-instances */
 	ret = snd_card_register(cdev->chip.card);
 	if (ret < 0) {
 		dev_err(dev, "snd_card_register() returned %d\n", ret);
-		snd_card_free(cdev->chip.card);
+		return ret;
 	}
 
 	ret = snd_usb_caiaq_control_init(cdev);
-	if (ret < 0)
+	if (ret < 0) {
 		dev_err(dev, "Unable to set up control system (ret=%d)\n", ret);
+		return ret;
+	}
+
+	return 0;
 }
 
 static void card_free(struct snd_card *card)
@@ -384,7 +396,7 @@ static void card_free(struct snd_card *card)
 	snd_usb_caiaq_input_free(cdev);
 #endif
 	snd_usb_caiaq_audio_free(cdev);
-	usb_reset_device(cdev->chip.dev);
+	usb_put_dev(cdev->chip.dev);
 }
 
 static int create_card(struct usb_device *usb_dev,
@@ -410,7 +422,8 @@ static int create_card(struct usb_device *usb_dev,
 		return err;
 
 	cdev = caiaqdev(card);
-	cdev->chip.dev = usb_dev;
+	cdev->chip.dev = usb_get_dev(usb_dev);
+	card->private_free = card_free;
 	cdev->chip.card = card;
 	cdev->chip.usb_id = USB_ID(le16_to_cpu(usb_dev->descriptor.idVendor),
 				  le16_to_cpu(usb_dev->descriptor.idProduct));
@@ -488,7 +501,7 @@ static int init_card(struct snd_usb_caiaqdev *cdev)
 		memset(id, 0, sizeof(id));
 
 		for (c = card->shortname, len = 0;
-			*c && len < sizeof(card->id); c++)
+			*c && len < sizeof(card->id) - 1; c++)
 			if (*c != ' ')
 				id[len++] = *c;
 
@@ -499,8 +512,10 @@ static int init_card(struct snd_usb_caiaqdev *cdev)
 	scnprintf(card->longname, sizeof(card->longname), "%s %s (%s)",
 		       cdev->vendor_name, cdev->product_name, usbpath);
 
-	setup_card(cdev);
-	card->private_free = card_free;
+	err = setup_card(cdev);
+	if (err < 0)
+		goto err_kill_urb;
+
 	return 0;
 
  err_kill_urb:

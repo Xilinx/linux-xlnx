@@ -765,9 +765,9 @@ static int init_versalnet(struct mc_priv *priv, struct platform_device *pdev)
 	u32 num_chans, rank, dwidth, config;
 	struct edac_mc_layer layers[2];
 	struct mem_ctl_info *mci;
+	char name[32];
 	struct device *dev;
 	enum dev_type dt;
-	char *name;
 	int rc, i;
 
 	for (i = 0; i < NUM_CONTROLLERS; i++) {
@@ -814,7 +814,6 @@ static int init_versalnet(struct mc_priv *priv, struct platform_device *pdev)
 
 		dev = kzalloc(sizeof(*dev), GFP_KERNEL);
 		dev->release = versal_edac_release;
-		name = kmalloc(32, GFP_KERNEL);
 		sprintf(name, "versal-net-ddrmc5-edac-%d", i);
 		dev->init_name = name;
 		rc = device_register(dev);
@@ -868,12 +867,12 @@ static void remove_versalnet(struct mc_priv *priv)
 
 static int mc_probe(struct platform_device *pdev)
 {
-	struct device_node *r5_core_node;
 	struct mc_priv *priv;
 	struct rproc *rp;
 	int rc;
 
-	r5_core_node = of_parse_phandle(pdev->dev.of_node, "amd,rproc", 0);
+	struct device_node *r5_core_node __free(device_node) =
+		of_parse_phandle(pdev->dev.of_node, "amd,rproc", 0);
 	if (!r5_core_node) {
 		dev_err(&pdev->dev, "amd,rproc: invalid phandle\n");
 		return -EINVAL;
@@ -917,6 +916,7 @@ static int mc_probe(struct platform_device *pdev)
 
 err_init:
 	cdx_mcdi_finish(priv->mcdi);
+	kfree(priv->mcdi);
 
 err_unreg:
 	unregister_rpmsg_driver(&amd_rpmsg_driver);
@@ -938,6 +938,7 @@ static void mc_remove(struct platform_device *pdev)
 	remove_versalnet(priv);
 	rproc_shutdown(priv->mcdi->r5_rproc);
 	cdx_mcdi_finish(priv->mcdi);
+	kfree(priv->mcdi);
 }
 
 static const struct of_device_id amd_edac_match[] = {

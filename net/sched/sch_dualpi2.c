@@ -346,6 +346,8 @@ static int dualpi2_skb_classify(struct dualpi2_sched_data *q,
 	struct tcf_proto *fl;
 	int result;
 
+	cb->classified = DUALPI2_C_CLASSIC;
+
 	dualpi2_read_ect(skb);
 	if (cb->ect & q->ecn_mask) {
 		cb->classified = DUALPI2_C_L4S;
@@ -359,10 +361,8 @@ static int dualpi2_skb_classify(struct dualpi2_sched_data *q,
 	}
 
 	fl = rcu_dereference_bh(q->tcf_filters);
-	if (!fl) {
-		cb->classified = DUALPI2_C_CLASSIC;
+	if (!fl)
 		return NET_XMIT_SUCCESS;
-	}
 
 	result = tcf_classify(skb, NULL, fl, &res, false);
 	if (result >= 0) {
@@ -463,7 +463,7 @@ static int dualpi2_qdisc_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 		if (IS_ERR_OR_NULL(nskb))
 			return qdisc_drop(skb, sch, to_free);
 
-		cnt = 1;
+		cnt = 0;
 		byte_len = 0;
 		orig_len = qdisc_pkt_len(skb);
 		skb_list_walk_safe(nskb, nskb, next) {
@@ -489,16 +489,15 @@ static int dualpi2_qdisc_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 				byte_len += nskb->len;
 			}
 		}
-		if (cnt > 1) {
+		if (cnt > 0) {
 			/* The caller will add the original skb stats to its
 			 * backlog, compensate this if any nskb is enqueued.
 			 */
-			--cnt;
-			byte_len -= orig_len;
+			qdisc_tree_reduce_backlog(sch, 1 - cnt,
+						  orig_len - byte_len);
 		}
-		qdisc_tree_reduce_backlog(sch, -cnt, -byte_len);
 		consume_skb(skb);
-		return err;
+		return cnt > 0 ? NET_XMIT_SUCCESS : err;
 	}
 	return dualpi2_enqueue_skb(skb, sch, to_free);
 }
@@ -580,7 +579,7 @@ static void drop_and_retry(struct dualpi2_sched_data *q, struct sk_buff *skb,
 	qdisc_qstats_drop(sch);
 }
 
-static struct sk_buff *dualpi2_qdisc_dequeue(struct Qdisc *sch)
+static struct sk_buff *__dualpi2_qdisc_dequeue(struct Qdisc *sch)
 {
 	struct dualpi2_sched_data *q = qdisc_priv(sch);
 	struct sk_buff *skb;
@@ -608,12 +607,49 @@ static struct sk_buff *dualpi2_qdisc_dequeue(struct Qdisc *sch)
 		break;
 	}
 
+	return skb;
+}
+
+static void dualpi2_dequeue_drop(struct Qdisc *sch)
+{
+	struct dualpi2_sched_data *q = qdisc_priv(sch);
+
 	if (q->deferred_drops_cnt) {
 		qdisc_tree_reduce_backlog(sch, q->deferred_drops_cnt,
 					  q->deferred_drops_len);
 		q->deferred_drops_cnt = 0;
 		q->deferred_drops_len = 0;
 	}
+}
+
+static struct sk_buff *dualpi2_qdisc_dequeue(struct Qdisc *sch)
+{
+	struct sk_buff *skb;
+
+	skb = __dualpi2_qdisc_dequeue(sch);
+
+	dualpi2_dequeue_drop(sch);
+
+	return skb;
+}
+
+static struct sk_buff *dualpi2_peek(struct Qdisc *sch)
+{
+	struct sk_buff *skb = skb_peek(&sch->gso_skb);
+
+	if (!skb) {
+		skb = __dualpi2_qdisc_dequeue(sch);
+
+		if (skb) {
+			__skb_queue_head(&sch->gso_skb, skb);
+			/* it's still part of the queue */
+			qdisc_qstats_backlog_inc(sch, skb);
+			sch->q.qlen++;
+		}
+
+		dualpi2_dequeue_drop(sch);
+	}
+
 	return skb;
 }
 
@@ -871,11 +907,35 @@ static int dualpi2_change(struct Qdisc *sch, struct nlattr *opt,
 	old_backlog = sch->qstats.backlog;
 	while (qdisc_qlen(sch) > sch->limit ||
 	       q->memory_used > q->memory_limit) {
-		struct sk_buff *skb = qdisc_dequeue_internal(sch, true);
+		struct sk_buff *skb = NULL;
 
-		q->memory_used -= skb->truesize;
-		qdisc_qstats_backlog_dec(sch, skb);
-		rtnl_qdisc_drop(skb, sch);
+		if (qdisc_qlen(sch) > qdisc_qlen(q->l_queue)) {
+			skb = qdisc_dequeue_internal(sch, true);
+			if (unlikely(!skb)) {
+				WARN_ON_ONCE(1);
+				break;
+			}
+			q->memory_used -= skb->truesize;
+			rtnl_qdisc_drop(skb, sch);
+		} else if (qdisc_qlen(q->l_queue)) {
+			skb = qdisc_dequeue_internal(q->l_queue, true);
+			if (unlikely(!skb)) {
+				WARN_ON_ONCE(1);
+				break;
+			}
+			/* L-queue packets are counted in both sch and
+			 * l_queue on enqueue; qdisc_dequeue_internal()
+			 * handled l_queue, so we further account for sch.
+			 */
+			--sch->q.qlen;
+			qdisc_qstats_backlog_dec(sch, skb);
+			q->memory_used -= skb->truesize;
+			rtnl_qdisc_drop(skb, q->l_queue);
+			qdisc_qstats_drop(sch);
+		} else {
+			WARN_ON_ONCE(1);
+			break;
+		}
 	}
 	qdisc_tree_reduce_backlog(sch, old_qlen - qdisc_qlen(sch),
 				  old_backlog - sch->qstats.backlog);
@@ -1142,7 +1202,7 @@ static struct Qdisc_ops dualpi2_qdisc_ops __read_mostly = {
 	.priv_size	= sizeof(struct dualpi2_sched_data),
 	.enqueue	= dualpi2_qdisc_enqueue,
 	.dequeue	= dualpi2_qdisc_dequeue,
-	.peek		= qdisc_peek_dequeued,
+	.peek		= dualpi2_peek,
 	.init		= dualpi2_init,
 	.destroy	= dualpi2_destroy,
 	.reset		= dualpi2_reset,
@@ -1151,6 +1211,7 @@ static struct Qdisc_ops dualpi2_qdisc_ops __read_mostly = {
 	.dump_stats	= dualpi2_dump_stats,
 	.owner		= THIS_MODULE,
 };
+MODULE_ALIAS_NET_SCH("dualpi2");
 
 static int __init dualpi2_module_init(void)
 {

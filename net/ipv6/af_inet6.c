@@ -224,8 +224,8 @@ lookup_protocol:
 	inet6_set_bit(MC6_LOOP, sk);
 	inet6_set_bit(MC6_ALL, sk);
 	np->pmtudisc	= IPV6_PMTUDISC_WANT;
-	inet6_assign_bit(REPFLOW, sk, net->ipv6.sysctl.flowlabel_reflect &
-				     FLOWLABEL_REFLECT_ESTABLISHED);
+	inet6_assign_bit(REPFLOW, sk, READ_ONCE(net->ipv6.sysctl.flowlabel_reflect) &
+				      FLOWLABEL_REFLECT_ESTABLISHED);
 	sk->sk_ipv6only	= net->ipv6.sysctl.bindv6only;
 	sk->sk_txrehash = READ_ONCE(net->core.sysctl_txrehash);
 
@@ -661,25 +661,20 @@ int inet6_sendmsg(struct socket *sock, struct msghdr *msg, size_t size)
 }
 
 INDIRECT_CALLABLE_DECLARE(int udpv6_recvmsg(struct sock *, struct msghdr *,
-					    size_t, int, int *));
+					    size_t, int));
 int inet6_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
 		  int flags)
 {
 	struct sock *sk = sock->sk;
 	const struct proto *prot;
-	int addr_len = 0;
-	int err;
 
 	if (likely(!(flags & MSG_ERRQUEUE)))
 		sock_rps_record_flow(sk);
 
 	/* IPV6_ADDRFORM can change sk->sk_prot under us. */
 	prot = READ_ONCE(sk->sk_prot);
-	err = INDIRECT_CALL_2(prot->recvmsg, tcp_recvmsg, udpv6_recvmsg,
-			      sk, msg, size, flags, &addr_len);
-	if (err >= 0)
-		msg->msg_namelen = addr_len;
-	return err;
+	return INDIRECT_CALL_2(prot->recvmsg, tcp_recvmsg, udpv6_recvmsg,
+			       sk, msg, size, flags);
 }
 
 const struct proto_ops inet6_stream_ops = {
@@ -955,7 +950,7 @@ static int __net_init inet6_net_init(struct net *net)
 	int err = 0;
 
 	net->ipv6.sysctl.bindv6only = 0;
-	net->ipv6.sysctl.icmpv6_time = 1*HZ;
+	net->ipv6.sysctl.icmpv6_time = HZ / 10;
 	net->ipv6.sysctl.icmpv6_echo_ignore_all = 0;
 	net->ipv6.sysctl.icmpv6_echo_ignore_multicast = 0;
 	net->ipv6.sysctl.icmpv6_echo_ignore_anycast = 0;

@@ -21,7 +21,6 @@
 #include <linux/wmi.h>
 
 #include "wmi-events.h"
-#include "wmi-gamezone.h"
 #include "wmi-helpers.h"
 #include "wmi-other.h"
 
@@ -30,8 +29,6 @@
 #define LWMI_GZ_METHOD_ID_SMARTFAN_SUP 43
 #define LWMI_GZ_METHOD_ID_SMARTFAN_SET 44
 #define LWMI_GZ_METHOD_ID_SMARTFAN_GET 45
-
-static BLOCKING_NOTIFIER_HEAD(gz_chain_head);
 
 struct lwmi_gz_priv {
 	enum thermal_mode current_mode;

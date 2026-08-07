@@ -196,7 +196,7 @@ void ovpn_decrypt_post(void *data, int ret)
 	skb = NULL;
 drop:
 	if (unlikely(skb))
-		dev_dstats_rx_dropped(peer->ovpn->dev);
+		ovpn_dev_dstats_rx_dropped(peer->ovpn->dev);
 	kfree_skb(skb);
 drop_nocount:
 	if (likely(peer))
@@ -220,7 +220,7 @@ void ovpn_recv(struct ovpn_peer *peer, struct sk_buff *skb)
 		net_info_ratelimited("%s: no available key for peer %u, key-id: %u\n",
 				     netdev_name(peer->ovpn->dev), peer->id,
 				     key_id);
-		dev_dstats_rx_dropped(peer->ovpn->dev);
+		ovpn_dev_dstats_rx_dropped(peer->ovpn->dev);
 		kfree_skb(skb);
 		ovpn_peer_put(peer);
 		return;
@@ -298,7 +298,7 @@ err_unlock:
 	rcu_read_unlock();
 err:
 	if (unlikely(skb))
-		dev_dstats_tx_dropped(peer->ovpn->dev);
+		ovpn_dev_dstats_tx_dropped(peer->ovpn->dev);
 	if (likely(peer))
 		ovpn_peer_put(peer);
 	if (likely(ks))
@@ -340,7 +340,7 @@ static void ovpn_send(struct ovpn_priv *ovpn, struct sk_buff *skb,
 	 */
 	skb_list_walk_safe(skb, curr, next) {
 		if (unlikely(!ovpn_encrypt_one(peer, curr))) {
-			dev_dstats_tx_dropped(ovpn->dev);
+			ovpn_dev_dstats_tx_dropped(ovpn->dev);
 			kfree_skb(curr);
 		}
 	}
@@ -355,6 +355,7 @@ netdev_tx_t ovpn_net_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct ovpn_priv *ovpn = netdev_priv(dev);
 	struct sk_buff *segments, *curr, *next;
 	struct sk_buff_head skb_list;
+	unsigned int tx_bytes = 0;
 	struct ovpn_peer *peer;
 	__be16 proto;
 	int ret;
@@ -365,7 +366,27 @@ netdev_tx_t ovpn_net_xmit(struct sk_buff *skb, struct net_device *dev)
 	/* verify IP header size in network packet */
 	proto = ovpn_ip_check_protocol(skb);
 	if (unlikely(!proto || skb->protocol != proto))
-		goto drop;
+		goto drop_no_peer;
+
+	/* retrieve peer serving the destination IP of this packet */
+	peer = ovpn_peer_get_by_dst(ovpn, skb);
+	if (unlikely(!peer)) {
+		switch (skb->protocol) {
+		case htons(ETH_P_IP):
+			net_dbg_ratelimited("%s: no peer to send data to dst=%pI4\n",
+					    netdev_name(ovpn->dev),
+					    &ip_hdr(skb)->daddr);
+			break;
+		case htons(ETH_P_IPV6):
+			net_dbg_ratelimited("%s: no peer to send data to dst=%pI6c\n",
+					    netdev_name(ovpn->dev),
+					    &ipv6_hdr(skb)->daddr);
+			break;
+		}
+		goto drop_no_peer;
+	}
+	/* dst was needed for peer selection - it can now be dropped */
+	skb_dst_drop(skb);
 
 	if (skb_is_gso(skb)) {
 		segments = skb_gso_segment(skb, 0);
@@ -390,41 +411,33 @@ netdev_tx_t ovpn_net_xmit(struct sk_buff *skb, struct net_device *dev)
 		if (unlikely(!curr)) {
 			net_err_ratelimited("%s: skb_share_check failed for payload packet\n",
 					    netdev_name(dev));
-			dev_dstats_tx_dropped(ovpn->dev);
+			ovpn_dev_dstats_tx_dropped(ovpn->dev);
 			continue;
 		}
 
+		/* only count what we actually send */
+		tx_bytes += curr->len;
 		__skb_queue_tail(&skb_list, curr);
+	}
+
+	/* no segments survived: don't jump to 'drop' because we already
+	 * incremented the counter for each failure in the loop
+	 */
+	if (unlikely(skb_queue_empty(&skb_list))) {
+		ovpn_peer_put(peer);
+		return NETDEV_TX_OK;
 	}
 	skb_list.prev->next = NULL;
 
-	/* retrieve peer serving the destination IP of this packet */
-	peer = ovpn_peer_get_by_dst(ovpn, skb);
-	if (unlikely(!peer)) {
-		switch (skb->protocol) {
-		case htons(ETH_P_IP):
-			net_dbg_ratelimited("%s: no peer to send data to dst=%pI4\n",
-					    netdev_name(ovpn->dev),
-					    &ip_hdr(skb)->daddr);
-			break;
-		case htons(ETH_P_IPV6):
-			net_dbg_ratelimited("%s: no peer to send data to dst=%pI6c\n",
-					    netdev_name(ovpn->dev),
-					    &ipv6_hdr(skb)->daddr);
-			break;
-		}
-		goto drop;
-	}
-	/* dst was needed for peer selection - it can now be dropped */
-	skb_dst_drop(skb);
-
-	ovpn_peer_stats_increment_tx(&peer->vpn_stats, skb->len);
+	ovpn_peer_stats_increment_tx(&peer->vpn_stats, tx_bytes);
 	ovpn_send(ovpn, skb_list.next, peer);
 
 	return NETDEV_TX_OK;
 
 drop:
-	dev_dstats_tx_dropped(ovpn->dev);
+	ovpn_peer_put(peer);
+drop_no_peer:
+	ovpn_dev_dstats_tx_dropped(ovpn->dev);
 	skb_tx_error(skb);
 	kfree_skb_list(skb);
 	return NETDEV_TX_OK;

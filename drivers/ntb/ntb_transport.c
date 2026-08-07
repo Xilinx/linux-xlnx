@@ -1236,9 +1236,9 @@ static int ntb_transport_init_queue(struct ntb_transport_ctx *nt,
 	qp->tx_max_entry = tx_size / qp->tx_max_frame;
 
 	if (nt->debugfs_node_dir) {
-		char debugfs_name[4];
+		char debugfs_name[8];
 
-		snprintf(debugfs_name, 4, "qp%d", qp_num);
+		snprintf(debugfs_name, sizeof(debugfs_name), "qp%d", qp_num);
 		qp->debugfs_dir = debugfs_create_dir(debugfs_name,
 						     nt->debugfs_node_dir);
 
@@ -1810,12 +1810,13 @@ static void ntb_tx_copy_callback(void *data,
 
 static void ntb_memcpy_tx(struct ntb_queue_entry *entry, void __iomem *offset)
 {
-#ifdef ARCH_HAS_NOCACHE_UACCESS
+#ifdef copy_to_nontemporal
 	/*
 	 * Using non-temporal mov to improve performance on non-cached
-	 * writes, even though we aren't actually copying from user space.
+	 * writes. This only works if __iomem is strictly memory-like,
+	 * but that is the case on x86-64
 	 */
-	__copy_from_user_inatomic_nocache(offset, entry->buf, entry->len);
+	copy_to_nontemporal(offset, entry->buf, entry->len);
 #else
 	memcpy_toio(offset, entry->buf, entry->len);
 #endif

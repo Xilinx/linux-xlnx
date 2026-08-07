@@ -262,7 +262,6 @@ int smu_v11_0_check_fw_version(struct smu_context *smu)
 			"smu fw program = %d, version = 0x%08x (%d.%d.%d)\n",
 			smu->smc_driver_if_version, if_version,
 			smu_program, smu_version, smu_major, smu_minor, smu_debug);
-		dev_info(smu->adev->dev, "SMU driver if version not matched\n");
 	}
 
 	return ret;
@@ -1022,7 +1021,12 @@ int smu_v11_0_enable_thermal_alert(struct smu_context *smu)
 
 int smu_v11_0_disable_thermal_alert(struct smu_context *smu)
 {
-	return amdgpu_irq_put(smu->adev, &smu->irq_source, 0);
+	int ret = 0;
+
+	if (smu->smu_table.thermal_controller_type)
+		ret = amdgpu_irq_put(smu->adev, &smu->irq_source, 0);
+
+	return ret;
 }
 
 static uint16_t convert_to_vddc(uint8_t vid)

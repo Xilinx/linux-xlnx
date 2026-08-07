@@ -9,6 +9,7 @@
 #include <linux/cpuhotplug.h>
 #include <trace/events/erofs.h>
 
+#define Z_EROFS_MAX_SYNC_DECOMPRESS_BYTES	12288
 #define Z_EROFS_PCLUSTER_MAX_PAGES	(Z_EROFS_PCLUSTER_MAX_SIZE / PAGE_SIZE)
 #define Z_EROFS_INLINE_BVECS		2
 
@@ -805,14 +806,26 @@ static int z_erofs_pcluster_begin(struct z_erofs_frontend *fe)
 	struct erofs_map_blocks *map = &fe->map;
 	struct super_block *sb = fe->inode->i_sb;
 	struct z_erofs_pcluster *pcl = NULL;
-	void *ptr;
+	void *ptr = NULL;
 	int ret;
 
 	DBG_BUGON(fe->pcl);
 	/* must be Z_EROFS_PCLUSTER_TAIL or pointed to previous pcluster */
 	DBG_BUGON(!fe->head);
 
-	if (!(map->m_flags & EROFS_MAP_META)) {
+	if (map->m_flags & EROFS_MAP_META) {
+		ret = erofs_init_metabuf(&map->buf, sb,
+					 erofs_inode_in_metabox(fe->inode));
+		if (ret)
+			return ret;
+		ptr = erofs_bread(&map->buf, map->m_pa, false);
+		if (IS_ERR(ptr)) {
+			erofs_err(sb, "failed to read inline data %pe @ pa %llu of nid %llu",
+				  ptr, map->m_pa, EROFS_I(fe->inode)->nid);
+			return PTR_ERR(ptr);
+		}
+		ptr = map->buf.page;
+	} else {
 		while (1) {
 			rcu_read_lock();
 			pcl = xa_load(&EROFS_SB(sb)->managed_pslots, map->m_pa);
@@ -852,18 +865,8 @@ static int z_erofs_pcluster_begin(struct z_erofs_frontend *fe)
 		/* bind cache first when cached decompression is preferred */
 		z_erofs_bind_cache(fe);
 	} else {
-		ret = erofs_init_metabuf(&map->buf, sb,
-					 erofs_inode_in_metabox(fe->inode));
-		if (ret)
-			return ret;
-		ptr = erofs_bread(&map->buf, map->m_pa, false);
-		if (IS_ERR(ptr)) {
-			ret = PTR_ERR(ptr);
-			erofs_err(sb, "failed to get inline folio %d", ret);
-			return ret;
-		}
-		folio_get(page_folio(map->buf.page));
-		WRITE_ONCE(fe->pcl->compressed_bvecs[0].page, map->buf.page);
+		folio_get(page_folio((struct page *)ptr));
+		WRITE_ONCE(fe->pcl->compressed_bvecs[0].page, ptr);
 		fe->pcl->pageofs_in = map->m_pa & ~PAGE_MASK;
 		fe->mode = Z_EROFS_PCLUSTER_FOLLOWED_NOINPLACE;
 	}
@@ -1093,21 +1096,6 @@ static int z_erofs_scan_folio(struct z_erofs_frontend *f,
 	} while ((end = cur) > 0);
 	erofs_onlinefolio_end(folio, err, false);
 	return err;
-}
-
-static bool z_erofs_is_sync_decompress(struct erofs_sb_info *sbi,
-				       unsigned int readahead_pages)
-{
-	/* auto: enable for read_folio, disable for readahead */
-	if ((sbi->opt.sync_decompress == EROFS_SYNC_DECOMPRESS_AUTO) &&
-	    !readahead_pages)
-		return true;
-
-	if ((sbi->opt.sync_decompress == EROFS_SYNC_DECOMPRESS_FORCE_ON) &&
-	    (readahead_pages <= sbi->opt.max_sync_decompress_pages))
-		return true;
-
-	return false;
 }
 
 static bool z_erofs_page_is_invalidated(struct page *page)
@@ -1443,6 +1431,7 @@ static void z_erofs_decompress_kickoff(struct z_erofs_decompressqueue *io,
 				       int bios)
 {
 	struct erofs_sb_info *const sbi = EROFS_SB(io->sb);
+	int gfp_flag;
 
 	/* wake up the caller thread for sync decompression */
 	if (io->sync) {
@@ -1454,6 +1443,9 @@ static void z_erofs_decompress_kickoff(struct z_erofs_decompressqueue *io,
 	if (atomic_add_return(bios, &io->pending_bios))
 		return;
 	if (z_erofs_in_atomic()) {
+		/* See `sync_decompress` in sysfs-fs-erofs for more details */
+		if (sbi->sync_decompress == EROFS_SYNC_DECOMPRESS_AUTO)
+			sbi->sync_decompress = EROFS_SYNC_DECOMPRESS_FORCE_ON;
 #ifdef CONFIG_EROFS_FS_PCPU_KTHREAD
 		struct kthread_worker *worker;
 
@@ -1470,12 +1462,11 @@ static void z_erofs_decompress_kickoff(struct z_erofs_decompressqueue *io,
 #else
 		queue_work(z_erofs_workqueue, &io->u.work);
 #endif
-		/* enable sync decompression for readahead */
-		if (sbi->opt.sync_decompress == EROFS_SYNC_DECOMPRESS_AUTO)
-			sbi->opt.sync_decompress = EROFS_SYNC_DECOMPRESS_FORCE_ON;
 		return;
 	}
+	gfp_flag = memalloc_noio_save();
 	z_erofs_decompressqueue_work(&io->u.work);
+	memalloc_noio_restore(gfp_flag);
 }
 
 static void z_erofs_fill_bio_vec(struct bio_vec *bvec,
@@ -1506,8 +1497,15 @@ repeat:
 	DBG_BUGON(z_erofs_is_shortlived_page(bvec->bv_page));
 
 	folio = page_folio(zbv.page);
-	/* For preallocated managed folios, add them to page cache here */
+	/*
+	 * Preallocated folios are added to the managed cache here rather than
+	 * in z_erofs_bind_cache() in order to keep these folios locked in
+	 * increasing (physical) address order.
+	 * Clear folio->private before these folios become visible to others in
+	 * the managed cache to avoid duplicate additions for unaligned extents.
+	 */
 	if (folio->private == Z_EROFS_PREALLOCATED_FOLIO) {
+		folio->private = NULL;
 		tocache = true;
 		goto out_tocache;
 	}
@@ -1543,14 +1541,8 @@ repeat:
 			}
 			return;
 		}
-		/*
-		 * Already linked with another pcluster, which only appears in
-		 * crafted images by fuzzers for now.  But handle this anyway.
-		 */
-		tocache = false;	/* use temporary short-lived pages */
 	} else {
 		DBG_BUGON(1); /* referenced managed folios can't be truncated */
-		tocache = true;
 	}
 	folio_unlock(folio);
 	folio_put(folio);
@@ -1789,16 +1781,21 @@ drain_io:
 	z_erofs_decompress_kickoff(q[JQ_SUBMIT], nr_bios);
 }
 
-static int z_erofs_runqueue(struct z_erofs_frontend *f, unsigned int rapages)
+static int z_erofs_runqueue(struct z_erofs_frontend *f, unsigned int rabytes)
 {
 	struct z_erofs_decompressqueue io[NR_JOBQUEUES];
 	struct erofs_sb_info *sbi = EROFS_I_SB(f->inode);
-	bool force_fg = z_erofs_is_sync_decompress(sbi, rapages);
+	int syncmode = sbi->sync_decompress;
+	bool force_fg;
 	int err;
+
+	force_fg = (syncmode == EROFS_SYNC_DECOMPRESS_AUTO && !rabytes) ||
+		(syncmode == EROFS_SYNC_DECOMPRESS_FORCE_ON &&
+			(rabytes <= Z_EROFS_MAX_SYNC_DECOMPRESS_BYTES));
 
 	if (f->head == Z_EROFS_PCLUSTER_TAIL)
 		return 0;
-	z_erofs_submit_queue(f, io, &force_fg, !!rapages);
+	z_erofs_submit_queue(f, io, &force_fg, !!rabytes);
 
 	/* handle bypass queue (no i/o pclusters) immediately */
 	err = z_erofs_decompress_queue(&io[JQ_BYPASS], &f->pagepool);
@@ -1919,7 +1916,7 @@ static void z_erofs_readahead(struct readahead_control *rac)
 	z_erofs_pcluster_readmore(&f, rac, false);
 	z_erofs_pcluster_end(&f);
 
-	(void)z_erofs_runqueue(&f, nrpages);
+	(void)z_erofs_runqueue(&f, nrpages << PAGE_SHIFT);
 	erofs_put_metabuf(&f.map.buf);
 	erofs_release_pages(&f.pagepool);
 }

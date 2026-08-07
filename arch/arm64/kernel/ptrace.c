@@ -957,8 +957,8 @@ static int sve_set_common(struct task_struct *target,
 	}
 
 	/* Always zero V regs, FPSR, and FPCR */
-	memset(&current->thread.uw.fpsimd_state, 0,
-	       sizeof(current->thread.uw.fpsimd_state));
+	memset(&target->thread.uw.fpsimd_state, 0,
+	       sizeof(target->thread.uw.fpsimd_state));
 
 	/* Registers: FPSIMD-only case */
 
@@ -1457,6 +1457,9 @@ static int poe_get(struct task_struct *target,
 {
 	if (!system_supports_poe())
 		return -EINVAL;
+
+	if (target == current)
+		current->thread.por_el0 = read_sysreg_s(SYS_POR_EL0);
 
 	return membuf_write(&to, &target->thread.por_el0,
 			    sizeof(target->thread.por_el0));

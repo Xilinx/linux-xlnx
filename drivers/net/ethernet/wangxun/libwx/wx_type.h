@@ -471,6 +471,7 @@ enum WX_MSCA_CMD_value {
 
 #define WX_VMDQ_4Q_MASK              0x7C
 #define WX_VMDQ_2Q_MASK              0x7E
+#define WX_VMDQ_1Q_MASK              0x7F
 
 /****************** Manageablility Host Interface defines ********************/
 #define WX_HI_MAX_BLOCK_BYTE_LENGTH  256 /* Num of bytes in range */
@@ -1229,7 +1230,7 @@ enum wx_pf_flags {
 	WX_FLAG_RX_HWTSTAMP_IN_REGISTER,
 	WX_FLAG_PTP_PPS_ENABLED,
 	WX_FLAG_NEED_LINK_CONFIG,
-	WX_FLAG_NEED_SFP_RESET,
+	WX_FLAG_NEED_MODULE_RESET,
 	WX_FLAG_NEED_UPDATE_LINK,
 	WX_FLAG_NEED_DO_RESET,
 	WX_PF_FLAGS_NBITS               /* must be last */
@@ -1271,8 +1272,6 @@ struct wx {
 
 	/* PHY stuff */
 	bool notify_down;
-	int adv_speed;
-	int adv_duplex;
 	unsigned int link;
 	int speed;
 	int duplex;

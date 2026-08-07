@@ -481,6 +481,9 @@ static int lynxfb_ops_check_var(struct fb_var_screeninfo *var,
 	struct lynxfb_crtc *crtc;
 	resource_size_t request;
 
+	if (!var->pixclock)
+		return -EINVAL;
+
 	ret = 0;
 	par = info->par;
 	crtc = &par->crtc;
@@ -1118,6 +1121,7 @@ static void lynxfb_pci_remove(struct pci_dev *pdev)
 
 	iounmap(sm750_dev->pvReg);
 	iounmap(sm750_dev->pvMem);
+	pci_release_region(pdev, 1);
 	kfree(g_settings);
 }
 

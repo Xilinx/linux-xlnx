@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <time.h>
 #include <sched.h>
+#include <stdbool.h>
 
 /*
  * '18446744073709551615\0'
@@ -24,6 +25,7 @@ long parse_seconds_duration(char *val);
 void get_duration(time_t start_time, char *output, int output_size);
 
 int parse_cpu_list(char *cpu_list, char **monitored_cpus);
+char *parse_optional_arg(int argc, char **argv);
 long long get_llong_from_str(char *start);
 
 static inline void
@@ -80,6 +82,7 @@ static inline int set_deepest_cpu_idle_state(unsigned int cpu, unsigned int stat
 static inline int have_libcpupower_support(void) { return 0; }
 #endif /* HAVE_LIBCPUPOWER_SUPPORT */
 int auto_house_keeping(cpu_set_t *monitored_cpus);
+__attribute__((__warn_unused_result__)) int strtoi(const char *s, int *res);
 
 #define ns_to_usf(x) (((double)x/1000))
 #define ns_to_per(total, part) ((part * 100) / (double)total)

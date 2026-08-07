@@ -96,47 +96,52 @@ extern const char *f2fs_fault_name[FAULT_MAX];
 /*
  * For mount options
  */
-#define F2FS_MOUNT_DISABLE_ROLL_FORWARD	0x00000001
-#define F2FS_MOUNT_DISCARD		0x00000002
-#define F2FS_MOUNT_NOHEAP		0x00000004
-#define F2FS_MOUNT_XATTR_USER		0x00000008
-#define F2FS_MOUNT_POSIX_ACL		0x00000010
-#define F2FS_MOUNT_DISABLE_EXT_IDENTIFY	0x00000020
-#define F2FS_MOUNT_INLINE_XATTR		0x00000040
-#define F2FS_MOUNT_INLINE_DATA		0x00000080
-#define F2FS_MOUNT_INLINE_DENTRY	0x00000100
-#define F2FS_MOUNT_FLUSH_MERGE		0x00000200
-#define F2FS_MOUNT_NOBARRIER		0x00000400
-#define F2FS_MOUNT_FASTBOOT		0x00000800
-#define F2FS_MOUNT_READ_EXTENT_CACHE	0x00001000
-#define F2FS_MOUNT_DATA_FLUSH		0x00002000
-#define F2FS_MOUNT_FAULT_INJECTION	0x00004000
-#define F2FS_MOUNT_USRQUOTA		0x00008000
-#define F2FS_MOUNT_GRPQUOTA		0x00010000
-#define F2FS_MOUNT_PRJQUOTA		0x00020000
-#define F2FS_MOUNT_QUOTA		0x00040000
-#define F2FS_MOUNT_INLINE_XATTR_SIZE	0x00080000
-#define F2FS_MOUNT_RESERVE_ROOT		0x00100000
-#define F2FS_MOUNT_DISABLE_CHECKPOINT	0x00200000
-#define F2FS_MOUNT_NORECOVERY		0x00400000
-#define F2FS_MOUNT_ATGC			0x00800000
-#define F2FS_MOUNT_MERGE_CHECKPOINT	0x01000000
-#define	F2FS_MOUNT_GC_MERGE		0x02000000
-#define F2FS_MOUNT_COMPRESS_CACHE	0x04000000
-#define F2FS_MOUNT_AGE_EXTENT_CACHE	0x08000000
-#define F2FS_MOUNT_NAT_BITS		0x10000000
-#define F2FS_MOUNT_INLINECRYPT		0x20000000
-/*
- * Some f2fs environments expect to be able to pass the "lazytime" option
- * string rather than using the MS_LAZYTIME flag, so this must remain.
- */
-#define F2FS_MOUNT_LAZYTIME		0x40000000
-#define F2FS_MOUNT_RESERVE_NODE		0x80000000
+enum f2fs_mount_opt {
+	F2FS_MOUNT_DISABLE_ROLL_FORWARD,
+	F2FS_MOUNT_DISCARD,
+	F2FS_MOUNT_NOHEAP,
+	F2FS_MOUNT_XATTR_USER,
+	F2FS_MOUNT_POSIX_ACL,
+	F2FS_MOUNT_DISABLE_EXT_IDENTIFY,
+	F2FS_MOUNT_INLINE_XATTR,
+	F2FS_MOUNT_INLINE_DATA,
+	F2FS_MOUNT_INLINE_DENTRY,
+	F2FS_MOUNT_FLUSH_MERGE,
+	F2FS_MOUNT_NOBARRIER,
+	F2FS_MOUNT_FASTBOOT,
+	F2FS_MOUNT_READ_EXTENT_CACHE,
+	F2FS_MOUNT_DATA_FLUSH,
+	F2FS_MOUNT_FAULT_INJECTION,
+	F2FS_MOUNT_USRQUOTA,
+	F2FS_MOUNT_GRPQUOTA,
+	F2FS_MOUNT_PRJQUOTA,
+	F2FS_MOUNT_QUOTA,
+	F2FS_MOUNT_INLINE_XATTR_SIZE,
+	F2FS_MOUNT_RESERVE_ROOT,
+	F2FS_MOUNT_DISABLE_CHECKPOINT,
+	F2FS_MOUNT_NORECOVERY,
+	F2FS_MOUNT_ATGC,
+	F2FS_MOUNT_MERGE_CHECKPOINT,
+	F2FS_MOUNT_GC_MERGE,
+	F2FS_MOUNT_COMPRESS_CACHE,
+	F2FS_MOUNT_AGE_EXTENT_CACHE,
+	F2FS_MOUNT_NAT_BITS,
+	F2FS_MOUNT_INLINECRYPT,
+	/*
+	 * Some f2fs environments expect to be able to pass the "lazytime" option
+	 * string rather than using the MS_LAZYTIME flag, so this must remain.
+	 */
+	F2FS_MOUNT_LAZYTIME,
+	F2FS_MOUNT_RESERVE_NODE,
+};
 
 #define F2FS_OPTION(sbi)	((sbi)->mount_opt)
-#define clear_opt(sbi, option)	(F2FS_OPTION(sbi).opt &= ~F2FS_MOUNT_##option)
-#define set_opt(sbi, option)	(F2FS_OPTION(sbi).opt |= F2FS_MOUNT_##option)
-#define test_opt(sbi, option)	(F2FS_OPTION(sbi).opt & F2FS_MOUNT_##option)
+#define clear_opt(sbi, option)		\
+	(F2FS_OPTION(sbi).opt &= ~BIT(F2FS_MOUNT_##option))
+#define set_opt(sbi, option)		\
+	(F2FS_OPTION(sbi).opt |= BIT(F2FS_MOUNT_##option))
+#define test_opt(sbi, option)		\
+	(F2FS_OPTION(sbi).opt & BIT(F2FS_MOUNT_##option))
 
 #define ver_after(a, b)	(typecheck(unsigned long long, a) &&		\
 		typecheck(unsigned long long, b) &&			\
@@ -183,7 +188,7 @@ struct f2fs_rwsem {
 };
 
 struct f2fs_mount_info {
-	unsigned int opt;
+	unsigned long long opt;
 	block_t root_reserved_blocks;	/* root reserved blocks */
 	block_t root_reserved_nodes;	/* root reserved nodes */
 	kuid_t s_resuid;		/* reserved blocks for uid */
@@ -312,6 +317,12 @@ struct cp_control {
 	__u64 trim_end;
 	__u64 trim_minlen;
 	struct cp_stats stats;
+};
+
+enum f2fs_cp_phase {
+	CP_PHASE_START_BLOCK_OPS,
+	CP_PHASE_FINISH_BLOCK_OPS,
+	CP_PHASE_FINISH_CHECKPOINT,
 };
 
 /*
@@ -508,13 +519,25 @@ struct fsync_inode_entry {
 #define nats_in_cursum(jnl)		(le16_to_cpu((jnl)->n_nats))
 #define sits_in_cursum(jnl)		(le16_to_cpu((jnl)->n_sits))
 
-#define nat_in_journal(jnl, i)		((jnl)->nat_j.entries[i].ne)
-#define nid_in_journal(jnl, i)		((jnl)->nat_j.entries[i].nid)
-#define sit_in_journal(jnl, i)		((jnl)->sit_j.entries[i].se)
-#define segno_in_journal(jnl, i)	((jnl)->sit_j.entries[i].segno)
+#define nat_in_journal(jnl, i) \
+	(((struct nat_journal_entry *)(jnl)->nat_j.entries)[i].ne)
+#define nid_in_journal(jnl, i) \
+	(((struct nat_journal_entry *)(jnl)->nat_j.entries)[i].nid)
+#define sit_in_journal(jnl, i) \
+	(((struct sit_journal_entry *)(jnl)->sit_j.entries)[i].se)
+#define segno_in_journal(jnl, i) \
+	(((struct sit_journal_entry *)(jnl)->sit_j.entries)[i].segno)
 
-#define MAX_NAT_JENTRIES(jnl)	(NAT_JOURNAL_ENTRIES - nats_in_cursum(jnl))
-#define MAX_SIT_JENTRIES(jnl)	(SIT_JOURNAL_ENTRIES - sits_in_cursum(jnl))
+#define sum_entries(sum)	((struct f2fs_summary *)(sum))
+#define sum_journal(sbi, sum) \
+	((struct f2fs_journal *)((char *)(sum) + \
+	((sbi)->entries_in_sum * sizeof(struct f2fs_summary))))
+#define sum_footer(sbi, sum) \
+	((struct summary_footer *)((char *)(sum) + (sbi)->sum_blocksize - \
+	sizeof(struct summary_footer)))
+
+#define MAX_NAT_JENTRIES(sbi, jnl)	((sbi)->nat_journal_entries - nats_in_cursum(jnl))
+#define MAX_SIT_JENTRIES(sbi, jnl)	((sbi)->sit_journal_entries - sits_in_cursum(jnl))
 
 static inline int update_nats_in_cursum(struct f2fs_journal *journal, int i)
 {
@@ -530,14 +553,6 @@ static inline int update_sits_in_cursum(struct f2fs_journal *journal, int i)
 
 	journal->n_sits = cpu_to_le16(before + i);
 	return before;
-}
-
-static inline bool __has_cursum_space(struct f2fs_journal *journal,
-							int size, int type)
-{
-	if (type == NAT_JOURNAL)
-		return size <= MAX_NAT_JENTRIES(journal);
-	return size <= MAX_SIT_JENTRIES(journal);
 }
 
 /* for inline stuff */
@@ -656,8 +671,8 @@ enum {
 
 #define DEFAULT_RETRY_IO_COUNT	8	/* maximum retry read IO or flush count */
 
-/* congestion wait timeout value, default: 20ms */
-#define	DEFAULT_IO_TIMEOUT	(msecs_to_jiffies(20))
+/* IO/non-IO congestion wait timeout value, default: 20ms */
+#define	DEFAULT_SCHEDULE_TIMEOUT	(msecs_to_jiffies(20))
 
 /* timeout value injected, default: 1000ms */
 #define DEFAULT_FAULT_TIMEOUT	(msecs_to_jiffies(1000))
@@ -1512,6 +1527,16 @@ enum f2fs_lookup_mode {
 	LOOKUP_AUTO,
 };
 
+/* For node type in __get_node_folio() */
+enum node_type {
+	NODE_TYPE_REGULAR,
+	NODE_TYPE_INODE,
+	NODE_TYPE_XATTR,
+	NODE_TYPE_NON_INODE,
+	NODE_TYPE_NON_IXNODE,	/* non inode and xnode */
+};
+
+
 static inline int f2fs_test_bit(unsigned int nr, char *addr);
 static inline void f2fs_set_bit(unsigned int nr, char *addr);
 static inline void f2fs_clear_bit(unsigned int nr, char *addr);
@@ -1750,6 +1775,15 @@ struct f2fs_sb_info {
 	bool readdir_ra;			/* readahead inode in readdir */
 	u64 max_io_bytes;			/* max io bytes to merge IOs */
 
+	/* variable summary block units */
+	unsigned int sum_blocksize;		/* sum block size */
+	unsigned int sums_per_block;		/* sum block count per block */
+	unsigned int entries_in_sum;		/* entry count in sum block */
+	unsigned int sum_entry_size;		/* total entry size in sum block */
+	unsigned int sum_journal_size;		/* journal size in sum block */
+	unsigned int nat_journal_entries;	/* nat journal entry count in the journal */
+	unsigned int sit_journal_entries;	/* sit journal entry count in the journal */
+
 	block_t user_block_count;		/* # of user blocks */
 	block_t total_valid_block_count;	/* # of valid blocks */
 	block_t discard_blks;			/* discard command candidats */
@@ -1939,6 +1973,9 @@ struct f2fs_sb_info {
 	/* For io latency related statistics info in one iostat period */
 	spinlock_t iostat_lat_lock;
 	struct iostat_lat_info *iostat_io_lat;
+#endif
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+	struct lock_class_key cp_global_sem_key;
 #endif
 };
 
@@ -2799,6 +2836,14 @@ static inline block_t __start_sum_addr(struct f2fs_sb_info *sbi)
 	return le32_to_cpu(F2FS_CKPT(sbi)->cp_pack_start_sum);
 }
 
+static inline bool __has_cursum_space(struct f2fs_sb_info *sbi,
+			struct f2fs_journal *journal, int size, int type)
+{
+	if (type == NAT_JOURNAL)
+		return size <= MAX_NAT_JENTRIES(sbi, journal);
+	return size <= MAX_SIT_JENTRIES(sbi, journal);
+}
+
 extern void f2fs_mark_inode_dirty_sync(struct inode *inode, bool sync);
 static inline int inc_valid_node_count(struct f2fs_sb_info *sbi,
 					struct inode *inode, bool is_inode)
@@ -2964,16 +3009,6 @@ static inline struct folio *f2fs_filemap_get_folio(
 		return ERR_PTR(-ENOMEM);
 
 	return __filemap_get_folio(mapping, index, fgp_flags, gfp_mask);
-}
-
-static inline struct page *f2fs_pagecache_get_page(
-				struct address_space *mapping, pgoff_t index,
-				fgf_t fgp_flags, gfp_t gfp_mask)
-{
-	if (time_to_inject(F2FS_M_SB(mapping), FAULT_PAGE_GET))
-		return NULL;
-
-	return pagecache_get_page(mapping, index, fgp_flags, gfp_mask);
 }
 
 static inline void f2fs_folio_put(struct folio *folio, bool unlock)
@@ -3853,8 +3888,13 @@ struct folio *f2fs_new_node_folio(struct dnode_of_data *dn, unsigned int ofs);
 void f2fs_ra_node_page(struct f2fs_sb_info *sbi, nid_t nid);
 struct folio *f2fs_get_node_folio(struct f2fs_sb_info *sbi, pgoff_t nid,
 						enum node_type node_type);
+int f2fs_sanity_check_node_footer(struct f2fs_sb_info *sbi,
+					struct folio *folio, pgoff_t nid,
+					enum node_type ntype, bool in_irq);
 struct folio *f2fs_get_inode_folio(struct f2fs_sb_info *sbi, pgoff_t ino);
 struct folio *f2fs_get_xnode_folio(struct f2fs_sb_info *sbi, pgoff_t xnid);
+int f2fs_write_single_node_folio(struct folio *node_folio, int sync_mode,
+			bool mark_dirty, enum iostat_type io_type);
 int f2fs_move_node_folio(struct folio *node_folio, int gc_type);
 void f2fs_flush_inline_data(struct f2fs_sb_info *sbi);
 int f2fs_fsync_node_pages(struct f2fs_sb_info *sbi, struct inode *inode,
@@ -3897,7 +3937,7 @@ bool f2fs_is_checkpointed_data(struct f2fs_sb_info *sbi, block_t blkaddr);
 int f2fs_start_discard_thread(struct f2fs_sb_info *sbi);
 void f2fs_drop_discard_cmd(struct f2fs_sb_info *sbi);
 void f2fs_stop_discard_thread(struct f2fs_sb_info *sbi);
-bool f2fs_issue_discard_timeout(struct f2fs_sb_info *sbi);
+bool f2fs_issue_discard_timeout(struct f2fs_sb_info *sbi, bool need_check);
 void f2fs_clear_prefree_segments(struct f2fs_sb_info *sbi,
 					struct cp_control *cpc);
 void f2fs_dirty_to_prefree(struct f2fs_sb_info *sbi);
@@ -3952,7 +3992,8 @@ void f2fs_wait_on_block_writeback_range(struct inode *inode, block_t blkaddr,
 								block_t len);
 void f2fs_write_data_summaries(struct f2fs_sb_info *sbi, block_t start_blk);
 void f2fs_write_node_summaries(struct f2fs_sb_info *sbi, block_t start_blk);
-int f2fs_lookup_journal_in_cursum(struct f2fs_journal *journal, int type,
+int f2fs_lookup_journal_in_cursum(struct f2fs_sb_info *sbi,
+			struct f2fs_journal *journal, int type,
 			unsigned int val, int alloc);
 void f2fs_flush_sit_entries(struct f2fs_sb_info *sbi, struct cp_control *cpc);
 int f2fs_check_and_fix_write_pointer(struct f2fs_sb_info *sbi);
@@ -4050,6 +4091,7 @@ void f2fs_submit_merged_write_cond(struct f2fs_sb_info *sbi,
 				nid_t ino, enum page_type type);
 void f2fs_submit_merged_ipu_write(struct f2fs_sb_info *sbi,
 					struct bio **bio, struct folio *folio);
+void f2fs_submit_all_merged_ipu_writes(struct f2fs_sb_info *sbi);
 void f2fs_flush_merged_writes(struct f2fs_sb_info *sbi);
 int f2fs_submit_page_bio(struct f2fs_io_info *fio);
 int f2fs_merge_page_bio(struct f2fs_io_info *fio);
@@ -4905,11 +4947,19 @@ static inline bool f2fs_block_unit_discard(struct f2fs_sb_info *sbi)
 	return F2FS_OPTION(sbi).discard_unit == DISCARD_UNIT_BLOCK;
 }
 
-static inline void f2fs_io_schedule_timeout(long timeout)
+static inline void __f2fs_schedule_timeout(long timeout, bool io)
 {
 	set_current_state(TASK_UNINTERRUPTIBLE);
-	io_schedule_timeout(timeout);
+	if (io)
+		io_schedule_timeout(timeout);
+	else
+		schedule_timeout(timeout);
 }
+
+#define f2fs_io_schedule_timeout(timeout)		\
+			__f2fs_schedule_timeout(timeout, true)
+#define f2fs_schedule_timeout(timeout)			\
+			__f2fs_schedule_timeout(timeout, false)
 
 static inline void f2fs_io_schedule_timeout_killable(long timeout)
 {
@@ -4917,10 +4967,10 @@ static inline void f2fs_io_schedule_timeout_killable(long timeout)
 		if (fatal_signal_pending(current))
 			return;
 		set_current_state(TASK_UNINTERRUPTIBLE);
-		io_schedule_timeout(DEFAULT_IO_TIMEOUT);
-		if (timeout <= DEFAULT_IO_TIMEOUT)
+		io_schedule_timeout(DEFAULT_SCHEDULE_TIMEOUT);
+		if (timeout <= DEFAULT_SCHEDULE_TIMEOUT)
 			return;
-		timeout -= DEFAULT_IO_TIMEOUT;
+		timeout -= DEFAULT_SCHEDULE_TIMEOUT;
 	}
 }
 

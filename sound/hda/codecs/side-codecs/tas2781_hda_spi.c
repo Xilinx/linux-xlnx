@@ -135,10 +135,18 @@ static int tasdevice_spi_dev_update_bits(struct tasdevice_priv *tas_priv,
 	int ret, val;
 
 	/*
-	 * In our TAS2781 SPI mode, read/write was masked in last bit of
-	 * address, it cause regmap_update_bits() not work as expected.
+	 * In TAS2781 SPI mode, when accessing non-book-zero or page numbers
+	 * greater than 1 in book 0, an additional byte must be read. The
+	 * first byte in such cases is a dummy byte and should be ignored.
 	 */
-	ret = tasdevice_dev_read(tas_priv, chn, reg, &val);
+	if ((TASDEVICE_BOOK_ID(reg) > 0) || (TASDEVICE_PAGE_ID(reg) > 1)) {
+		unsigned char buf[2];
+
+		ret = tasdevice_dev_bulk_read(tas_priv, chn, reg, buf, 2);
+		val = buf[1];
+	} else {
+		ret = tasdevice_dev_read(tas_priv, chn, reg, &val);
+	}
 	if (ret < 0) {
 		dev_err(tas_priv->dev, "%s, E=%d\n", __func__, ret);
 		return ret;
@@ -634,7 +642,7 @@ static void tasdev_fw_ready(const struct firmware *fmw, void *context)
 	struct tasdevice_priv *tas_priv = context;
 	struct tas2781_hda *tas_hda = dev_get_drvdata(tas_priv->dev);
 	struct hda_codec *codec = tas_priv->codec;
-	int ret, val;
+	int ret;
 
 	pm_runtime_get_sync(tas_priv->dev);
 	guard(mutex)(&tas_priv->codec_lock);
@@ -673,20 +681,14 @@ static void tasdev_fw_ready(const struct firmware *fmw, void *context)
 	tas_priv->rcabin.profile_cfg_id = 0;
 
 	tas_priv->fw_state = TASDEVICE_DSP_FW_ALL_OK;
-	ret = tasdevice_spi_dev_read(tas_priv, tas_priv->index,
-		TAS2781_REG_CLK_CONFIG, &val);
-	if (ret < 0)
-		goto out;
 
-	if (val == TAS2781_REG_CLK_CONFIG_RESET) {
-		ret = tasdevice_prmg_load(tas_priv, 0);
-		if (ret < 0) {
-			dev_err(tas_priv->dev, "FW download failed = %d\n",
-				ret);
-			goto out;
-		}
-		tas_priv->fw_state = TASDEVICE_DSP_FW_ALL_OK;
+	ret = tasdevice_prmg_load(tas_priv, 0);
+	if (ret < 0) {
+		dev_err(tas_priv->dev, "FW download failed = %d\n", ret);
+		goto out;
 	}
+	tas_priv->fw_state = TASDEVICE_DSP_FW_ALL_OK;
+
 	if (tas_priv->fmw->nr_programs > 0)
 		tas_priv->tasdevice[tas_priv->index].cur_prog = 0;
 	if (tas_priv->fmw->nr_configurations > 0)
@@ -750,6 +752,9 @@ static void tas2781_hda_unbind(struct device *dev, struct device *master,
 		memset(comp->name, 0, sizeof(comp->name));
 		comp->playback_hook = NULL;
 	}
+
+	request_firmware_nowait_cancel(tas_priv->dev, tas_priv,
+				       tasdev_fw_ready);
 
 	tas2781_hda_remove_controls(tas_hda);
 

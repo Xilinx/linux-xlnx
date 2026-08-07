@@ -111,7 +111,7 @@ bool dso__is_object_file(const struct dso *dso)
 
 int dso__read_binary_type_filename(const struct dso *dso,
 				   enum dso_binary_type type,
-				   char *root_dir, char *filename, size_t size)
+				   const char *root_dir, char *filename, size_t size)
 {
 	char build_id_hex[SBUILD_ID_SIZE];
 	int ret = 0;
@@ -342,8 +342,14 @@ int filename__decompress(const char *name, char *pathname,
 	 * To keep this transparent, we detect this and return the file
 	 * descriptor to the uncompressed file.
 	 */
-	if (!compressions[comp].is_compressed(name))
-		return open(name, O_RDONLY);
+	if (!compressions[comp].is_compressed(name)) {
+		fd = open(name, O_RDONLY | O_CLOEXEC);
+		if (fd < 0)
+			*err = errno;
+		if (pathname && len > 0)
+			pathname[0] = '\0';
+		return fd;
+	}
 
 	fd = mkstemp(tmpbuf);
 	if (fd < 0) {
@@ -539,16 +545,13 @@ static void close_first_dso(void);
 
 static int do_open(char *name) EXCLUSIVE_LOCKS_REQUIRED(_dso__data_open_lock)
 {
-	int fd;
-	char sbuf[STRERR_BUFSIZE];
-
 	do {
-		fd = open(name, O_RDONLY|O_CLOEXEC);
+		int fd = open(name, O_RDONLY|O_CLOEXEC);
+
 		if (fd >= 0)
 			return fd;
 
-		pr_debug("dso open failed: %s\n",
-			 str_error_r(errno, sbuf, sizeof(sbuf)));
+		pr_debug("dso open failed: %m\n");
 		if (!dso__data_open_cnt || errno != EMFILE)
 			break;
 
@@ -563,20 +566,15 @@ char *dso__filename_with_chroot(const struct dso *dso, const char *filename)
 	return filename_with_chroot(nsinfo__pid(dso__nsinfo_const(dso)), filename);
 }
 
-static int __open_dso(struct dso *dso, struct machine *machine)
-	EXCLUSIVE_LOCKS_REQUIRED(_dso__data_open_lock)
+static char *dso__get_filename(struct dso *dso, const char *root_dir,
+			       bool *decomp)
 {
-	int fd = -EINVAL;
-	char *root_dir = (char *)"";
 	char *name = malloc(PATH_MAX);
-	bool decomp = false;
 
-	if (!name)
-		return -ENOMEM;
+	*decomp = false;
 
-	mutex_lock(dso__lock(dso));
-	if (machine)
-		root_dir = machine->root_dir;
+	if (name == NULL)
+		return NULL;
 
 	if (dso__read_binary_type_filename(dso, dso__binary_type(dso),
 					    root_dir, name, PATH_MAX))
@@ -601,20 +599,54 @@ static int __open_dso(struct dso *dso, struct machine *machine)
 		size_t len = sizeof(newpath);
 
 		if (dso__decompress_kmodule_path(dso, name, newpath, len) < 0) {
-			fd = -(*dso__load_errno(dso));
+			/*
+			 * Use a standard errno value, not the negative custom
+			 * DSO_LOAD_ERRNO stored in dso__load_errno(dso):
+			 * __open_dso() computes fd = -errno, so a negative
+			 * errno produces a positive fd that looks valid.
+			 */
+			errno = EIO;
 			goto out;
 		}
 
-		decomp = true;
-		strcpy(name, newpath);
-	}
+		/* empty pathname means file wasn't actually compressed */
+		if (newpath[0] != '\0') {
+			char *tmp = strdup(newpath);
 
-	fd = do_open(name);
+			if (!tmp) {
+				unlink(newpath);
+				goto out;
+			}
+			free(name);
+			name = tmp;
+			*decomp = true;
+		}
+	}
+	return name;
+
+out:
+	free(name);
+	return NULL;
+}
+
+static int __open_dso(struct dso *dso, struct machine *machine)
+	EXCLUSIVE_LOCKS_REQUIRED(_dso__data_open_lock)
+{
+	int fd = -EINVAL;
+	char *name;
+	bool decomp = false;
+
+	mutex_lock(dso__lock(dso));
+
+	name = dso__get_filename(dso, machine ? machine->root_dir : "", &decomp);
+	if (name)
+		fd = do_open(name);
+	else
+		fd = -errno;
 
 	if (decomp)
 		unlink(name);
 
-out:
 	mutex_unlock(dso__lock(dso));
 	free(name);
 	return fd;
@@ -849,6 +881,12 @@ static ssize_t bpf_read(struct dso *dso, u64 offset, char *data)
 
 	node = perf_env__find_bpf_prog_info(dso_bpf_prog->env, dso_bpf_prog->id);
 	if (!node || !node->info_linear) {
+		dso__data(dso)->status = DSO_DATA_STATUS_ERROR;
+		return -1;
+	}
+
+	/* jited_prog_insns is only valid if bpil_offs_to_addr() converted it */
+	if (!(node->info_linear->arrays & (1UL << PERF_BPIL_JITED_INSNS))) {
 		dso__data(dso)->status = DSO_DATA_STATUS_ERROR;
 		return -1;
 	}
@@ -1097,7 +1135,6 @@ static int file_size(struct dso *dso, struct machine *machine)
 {
 	int ret = 0;
 	struct stat st;
-	char sbuf[STRERR_BUFSIZE];
 
 	mutex_lock(dso__data_open_lock());
 
@@ -1115,8 +1152,7 @@ static int file_size(struct dso *dso, struct machine *machine)
 
 	if (fstat(dso__data(dso)->fd, &st) < 0) {
 		ret = -errno;
-		pr_err("dso cache fstat failed: %s\n",
-		       str_error_r(errno, sbuf, sizeof(sbuf)));
+		pr_err("dso cache fstat failed: %m\n");
 		dso__data(dso)->status = DSO_DATA_STATUS_ERROR;
 		goto out;
 	}
@@ -1690,7 +1726,7 @@ void dso__read_running_kernel_build_id(struct dso *dso, struct machine *machine)
 
 	if (machine__is_default_guest(machine))
 		return;
-	sprintf(path, "%s/sys/kernel/notes", machine->root_dir);
+	snprintf(path, sizeof(path), "%s/sys/kernel/notes", machine->root_dir);
 	sysfs__read_build_id(path, &bid);
 	dso__set_build_id(dso, &bid);
 }
@@ -1771,10 +1807,8 @@ int dso__strerror_load(struct dso *dso, char *buf, size_t buflen)
 	BUG_ON(buflen == 0);
 
 	if (errnum >= 0) {
-		const char *err = str_error_r(errnum, buf, buflen);
-
-		if (err != buf)
-			scnprintf(buf, buflen, "%s", err);
+		errno = errnum;
+		scnprintf(buf, buflen, "%m");
 
 		return 0;
 	}
@@ -1830,7 +1864,7 @@ static const u8 *__dso__read_symbol(struct dso *dso, const char *symfs_filename,
 	int saved_errno;
 
 	nsinfo__mountns_enter(dso__nsinfo(dso), &nsc);
-	fd = open(symfs_filename, O_RDONLY);
+	fd = open(symfs_filename, O_RDONLY | O_CLOEXEC);
 	saved_errno = errno;
 	nsinfo__mountns_exit(&nsc);
 	if (fd < 0) {
@@ -1898,6 +1932,10 @@ const u8 *dso__read_symbol(struct dso *dso, const char *symfs_filename,
 			return NULL;
 		}
 		info_linear = info_node->info_linear;
+		if (!(info_linear->arrays & (1UL << PERF_BPIL_JITED_INSNS))) {
+			errno = SYMBOL_ANNOTATE_ERRNO__BPF_MISSING_BTF;
+			return NULL;
+		}
 		assert(len <= info_linear->info.jited_prog_len);
 		*out_buf_len = len;
 		return (const u8 *)(uintptr_t)(info_linear->info.jited_prog_insns);
@@ -1909,4 +1947,24 @@ const u8 *dso__read_symbol(struct dso *dso, const char *symfs_filename,
 	}
 	return __dso__read_symbol(dso, symfs_filename, start, len,
 				  out_buf, out_buf_len, is_64bit);
+}
+
+struct debuginfo *dso__debuginfo(struct dso *dso)
+{
+	char *name;
+	bool decomp = false;
+	struct debuginfo *dinfo = NULL;
+
+	mutex_lock(dso__lock(dso));
+
+	name = dso__get_filename(dso, "", &decomp);
+	if (name)
+		dinfo = debuginfo__new(name);
+
+	if (decomp)
+		unlink(name);
+
+	mutex_unlock(dso__lock(dso));
+	free(name);
+	return dinfo;
 }

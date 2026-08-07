@@ -81,8 +81,12 @@ xchk_dirtree_buf_cleanup(
 		kfree(path);
 	}
 
-	xfblob_destroy(dl->path_names);
-	xfarray_destroy(dl->path_steps);
+	if (dl->path_names)
+		xfblob_destroy(dl->path_names);
+	dl->path_names = NULL;
+	if (dl->path_steps)
+		xfarray_destroy(dl->path_steps);
+	dl->path_steps = NULL;
 	mutex_destroy(&dl->lock);
 }
 
@@ -92,7 +96,6 @@ xchk_setup_dirtree(
 	struct xfs_scrub	*sc)
 {
 	struct xchk_dirtree	*dl;
-	char			*descr;
 	int			error;
 
 	xchk_fsgates_enable(sc, XCHK_FSGATES_DIRENTS);
@@ -116,16 +119,12 @@ xchk_setup_dirtree(
 
 	mutex_init(&dl->lock);
 
-	descr = xchk_xfile_ino_descr(sc, "dirtree path steps");
-	error = xfarray_create(descr, 0, sizeof(struct xchk_dirpath_step),
-			&dl->path_steps);
-	kfree(descr);
+	error = xfarray_create("dirtree path steps", 0,
+			sizeof(struct xchk_dirpath_step), &dl->path_steps);
 	if (error)
 		goto out_dl;
 
-	descr = xchk_xfile_ino_descr(sc, "dirtree path names");
-	error = xfblob_create(descr, &dl->path_names);
-	kfree(descr);
+	error = xfblob_create("dirtree path names", &dl->path_names);
 	if (error)
 		goto out_steps;
 
@@ -384,6 +383,14 @@ xchk_dirpath_step_up(
 		goto out_scanlock;
 	}
 
+	/* The handle encoded in the parent pointer must match. */
+	if (VFS_I(dp)->i_generation != be32_to_cpu(dl->pptr_rec.p_gen)) {
+		trace_xchk_dirpath_badgen(dl->sc, dp, path->path_nr,
+				path->nr_steps, &dl->xname, &dl->pptr_rec);
+		error = -EFSCORRUPTED;
+		goto out_scanlock;
+	}
+
 	/* We've reached the root directory; the path is ok. */
 	if (parent_ino == dl->root_ino) {
 		xchk_dirpath_set_outcome(dl, path, XCHK_DIRPATH_OK);
@@ -409,14 +416,6 @@ xchk_dirpath_step_up(
 	if (xino_bitmap_test(&path->seen_inodes, parent_ino)) {
 		xchk_dirpath_set_outcome(dl, path, XCHK_DIRPATH_LOOP);
 		error = 0;
-		goto out_scanlock;
-	}
-
-	/* The handle encoded in the parent pointer must match. */
-	if (VFS_I(dp)->i_generation != be32_to_cpu(dl->pptr_rec.p_gen)) {
-		trace_xchk_dirpath_badgen(dl->sc, dp, path->path_nr,
-				path->nr_steps, &dl->xname, &dl->pptr_rec);
-		error = -EFSCORRUPTED;
 		goto out_scanlock;
 	}
 

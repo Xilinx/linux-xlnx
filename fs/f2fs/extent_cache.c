@@ -648,8 +648,6 @@ static unsigned int __destroy_extent_node(struct inode *inode,
 		write_unlock(&et->lock);
 	}
 
-	f2fs_bug_on(sbi, atomic_read(&et->node_cnt));
-
 	return node_cnt;
 }
 

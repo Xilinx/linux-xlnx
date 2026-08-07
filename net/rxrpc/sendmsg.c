@@ -366,7 +366,8 @@ reload:
 	if (state >= RXRPC_CALL_COMPLETE)
 		goto maybe_error;
 	ret = -EPROTO;
-	if (state != RXRPC_CALL_CLIENT_SEND_REQUEST &&
+	if (state != RXRPC_CALL_CLIENT_PRE_SEND &&
+	    state != RXRPC_CALL_CLIENT_SEND_REQUEST &&
 	    state != RXRPC_CALL_SERVER_ACK_REQUEST &&
 	    state != RXRPC_CALL_SERVER_SEND_REPLY) {
 		/* Request phase complete for this client call */
@@ -637,7 +638,7 @@ rxrpc_new_client_call_for_sendmsg(struct rxrpc_sock *rx, struct msghdr *msg,
 	memset(&cp, 0, sizeof(cp));
 	cp.local		= rx->local;
 	cp.peer			= peer;
-	cp.key			= rx->key;
+	cp.key			= key;
 	cp.security_level	= rx->min_sec_level;
 	cp.exclusive		= rx->exclusive | p->exclusive;
 	cp.upgrade		= p->upgrade;

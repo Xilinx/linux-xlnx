@@ -88,6 +88,9 @@ struct pcie_tlp_log;
 #define PCI_BUS_BRIDGE_MEM_WINDOW	1
 #define PCI_BUS_BRIDGE_PREF_MEM_WINDOW	2
 
+#define PCI_EXP_AER_FLAGS	(PCI_EXP_DEVCTL_CERE | PCI_EXP_DEVCTL_NFERE | \
+				 PCI_EXP_DEVCTL_FERE | PCI_EXP_DEVCTL_URRE)
+
 extern const unsigned char pcie_link_speed[];
 extern bool pci_early_dump;
 
@@ -103,17 +106,21 @@ bool pcie_cap_has_rtctl(const struct pci_dev *dev);
  * @read_cfg: Function pointer for reading PCI config space
  * @start: Starting position to begin search
  * @cap: Capability ID to find
+ * @prev_ptr: Pointer to store position of preceding capability (optional)
  * @args: Arguments to pass to read_cfg function
  *
- * Search the capability list in PCI config space to find @cap.
+ * Search the capability list in PCI config space to find @cap. If
+ * found, update *prev_ptr with the position of the preceding capability
+ * (if prev_ptr != NULL)
  * Implements TTL (time-to-live) protection against infinite loops.
  *
  * Return: Position of the capability if found, 0 otherwise.
  */
-#define PCI_FIND_NEXT_CAP(read_cfg, start, cap, args...)		\
+#define PCI_FIND_NEXT_CAP(read_cfg, start, cap, prev_ptr, args...)	\
 ({									\
 	int __ttl = PCI_FIND_CAP_TTL;					\
-	u8 __id, __found_pos = 0;					\
+	u8 __id,  __found_pos = 0;					\
+	u8 __prev_pos = (start);					\
 	u8 __pos = (start);						\
 	u16 __ent;							\
 									\
@@ -132,9 +139,12 @@ bool pcie_cap_has_rtctl(const struct pci_dev *dev);
 									\
 		if (__id == (cap)) {					\
 			__found_pos = __pos;				\
+			if (prev_ptr != NULL)				\
+				*(u8 *)prev_ptr = __prev_pos;		\
 			break;						\
 		}							\
 									\
+		__prev_pos = __pos;					\
 		__pos = FIELD_GET(PCI_CAP_LIST_NEXT_MASK, __ent);	\
 	}								\
 	__found_pos;							\
@@ -146,21 +156,26 @@ bool pcie_cap_has_rtctl(const struct pci_dev *dev);
  * @read_cfg: Function pointer for reading PCI config space
  * @start: Starting position to begin search (0 for initial search)
  * @cap: Extended capability ID to find
+ * @prev_ptr: Pointer to store position of preceding capability (optional)
  * @args: Arguments to pass to read_cfg function
  *
  * Search the extended capability list in PCI config space to find @cap.
+ * If found, update *prev_ptr with the position of the preceding capability
+ * (if prev_ptr != NULL)
  * Implements TTL protection against infinite loops using a calculated
  * maximum search count.
  *
  * Return: Position of the capability if found, 0 otherwise.
  */
-#define PCI_FIND_NEXT_EXT_CAP(read_cfg, start, cap, args...)		\
+#define PCI_FIND_NEXT_EXT_CAP(read_cfg, start, cap, prev_ptr, args...)	\
 ({									\
 	u16 __pos = (start) ?: PCI_CFG_SPACE_SIZE;			\
 	u16 __found_pos = 0;						\
+	u16 __prev_pos;							\
 	int __ttl, __ret;						\
 	u32 __header;							\
 									\
+	__prev_pos = __pos;						\
 	__ttl = (PCI_CFG_SPACE_EXP_SIZE - PCI_CFG_SPACE_SIZE) / 8;	\
 	while (__ttl-- > 0 && __pos >= PCI_CFG_SPACE_SIZE) {		\
 		__ret = read_cfg##_dword(args, __pos, &__header);	\
@@ -172,9 +187,12 @@ bool pcie_cap_has_rtctl(const struct pci_dev *dev);
 									\
 		if (PCI_EXT_CAP_ID(__header) == (cap) && __pos != start) {\
 			__found_pos = __pos;				\
+			if (prev_ptr != NULL)				\
+				*(u16 *)prev_ptr = __prev_pos;		\
 			break;						\
 		}							\
 									\
+		__prev_pos = __pos;					\
 		__pos = PCI_EXT_CAP_NEXT(__header);			\
 	}								\
 	__found_pos;							\
@@ -421,8 +439,10 @@ enum pci_bar_type {
 struct device *pci_get_host_bridge_device(struct pci_dev *dev);
 void pci_put_host_bridge_device(struct device *dev);
 
+void pci_resize_resource_set_size(struct pci_dev *dev, int resno, int size);
+int pci_do_resource_release_and_resize(struct pci_dev *dev, int resno, int size,
+				       int exclude_bars);
 unsigned int pci_rescan_bus_bridge_resize(struct pci_dev *bridge);
-int pbus_reassign_bridge_resources(struct pci_bus *bus, struct resource *res);
 int __must_check pci_reassign_resource(struct pci_dev *dev, int i, resource_size_t add_size, resource_size_t align);
 
 int pci_configure_extended_tags(struct pci_dev *dev, void *ign);
@@ -808,8 +828,7 @@ void pci_iov_update_resource(struct pci_dev *dev, int resno);
 resource_size_t pci_sriov_resource_alignment(struct pci_dev *dev, int resno);
 void pci_restore_iov_state(struct pci_dev *dev);
 int pci_iov_bus_range(struct pci_bus *bus);
-void pci_iov_resource_set_size(struct pci_dev *dev, int resno,
-			       resource_size_t size);
+void pci_iov_resource_set_size(struct pci_dev *dev, int resno, int size);
 bool pci_iov_is_memory_decoding_enabled(struct pci_dev *dev);
 static inline u16 pci_iov_vf_rebar_cap(struct pci_dev *dev)
 {
@@ -851,7 +870,7 @@ static inline int pci_iov_bus_range(struct pci_bus *bus)
 	return 0;
 }
 static inline void pci_iov_resource_set_size(struct pci_dev *dev, int resno,
-					     resource_size_t size) { }
+					     int size) { }
 static inline bool pci_iov_is_memory_decoding_enabled(struct pci_dev *dev)
 {
 	return false;
@@ -917,6 +936,7 @@ static inline resource_size_t pci_resource_alignment(struct pci_dev *dev,
 }
 
 void pci_acs_init(struct pci_dev *dev);
+void pci_enable_acs(struct pci_dev *dev);
 #ifdef CONFIG_PCI_QUIRKS
 int pci_dev_specific_acs_enabled(struct pci_dev *dev, u16 acs_flags);
 int pci_dev_specific_enable_acs(struct pci_dev *dev);
@@ -1022,6 +1042,7 @@ static inline int acpi_get_rc_resources(struct device *dev, const char *hid,
 #endif
 
 void pci_rebar_init(struct pci_dev *pdev);
+void pci_restore_rebar_state(struct pci_dev *pdev);
 int pci_rebar_get_current_size(struct pci_dev *pdev, int bar);
 int pci_rebar_set_size(struct pci_dev *pdev, int bar, int size);
 static inline u64 pci_rebar_size_to_bytes(int size)

@@ -421,6 +421,7 @@ static void __init arch_mem_init(char **cmdline_p)
 				   PFN_UP(__pa_symbol(&__nosave_end)));
 
 	memblock_dump_all();
+	memblock_set_bottom_up(false);
 
 	early_memtest(PFN_PHYS(ARCH_PFN_OFFSET), PFN_PHYS(max_low_pfn));
 }
@@ -508,6 +509,8 @@ static int __init add_legacy_isa_io(struct fwnode_handle *fwnode,
 static __init int arch_reserve_pio_range(void)
 {
 	struct device_node *np;
+
+	acpi_add_early_pio();
 
 	for_each_node_by_name(np, "isa") {
 		struct of_range range;

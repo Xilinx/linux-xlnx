@@ -16,7 +16,7 @@
 
 #include "cs35l56.h"
 
-static const struct reg_sequence cs35l56_patch[] = {
+static const struct reg_sequence cs35l56_asp_patch[] = {
 	/*
 	 * Firmware can change these to non-defaults to satisfy SDCA.
 	 * Ensure that they are at known defaults.
@@ -33,6 +33,20 @@ static const struct reg_sequence cs35l56_patch[] = {
 	{ CS35L56_ASP1TX2_INPUT,		0x00000000 },
 	{ CS35L56_ASP1TX3_INPUT,		0x00000000 },
 	{ CS35L56_ASP1TX4_INPUT,		0x00000000 },
+};
+
+int cs35l56_set_asp_patch(struct cs35l56_base *cs35l56_base)
+{
+	return regmap_register_patch(cs35l56_base->regmap, cs35l56_asp_patch,
+				     ARRAY_SIZE(cs35l56_asp_patch));
+}
+EXPORT_SYMBOL_NS_GPL(cs35l56_set_asp_patch, "SND_SOC_CS35L56_SHARED");
+
+static const struct reg_sequence cs35l56_patch[] = {
+	/*
+	 * Firmware can change these to non-defaults to satisfy SDCA.
+	 * Ensure that they are at known defaults.
+	 */
 	{ CS35L56_SWIRE_DP3_CH1_INPUT,		0x00000018 },
 	{ CS35L56_SWIRE_DP3_CH2_INPUT,		0x00000019 },
 	{ CS35L56_SWIRE_DP3_CH3_INPUT,		0x00000029 },
@@ -501,6 +515,7 @@ static void cs35l56_spi_system_reset(struct cs35l56_base *cs35l56_base)
 	 * The regmap must remain in cache-only until the chip has
 	 * booted, so use a bypassed read.
 	 */
+	val = 0;
 	ret = read_poll_timeout(regmap_read_bypassed, read_ret,
 				(val > 0) && (val < 0xffffffff),
 				CS35L56_HALO_STATE_POLL_US,

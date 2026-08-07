@@ -4828,7 +4828,7 @@ static int nl80211_validate_key_link_id(struct genl_info *info,
 	if (wdev->valid_links) {
 		if (link_id == -1) {
 			GENL_SET_ERR_MSG(info,
-					 "link ID must for MLO group key");
+					 "link ID must be set for MLO group key");
 			return -EINVAL;
 		}
 		if (!(wdev->valid_links & BIT(link_id))) {
@@ -6078,6 +6078,9 @@ nl80211_parse_rnr_elems(struct wiphy *wiphy, struct nlattr *attrs,
 		ret = validate_ie_attr(nl_elems, extack);
 		if (ret)
 			return ERR_PTR(ret);
+
+		if (num_elems >= 255)
+			return ERR_PTR(-EINVAL);
 
 		num_elems++;
 	}

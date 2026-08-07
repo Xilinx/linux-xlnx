@@ -1256,8 +1256,25 @@ static int check_root_item(struct extent_buffer *leaf, struct btrfs_key *key,
 	}
 	if (unlikely(btrfs_root_drop_level(&ri) >= BTRFS_MAX_LEVEL)) {
 		generic_err(leaf, slot,
-			    "invalid root level, have %u expect [0, %u]",
+			    "invalid root drop_level, have %u expect [0, %u]",
 			    btrfs_root_drop_level(&ri), BTRFS_MAX_LEVEL - 1);
+		return -EUCLEAN;
+	}
+	/*
+	 * If drop_progress.objectid is non-zero, a btrfs_drop_snapshot() was
+	 * interrupted and the resume point was recorded in drop_progress and
+	 * drop_level.  In that case drop_level must be >= 1: level 0 is the
+	 * leaf level and drop_snapshot never saves a checkpoint there (it
+	 * only records checkpoints at internal node levels in DROP_REFERENCE
+	 * stage).  A zero drop_level combined with a non-zero drop_progress
+	 * objectid indicates on-disk corruption and would cause a BUG_ON in
+	 * merge_reloc_root() and btrfs_drop_snapshot() at mount time.
+	 */
+	if (unlikely(btrfs_disk_key_objectid(&ri.drop_progress) != 0 &&
+		     btrfs_root_drop_level(&ri) == 0)) {
+		generic_err(leaf, slot,
+			    "invalid root drop_level 0 with non-zero drop_progress objectid %llu",
+			    btrfs_disk_key_objectid(&ri.drop_progress));
 		return -EUCLEAN;
 	}
 
@@ -1618,10 +1635,9 @@ static int check_extent_item(struct extent_buffer *leaf,
 
 		if (unlikely(prev_end > key->objectid)) {
 			extent_err(leaf, slot,
-	"previous extent [%llu %u %llu] overlaps current extent [%llu %u %llu]",
-				   prev_key->objectid, prev_key->type,
-				   prev_key->offset, key->objectid, key->type,
-				   key->offset);
+	"previous extent " BTRFS_KEY_FMT " overlaps current extent " BTRFS_KEY_FMT,
+				   BTRFS_KEY_FMT_VALUE(prev_key),
+				   BTRFS_KEY_FMT_VALUE(key));
 			return -EUCLEAN;
 		}
 	}
@@ -1713,7 +1729,7 @@ static int check_extent_data_ref(struct extent_buffer *leaf,
 			     objectid > BTRFS_LAST_FREE_OBJECTID)) {
 			extent_err(leaf, slot,
 				   "invalid extent data backref objectid value %llu",
-				   root);
+				   objectid);
 			return -EUCLEAN;
 		}
 		if (unlikely(!IS_ALIGNED(offset, leaf->fs_info->sectorsize))) {
@@ -1894,7 +1910,7 @@ static int check_dev_extent_item(const struct extent_buffer *leaf,
 		if (unlikely(prev_key->offset + prev_len > key->offset)) {
 			generic_err(leaf, slot,
 		"dev extent overlap, prev offset %llu len %llu current offset %llu",
-				    prev_key->objectid, prev_len, key->offset);
+				    prev_key->offset, prev_len, key->offset);
 			return -EUCLEAN;
 		}
 	}
@@ -2060,10 +2076,9 @@ enum btrfs_tree_block_status __btrfs_check_leaf(struct extent_buffer *leaf)
 		/* Make sure the keys are in the right order */
 		if (unlikely(btrfs_comp_cpu_keys(&prev_key, &key) >= 0)) {
 			generic_err(leaf, slot,
-	"bad key order, prev (%llu %u %llu) current (%llu %u %llu)",
-				prev_key.objectid, prev_key.type,
-				prev_key.offset, key.objectid, key.type,
-				key.offset);
+	"bad key order, prev " BTRFS_KEY_FMT " current " BTRFS_KEY_FMT,
+				    BTRFS_KEY_FMT_VALUE(&prev_key),
+				    BTRFS_KEY_FMT_VALUE(&key));
 			return BTRFS_TREE_BLOCK_BAD_KEY_ORDER;
 		}
 
@@ -2181,10 +2196,9 @@ enum btrfs_tree_block_status __btrfs_check_node(struct extent_buffer *node)
 
 		if (unlikely(btrfs_comp_cpu_keys(&key, &next_key) >= 0)) {
 			generic_err(node, slot,
-	"bad key order, current (%llu %u %llu) next (%llu %u %llu)",
-				key.objectid, key.type, key.offset,
-				next_key.objectid, next_key.type,
-				next_key.offset);
+	"bad key order, current " BTRFS_KEY_FMT " next " BTRFS_KEY_FMT,
+				    BTRFS_KEY_FMT_VALUE(&key),
+				    BTRFS_KEY_FMT_VALUE(&next_key));
 			return BTRFS_TREE_BLOCK_BAD_KEY_ORDER;
 		}
 	}

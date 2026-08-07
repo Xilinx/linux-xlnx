@@ -604,8 +604,15 @@ static void rtw89_pci_release_rpp(struct rtw89_dev *rtwdev, void *rpp)
 
 	info->parse_rpp(rtwdev, rpp, &rpp_info);
 
-	if (rpp_info.txch == RTW89_TXCH_CH12) {
-		rtw89_warn(rtwdev, "should no fwcmd release report\n");
+	if (unlikely(rpp_info.txch >= RTW89_TXCH_NUM ||
+		     info->tx_dma_ch_mask & BIT(rpp_info.txch))) {
+		rtw89_warn(rtwdev, "should no release report on txch %d\n",
+			   rpp_info.txch);
+		return;
+	}
+
+	if (unlikely(rpp_info.seq >= RTW89_PCI_TXWD_NUM_MAX)) {
+		rtw89_warn(rtwdev, "invalid seq %d\n", rpp_info.seq);
 		return;
 	}
 
@@ -4584,6 +4591,7 @@ static int __maybe_unused rtw89_pci_resume(struct device *dev)
 		rtw89_write32_clr(rtwdev, R_AX_PCIE_PS_CTRL_V1,
 				  B_AX_SEL_REQ_ENTR_L1);
 	}
+	rtw89_pci_hci_ldo(rtwdev);
 	rtw89_pci_l2_hci_ldo(rtwdev);
 
 	rtw89_pci_basic_cfg(rtwdev, true);
@@ -4597,9 +4605,9 @@ EXPORT_SYMBOL(rtw89_pm_ops);
 static pci_ers_result_t rtw89_pci_io_error_detected(struct pci_dev *pdev,
 						    pci_channel_state_t state)
 {
-	struct net_device *netdev = pci_get_drvdata(pdev);
+	struct ieee80211_hw *hw = pci_get_drvdata(pdev);
 
-	netif_device_detach(netdev);
+	ieee80211_stop_queues(hw);
 
 	return PCI_ERS_RESULT_NEED_RESET;
 }
@@ -4616,12 +4624,12 @@ static pci_ers_result_t rtw89_pci_io_slot_reset(struct pci_dev *pdev)
 
 static void rtw89_pci_io_resume(struct pci_dev *pdev)
 {
-	struct net_device *netdev = pci_get_drvdata(pdev);
+	struct ieee80211_hw *hw = pci_get_drvdata(pdev);
 
 	/* ack any pending wake events, disable PME */
 	pci_enable_wake(pdev, PCI_D0, 0);
 
-	netif_device_attach(netdev);
+	ieee80211_wake_queues(hw);
 }
 
 const struct pci_error_handlers rtw89_pci_err_handler = {

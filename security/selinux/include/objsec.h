@@ -32,9 +32,7 @@
 
 struct avdc_entry {
 	u32 isid; /* inode SID */
-	u32 allowed; /* allowed permission bitmask */
-	u32 audited; /* audited permission bitmask */
-	bool permissive; /* AVC permissive flag */
+	struct av_decision avd; /* av decision */
 };
 
 struct cred_security_struct {
@@ -86,6 +84,10 @@ struct file_security_struct {
 	u32 fown_sid; /* SID of file owner (for SIGIO) */
 	u32 isid; /* SID of inode at the time of file open */
 	u32 pseqno; /* Policy seqno at the time of file open */
+};
+
+struct backing_file_security_struct {
+	u32 uf_sid; /* associated user file fsec->sid */
 };
 
 struct superblock_security_struct {
@@ -190,6 +192,13 @@ selinux_task(const struct task_struct *task)
 static inline struct file_security_struct *selinux_file(const struct file *file)
 {
 	return file->f_security + selinux_blob_sizes.lbs_file;
+}
+
+static inline struct backing_file_security_struct *
+selinux_backing_file(const struct file *backing_file)
+{
+	void *blob = backing_file_security(backing_file);
+	return blob + selinux_blob_sizes.lbs_backing_file;
 }
 
 static inline struct inode_security_struct *

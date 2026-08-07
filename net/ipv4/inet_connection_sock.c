@@ -153,20 +153,6 @@ bool inet_sk_get_local_port_range(const struct sock *sk, int *low, int *high)
 }
 EXPORT_SYMBOL(inet_sk_get_local_port_range);
 
-static bool inet_use_bhash2_on_bind(const struct sock *sk)
-{
-#if IS_ENABLED(CONFIG_IPV6)
-	if (sk->sk_family == AF_INET6) {
-		if (ipv6_addr_any(&sk->sk_v6_rcv_saddr))
-			return false;
-
-		if (!ipv6_addr_v4mapped(&sk->sk_v6_rcv_saddr))
-			return true;
-	}
-#endif
-	return sk->sk_rcv_saddr != htonl(INADDR_ANY);
-}
-
 static bool inet_bind_conflict(const struct sock *sk, struct sock *sk2,
 			       kuid_t uid, bool relax,
 			       bool reuseport_cb_ok, bool reuseport_ok)
@@ -258,7 +244,7 @@ static int inet_csk_bind_conflict(const struct sock *sk,
 	 * checks separately because their spinlocks have to be acquired/released
 	 * independently of each other, to prevent possible deadlocks
 	 */
-	if (inet_use_bhash2_on_bind(sk))
+	if (inet_use_hash2_on_bind(sk))
 		return tb2 && inet_bhash2_conflict(sk, tb2, uid, relax,
 						   reuseport_cb_ok, reuseport_ok);
 
@@ -375,7 +361,7 @@ other_parity_scan:
 		head = &hinfo->bhash[inet_bhashfn(net, port,
 						  hinfo->bhash_size)];
 		spin_lock_bh(&head->lock);
-		if (inet_use_bhash2_on_bind(sk)) {
+		if (inet_use_hash2_on_bind(sk)) {
 			if (inet_bhash2_addr_any_conflict(sk, port, l3mdev, relax, false))
 				goto next_port;
 		}
@@ -561,7 +547,7 @@ int inet_csk_get_port(struct sock *sk, unsigned short snum)
 				check_bind_conflict = false;
 		}
 
-		if (check_bind_conflict && inet_use_bhash2_on_bind(sk)) {
+		if (check_bind_conflict && inet_use_hash2_on_bind(sk)) {
 			if (inet_bhash2_addr_any_conflict(sk, port, l3mdev, true, true))
 				goto fail_unlock;
 		}
@@ -1163,7 +1149,7 @@ no_ownership:
 	}
 
 drop:
-	__inet_csk_reqsk_queue_drop(sk_listener, oreq, true);
+	__inet_csk_reqsk_queue_drop(oreq->rsk_listener, oreq, true);
 	reqsk_put(oreq);
 }
 
@@ -1177,6 +1163,9 @@ static bool reqsk_queue_hash_req(struct request_sock *req,
 
 	/* The timer needs to be setup after a successful insertion. */
 	timer_setup(&req->rsk_timer, reqsk_timer_handler, TIMER_PINNED);
+
+	preempt_disable_nested();
+
 	mod_timer(&req->rsk_timer, jiffies + timeout);
 
 	/* before letting lookups find us, make sure all req fields
@@ -1184,6 +1173,9 @@ static bool reqsk_queue_hash_req(struct request_sock *req,
 	 */
 	smp_wmb();
 	refcount_set(&req->rsk_refcnt, 2 + 1);
+
+	preempt_enable_nested();
+
 	return true;
 }
 
@@ -1309,6 +1301,7 @@ EXPORT_SYMBOL(inet_csk_destroy_sock);
 void inet_csk_prepare_for_destroy_sock(struct sock *sk)
 {
 	/* The below has to be done to allow calling inet_csk_destroy_sock */
+	tcp_clear_sock_ops_cb_flags(sk);
 	sock_set_flag(sk, SOCK_DEAD);
 	tcp_orphan_count_inc();
 }
@@ -1500,16 +1493,19 @@ void inet_csk_listen_stop(struct sock *sk)
 			if (nreq) {
 				refcount_set(&nreq->rsk_refcnt, 1);
 
+				rcu_read_lock();
 				if (inet_csk_reqsk_queue_add(nsk, nreq, child)) {
 					__NET_INC_STATS(sock_net(nsk),
 							LINUX_MIB_TCPMIGRATEREQSUCCESS);
 					reqsk_migrate_reset(req);
+					READ_ONCE(nsk->sk_data_ready)(nsk);
 				} else {
 					__NET_INC_STATS(sock_net(nsk),
 							LINUX_MIB_TCPMIGRATEREQFAILURE);
 					reqsk_migrate_reset(nreq);
 					__reqsk_free(nreq);
 				}
+				rcu_read_unlock();
 
 				/* inet_csk_reqsk_queue_add() has already
 				 * called inet_child_forget() on failure case.

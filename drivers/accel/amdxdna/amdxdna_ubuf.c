@@ -7,6 +7,7 @@
 #include <drm/drm_device.h>
 #include <drm/drm_print.h>
 #include <linux/dma-buf.h>
+#include <linux/overflow.h>
 #include <linux/pagemap.h>
 #include <linux/vmalloc.h>
 
@@ -34,15 +35,21 @@ static struct sg_table *amdxdna_ubuf_map(struct dma_buf_attachment *attach,
 	ret = sg_alloc_table_from_pages(sg, ubuf->pages, ubuf->nr_pages, 0,
 					ubuf->nr_pages << PAGE_SHIFT, GFP_KERNEL);
 	if (ret)
-		return ERR_PTR(ret);
+		goto err_free_sg;
 
 	if (ubuf->flags & AMDXDNA_UBUF_FLAG_MAP_DMA) {
 		ret = dma_map_sgtable(attach->dev, sg, direction, 0);
 		if (ret)
-			return ERR_PTR(ret);
+			goto err_free_table;
 	}
 
 	return sg;
+
+err_free_table:
+	sg_free_table(sg);
+err_free_sg:
+	kfree(sg);
+	return ERR_PTR(ret);
 }
 
 static void amdxdna_ubuf_unmap(struct dma_buf_attachment *attach,
@@ -170,7 +177,10 @@ struct dma_buf *amdxdna_get_ubuf(struct drm_device *dev,
 			goto free_ent;
 		}
 
-		exp_info.size += va_ent[i].len;
+		if (check_add_overflow(exp_info.size, va_ent[i].len, &exp_info.size)) {
+			ret = -EINVAL;
+			goto free_ent;
+		}
 	}
 
 	ubuf->nr_pages = exp_info.size >> PAGE_SHIFT;
@@ -195,13 +205,17 @@ struct dma_buf *amdxdna_get_ubuf(struct drm_device *dev,
 		ret = pin_user_pages_fast(va_ent[i].vaddr, npages,
 					  FOLL_WRITE | FOLL_LONGTERM,
 					  &ubuf->pages[start]);
-		if (ret < 0 || ret != npages) {
-			ret = -ENOMEM;
+		if (ret >= 0) {
+			start += ret;
+			if (ret != npages) {
+				XDNA_ERR(xdna, "Partially pinned pages %d/%u", ret, npages);
+				ret = -ENOMEM;
+				goto destroy_pages;
+			}
+		} else {
 			XDNA_ERR(xdna, "Failed to pin pages ret %d", ret);
 			goto destroy_pages;
 		}
-
-		start += ret;
 	}
 
 	exp_info.ops = &amdxdna_ubuf_dmabuf_ops;

@@ -323,6 +323,7 @@ static int q6apm_dai_trigger(struct snd_soc_component *component,
 	case SNDRV_PCM_TRIGGER_STOP:
 		/* TODO support be handled via SoftPause Module */
 		prtd->state = Q6APM_STREAM_STOPPED;
+		prtd->queue_ptr = 0;
 		break;
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
@@ -851,6 +852,7 @@ static const struct snd_soc_component_driver q6apm_fe_dai_component = {
 	.ack		= q6apm_dai_ack,
 	.compress_ops	= &q6apm_dai_compress_ops,
 	.use_dai_pcm_id = true,
+	.remove_order   = SND_SOC_COMP_ORDER_EARLY,
 };
 
 static int q6apm_dai_probe(struct platform_device *pdev)

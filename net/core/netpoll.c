@@ -132,7 +132,7 @@ static int netif_local_xmit_active(struct net_device *dev)
 	for (i = 0; i < dev->num_tx_queues; i++) {
 		struct netdev_queue *txq = netdev_get_tx_queue(dev, i);
 
-		if (READ_ONCE(txq->xmit_lock_owner) == smp_processor_id())
+		if (netif_tx_owned(txq, smp_processor_id()))
 			return 1;
 	}
 
@@ -608,14 +608,16 @@ EXPORT_SYMBOL_GPL(__netpoll_setup);
 /*
  * Returns a pointer to a string representation of the identifier used
  * to select the egress interface for the given netpoll instance. buf
- * must be a buffer of length at least MAC_ADDR_STR_LEN + 1.
+ * is used to format np->dev_mac when np->dev_name is empty; bufsz must
+ * be at least MAC_ADDR_STR_LEN + 1 to fit the formatted MAC address
+ * and its NUL terminator.
  */
-static char *egress_dev(struct netpoll *np, char *buf)
+static char *egress_dev(struct netpoll *np, char *buf, size_t bufsz)
 {
 	if (np->dev_name[0])
 		return np->dev_name;
 
-	snprintf(buf, MAC_ADDR_STR_LEN, "%pM", np->dev_mac);
+	snprintf(buf, bufsz, "%pM", np->dev_mac);
 	return buf;
 }
 
@@ -645,7 +647,7 @@ static int netpoll_take_ipv6(struct netpoll *np, struct net_device *ndev)
 
 	if (!IS_ENABLED(CONFIG_IPV6)) {
 		np_err(np, "IPv6 is not supported %s, aborting\n",
-		       egress_dev(np, buf));
+		       egress_dev(np, buf, sizeof(buf)));
 		return -EINVAL;
 	}
 
@@ -667,7 +669,7 @@ static int netpoll_take_ipv6(struct netpoll *np, struct net_device *ndev)
 	}
 	if (err) {
 		np_err(np, "no IPv6 address for %s, aborting\n",
-		       egress_dev(np, buf));
+		       egress_dev(np, buf, sizeof(buf)));
 		return err;
 	}
 
@@ -687,14 +689,14 @@ static int netpoll_take_ipv4(struct netpoll *np, struct net_device *ndev)
 	in_dev = __in_dev_get_rtnl(ndev);
 	if (!in_dev) {
 		np_err(np, "no IP address for %s, aborting\n",
-		       egress_dev(np, buf));
+		       egress_dev(np, buf, sizeof(buf)));
 		return -EDESTADDRREQ;
 	}
 
 	ifa = rtnl_dereference(in_dev->ifa_list);
 	if (!ifa) {
 		np_err(np, "no IP address for %s, aborting\n",
-		       egress_dev(np, buf));
+		       egress_dev(np, buf, sizeof(buf)));
 		return -EDESTADDRREQ;
 	}
 
@@ -702,6 +704,23 @@ static int netpoll_take_ipv4(struct netpoll *np, struct net_device *ndev)
 	np_info(np, "local IP %pI4\n", &np->local_ip.ip);
 
 	return 0;
+}
+
+/*
+ * Test whether the caller left np->local_ip unset, so that
+ * netpoll_setup() should auto-populate it from the egress device.
+ *
+ * np->local_ip is a union of __be32 (IPv4) and struct in6_addr (IPv6),
+ * so an IPv6 address whose first 4 bytes are zero (e.g. ::1, ::2,
+ * IPv4-mapped ::ffff:a.b.c.d) must not be tested via the IPv4 arm —
+ * doing so would misclassify a caller-supplied address as unset and
+ * silently overwrite it with whatever address the device exposes.
+ */
+static bool netpoll_local_ip_unset(const struct netpoll *np)
+{
+	if (np->ipv6)
+		return ipv6_addr_any(&np->local_ip.in6);
+	return !np->local_ip.ip;
 }
 
 int netpoll_setup(struct netpoll *np)
@@ -719,7 +738,8 @@ int netpoll_setup(struct netpoll *np)
 		ndev = dev_getbyhwaddr(net, ARPHRD_ETHER, np->dev_mac);
 
 	if (!ndev) {
-		np_err(np, "%s doesn't exist, aborting\n", egress_dev(np, buf));
+		np_err(np, "%s doesn't exist, aborting\n",
+		       egress_dev(np, buf, sizeof(buf)));
 		err = -ENODEV;
 		goto unlock;
 	}
@@ -727,14 +747,14 @@ int netpoll_setup(struct netpoll *np)
 
 	if (netdev_master_upper_dev_get(ndev)) {
 		np_err(np, "%s is a slave device, aborting\n",
-		       egress_dev(np, buf));
+		       egress_dev(np, buf, sizeof(buf)));
 		err = -EBUSY;
 		goto put;
 	}
 
 	if (!netif_running(ndev)) {
 		np_info(np, "device %s not up yet, forcing it\n",
-			egress_dev(np, buf));
+			egress_dev(np, buf, sizeof(buf)));
 
 		err = dev_open(ndev, NULL);
 		if (err) {
@@ -747,7 +767,7 @@ int netpoll_setup(struct netpoll *np)
 		rtnl_lock();
 	}
 
-	if (!np->local_ip.ip) {
+	if (netpoll_local_ip_unset(np)) {
 		if (!np->ipv6) {
 			err = netpoll_take_ipv4(np, ndev);
 			if (err)
@@ -792,14 +812,6 @@ static void rcu_cleanup_netpoll_info(struct rcu_head *rcu_head)
 			container_of(rcu_head, struct netpoll_info, rcu);
 
 	skb_queue_purge(&npinfo->txq);
-
-	/* we can't call cancel_delayed_work_sync here, as we are in softirq */
-	cancel_delayed_work(&npinfo->tx_work);
-
-	/* clean after last, unfinished work */
-	__skb_queue_purge(&npinfo->txq);
-	/* now cancel it again */
-	cancel_delayed_work(&npinfo->tx_work);
 	kfree(npinfo);
 }
 
@@ -823,6 +835,7 @@ static void __netpoll_cleanup(struct netpoll *np)
 			ops->ndo_netpoll_cleanup(np->dev);
 
 		RCU_INIT_POINTER(np->dev->npinfo, NULL);
+		disable_delayed_work_sync(&npinfo->tx_work);
 		call_rcu(&npinfo->rcu, rcu_cleanup_netpoll_info);
 	}
 

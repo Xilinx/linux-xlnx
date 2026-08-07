@@ -75,3 +75,9 @@ void __ns_common_free(struct ns_common *ns)
 {
 	proc_free_inum(ns->inum);
 }
+
+bool may_see_all_namespaces(void)
+{
+	return (task_active_pid_ns(current) == &init_pid_ns) &&
+	       ns_capable_noaudit(init_pid_ns.user_ns, CAP_SYS_ADMIN);
+}

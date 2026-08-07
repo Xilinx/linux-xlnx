@@ -293,7 +293,10 @@ static int aspeed_tach_val_to_rpm(struct aspeed_pwm_tach_data *priv, u32 tach_va
 		priv->clk_rate, tach_val, tach_div);
 
 	rpm = (u64)priv->clk_rate * 60;
-	do_div(rpm, tach_div);
+	if (tach_div)
+		do_div(rpm, tach_div);
+	else
+		rpm = 0;
 
 	return (int)rpm;
 }
@@ -517,13 +520,6 @@ static int aspeed_pwm_tach_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static void aspeed_pwm_tach_remove(struct platform_device *pdev)
-{
-	struct aspeed_pwm_tach_data *priv = platform_get_drvdata(pdev);
-
-	reset_control_assert(priv->reset);
-}
-
 static const struct of_device_id aspeed_pwm_tach_match[] = {
 	{
 		.compatible = "aspeed,ast2600-pwm-tach",
@@ -534,7 +530,6 @@ MODULE_DEVICE_TABLE(of, aspeed_pwm_tach_match);
 
 static struct platform_driver aspeed_pwm_tach_driver = {
 	.probe = aspeed_pwm_tach_probe,
-	.remove = aspeed_pwm_tach_remove,
 	.driver	= {
 		.name = "aspeed-g6-pwm-tach",
 		.of_match_table = aspeed_pwm_tach_match,

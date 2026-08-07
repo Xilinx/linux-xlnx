@@ -492,6 +492,18 @@ struct drm_crtc_helper_funcs {
 				     const struct drm_display_mode *mode);
 
 	/**
+	 * @handle_vblank_timeout: Handles timeouts of the vblank timer.
+	 *
+	 * Called by CRTC's the vblank timer on each timeout. Semantics is
+	 * equivalient to drm_crtc_handle_vblank(). Implementations should
+	 * invoke drm_crtc_handle_vblank() as part of processing the timeout.
+	 *
+	 * This callback is optional. If unset, the vblank timer invokes
+	 * drm_crtc_handle_vblank() directly.
+	 */
+	bool (*handle_vblank_timeout)(struct drm_crtc *crtc);
+
+	/**
 	 * @select_output_bus_format:
 	 *
 	 * Called by the connected DRM encoder to negotiate input media bus

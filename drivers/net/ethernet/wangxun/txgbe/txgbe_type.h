@@ -314,6 +314,7 @@ void txgbe_up(struct wx *wx);
 int txgbe_setup_tc(struct net_device *dev, u8 tc);
 void txgbe_do_reset(struct net_device *netdev);
 
+#define TXGBE_LINK_SPEED_UNKNOWN        0
 #define TXGBE_LINK_SPEED_10GB_FULL      4
 #define TXGBE_LINK_SPEED_25GB_FULL      0x10
 
@@ -340,9 +341,9 @@ void txgbe_do_reset(struct net_device *netdev);
 
 #define FW_PHY_GET_LINK_CMD             0xC0
 #define FW_PHY_SET_LINK_CMD             0xC1
-#define FW_READ_SFP_INFO_CMD            0xC5
+#define FW_GET_MODULE_INFO_CMD          0xC5
 
-struct txgbe_sfp_id {
+struct txgbe_sff_id {
 	u8 identifier;		/* A0H 0x00 */
 	u8 com_1g_code;		/* A0H 0x06 */
 	u8 com_10g_code;	/* A0H 0x03 */
@@ -355,9 +356,9 @@ struct txgbe_sfp_id {
 	u8 reserved[3];
 };
 
-struct txgbe_hic_i2c_read {
+struct txgbe_hic_get_module_info {
 	struct wx_hic_hdr hdr;
-	struct txgbe_sfp_id id;
+	struct txgbe_sff_id id;
 };
 
 struct txgbe_hic_ephy_setlink {
@@ -399,10 +400,10 @@ struct txgbe_nodes {
 	char i2c_name[32];
 	char sfp_name[32];
 	char phylink_name[32];
-	struct property_entry gpio_props[1];
-	struct property_entry i2c_props[3];
-	struct property_entry sfp_props[8];
-	struct property_entry phylink_props[2];
+	struct property_entry gpio_props[2];
+	struct property_entry i2c_props[4];
+	struct property_entry sfp_props[9];
+	struct property_entry phylink_props[3];
 	struct software_node_ref_args i2c_ref[1];
 	struct software_node_ref_args gpio0_ref[1];
 	struct software_node_ref_args gpio1_ref[1];
@@ -448,8 +449,8 @@ struct txgbe {
 	int fdir_filter_count;
 	spinlock_t fdir_perfect_lock; /* spinlock for FDIR */
 
-	DECLARE_PHY_INTERFACE_MASK(sfp_interfaces);
-	__ETHTOOL_DECLARE_LINK_MODE_MASK(sfp_support);
+	DECLARE_PHY_INTERFACE_MASK(link_interfaces);
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(link_support);
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(advertising);
 	u8 link_port;
 };

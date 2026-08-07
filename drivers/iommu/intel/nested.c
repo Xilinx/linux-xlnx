@@ -141,11 +141,10 @@ static int domain_setup_nested(struct intel_iommu *iommu,
 			       struct device *dev, ioasid_t pasid,
 			       struct iommu_domain *old)
 {
-	if (!old)
-		return intel_pasid_setup_nested(iommu, dev, pasid, domain);
-	return intel_pasid_replace_nested(iommu, dev, pasid,
-					  iommu_domain_did(old, iommu),
-					  domain);
+	if (old)
+		intel_pasid_tear_down_entry(iommu, dev, pasid, false);
+
+	return intel_pasid_setup_nested(iommu, dev, pasid, domain);
 }
 
 static int intel_nested_set_dev_pasid(struct iommu_domain *domain,
@@ -154,6 +153,7 @@ static int intel_nested_set_dev_pasid(struct iommu_domain *domain,
 {
 	struct device_domain_info *info = dev_iommu_priv_get(dev);
 	struct dmar_domain *dmar_domain = to_dmar_domain(domain);
+	struct iommu_domain *s2_domain = &dmar_domain->s2_domain->domain;
 	struct intel_iommu *iommu = info->iommu;
 	struct dev_pasid_info *dev_pasid;
 	int ret;
@@ -161,10 +161,13 @@ static int intel_nested_set_dev_pasid(struct iommu_domain *domain,
 	if (!pasid_supported(iommu) || dev_is_real_dma_subdevice(dev))
 		return -EOPNOTSUPP;
 
+	if (s2_domain->dirty_ops)
+		return -EINVAL;
+
 	if (context_copied(iommu, info->bus, info->devfn))
 		return -EBUSY;
 
-	ret = paging_domain_compatible(&dmar_domain->s2_domain->domain, dev);
+	ret = paging_domain_compatible(s2_domain, dev);
 	if (ret)
 		return ret;
 

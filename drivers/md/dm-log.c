@@ -121,7 +121,7 @@ int dm_dirty_log_type_register(struct dm_dirty_log_type *type)
 	if (!__find_dirty_log_type(type->name))
 		list_add(&type->list, &_log_types);
 	else
-		r = -EEXIST;
+		r = -EBUSY;
 	spin_unlock(&_lock);
 
 	return r;
@@ -373,7 +373,7 @@ static int create_log_context(struct dm_dirty_log *log, struct dm_target *ti,
 
 	struct log_c *lc;
 	uint32_t region_size;
-	unsigned int region_count;
+	sector_t region_count;
 	size_t bitset_size, buf_size;
 	int r;
 	char dummy;
@@ -401,6 +401,10 @@ static int create_log_context(struct dm_dirty_log *log, struct dm_target *ti,
 	}
 
 	region_count = dm_sector_div_up(ti->len, region_size);
+	if (region_count > UINT_MAX) {
+		DMWARN("region count exceeds limit of %u", UINT_MAX);
+		return -EINVAL;
+	}
 
 	lc = kmalloc(sizeof(*lc), GFP_KERNEL);
 	if (!lc) {
@@ -421,6 +425,9 @@ static int create_log_context(struct dm_dirty_log *log, struct dm_target *ti,
 	 */
 	bitset_size = dm_round_up(region_count, BITS_PER_LONG);
 	bitset_size >>= BYTE_SHIFT;
+	/* Handle dm_round_up rollover on 32-bit systems */
+	if (!bitset_size)
+		bitset_size = 1UL << (BITS_PER_LONG - BYTE_SHIFT);
 
 	lc->bitset_uint32_count = bitset_size / sizeof(*lc->clean_bits);
 

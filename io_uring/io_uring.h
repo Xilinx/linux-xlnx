@@ -112,16 +112,28 @@ struct io_wait_queue {
 #endif
 };
 
+static inline struct io_rings *io_get_rings(struct io_ring_ctx *ctx)
+{
+	return rcu_dereference_check(ctx->rings_rcu,
+			lockdep_is_held(&ctx->uring_lock) ||
+			lockdep_is_held(&ctx->completion_lock));
+}
+
 static inline bool io_should_wake(struct io_wait_queue *iowq)
 {
 	struct io_ring_ctx *ctx = iowq->ctx;
-	int dist = READ_ONCE(ctx->rings->cq.tail) - (int) iowq->cq_tail;
+	struct io_rings *rings;
+	int dist;
+
+	guard(rcu)();
+	rings = io_get_rings(ctx);
 
 	/*
 	 * Wake up if we have enough events, or if a timeout occurred since we
 	 * started waiting. For timeouts, we always want to return to userspace,
 	 * regardless of event count.
 	 */
+	dist = READ_ONCE(rings->cq.tail) - (int) iowq->cq_tail;
 	return dist >= 0 || atomic_read(&ctx->cq_timeouts) != iowq->nr_timeouts;
 }
 
@@ -413,9 +425,9 @@ static inline void io_cqring_wake(struct io_ring_ctx *ctx)
 	__io_wq_wake(&ctx->cq_wait);
 }
 
-static inline bool io_sqring_full(struct io_ring_ctx *ctx)
+static inline bool __io_sqring_full(struct io_ring_ctx *ctx)
 {
-	struct io_rings *r = ctx->rings;
+	struct io_rings *r = io_get_rings(ctx);
 
 	/*
 	 * SQPOLL must use the actual sqring head, as using the cached_sq_head
@@ -427,9 +439,15 @@ static inline bool io_sqring_full(struct io_ring_ctx *ctx)
 	return READ_ONCE(r->sq.tail) - READ_ONCE(r->sq.head) == ctx->sq_entries;
 }
 
-static inline unsigned int io_sqring_entries(struct io_ring_ctx *ctx)
+static inline bool io_sqring_full(struct io_ring_ctx *ctx)
 {
-	struct io_rings *rings = ctx->rings;
+	guard(rcu)();
+	return __io_sqring_full(ctx);
+}
+
+static inline unsigned int __io_sqring_entries(struct io_ring_ctx *ctx)
+{
+	struct io_rings *rings = io_get_rings(ctx);
 	unsigned int entries;
 
 	/* make sure SQ entry isn't read before tail */
@@ -488,6 +506,12 @@ static inline bool io_task_work_pending(struct io_ring_ctx *ctx)
 static inline void io_tw_lock(struct io_ring_ctx *ctx, io_tw_token_t tw)
 {
 	lockdep_assert_held(&ctx->uring_lock);
+}
+
+static inline unsigned int io_sqring_entries(struct io_ring_ctx *ctx)
+{
+	guard(rcu)();
+	return __io_sqring_entries(ctx);
 }
 
 /*

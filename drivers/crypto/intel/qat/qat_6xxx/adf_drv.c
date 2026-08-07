@@ -162,8 +162,6 @@ static int adf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		}
 	}
 
-	pci_set_master(pdev);
-
 	/*
 	 * The PCI config space is saved at this point and will be restored
 	 * after a Function Level Reset (FLR) as the FLR does not completely
@@ -182,8 +180,10 @@ static int adf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		return ret;
 
 	ret = adf_dev_up(accel_dev, true);
-	if (ret)
+	if (ret) {
+		adf_dev_down(accel_dev);
 		return ret;
+	}
 
 	ret = devm_add_action_or_reset(dev, adf_device_down, accel_dev);
 	if (ret)

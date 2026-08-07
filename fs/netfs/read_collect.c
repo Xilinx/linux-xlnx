@@ -83,7 +83,7 @@ static void netfs_unlock_read_folio(struct netfs_io_request *rreq,
 	}
 
 just_unlock:
-	if (folio->index == rreq->no_unlock_folio &&
+	if (folio == rreq->no_unlock_folio &&
 	    test_bit(NETFS_RREQ_NO_UNLOCK_FOLIO, &rreq->flags)) {
 		_debug("no unlock");
 	} else {
@@ -205,7 +205,8 @@ reassess:
 	 * in progress.  The issuer thread may be adding stuff to the tail
 	 * whilst we're doing this.
 	 */
-	front = READ_ONCE(stream->front);
+	front = list_first_entry_or_null(&stream->subrequests,
+					 struct netfs_io_subrequest, rreq_link);
 	while (front) {
 		size_t transferred;
 
@@ -301,7 +302,6 @@ reassess:
 		list_del_init(&front->rreq_link);
 		front = list_first_entry_or_null(&stream->subrequests,
 						 struct netfs_io_subrequest, rreq_link);
-		stream->front = front;
 		spin_unlock(&rreq->lock);
 		netfs_put_subrequest(remove,
 				     notes & ABANDON_SREQ ?
@@ -546,6 +546,15 @@ void netfs_read_subreq_terminated(struct netfs_io_subrequest *subreq)
 		}
 	}
 
+	/* If need retry is set, error should not matter unless we hit too many
+	 * retries. Pause the generation of new subreqs
+	 */
+	if (test_bit(NETFS_SREQ_NEED_RETRY, &subreq->flags)) {
+		trace_netfs_rreq(rreq, netfs_rreq_trace_set_pause);
+		set_bit(NETFS_RREQ_PAUSE, &rreq->flags);
+		goto skip_error_checks;
+	}
+
 	if (unlikely(subreq->error < 0)) {
 		trace_netfs_failure(rreq, subreq, subreq->error, netfs_fail_read);
 		if (subreq->source == NETFS_READ_FROM_CACHE) {
@@ -559,11 +568,23 @@ void netfs_read_subreq_terminated(struct netfs_io_subrequest *subreq)
 		set_bit(NETFS_RREQ_PAUSE, &rreq->flags);
 	}
 
+skip_error_checks:
 	trace_netfs_sreq(subreq, netfs_sreq_trace_terminated);
 	netfs_subreq_clear_in_progress(subreq);
 	netfs_put_subrequest(subreq, netfs_sreq_trace_put_terminated);
 }
 EXPORT_SYMBOL(netfs_read_subreq_terminated);
+
+/*
+ * Cancel a read subrequest due to preparation failure.
+ */
+void netfs_cancel_read(struct netfs_io_subrequest *subreq, int error)
+{
+	trace_netfs_sreq(subreq, netfs_sreq_trace_cancel);
+	subreq->error = error;
+	__set_bit(NETFS_SREQ_FAILED, &subreq->flags);
+	netfs_read_subreq_terminated(subreq);
+}
 
 /*
  * Handle termination of a read from the cache.

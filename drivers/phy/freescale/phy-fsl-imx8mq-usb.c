@@ -662,6 +662,8 @@ static int imx8mq_usb_phy_probe(struct platform_device *pdev)
 	if (!imx_phy)
 		return -ENOMEM;
 
+	platform_set_drvdata(pdev, imx_phy);
+
 	imx_phy->clk = devm_clk_get(dev, "phy");
 	if (IS_ERR(imx_phy->clk)) {
 		dev_err(dev, "failed to get imx8mq usb phy clock\n");
@@ -711,6 +713,7 @@ static struct platform_driver imx8mq_usb_phy_driver = {
 	.driver = {
 		.name	= "imx8mq-usb-phy",
 		.of_match_table	= imx8mq_usb_phy_of_match,
+		.suppress_bind_attrs = true,
 	}
 };
 module_platform_driver(imx8mq_usb_phy_driver);

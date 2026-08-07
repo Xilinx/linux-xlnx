@@ -27,6 +27,7 @@
  */
 #include <linux/ktime.h>
 #include <linux/module.h>
+#include <linux/overflow.h>
 #include <linux/pagemap.h>
 #include <linux/pci.h>
 #include <linux/dma-buf.h>
@@ -110,47 +111,6 @@ amdgpu_gem_update_timeline_node(struct drm_file *filp,
 	}
 
 	return 0;
-}
-
-static void
-amdgpu_gem_update_bo_mapping(struct drm_file *filp,
-			     struct amdgpu_bo_va *bo_va,
-			     uint32_t operation,
-			     uint64_t point,
-			     struct dma_fence *fence,
-			     struct drm_syncobj *syncobj,
-			     struct dma_fence_chain *chain)
-{
-	struct amdgpu_bo *bo = bo_va ? bo_va->base.bo : NULL;
-	struct amdgpu_fpriv *fpriv = filp->driver_priv;
-	struct amdgpu_vm *vm = &fpriv->vm;
-	struct dma_fence *last_update;
-
-	if (!syncobj)
-		return;
-
-	/* Find the last update fence */
-	switch (operation) {
-	case AMDGPU_VA_OP_MAP:
-	case AMDGPU_VA_OP_REPLACE:
-		if (bo && (bo->tbo.base.resv == vm->root.bo->tbo.base.resv))
-			last_update = vm->last_update;
-		else
-			last_update = bo_va->last_pt_update;
-		break;
-	case AMDGPU_VA_OP_UNMAP:
-	case AMDGPU_VA_OP_CLEAR:
-		last_update = fence;
-		break;
-	default:
-		return;
-	}
-
-	/* Add fence to timeline */
-	if (!point)
-		drm_syncobj_replace_fence(syncobj, last_update);
-	else
-		drm_syncobj_add_point(syncobj, chain, last_update, point);
 }
 
 static vm_fault_t amdgpu_gem_fault(struct vm_fault *vmf)
@@ -761,16 +721,27 @@ amdgpu_gem_va_update_vm(struct amdgpu_device *adev,
 			struct amdgpu_bo_va *bo_va,
 			uint32_t operation)
 {
-	struct dma_fence *fence = dma_fence_get_stub();
-	int r;
+	struct dma_fence *fence;
+	int r = 0;
+
+	/* Always start from the VM's existing last update fence. */
+	fence = dma_fence_get(vm->last_update);
 
 	if (!amdgpu_vm_ready(vm))
 		return fence;
 
+	/*
+	 * First clean up any freed mappings in the VM.
+	 *
+	 * amdgpu_vm_clear_freed() may replace @fence with a new fence if it
+	 * schedules GPU work. If nothing needs clearing, @fence can remain as
+	 * the original vm->last_update.
+	 */
 	r = amdgpu_vm_clear_freed(adev, vm, &fence);
 	if (r)
 		goto error;
 
+	/* For MAP/REPLACE we also need to update the BO mappings. */
 	if (operation == AMDGPU_VA_OP_MAP ||
 	    operation == AMDGPU_VA_OP_REPLACE) {
 		r = amdgpu_vm_bo_update(adev, bo_va, false);
@@ -778,7 +749,46 @@ amdgpu_gem_va_update_vm(struct amdgpu_device *adev,
 			goto error;
 	}
 
+	/* Always update PDEs after we touched the mappings. */
 	r = amdgpu_vm_update_pdes(adev, vm, false);
+	if (r)
+		goto error;
+
+	/*
+	 * Decide which fence best represents the last update:
+	 *
+	 * MAP/REPLACE:
+	 *   - For always-valid mappings, use vm->last_update.
+	 *   - Otherwise, export bo_va->last_pt_update.
+	 *
+	 * UNMAP/CLEAR:
+	 *   Keep the fence returned by amdgpu_vm_clear_freed(). If no work was
+	 *   needed, it can remain as vm->last_pt_update.
+	 *
+	 * The VM and BO update fences are always initialized to a valid value.
+	 * vm->last_update and bo_va->last_pt_update always start as valid fences.
+	 * and are never expected to be NULL.
+	 */
+	switch (operation) {
+	case AMDGPU_VA_OP_MAP:
+	case AMDGPU_VA_OP_REPLACE:
+		/*
+		 * For MAP/REPLACE, return the page table update fence for the
+		 * mapping we just modified. bo_va is expected to be valid here.
+		 */
+		dma_fence_put(fence);
+
+		if (amdgpu_vm_is_bo_always_valid(vm, bo_va->base.bo))
+			fence = dma_fence_get(vm->last_update);
+		else
+			fence = dma_fence_get(bo_va->last_pt_update);
+		break;
+	case AMDGPU_VA_OP_UNMAP:
+	case AMDGPU_VA_OP_CLEAR:
+	default:
+		/* keep @fence as returned by amdgpu_vm_clear_freed() */
+		break;
+	}
 
 error:
 	if (r && r != -ERESTARTSYS)
@@ -810,6 +820,7 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 	uint64_t vm_size;
 	int r = 0;
 
+	/* Validate virtual address range against reserved regions. */
 	if (args->va_address < AMDGPU_VA_RESERVED_BOTTOM) {
 		dev_dbg(dev->dev,
 			"va_address 0x%llx is in reserved area 0x%llx\n",
@@ -843,6 +854,7 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 		return -EINVAL;
 	}
 
+	/* Validate operation type. */
 	switch (args->operation) {
 	case AMDGPU_VA_OP_MAP:
 	case AMDGPU_VA_OP_UNMAP:
@@ -866,6 +878,7 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 		abo = NULL;
 	}
 
+	/* Add input syncobj fences (if any) for synchronization. */
 	r = amdgpu_gem_add_input_fence(filp,
 				       args->input_fence_syncobj_handles,
 				       args->num_syncobj_handles);
@@ -888,6 +901,7 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 			goto error;
 	}
 
+	/* Resolve the BO-VA mapping for this VM/BO combination. */
 	if (abo) {
 		bo_va = amdgpu_vm_bo_find(&fpriv->vm, abo);
 		if (!bo_va) {
@@ -900,6 +914,11 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 		bo_va = NULL;
 	}
 
+	/*
+	 * Prepare the timeline syncobj node if the user requested a VM
+	 * timeline update. This only allocates/looks up the syncobj and
+	 * chain node; the actual fence is attached later.
+	 */
 	r = amdgpu_gem_update_timeline_node(filp,
 					    args->vm_timeline_syncobj_out,
 					    args->vm_timeline_point,
@@ -931,18 +950,30 @@ int amdgpu_gem_va_ioctl(struct drm_device *dev, void *data,
 	default:
 		break;
 	}
+
+	/*
+	 * Once the VA operation is done, update the VM and obtain the fence
+	 * that represents the last relevant update for this mapping. This
+	 * fence can then be exported to the user-visible VM timeline.
+	 */
 	if (!r && !(args->flags & AMDGPU_VM_DELAY_UPDATE) && !adev->debug_vm) {
 		fence = amdgpu_gem_va_update_vm(adev, &fpriv->vm, bo_va,
 						args->operation);
 
-		if (timeline_syncobj)
-			amdgpu_gem_update_bo_mapping(filp, bo_va,
-					     args->operation,
-					     args->vm_timeline_point,
-					     fence, timeline_syncobj,
-					     timeline_chain);
-		else
-			dma_fence_put(fence);
+		if (timeline_syncobj && fence) {
+			if (!args->vm_timeline_point) {
+				/* Replace the existing fence when no point is given. */
+				drm_syncobj_replace_fence(timeline_syncobj,
+							  fence);
+			} else {
+				/* Attach the last-update fence at a specific point. */
+				drm_syncobj_add_point(timeline_syncobj,
+						      timeline_chain,
+						      fence,
+						      args->vm_timeline_point);
+			}
+		}
+		dma_fence_put(fence);
 
 	}
 
@@ -1044,9 +1075,16 @@ int amdgpu_gem_op_ioctl(struct drm_device *dev, void *data,
 		 * If that number is larger than the size of the array, the ioctl must
 		 * be retried.
 		 */
+		if (args->num_entries > INT_MAX / sizeof(*vm_entries)) {
+			r = -EINVAL;
+			goto out_exec;
+		}
+
 		vm_entries = kvcalloc(args->num_entries, sizeof(*vm_entries), GFP_KERNEL);
-		if (!vm_entries)
-			return -ENOMEM;
+		if (!vm_entries) {
+			r = -ENOMEM;
+			goto out_exec;
+		}
 
 		amdgpu_vm_bo_va_for_each_valid_mapping(bo_va, mapping) {
 			if (num_mappings < args->num_entries) {
@@ -1172,13 +1210,14 @@ int amdgpu_gem_list_handles_ioctl(struct drm_device *dev, void *data,
 	return ret;
 }
 
-static int amdgpu_gem_align_pitch(struct amdgpu_device *adev,
-				  int width,
-				  int cpp,
-				  bool tiled)
+static unsigned int amdgpu_gem_align_pitch(struct amdgpu_device *adev,
+					   unsigned int width,
+					   unsigned int cpp,
+					   bool tiled)
 {
-	int aligned = width;
-	int pitch_mask = 0;
+	unsigned int aligned = width;
+	unsigned int pitch_mask = 0;
+	unsigned int pitch;
 
 	switch (cpp) {
 	case 1:
@@ -1193,9 +1232,12 @@ static int amdgpu_gem_align_pitch(struct amdgpu_device *adev,
 		break;
 	}
 
-	aligned += pitch_mask;
+	if (check_add_overflow(aligned, pitch_mask, &aligned))
+		return 0;
 	aligned &= ~pitch_mask;
-	return aligned * cpp;
+	if (check_mul_overflow(aligned, cpp, &pitch))
+		return 0;
+	return pitch;
 }
 
 int amdgpu_mode_dumb_create(struct drm_file *file_priv,
@@ -1222,8 +1264,12 @@ int amdgpu_mode_dumb_create(struct drm_file *file_priv,
 
 	args->pitch = amdgpu_gem_align_pitch(adev, args->width,
 					     DIV_ROUND_UP(args->bpp, 8), 0);
+	if (!args->pitch)
+		return -EINVAL;
 	args->size = (u64)args->pitch * args->height;
 	args->size = ALIGN(args->size, PAGE_SIZE);
+	if (!args->size)
+		return -EINVAL;
 	domain = amdgpu_bo_get_preferred_domain(adev,
 				amdgpu_display_supported_domains(adev, flags));
 	r = amdgpu_gem_object_create(adev, args->size, 0, domain, flags,

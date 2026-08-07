@@ -676,7 +676,7 @@ static enum hte_return process_hw_ts_thread(void *p)
 	}
 	le.line_seqno = line->line_seqno;
 	le.seqno = (lr->num_lines == 1) ? le.line_seqno : line->req_seqno;
-	le.offset = gpio_chip_hwgpio(line->desc);
+	le.offset = gpiod_hwgpio(line->desc);
 
 	linereq_put_event(lr, &le);
 
@@ -793,7 +793,7 @@ static irqreturn_t edge_irq_thread(int irq, void *p)
 	line->line_seqno++;
 	le.line_seqno = line->line_seqno;
 	le.seqno = (lr->num_lines == 1) ? le.line_seqno : line->req_seqno;
-	le.offset = gpio_chip_hwgpio(line->desc);
+	le.offset = gpiod_hwgpio(line->desc);
 
 	linereq_put_event(lr, &le);
 
@@ -891,7 +891,7 @@ static void debounce_work_func(struct work_struct *work)
 
 	lr = line->req;
 	le.timestamp_ns = line_event_timestamp(line);
-	le.offset = gpio_chip_hwgpio(line->desc);
+	le.offset = gpiod_hwgpio(line->desc);
 #ifdef CONFIG_HTE
 	if (edflags & GPIO_V2_LINE_FLAG_EVENT_CLOCK_HTE) {
 		/* discard events except the last one */
@@ -1208,6 +1208,7 @@ static int gpio_v2_line_flags_validate(u64 flags)
 static int gpio_v2_line_config_validate(struct gpio_v2_line_config *lc,
 					unsigned int num_lines)
 {
+	size_t unused_attrs;
 	unsigned int i;
 	u64 flags;
 	int ret;
@@ -1215,8 +1216,20 @@ static int gpio_v2_line_config_validate(struct gpio_v2_line_config *lc,
 	if (lc->num_attrs > GPIO_V2_LINE_NUM_ATTRS_MAX)
 		return -EINVAL;
 
+	unused_attrs = GPIO_V2_LINE_NUM_ATTRS_MAX - lc->num_attrs;
+
 	if (!mem_is_zero(lc->padding, sizeof(lc->padding)))
 		return -EINVAL;
+
+	for (i = 0; i < lc->num_attrs; i++) {
+		if (lc->attrs[i].attr.padding != 0)
+			return -EINVAL;
+	}
+
+	if (unused_attrs) {
+		if (!mem_is_zero(&lc->attrs[lc->num_attrs], unused_attrs * sizeof(*lc->attrs)))
+			return -EINVAL;
+	}
 
 	for (i = 0; i < num_lines; i++) {
 		flags = gpio_v2_line_config_flags(lc, i);
@@ -1591,7 +1604,7 @@ static void linereq_show_fdinfo(struct seq_file *out, struct file *file)
 
 	for (i = 0; i < lr->num_lines; i++)
 		seq_printf(out, "gpio-line:\t%d\n",
-			   gpio_chip_hwgpio(lr->lines[i].desc));
+			   gpiod_hwgpio(lr->lines[i].desc));
 }
 #endif
 
@@ -2244,7 +2257,7 @@ static void gpio_desc_to_lineinfo(struct gpio_desc *desc,
 		return;
 
 	memset(info, 0, sizeof(*info));
-	info->offset = gpio_chip_hwgpio(desc);
+	info->offset = gpiod_hwgpio(desc);
 
 	if (desc->name)
 		strscpy(info->name, desc->name, sizeof(info->name));
@@ -2550,7 +2563,7 @@ static int lineinfo_changed_notify(struct notifier_block *nb,
 	struct gpio_desc *desc = data;
 	struct file *fp;
 
-	if (!test_bit(gpio_chip_hwgpio(desc), cdev->watched_lines))
+	if (!test_bit(gpiod_hwgpio(desc), cdev->watched_lines))
 		return NOTIFY_DONE;
 
 	/* Keep the file descriptor alive for the duration of the notification. */

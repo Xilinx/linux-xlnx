@@ -323,6 +323,11 @@ static void page_pool_uninit(struct page_pool *pool)
 	if (!pool->system)
 		free_percpu(pool->recycle_stats);
 #endif
+
+	if (pool->mp_ops) {
+		pool->mp_ops->destroy(pool);
+		static_branch_dec(&page_pool_mem_providers);
+	}
 }
 
 /**
@@ -1121,11 +1126,6 @@ static void __page_pool_destroy(struct page_pool *pool)
 
 	page_pool_unlist(pool);
 	page_pool_uninit(pool);
-
-	if (pool->mp_ops) {
-		pool->mp_ops->destroy(pool);
-		static_branch_dec(&page_pool_mem_providers);
-	}
 
 	kfree(pool);
 }

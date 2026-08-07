@@ -101,7 +101,7 @@ static inline void ipcm_init_sk(struct ipcm_cookie *ipcm,
 
 	ipcm->oif = READ_ONCE(inet->sk.sk_bound_dev_if);
 	ipcm->addr = inet->inet_saddr;
-	ipcm->protocol = inet->inet_num;
+	ipcm->protocol = READ_ONCE(inet->inet_num);
 }
 
 #define IPCB(skb) ((struct inet_skb_parm*)((skb)->cb))
@@ -812,7 +812,7 @@ int ip_getsockopt(struct sock *sk, int level, int optname, char __user *optval,
 int ip_ra_control(struct sock *sk, unsigned char on,
 		  void (*destructor)(struct sock *));
 
-int ip_recv_error(struct sock *sk, struct msghdr *msg, int len, int *addr_len);
+int ip_recv_error(struct sock *sk, struct msghdr *msg, int len);
 void ip_icmp_error(struct sock *sk, struct sk_buff *skb, int err, __be16 port,
 		   u32 info, u8 *payload);
 void ip_local_error(struct sock *sk, int err, __be32 daddr, __be16 dport,

@@ -164,7 +164,10 @@ static void device_rbtree_remove(struct device_domain_info *info)
 	unsigned long flags;
 
 	spin_lock_irqsave(&iommu->device_rbtree_lock, flags);
-	rb_erase(&info->node, &iommu->device_rbtree);
+	if (!RB_EMPTY_NODE(&info->node)) {
+		rb_erase(&info->node, &iommu->device_rbtree);
+		RB_CLEAR_NODE(&info->node);
+	}
 	spin_unlock_irqrestore(&iommu->device_rbtree_lock, flags);
 }
 
@@ -1722,22 +1725,22 @@ static void domain_context_clear_one(struct device_domain_info *info, u8 bus, u8
 	}
 
 	did = context_domain_id(context);
-	context_clear_entry(context);
+	context_clear_present(context);
 	__iommu_flush_cache(iommu, context, sizeof(*context));
 	spin_unlock(&iommu->lock);
 	intel_context_flush_no_pasid(info, context, did);
+	context_clear_entry(context);
+	__iommu_flush_cache(iommu, context, sizeof(*context));
 }
 
 int __domain_setup_first_level(struct intel_iommu *iommu, struct device *dev,
 			       ioasid_t pasid, u16 did, phys_addr_t fsptptr,
 			       int flags, struct iommu_domain *old)
 {
-	if (!old)
-		return intel_pasid_setup_first_level(iommu, dev, fsptptr, pasid,
-						     did, flags);
-	return intel_pasid_replace_first_level(iommu, dev, fsptptr, pasid, did,
-					       iommu_domain_did(old, iommu),
-					       flags);
+	if (old)
+		intel_pasid_tear_down_entry(iommu, dev, pasid, false);
+
+	return intel_pasid_setup_first_level(iommu, dev, fsptptr, pasid, did, flags);
 }
 
 static int domain_setup_second_level(struct intel_iommu *iommu,
@@ -1745,23 +1748,20 @@ static int domain_setup_second_level(struct intel_iommu *iommu,
 				     struct device *dev, ioasid_t pasid,
 				     struct iommu_domain *old)
 {
-	if (!old)
-		return intel_pasid_setup_second_level(iommu, domain,
-						      dev, pasid);
-	return intel_pasid_replace_second_level(iommu, domain, dev,
-						iommu_domain_did(old, iommu),
-						pasid);
+	if (old)
+		intel_pasid_tear_down_entry(iommu, dev, pasid, false);
+
+	return intel_pasid_setup_second_level(iommu, domain, dev, pasid);
 }
 
 static int domain_setup_passthrough(struct intel_iommu *iommu,
 				    struct device *dev, ioasid_t pasid,
 				    struct iommu_domain *old)
 {
-	if (!old)
-		return intel_pasid_setup_pass_through(iommu, dev, pasid);
-	return intel_pasid_replace_pass_through(iommu, dev,
-						iommu_domain_did(old, iommu),
-						pasid);
+	if (old)
+		intel_pasid_tear_down_entry(iommu, dev, pasid, false);
+
+	return intel_pasid_setup_pass_through(iommu, dev, pasid);
 }
 
 static int domain_setup_first_level(struct intel_iommu *iommu,
@@ -3790,6 +3790,7 @@ static struct iommu_device *intel_iommu_probe_device(struct device *dev)
 
 	info->dev = dev;
 	info->iommu = iommu;
+	RB_CLEAR_NODE(&info->node);
 	if (dev_is_pci(dev)) {
 		if (ecap_dev_iotlb_support(iommu->ecap) &&
 		    pci_ats_supported(pdev) &&
@@ -4066,8 +4067,8 @@ void domain_remove_dev_pasid(struct iommu_domain *domain,
 	if (!domain)
 		return;
 
-	/* Identity domain has no meta data for pasid. */
-	if (domain->type == IOMMU_DOMAIN_IDENTITY)
+	/* Identity domain and blocked domain have no meta data for pasid. */
+	if (domain->type == IOMMU_DOMAIN_IDENTITY || domain->type == IOMMU_DOMAIN_BLOCKED)
 		return;
 
 	dmar_domain = to_dmar_domain(domain);
@@ -4081,12 +4082,13 @@ void domain_remove_dev_pasid(struct iommu_domain *domain,
 	}
 	spin_unlock_irqrestore(&dmar_domain->lock, flags);
 
+	if (WARN_ON_ONCE(!dev_pasid))
+		return;
+
 	cache_tag_unassign_domain(dmar_domain, dev, pasid);
 	domain_detach_iommu(dmar_domain, iommu);
-	if (!WARN_ON_ONCE(!dev_pasid)) {
-		intel_iommu_debugfs_remove_dev_pasid(dev_pasid);
-		kfree(dev_pasid);
-	}
+	intel_iommu_debugfs_remove_dev_pasid(dev_pasid);
+	kfree(dev_pasid);
 }
 
 static int blocking_domain_set_dev_pasid(struct iommu_domain *domain,
@@ -4514,6 +4516,9 @@ static void quirk_iommu_igfx(struct pci_dev *dev)
 	pci_info(dev, "Disabling IOMMU for graphics on this chipset\n");
 	disable_igfx_iommu = 1;
 }
+
+/* Q35 integrated gfx dmar support is totally busted. */
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x29b2, quirk_iommu_igfx);
 
 /* G4x/GM45 integrated gfx dmar support is totally busted. */
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x2a40, quirk_iommu_igfx);

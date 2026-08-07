@@ -369,11 +369,14 @@ struct vub300_mmc_host {
 static void vub300_delete(struct kref *kref)
 {				/* kref callback - softirq */
 	struct vub300_mmc_host *vub300 = kref_to_vub300_mmc_host(kref);
+	struct mmc_host *mmc = vub300->mmc;
+
 	usb_free_urb(vub300->command_out_urb);
 	vub300->command_out_urb = NULL;
 	usb_free_urb(vub300->command_res_urb);
 	vub300->command_res_urb = NULL;
 	usb_put_dev(vub300->udev);
+	mmc_free_host(mmc);
 	/*
 	 * and hence also frees vub300
 	 * which is contained at the end of struct mmc
@@ -1583,7 +1586,7 @@ static int __command_write_data(struct vub300_mmc_host *vub300,
 	return linear_length;
 }
 
-static void __vub300_command_response(struct vub300_mmc_host *vub300,
+static bool __vub300_command_response(struct vub300_mmc_host *vub300,
 				      struct mmc_command *cmd,
 				      struct mmc_data *data, int data_length)
 {
@@ -1595,17 +1598,11 @@ static void __vub300_command_response(struct vub300_mmc_host *vub300,
 					    msecs_to_jiffies(msec_timeout));
 	if (respretval == 0) { /* TIMED OUT */
 		/* we don't know which of "out" and "res" if any failed */
-		int result;
 		vub300->usb_timed_out = 1;
 		usb_kill_urb(vub300->command_out_urb);
 		usb_kill_urb(vub300->command_res_urb);
 		cmd->error = -ETIMEDOUT;
-		result = usb_lock_device_for_reset(vub300->udev,
-						   vub300->interface);
-		if (result == 0) {
-			result = usb_reset_device(vub300->udev);
-			usb_unlock_device(vub300->udev);
-		}
+		return true;
 	} else if (respretval < 0) {
 		/* we don't know which of "out" and "res" if any failed */
 		usb_kill_urb(vub300->command_out_urb);
@@ -1701,6 +1698,8 @@ static void __vub300_command_response(struct vub300_mmc_host *vub300,
 	} else {
 		cmd->error = -EINVAL;
 	}
+
+	return false;
 }
 
 static void construct_request_response(struct vub300_mmc_host *vub300,
@@ -1746,6 +1745,7 @@ static void vub300_cmndwork_thread(struct work_struct *work)
 		struct mmc_request *req = vub300->req;
 		struct mmc_command *cmd = vub300->cmd;
 		struct mmc_data *data = vub300->data;
+		bool reset_device;
 		int data_length;
 		mutex_lock(&vub300->cmd_mutex);
 		init_completion(&vub300->command_complete);
@@ -1768,7 +1768,8 @@ static void vub300_cmndwork_thread(struct work_struct *work)
 			data_length = __command_read_data(vub300, cmd, data);
 		else
 			data_length = __command_write_data(vub300, cmd, data);
-		__vub300_command_response(vub300, cmd, data, data_length);
+		reset_device = __vub300_command_response(vub300, cmd,
+							 data, data_length);
 		vub300->req = NULL;
 		vub300->cmd = NULL;
 		vub300->data = NULL;
@@ -1776,6 +1777,16 @@ static void vub300_cmndwork_thread(struct work_struct *work)
 			if (cmd->error == -ENOMEDIUM)
 				check_vub300_port_status(vub300);
 			mutex_unlock(&vub300->cmd_mutex);
+			if (reset_device) {
+				int result;
+
+				result = usb_lock_device_for_reset(vub300->udev,
+								   vub300->interface);
+				if (result == 0) {
+					result = usb_reset_device(vub300->udev);
+					usb_unlock_device(vub300->udev);
+				}
+			}
 			mmc_request_done(vub300->mmc, req);
 			kref_put(&vub300->kref, vub300_delete);
 			return;
@@ -2112,7 +2123,7 @@ static int vub300_probe(struct usb_interface *interface,
 		goto error1;
 	}
 	/* this also allocates memory for our VUB300 mmc host device */
-	mmc = devm_mmc_alloc_host(&udev->dev, sizeof(*vub300));
+	mmc = mmc_alloc_host(sizeof(*vub300), &udev->dev);
 	if (!mmc) {
 		retval = -ENOMEM;
 		dev_err(&udev->dev, "not enough memory for the mmc_host\n");
@@ -2269,7 +2280,7 @@ static int vub300_probe(struct usb_interface *interface,
 		dev_err(&vub300->udev->dev,
 		    "Could not find two sets of bulk-in/out endpoint pairs\n");
 		retval = -EINVAL;
-		goto error4;
+		goto err_free_host;
 	}
 	retval =
 		usb_control_msg(vub300->udev, usb_rcvctrlpipe(vub300->udev, 0),
@@ -2278,14 +2289,14 @@ static int vub300_probe(struct usb_interface *interface,
 				0x0000, 0x0000, &vub300->hc_info,
 				sizeof(vub300->hc_info), 1000);
 	if (retval < 0)
-		goto error4;
+		goto err_free_host;
 	retval =
 		usb_control_msg(vub300->udev, usb_sndctrlpipe(vub300->udev, 0),
 				SET_ROM_WAIT_STATES,
 				USB_DIR_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
 				firmware_rom_wait_states, 0x0000, NULL, 0, 1000);
 	if (retval < 0)
-		goto error4;
+		goto err_free_host;
 	dev_info(&vub300->udev->dev,
 		 "operating_mode = %s %s %d MHz %s %d byte USB packets\n",
 		 (mmc->caps & MMC_CAP_SDIO_IRQ) ? "IRQs" : "POLL",
@@ -2300,7 +2311,7 @@ static int vub300_probe(struct usb_interface *interface,
 				0x0000, 0x0000, &vub300->system_port_status,
 				sizeof(vub300->system_port_status), 1000);
 	if (retval < 0) {
-		goto error4;
+		goto err_free_host;
 	} else if (sizeof(vub300->system_port_status) == retval) {
 		vub300->card_present =
 			(0x0001 & vub300->system_port_status.port_flags) ? 1 : 0;
@@ -2308,7 +2319,7 @@ static int vub300_probe(struct usb_interface *interface,
 			(0x0010 & vub300->system_port_status.port_flags) ? 1 : 0;
 	} else {
 		retval = -EINVAL;
-		goto error4;
+		goto err_free_host;
 	}
 	usb_set_intfdata(interface, vub300);
 	INIT_DELAYED_WORK(&vub300->pollwork, vub300_pollwork_thread);
@@ -2338,6 +2349,8 @@ static int vub300_probe(struct usb_interface *interface,
 	return 0;
 error6:
 	timer_delete_sync(&vub300->inactivity_timer);
+err_free_host:
+	mmc_free_host(mmc);
 	/*
 	 * and hence also frees vub300
 	 * which is contained at the end of struct mmc
@@ -2365,8 +2378,8 @@ static void vub300_disconnect(struct usb_interface *interface)
 			usb_set_intfdata(interface, NULL);
 			/* prevent more I/O from starting */
 			vub300->interface = NULL;
-			kref_put(&vub300->kref, vub300_delete);
 			mmc_remove_host(mmc);
+			kref_put(&vub300->kref, vub300_delete);
 			pr_info("USB vub300 remote SDIO host controller[%d]"
 				" now disconnected", ifnum);
 			return;

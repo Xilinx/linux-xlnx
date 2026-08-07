@@ -3,14 +3,28 @@
 //! String representations.
 
 use crate::{
-    alloc::{flags::*, AllocError, KVec},
-    error::{to_result, Result},
-    fmt::{self, Write},
-    prelude::*,
+    alloc::{
+        AllocError,
+        KVec, //
+    },
+    error::{
+        to_result,
+        Result, //
+    },
+    fmt::{
+        self,
+        Write, //
+    },
+    prelude::*, //
 };
 use core::{
     marker::PhantomData,
-    ops::{self, Deref, DerefMut, Index},
+    ops::{
+        self,
+        Deref,
+        DerefMut,
+        Index, //
+    }, //
 };
 
 /// Byte string without UTF-8 validity guarantee.
@@ -880,13 +894,13 @@ impl fmt::Write for Formatter<'_> {
 ///
 /// * The first byte of `buffer` is always zero.
 /// * The length of `buffer` is at least 1.
-pub(crate) struct NullTerminatedFormatter<'a> {
+pub struct NullTerminatedFormatter<'a> {
     buffer: &'a mut [u8],
 }
 
 impl<'a> NullTerminatedFormatter<'a> {
     /// Create a new [`Self`] instance.
-    pub(crate) fn new(buffer: &'a mut [u8]) -> Option<NullTerminatedFormatter<'a>> {
+    pub fn new(buffer: &'a mut [u8]) -> Option<NullTerminatedFormatter<'a>> {
         *(buffer.first_mut()?) = 0;
 
         // INVARIANT:

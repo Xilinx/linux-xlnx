@@ -43,6 +43,11 @@
 #define DWXGMAC_ID		0x76
 #define DWXLGMAC_ID		0x27
 
+static inline bool dwmac_is_xmac(enum dwmac_core_type core_type)
+{
+	return core_type == DWMAC_CORE_GMAC4 || core_type == DWMAC_CORE_XGMAC;
+}
+
 #define STMMAC_CHAN0	0	/* Always supported and default for all chips */
 
 /* TX and RX Descriptor Length, these need to be power of two.
@@ -55,7 +60,7 @@
 #define DMA_MIN_RX_SIZE		64
 #define DMA_MAX_RX_SIZE		1024
 #define DMA_DEFAULT_RX_SIZE	512
-#define STMMAC_GET_ENTRY(x, size)	((x + 1) & (size - 1))
+#define STMMAC_NEXT_ENTRY(x, size)	((x + 1) & (size - 1))
 
 #undef FRAME_FILTER_DEBUG
 /* #define FRAME_FILTER_DEBUG */
@@ -376,7 +381,6 @@ enum request_irq_err {
 	REQ_IRQ_ERR_SFTY,
 	REQ_IRQ_ERR_SFTY_UE,
 	REQ_IRQ_ERR_SFTY_CE,
-	REQ_IRQ_ERR_LPI,
 	REQ_IRQ_ERR_WOL,
 	REQ_IRQ_ERR_MAC,
 	REQ_IRQ_ERR_NO,

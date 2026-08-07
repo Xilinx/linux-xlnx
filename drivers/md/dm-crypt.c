@@ -3441,7 +3441,9 @@ static int crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	if (test_bit(DM_CRYPT_HIGH_PRIORITY, &cc->flags))
 		common_wq_flags |= WQ_HIGHPRI;
 
-	cc->io_queue = alloc_workqueue("kcryptd_io-%s-%d", common_wq_flags, 1, devname, wq_id);
+	cc->io_queue = alloc_workqueue("kcryptd_io-%s-%d",
+				       common_wq_flags | WQ_PERCPU, 1,
+				       devname, wq_id);
 	if (!cc->io_queue) {
 		ti->error = "Couldn't create kcryptd io queue";
 		goto bad;
@@ -3449,7 +3451,7 @@ static int crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 
 	if (test_bit(DM_CRYPT_SAME_CPU, &cc->flags)) {
 		cc->crypt_queue = alloc_workqueue("kcryptd-%s-%d",
-						  common_wq_flags | WQ_CPU_INTENSIVE,
+						  common_wq_flags | WQ_CPU_INTENSIVE | WQ_PERCPU,
 						  1, devname, wq_id);
 	} else {
 		/*

@@ -358,6 +358,13 @@ amdgpu_userq_get_doorbell_index(struct amdgpu_userq_mgr *uq_mgr,
 		goto unpin_bo;
 	}
 
+	/* Validate doorbell_offset is within the doorbell BO */
+	if ((u64)db_info->doorbell_offset * db_size + db_size >
+	    amdgpu_bo_size(db_obj->obj)) {
+		r = -EINVAL;
+		goto unpin_bo;
+	}
+
 	index = amdgpu_doorbell_index_on_bar(uq_mgr->adev, db_obj->obj,
 					     db_info->doorbell_offset, db_size);
 	drm_dbg_driver(adev_to_drm(uq_mgr->adev),
@@ -656,6 +663,17 @@ static int amdgpu_userq_input_args_validate(struct drm_device *dev,
 			drm_file_err(filp, "invalidate userq queue va or size\n");
 			return -EINVAL;
 		}
+
+		if (!is_power_of_2(args->in.queue_size)) {
+			drm_file_err(filp, "Queue size must be a power of 2\n");
+			return -EINVAL;
+		}
+
+		if (args->in.queue_size < AMDGPU_GPU_PAGE_SIZE) {
+			drm_file_err(filp, "Queue size smaller than AMDGPU_GPU_PAGE_SIZE\n");
+			return -EINVAL;
+		}
+
 		if (!args->in.wptr_va || !args->in.rptr_va) {
 			drm_file_err(filp, "invalidate userq queue rptr or wptr\n");
 			return -EINVAL;

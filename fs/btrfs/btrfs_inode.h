@@ -18,20 +18,20 @@
 #include <linux/lockdep.h>
 #include <uapi/linux/btrfs_tree.h>
 #include <trace/events/btrfs.h>
+#include "ctree.h"
 #include "block-rsv.h"
 #include "extent_map.h"
-#include "extent_io.h"
 #include "extent-io-tree.h"
-#include "ordered-data.h"
-#include "delayed-inode.h"
 
-struct extent_state;
 struct posix_acl;
 struct iov_iter;
 struct writeback_control;
 struct btrfs_root;
 struct btrfs_fs_info;
 struct btrfs_trans_handle;
+struct btrfs_bio;
+struct btrfs_file_extent;
+struct btrfs_delayed_node;
 
 /*
  * Since we search a directory based on f_pos (struct dir_context::pos) we have
@@ -575,6 +575,8 @@ int btrfs_start_delalloc_roots(struct btrfs_fs_info *fs_info, long nr,
 int btrfs_set_extent_delalloc(struct btrfs_inode *inode, u64 start, u64 end,
 			      unsigned int extra_bits,
 			      struct extent_state **cached_state);
+int btrfs_reset_extent_delalloc(struct btrfs_inode *inode, u64 start, u64 end,
+				unsigned int extra_bits, struct extent_state **cached_state);
 
 struct btrfs_new_inode_args {
 	/* Input */

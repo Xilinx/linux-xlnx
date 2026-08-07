@@ -45,6 +45,7 @@ static const struct acpi_device_id lps0_device_ids[] = {
 #define ACPI_LPS0_EXIT		6
 #define ACPI_LPS0_MS_ENTRY      7
 #define ACPI_LPS0_MS_EXIT       8
+#define ACPI_MS_TURN_ON_DISPLAY 9
 
 /* AMD */
 #define ACPI_LPS0_DSM_UUID_AMD      "e3f32452-febc-43ce-9039-932122d37721"
@@ -373,6 +374,8 @@ static const char *acpi_sleep_dsm_state_to_str(unsigned int state)
 			return "lps0 ms entry";
 		case ACPI_LPS0_MS_EXIT:
 			return "lps0 ms exit";
+		case ACPI_MS_TURN_ON_DISPLAY:
+			return "lps0 ms turn on display";
 		}
 	} else {
 		switch (state) {
@@ -618,6 +621,9 @@ void acpi_s2idle_restore_early(void)
 
 	if (lps0_dsm_func_mask_microsoft > 0) {
 		acpi_sleep_run_lps0_dsm(ACPI_LPS0_EXIT,
+				lps0_dsm_func_mask_microsoft, lps0_dsm_guid_microsoft);
+		/* Intent to turn on display */
+		acpi_sleep_run_lps0_dsm(ACPI_MS_TURN_ON_DISPLAY,
 				lps0_dsm_func_mask_microsoft, lps0_dsm_guid_microsoft);
 		/* Modern Standby exit */
 		acpi_sleep_run_lps0_dsm(ACPI_LPS0_MS_EXIT,

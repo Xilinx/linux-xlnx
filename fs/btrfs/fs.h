@@ -73,6 +73,9 @@ struct btrfs_space_info;
 #define BTRFS_SUPER_INFO_SIZE			4096
 static_assert(sizeof(struct btrfs_super_block) == BTRFS_SUPER_INFO_SIZE);
 
+#define BTRFS_KEY_FMT			"(%llu %u %llu)"
+#define BTRFS_KEY_FMT_VALUE(key)	(key)->objectid, (key)->type, (key)->offset
+
 /*
  * Number of metadata items necessary for an unlink operation:
  *
@@ -133,6 +136,7 @@ enum {
 	BTRFS_FS_LOG_RECOVERING,
 	BTRFS_FS_OPEN,
 	BTRFS_FS_QUOTA_ENABLED,
+	BTRFS_FS_SQUOTA_ENABLING,
 	BTRFS_FS_UPDATE_UUID_TREE_GEN,
 	BTRFS_FS_CREATING_FREE_SPACE_TREE,
 	BTRFS_FS_BTREE_ERR,

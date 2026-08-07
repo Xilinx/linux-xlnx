@@ -688,19 +688,7 @@ static void mlx5e_rq_timeout_work(struct work_struct *timeout_work)
 					   struct mlx5e_rq,
 					   rx_timeout_work);
 
-	/* Acquire netdev instance lock to synchronize with channel close and
-	 * reopen flows. Either successfully obtain the lock, or detect that
-	 * channels are closing for another reason, making this work no longer
-	 * necessary.
-	 */
-	while (!netdev_trylock(rq->netdev)) {
-		if (!test_bit(MLX5E_STATE_CHANNELS_ACTIVE, &rq->priv->state))
-			return;
-		msleep(20);
-	}
-
 	mlx5e_reporter_rx_timeout(rq);
-	netdev_unlock(rq->netdev);
 }
 
 static int mlx5e_alloc_mpwqe_rq_drop_page(struct mlx5e_rq *rq)
@@ -1997,20 +1985,7 @@ void mlx5e_tx_err_cqe_work(struct work_struct *recover_work)
 	struct mlx5e_txqsq *sq = container_of(recover_work, struct mlx5e_txqsq,
 					      recover_work);
 
-	/* Recovering queues means re-enabling NAPI, which requires the netdev
-	 * instance lock. However, SQ closing flows have to wait for work tasks
-	 * to finish while also holding the netdev instance lock. So either get
-	 * the lock or find that the SQ is no longer enabled and thus this work
-	 * is not relevant anymore.
-	 */
-	while (!netdev_trylock(sq->netdev)) {
-		if (!test_bit(MLX5E_SQ_STATE_ENABLED, &sq->state))
-			return;
-		msleep(20);
-	}
-
 	mlx5e_reporter_tx_err_cqe(sq);
-	netdev_unlock(sq->netdev);
 }
 
 static struct dim_cq_moder mlx5e_get_def_tx_moderation(u8 cq_period_mode)
@@ -2743,7 +2718,7 @@ static int mlx5e_channel_stats_alloc(struct mlx5e_priv *priv, int ix, int cpu)
 						GFP_KERNEL, cpu_to_node(cpu));
 	if (!priv->channel_stats[ix])
 		return -ENOMEM;
-	priv->stats_nch++;
+	mlx5e_stats_nch_write(priv, priv->stats_nch + 1);
 
 	return 0;
 }
@@ -3976,9 +3951,10 @@ static int mlx5e_setup_tc(struct net_device *dev, enum tc_setup_type type,
 
 void mlx5e_fold_sw_stats64(struct mlx5e_priv *priv, struct rtnl_link_stats64 *s)
 {
+	u16 nch = mlx5e_stats_nch_read(priv);
 	int i;
 
-	for (i = 0; i < priv->stats_nch; i++) {
+	for (i = 0; i < nch; i++) {
 		struct mlx5e_channel_stats *channel_stats = priv->channel_stats[i];
 		struct mlx5e_rq_stats *xskrq_stats = &channel_stats->xskrq;
 		struct mlx5e_rq_stats *rq_stats = &channel_stats->rq;
@@ -5102,19 +5078,6 @@ static void mlx5e_tx_timeout_work(struct work_struct *work)
 	struct net_device *netdev = priv->netdev;
 	int i;
 
-	/* Recovering the TX queues implies re-enabling NAPI, which requires
-	 * the netdev instance lock.
-	 * However, channel closing flows have to wait for this work to finish
-	 * while holding the same lock. So either get the lock or find that
-	 * channels are being closed for other reason and this work is not
-	 * relevant anymore.
-	 */
-	while (!netdev_trylock(netdev)) {
-		if (!test_bit(MLX5E_STATE_CHANNELS_ACTIVE, &priv->state))
-			return;
-		msleep(20);
-	}
-
 	for (i = 0; i < netdev->real_num_tx_queues; i++) {
 		struct netdev_queue *dev_queue =
 			netdev_get_tx_queue(netdev, i);
@@ -5127,8 +5090,6 @@ static void mlx5e_tx_timeout_work(struct work_struct *work)
 		/* break if tried to reopened channels */
 			break;
 	}
-
-	netdev_unlock(netdev);
 }
 
 static void mlx5e_tx_timeout(struct net_device *dev, unsigned int txqueue)
@@ -5451,7 +5412,7 @@ static void mlx5e_get_queue_stats_rx(struct net_device *dev, int i,
 	struct mlx5e_rq_stats *xskrq_stats;
 	struct mlx5e_rq_stats *rq_stats;
 
-	if (mlx5e_is_uplink_rep(priv) || !priv->stats_nch)
+	if (mlx5e_is_uplink_rep(priv) || !mlx5e_stats_nch_read(priv))
 		return;
 
 	channel_stats = priv->channel_stats[i];
@@ -5470,7 +5431,7 @@ static void mlx5e_get_queue_stats_tx(struct net_device *dev, int i,
 	struct mlx5e_priv *priv = netdev_priv(dev);
 	struct mlx5e_sq_stats *sq_stats;
 
-	if (!priv->stats_nch)
+	if (!mlx5e_stats_nch_read(priv))
 		return;
 
 	/* no special case needed for ptp htb etc since txq2sq_stats is kept up
@@ -5487,6 +5448,7 @@ static void mlx5e_get_base_stats(struct net_device *dev,
 				 struct netdev_queue_stats_tx *tx)
 {
 	struct mlx5e_priv *priv = netdev_priv(dev);
+	u16 nch = mlx5e_stats_nch_read(priv);
 	struct mlx5e_ptp *ptp_channel;
 	int i, tc;
 
@@ -5495,7 +5457,7 @@ static void mlx5e_get_base_stats(struct net_device *dev,
 		rx->bytes = 0;
 		rx->alloc_fail = 0;
 
-		for (i = priv->channels.params.num_channels; i < priv->stats_nch; i++) {
+		for (i = priv->channels.params.num_channels; i < nch; i++) {
 			struct netdev_queue_stats_rx rx_i = {0};
 
 			mlx5e_get_queue_stats_rx(dev, i, &rx_i);
@@ -5520,7 +5482,7 @@ static void mlx5e_get_base_stats(struct net_device *dev,
 	tx->packets = 0;
 	tx->bytes = 0;
 
-	for (i = 0; i < priv->stats_nch; i++) {
+	for (i = 0; i < nch; i++) {
 		struct mlx5e_channel_stats *channel_stats = priv->channel_stats[i];
 
 		/* handle two cases:
@@ -6779,6 +6741,14 @@ static int _mlx5e_probe(struct auxiliary_device *adev)
 		mlx5_core_err(mdev, "register_netdev failed, %d\n", err);
 		goto err_resume;
 	}
+
+	/* mlx5e_fix_features() returns early when the device is not present
+	 * to avoid dereferencing cleared priv during profile changes.
+	 * This also causes it to be a no-op during register_netdev(), where
+	 * the device is not yet present.
+	 * Trigger an additional features update that will actually work.
+	 */
+	mlx5e_update_features(netdev);
 
 	mlx5e_dcbnl_init_app(priv);
 	mlx5_core_uplink_netdev_set(mdev, netdev);
