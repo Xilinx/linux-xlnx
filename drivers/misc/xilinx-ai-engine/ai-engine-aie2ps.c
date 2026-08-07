@@ -3970,6 +3970,7 @@ static int aie2ps_set_part_clocks(struct aie_partition *apart)
 			prev_range = op_range;
 		} else {
 			struct aie_range op_range = {
+				/* absolute column for PLM */
 				.start.col = loc.col + range->start.col,
 				.size.col = 1,
 			};
@@ -4008,7 +4009,6 @@ static int aie2ps_set_part_clocks(struct aie_partition *apart)
 
 static int aie2ps_scan_part_clocks(struct aie_partition *apart)
 {
-	struct aie_device *adev = apart->adev;
 	const struct aie_aperture *aperture = apart->aperture;
 	struct aie_range *range = &apart->range;
 	struct aie_location loc;
@@ -4023,17 +4023,19 @@ static int aie2ps_scan_part_clocks(struct aie_partition *apart)
 	 */
 
 	loc.row = 0;
+	/* Iterate using absolute columns since range->start.col is absolute */
 	for (loc.col = range->start.col;
 	     loc.col < range->start.col + range->size.col;
 	     loc.col++) {
 		void __iomem *va;
 		u32 val, nbitpos;
 
+		/* Calculate bitmap position using relative column */
 		nbitpos = (loc.col - range->start.col) * (range->size.row - 1) + loc.row;
 
 		va = aperture->base +
-		     aie_cal_regoff(adev, loc,
-				    AIE2PS_SHIMPL_COLCLOCK_CTRL_REGOFF);
+		     aie_aperture_cal_regoff(apart->aperture, loc,
+					     AIE2PS_SHIMPL_COLCLOCK_CTRL_REGOFF);
 		val = ioread32(va);
 
 		if (!(val & AIE2PS_SHIMPL_COLCLOCK_CTRL_MASK))
@@ -4081,14 +4083,16 @@ static int aie2ps_set_tile_isolation(struct aie_partition *apart,
 	ttype = aie2ps_get_tile_type(adev, loc);
 	if (ttype == AIE_TILE_TYPE_TILE) {
 		va = aperture->base +
-		     aie_cal_regoff(adev, *loc,
-				    AIE2PS_TILE_COREMOD_TILECTRL_REGOFF);
+		     aie_aperture_cal_regoff(apart->aperture, *loc,
+					     AIE2PS_TILE_COREMOD_TILECTRL_REGOFF);
 	} else if (ttype == AIE_TILE_TYPE_MEMORY) {
 		va = aperture->base +
-		     aie_cal_regoff(adev, *loc, AIE2PS_MEMORY_TILECTRL_REGOFF);
+		     aie_aperture_cal_regoff(apart->aperture, *loc,
+				     AIE2PS_MEMORY_TILECTRL_REGOFF);
 	} else {
 		va = aperture->base +
-		     aie_cal_regoff(adev, *loc, AIE2PS_SHIMPL_TILECTRL_REGOFF);
+		     aie_aperture_cal_regoff(apart->aperture, *loc,
+				     AIE2PS_SHIMPL_TILECTRL_REGOFF);
 	}
 	iowrite32(val, va);
 	return 0;
@@ -4378,8 +4382,8 @@ static bool aie2ps_check_tlast_error_disabled(struct aie_partition *apart)
 	     loc.col < apart->range.start.col + apart->range.size.col; loc.col++) {
 		u32 regoff, value;
 
-		regoff = aie_cal_regoff(apart->adev, loc,
-					AIE2PS_SHIMPL_MODCLOCK_CTRL_REGOFF);
+		regoff = aie_aperture_cal_regoff(apart->aperture, loc,
+						 AIE2PS_SHIMPL_MODCLOCK_CTRL_REGOFF);
 		value = readl(apart->aperture->base + regoff) &
 			AIE2PS_SHIMPL_MODCLOCK_CTRL_TLAST_MASK;
 		if (value)
