@@ -173,6 +173,7 @@ aie_aperture_request_part_from_id(struct aie_aperture *aperture,
 {
 	struct aie_partition *apart = NULL;
 	u32 in_partition_id = partition_id;
+	u32 aperture_relative_col;
 	u8 start_col, num_cols;
 	int ret;
 
@@ -203,11 +204,21 @@ aie_aperture_request_part_from_id(struct aie_aperture *aperture,
 	if (ret)
 		return ERR_PTR(ret);
 
-	ret = aie_resource_get_region(&aperture->cols_res, start_col, num_cols);
-	if (ret != (u32)start_col) {
-		if (ret >= 0)
-			aie_resource_put_region(&aperture->cols_res, ret, num_cols);
+	/* cols_res is indexed relative to the aperture start column */
+	aperture_relative_col = start_col - aperture->range.start.col;
 
+	ret = aie_resource_get_region(&aperture->cols_res, aperture_relative_col,
+				      num_cols);
+	if (ret != (u32)aperture_relative_col) {
+		/*
+		 * aie_resource_get_region() searches forward from the
+		 * requested index, so a non-negative result at a different
+		 * offset means a region was reserved elsewhere and must be
+		 * released to avoid leaking those columns.
+		 */
+		if (ret >= 0)
+			aie_resource_put_region(&aperture->cols_res, ret,
+						num_cols);
 		dev_err(&aperture->dev, "partition %u already requested.\n",
 			in_partition_id);
 		mutex_unlock(&aperture->mlock);
@@ -218,7 +229,8 @@ aie_aperture_request_part_from_id(struct aie_aperture *aperture,
 	if (IS_ERR(apart)) {
 		dev_err(&aperture->dev, "failed to create partition %u.\n",
 			partition_id);
-		aie_resource_put_region(&aperture->cols_res, start_col, num_cols);
+		aie_resource_put_region(&aperture->cols_res,
+					aperture_relative_col, num_cols);
 		mutex_unlock(&aperture->mlock);
 		return apart;
 	}
@@ -243,7 +255,7 @@ aie_aperture_request_part_from_id(struct aie_aperture *aperture,
 int aie_aperture_check_part_avail(struct aie_aperture *aperture,
 				  struct aie_partition_req *req)
 {
-	unsigned int start_col, end_col, num_cols;
+	unsigned int start_col, end_col, num_cols, rel_start;
 	int result;
 
 	start_col = aie_part_id_get_start_col(req->partition_id);
@@ -265,11 +277,15 @@ int aie_aperture_check_part_avail(struct aie_aperture *aperture,
 		return XAIE_PART_STATUS_INVALID;
 	}
 
+	/* cols_res is indexed relative to the aperture start column */
+	rel_start = start_col - aperture->range.start.col;
+
 	mutex_lock(&aperture->mlock);
-	result = aie_resource_check_region(&aperture->cols_res, start_col, num_cols);
+	result = aie_resource_check_region(&aperture->cols_res, rel_start,
+					  num_cols);
 	mutex_unlock(&aperture->mlock);
 
-	if (result != (int)start_col)
+	if (result != (int)rel_start)
 		return XAIE_PART_STATUS_INUSE;
 
 	return XAIE_PART_STATUS_IDLE;
