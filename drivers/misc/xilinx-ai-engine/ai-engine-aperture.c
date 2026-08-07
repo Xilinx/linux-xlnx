@@ -347,7 +347,16 @@ int aie_aperture_remove(struct aie_aperture *aperture)
 	}
 	mutex_unlock(&aperture->mlock);
 
+	/*
+	 * Remove the sysfs group before device_del() so there are no aperture
+	 * attribute files left to drain while device_del() runs. This matters
+	 * because aie_aperture_remove() can be called from the OF overlay
+	 * pre-remove notifier with of_mutex held.
+	 */
 	aie_aperture_sysfs_remove_entries(aperture);
+
+	/* Remove from apertures list */
+	list_del(&aperture->node);
 
 	of_node_clear_flag(aperture->dev.of_node, OF_POPULATED);
 	device_del(&aperture->dev);
@@ -584,12 +593,6 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 		}
 	}
 
-	ret = aie_aperture_sysfs_create_entries(aperture);
-	if (ret) {
-		dev_err(dev, "Failed to create aperture sysfs: %d\n", ret);
-		goto put_aperture_dev;
-	}
-
 	INIT_WORK(&aperture->backtrack, aie_aperture_backtrack);
 	ret = aie_aperture_create_l2_mask(aperture);
 	if (ret) {
@@ -600,7 +603,8 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 	switch (adev->dev_gen) {
 	case AIE_DEVICE_GEN_AIE2PS:
 		ret = devm_request_threaded_irq(dev, aperture->npi_irq[0], NULL,
-						aie2ps_interrupt_fn, IRQF_ONESHOT, dev_name(dev),
+						aie2ps_interrupt_fn, IRQF_ONESHOT | IRQF_SHARED,
+						dev_name(dev),
 						aperture);
 		break;
 	default:
@@ -609,12 +613,19 @@ of_aie_aperture_probe(struct aie_device *adev, struct device_node *nc)
 			break;
 		}
 		ret = devm_request_threaded_irq(dev, aperture->npi_irq[0], NULL, aie_interrupt,
-						IRQF_ONESHOT, dev_name(dev), aperture);
+						IRQF_ONESHOT | IRQF_SHARED,
+						dev_name(dev), aperture);
 		break;
 	}
 
 	if (ret) {
 		dev_err(dev, "Failed to request AIE IRQ.\n");
+		goto put_aperture_dev;
+	}
+
+	ret = aie_aperture_sysfs_create_entries(aperture);
+	if (ret) {
+		dev_err(dev, "Failed to create aperture sysfs: %d\n", ret);
 		goto put_aperture_dev;
 	}
 
