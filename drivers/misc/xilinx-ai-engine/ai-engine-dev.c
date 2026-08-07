@@ -154,16 +154,42 @@ static struct aie_partition *aie_request_part_from_id(struct aie_device *adev,
 						      u32 partition_id)
 {
 	struct aie_aperture *aperture;
+	u8 start_col, num_cols;
+	u32 end_col;
 
-	list_for_each_entry(aperture, &adev->apertures, node) {
-		struct aie_partition *apart;
+	start_col = aie_part_id_get_start_col(partition_id);
+	num_cols = aie_part_id_get_num_cols(partition_id);
 
-		apart = aie_aperture_request_part_from_id(aperture,
-							  partition_id);
-		if (apart)
-			return apart;
+	/*
+	 * Backward compatibility: without a column count the owning aperture
+	 * cannot be resolved, so fall back to trying each aperture in turn.
+	 */
+	if (num_cols == 0) {
+		list_for_each_entry(aperture, &adev->apertures, node) {
+			struct aie_partition *apart;
+
+			apart = aie_aperture_request_part_from_id(aperture,
+								  partition_id);
+			if (!IS_ERR(apart))
+				return apart;
+		}
+		return ERR_PTR(-EINVAL);
 	}
 
+	end_col = start_col + num_cols - 1;
+
+	list_for_each_entry(aperture, &adev->apertures, node) {
+		u32 aperture_start = aperture->range.start.col;
+		u32 aperture_end = aperture_start + aperture->range.size.col - 1;
+
+		if (start_col >= aperture_start && end_col <= aperture_end)
+			return aie_aperture_request_part_from_id(aperture,
+								 partition_id);
+	}
+
+	dev_err(&adev->dev,
+		"No aperture found for partition %u (cols %u-%u)\n",
+		partition_id, start_col, end_col);
 	return ERR_PTR(-EINVAL);
 }
 
