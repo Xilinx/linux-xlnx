@@ -65,7 +65,7 @@ static int aie_part_strmsw_mstr_config(struct aie_partition *apart,
 	}
 
 	va = aperture->base +
-		aie_cal_regoff(apart->adev, *loc, port->port_regoff +
+		aie_aperture_cal_regoff(aperture, *loc, port->port_regoff +
 			       mstr_port_num * AIE_PORT_OFFSET);
 
 	val = aie_get_field_val(&strmsw->mstr_en, 1) |
@@ -102,7 +102,7 @@ static int aie_part_strmsw_slv_config(struct aie_partition *apart,
 	}
 
 	va = aperture->base +
-		aie_cal_regoff(apart->adev, *loc, port->port_regoff +
+		aie_aperture_cal_regoff(aperture, *loc, port->port_regoff +
 			       slv_port_num * AIE_PORT_OFFSET);
 
 	val = aie_get_field_val(&strmsw->slv_en, 1);
@@ -221,7 +221,7 @@ int aie_part_enable_noc_to_aie(struct aie_partition *apart,
 
 	regval = aie_get_field_val(&strmsw->mux_ports[port_num], AIE_MUX_NOC);
 	va = apart->aperture->base +
-		aie_cal_regoff(adev, *loc, strmsw->mux_ports[port_num].regoff);
+		aie_aperture_cal_regoff(apart->aperture, *loc, strmsw->mux_ports[port_num].regoff);
 
 	writel(regval, va);
 	return 0;
@@ -264,7 +264,8 @@ int aie_part_enable_aie_to_noc(struct aie_partition *apart,
 
 	regval = aie_get_field_val(&strmsw->demux_ports[port_num], AIE_DEMUX_NOC);
 	va = apart->aperture->base +
-		aie_cal_regoff(adev, *loc, strmsw->demux_ports[port_num].regoff);
+		aie_aperture_cal_regoff(apart->aperture, *loc,
+					strmsw->demux_ports[port_num].regoff);
 
 	writel(regval, va);
 	return 0;

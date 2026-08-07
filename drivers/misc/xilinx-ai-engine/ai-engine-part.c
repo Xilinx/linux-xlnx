@@ -2175,7 +2175,8 @@ int aie_load_cert_broadcast(struct device *dev, void *elf_addr)
 	last_col.row = 0;
 	last_col.col = apart->range.start.col + apart->range.size.col - 1;
 	ret = aie_part_maskpoll_register(apart,
-					 aie_cal_regoff(adev, last_col, end_elf_addr),
+					 aie_aperture_cal_regoff(apart->aperture,
+								 last_col, end_elf_addr),
 					 end_elf_word, 0xFFFFFFFF, LOAD_CERT_TIMEOUT);
 	if (ret < 0)
 		dev_err(&apart->dev, "failed to load cert: timeout reached");
