@@ -1751,9 +1751,19 @@ static int aie_apart_load_uc_phdr(struct aie_partition *apart,
 	tile_addr = (phdr->p_paddr & (pmem->mem.size - 1)) + pmem->mem.offset;
 
 	for (loc.col = 0; loc.col < apart->range.size.col; loc.col++) {
-		ttype = apart->adev->ops->get_tile_type(apart->adev, &loc);
+		struct aie_location abs_loc;
+
+		abs_loc.col = loc.col + apart->range.start.col;
+		abs_loc.row = loc.row;
+		ttype = apart->adev->ops->get_tile_type(apart->adev, &abs_loc);
 		if (ttype != AIE_TILE_TYPE_SHIMNOC)
 			continue;
+		/*
+		 * aie_part_write_register() expects a partition-relative
+		 * offset and applies the partition base column itself, so
+		 * use the partition-relative loc here to avoid double
+		 * counting the column offset.
+		 */
 		offset = aie_cal_regoff(adev, loc, tile_addr);
 		ret = aie_part_write_register(apart, offset, addrlen->len, addrlen->addr, 0);
 		if (ret < 0) {
