@@ -1323,7 +1323,8 @@ irqreturn_t aie2ps_interrupt_fn(int irq, void *data)
  * aie_interrupt() - interrupt handler for AIE.
  * @irq: Interrupt number.
  * @data: AI engine aperture structure.
- * @return: IRQ_HANDLED.
+ * @return: IRQ_HANDLED if this aperture had a pending level 2 status,
+ *	    IRQ_NONE otherwise (the NPI line may be shared between apertures).
  *
  * This thread function disables level 2 interrupt controllers and schedules a
  * task in workqueue to backtrack the source of error interrupt. Disabled
@@ -1375,7 +1376,13 @@ irqreturn_t aie_interrupt(int irq, void *data)
 	if (sched_work)
 		schedule_work(&aperture->backtrack);
 
-	return IRQ_HANDLED;
+	/*
+	 * The NPI interrupt line can be shared between apertures, so only
+	 * claim the interrupt when a level 2 status was actually pending on
+	 * this aperture. Returning IRQ_NONE otherwise lets the core route the
+	 * interrupt to the correct handler and keeps spurious detection working.
+	 */
+	return sched_work ? IRQ_HANDLED : IRQ_NONE;
 }
 
 /**
