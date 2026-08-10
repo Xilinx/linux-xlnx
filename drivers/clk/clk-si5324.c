@@ -868,6 +868,7 @@ static int si5324_dt_parse(struct i2c_client *client)
 	int sz, i;
 	int num = 0;
 	u32 val;
+	u32 reg;
 
 	if (!np)
 		return 0;
@@ -921,14 +922,14 @@ static int si5324_dt_parse(struct i2c_client *client)
 	}
 	/* per clkout properties */
 	for_each_child_of_node(np, child) {
-		if (of_property_read_u32(child, "reg", &num)) {
+		if (of_property_read_u32(child, "reg", &reg)) {
 			dev_err(&client->dev, "missing reg property of %s\n",
 				child->name);
 			goto put_child;
 		}
 
-		if (num >= 2) {
-			dev_err(&client->dev, "invalid clkout %d\n", num);
+		if (reg >= 2) {
+			dev_err(&client->dev, "invalid clkout %u\n", reg);
 			goto put_child;
 		}
 
@@ -939,19 +940,19 @@ static int si5324_dt_parse(struct i2c_client *client)
 			case SI5324_DRIVE_4MA:
 			case SI5324_DRIVE_6MA:
 			case SI5324_DRIVE_8MA:
-				pdata->clkout[num].drive = val;
+				pdata->clkout[reg].drive = val;
 				break;
 			default:
 				dev_err(&client->dev,
-					"invalid drive strength %d for clkout %d\n",
-					val, num);
+					"invalid drive strength %d for clkout %u\n",
+					val, reg);
 				goto put_child;
 			}
 		}
 
 		if (!of_property_read_u32(child, "clock-frequency", &val)) {
 			dev_dbg(&client->dev, "clock-frequency = %u\n", val);
-			pdata->clkout[num].rate = val;
+			pdata->clkout[reg].rate = val;
 		} else {
 			dev_err(&client->dev,
 				"missing clock-frequency property of %s\n",
