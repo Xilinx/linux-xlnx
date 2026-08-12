@@ -1705,7 +1705,11 @@ static void dwc3_core_exit_mode(struct dwc3 *dwc)
 		dwc3_host_exit(dwc);
 		break;
 	case USB_DR_MODE_OTG:
+#if IS_ENABLED(CONFIG_USB_DWC3_OTG)
+		dwc3_otg_exit(dwc);
+#else
 		dwc3_drd_exit(dwc);
+#endif
 		break;
 	default:
 		/* do nothing */
@@ -2596,7 +2600,7 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
 			synchronize_irq(dwc->irq_gadget);
 		}
 
-		dwc3_otg_exit(dwc);
+		dwc3_otg_suspend(dwc);
 		dwc3_core_exit(dwc);
 		break;
 	default:
@@ -2684,7 +2688,7 @@ static int dwc3_resume_common(struct dwc3 *dwc, pm_message_t msg)
 
 		dwc3_set_prtcap(dwc, dwc->current_dr_role, true);
 
-		dwc3_otg_init(dwc);
+		dwc3_otg_resume(dwc);
 		if (dwc->current_otg_role == DWC3_OTG_ROLE_HOST) {
 			dwc3_otg_host_init(dwc);
 		} else if (dwc->current_otg_role == DWC3_OTG_ROLE_DEVICE) {
