@@ -172,9 +172,12 @@ config DRM_XLNX_BRIDGE_SCALER
 	  bridge layer.
 
 config DRM_XLNX_BRIDGE_VTC
-	tristate "Xilinx DRM VTC Driver"
+	tristate "Xilinx DRM VTC Driver (DEPRECATED)"
 	depends on DRM_XLNX_BRIDGE
 	help
+	  This driver is deprecated. The Xilinx VTC media driver is planned
+	  to provide shared VTC support for DRM and V4L2 clients.
+
 	  DRM brige driver for Xilinx Video Timing Controller. Choose
 	  this option to make VTC a part of the CRTC in display pipeline.
 	  Currently the support is added to the Xilinx Video Mixer and

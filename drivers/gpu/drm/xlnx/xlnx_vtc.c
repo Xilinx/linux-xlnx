@@ -332,6 +332,8 @@ static int xlnx_vtc_probe(struct platform_device *pdev)
 	struct resource *res;
 	int ret;
 
+	dev_err_once(dev, "DEPRECATION: VTC Bridge driver is deprecated and will be removed in a future kernel release\n");
+
 	vtc = devm_kzalloc(dev, sizeof(*vtc), GFP_KERNEL);
 	if (!vtc)
 		return -ENOMEM;
