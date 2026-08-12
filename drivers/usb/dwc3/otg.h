@@ -235,6 +235,7 @@ struct dwc3_otg {
 	int host_started;
 	int peripheral_started;
 	int dev_enum;
+	bool exiting;
 
 	struct delayed_work hp_work;	/* drives HNP polling */
 
