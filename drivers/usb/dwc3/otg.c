@@ -391,10 +391,8 @@ static int stop_host(struct dwc3_otg *otg)
 
 	otg_dbg(otg, "\n");
 
-	if (!otg->host_started) {
-		otg_info(otg, "Host already stopped\n");
+	if (otg->exiting || !otg->host_started)
 		return 1;
-	}
 
 	if (!otg->otg.host)
 		return -ENODEV;
@@ -1679,11 +1677,8 @@ static int dwc3_otg_notify_connect(struct usb_phy *phy,
 		if (err || !(desc->bmAttributes & USB_OTG_HNP))
 			return 0;
 
-		if (udev->portnum == udev->bus->otg_port) {
-			INIT_DELAYED_WORK(&otg->hp_work,
-					hnp_polling_work);
+		if (udev->portnum == udev->bus->otg_port)
 			schedule_delayed_work(&otg->hp_work, HZ);
-		}
 
 	}
 
@@ -2138,6 +2133,7 @@ void dwc3_otg_init(struct dwc3 *dwc)
 
 	spin_lock_init(&otg->lock);
 	init_waitqueue_head(&otg->main_wq);
+	INIT_DELAYED_WORK(&otg->hp_work, hnp_polling_work);
 
 	err = usb_add_phy(otg->otg.usb_phy, USB_PHY_TYPE_USB3);
 	if (err) {
@@ -2200,12 +2196,69 @@ exit_free_otg:
 	return;
 }
 
-void dwc3_otg_exit(struct dwc3 *dwc)
+static void dwc3_otg_disable_irq(struct dwc3_otg *otg)
+{
+	otg_write(otg, OEVTEN, 0);
+}
+
+void dwc3_otg_suspend(struct dwc3 *dwc)
 {
 	struct dwc3_otg *otg = dwc->otg;
 
+	if (!otg)
+		return;
+
+	cancel_delayed_work_sync(&otg->hp_work);
+	dwc3_otg_disable_irq(otg);
+	if (otg->irq > 0)
+		synchronize_irq(otg->irq);
+}
+
+void dwc3_otg_resume(struct dwc3 *dwc)
+{
+	struct dwc3_otg *otg = dwc->otg;
+
+	if (!otg)
+		return;
+
+	dwc3_otg_enable_irq(otg);
+	wake_up_interruptible(&otg->main_wq);
+}
+
+void dwc3_otg_exit(struct dwc3 *dwc)
+{
+	struct dwc3_otg *otg = dwc->otg;
+	struct usb_phy *phy;
+
+	if (!otg)
+		return;
+
 	otg_dbg(otg, "\n");
-	usb_remove_phy(otg->otg.usb_phy);
-	kfree(otg->otg.usb_phy);
+
+	otg->exiting = true;
+
+	if (otg->main_thread)
+		kthread_stop(otg->main_thread);
+
+	cancel_delayed_work_sync(&otg->hp_work);
+
+	dwc3_host_exit(dwc);
+	dwc3_gadget_exit(dwc);
+
+	if (otg->irq > 0) {
+		dwc3_otg_disable_irq(otg);
+		synchronize_irq(otg->irq);
+		free_irq(otg->irq, otg);
+		otg->irq = 0;
+	}
+
+	dwc3_otg_remove_dev_files(otg->dev);
+
+	phy = otg->otg.usb_phy;
+	usb_remove_phy(phy);
+
+	dwc->otg = NULL;
+
+	kfree(phy);
 	kfree(otg);
 }
