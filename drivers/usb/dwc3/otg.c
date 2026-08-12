@@ -37,7 +37,7 @@
 
 static int dwc3_otg_host_release(struct usb_hcd *hcd);
 static int otg_main_thread(void *data);
-static void dwc_usb3_remove_dev_files(struct device *dev);
+static void dwc3_otg_remove_dev_files(struct device *dev);
 static int dwc3_otg_create_dev_files(struct device *dev);
 
 /* Print the hardware registers' value for debugging purpose */
@@ -2040,7 +2040,7 @@ static ssize_t store_print_dbg(struct device *dev,
 }
 static DEVICE_ATTR(print_dbg, 0220, NULL, store_print_dbg);
 
-static void dwc_usb3_remove_dev_files(struct device *dev)
+static void dwc3_otg_remove_dev_files(struct device *dev)
 {
 	device_remove_file(dev, &dev_attr_print_dbg);
 	device_remove_file(dev, &dev_attr_a_hnp_reqd);
@@ -2189,7 +2189,7 @@ exit_gadget:
 exit_free_irq:
 	free_irq(otg->irq, otg);
 exit_remove_dev_files:
-	dwc_usb3_remove_dev_files(otg->dev);
+	dwc3_otg_remove_dev_files(otg->dev);
 exit_remove_phy:
 	usb_remove_phy(otg->otg.usb_phy);
 exit_free_phy:
