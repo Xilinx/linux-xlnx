@@ -35,6 +35,11 @@
 #include <linux/ulpi/driver.h>
 #include "debug.h"
 
+static int dwc3_otg_host_release(struct usb_hcd *hcd);
+static int otg_main_thread(void *data);
+static void dwc_usb3_remove_dev_files(struct device *dev);
+static int dwc3_otg_create_dev_files(struct device *dev);
+
 /* Print the hardware registers' value for debugging purpose */
 static void print_debug_regs(struct dwc3_otg *otg)
 {
@@ -414,7 +419,7 @@ static int stop_host(struct dwc3_otg *otg)
 	return 0;
 }
 
-int dwc3_otg_host_release(struct usb_hcd *hcd)
+static int dwc3_otg_host_release(struct usb_hcd *hcd)
 {
 	struct usb_bus *bus;
 	struct usb_device *rh;
@@ -1319,7 +1324,7 @@ again:
 	return OTG_STATE_UNDEFINED;
 }
 
-int otg_main_thread(void *data)
+static int otg_main_thread(void *data)
 {
 	struct dwc3_otg *otg = (struct dwc3_otg *)data;
 	enum usb_otg_state prev = OTG_STATE_UNDEFINED;
@@ -2035,7 +2040,7 @@ static ssize_t store_print_dbg(struct device *dev,
 }
 static DEVICE_ATTR(print_dbg, 0220, NULL, store_print_dbg);
 
-void dwc_usb3_remove_dev_files(struct device *dev)
+static void dwc_usb3_remove_dev_files(struct device *dev)
 {
 	device_remove_file(dev, &dev_attr_print_dbg);
 	device_remove_file(dev, &dev_attr_a_hnp_reqd);
@@ -2045,7 +2050,7 @@ void dwc_usb3_remove_dev_files(struct device *dev)
 	device_remove_file(dev, &dev_attr_hnp_end);
 }
 
-int dwc3_otg_create_dev_files(struct device *dev)
+static int dwc3_otg_create_dev_files(struct device *dev)
 {
 	int retval;
 

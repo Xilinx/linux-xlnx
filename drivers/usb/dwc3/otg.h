@@ -242,3 +242,5 @@ struct dwc3_otg {
 
 extern int usb_port_suspend(struct usb_device *udev, pm_message_t msg);
 extern void usb_kick_hub_wq(struct usb_device *dev);
+
+int otg_host_release(struct usb_otg *otg);
