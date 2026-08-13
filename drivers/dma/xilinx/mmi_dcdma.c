@@ -829,7 +829,7 @@ static void mmi_dcdma_chan_start_transfer(struct mmi_dcdma_chan *chan)
 
 	/* make sure we miss [vblank..descriptor fetch] window */
 	if (first_frame && chan->video_group)
-		usleep_range(50, 100);
+		usleep_range(400, 500);
 
 	mmi_dcdma_chan_enable(chan);
 
