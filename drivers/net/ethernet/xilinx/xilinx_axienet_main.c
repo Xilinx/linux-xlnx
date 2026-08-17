@@ -5838,6 +5838,11 @@ static int axienet_probe(struct platform_device *pdev)
 		}
 #endif
 
+		/* Reset core now that clocks are enabled, prior to 64-bit DMA detection */
+		ret = __axienet_device_reset(lp->dq[0]);
+		if (ret)
+			goto err_disable_clk;
+
 		/* Autodetect the need for 64-bit DMA pointers.
 		 * When the IP is configured for a bus width bigger than 32 bits,
 		 * writing the MSB registers is mandatory, even if they are all 0.
