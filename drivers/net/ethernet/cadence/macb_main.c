@@ -6386,11 +6386,10 @@ static void macb_shutdown(struct platform_device *pdev)
 	struct net_device *netdev = platform_get_drvdata(pdev);
 
 	rtnl_lock();
+	netif_device_detach(netdev);
 
 	if (netif_running(netdev))
 		dev_close(netdev);
-
-	netif_device_detach(netdev);
 
 	rtnl_unlock();
 }
