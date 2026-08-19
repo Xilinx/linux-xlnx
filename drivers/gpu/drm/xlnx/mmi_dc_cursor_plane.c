@@ -130,6 +130,20 @@ static inline struct mmi_dc_cursor *to_cursor(struct mmi_dc_plane *plane)
 }
 
 /**
+ * mmi_dc_planes_get_dma_align - Get DMA align
+ * @dc: DC device
+ *
+ * Return: DC DMA alignment constraint.
+ */
+unsigned int mmi_dc_planes_get_dma_align(struct mmi_dc *dc)
+{
+	struct mmi_dc_plane *plane = dc->planes[MMI_DC_CURSOR];
+	struct mmi_dc_cursor *cursor = to_cursor(plane);
+
+	return mmi_dc_dma_copy_align(cursor->dma);
+}
+
+/**
  * mmi_dc_cursor_alloc_shadow_buffer - Allocate shadow buffer
  * @cursor: cursor plane
  *
