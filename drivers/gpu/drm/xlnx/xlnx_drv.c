@@ -243,7 +243,7 @@ static int xlnx_bind(struct device *dev)
 	dma_set_mask(drm->dev, xlnx_crtc_helper_get_dma_mask(xlnx_drm->crtc));
 
 	format = xlnx_crtc_helper_get_format(xlnx_drm->crtc);
-	info = drm_format_info(format);
+	info = format ? drm_format_info(format) : NULL;
 	if (info && info->depth && info->cpp[0]) {
 		unsigned int align;
 
