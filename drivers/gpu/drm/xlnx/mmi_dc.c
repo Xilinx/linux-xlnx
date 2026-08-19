@@ -583,22 +583,20 @@ static const char *mode_prop = "xlnx,dc-operating-mode";
 static const char *stream_count_prop = "xlnx,dc-streams";
 
 /**
- * mmi_dc_init_bridges - Initialize input stream bridges in bypass mode
+ * mmi_dc_init_bypass_bridge - Initialize input stream bridge in bypass mode
  * @dc: Display controller instance to initialize
  *
- * In bypass mode the controller exposes one DRM bridge per input stream. This
- * helper validates the required device-tree properties, reads the number of
- * input streams (bridges), initializes each bridge instance, and finally
- * switches the controller into bypass operating mode.
+ * In bypass mode the controller exposes a single bypass DRM bridge for all input
+ * streams. This helper validates the required device-tree properties,
+ * initializes the bridge instance, and finally switches the controller into
+ * bypass operating mode.
  *
- * Return: 0 on success or a negative error code if DT validation, property
- * parsing, or bridge registration fails.
+ * Return: 0 on success or a negative error code if DT validation or bridge
+ * registration fails.
  */
-static int mmi_dc_init_bridges(struct mmi_dc *dc)
+static int mmi_dc_init_bypass_bridge(struct mmi_dc *dc)
 {
 	struct device_node *np = dc->dev->of_node;
-	u32 bridge, num_bridges;
-	int ret;
 
 	/* Sanity check - expect xlnx,dc-operating-mode to be defined */
 	if (!of_property_present(np, mode_prop) ||
@@ -607,27 +605,12 @@ static int mmi_dc_init_bridges(struct mmi_dc *dc)
 		return dev_err_probe(dc->dev, -EINVAL,
 				     "inconsistent dt properties\n");
 
-	ret = of_property_read_u32(np, stream_count_prop, &num_bridges);
-	if (ret < 0)
-		return dev_err_probe(dc->dev, ret,
-				     "failed to read %s property\n",
-				     stream_count_prop);
+	dc->byp_bridge = mmi_dc_bridge_init(dc->dev, NULL);
+	if (IS_ERR(dc->byp_bridge))
+		return dev_err_probe(dc->dev, PTR_ERR(dc->byp_bridge),
+				     "failed to init bypass bridge\n");
+	dc->byp_bridge->dc = dc;
 
-	if (num_bridges > MMI_DC_MAX_BRIDGES)
-		return dev_err_probe(dc->dev, -EINVAL,
-				     "too many input streams\n");
-
-	for (bridge = 0; bridge < num_bridges; ++bridge) {
-		dc->bridges[bridge] = mmi_dc_bridge_init(dc->dev, NULL);
-		if (IS_ERR(dc->bridges[bridge]))
-			return dev_err_probe(dc->dev, PTR_ERR(dc->bridges[bridge]),
-					     "failed to init bridge %d\n",
-					     bridge);
-		dc->bridges[bridge]->dc = dc;
-		dc->bridges[bridge]->mst_id = bridge;
-	}
-
-	/* All bridges initialized successfully - set the operating mode */
 	dc_write_misc(dc, MMI_DC_MISC_BYPASS, MMI_DC_BYPASS_MODE);
 
 	return 0;
@@ -693,7 +676,7 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
 
 	/* No DRM device provided - we're in bypass mode */
 	if (!drm)
-		return mmi_dc_init_bridges(dc);
+		return mmi_dc_init_bypass_bridge(dc);
 
 	dc->rst = devm_reset_control_get(dc->dev, NULL);
 	if (IS_ERR(dc->rst))
