@@ -338,6 +338,11 @@ static const struct zynqmp_disp_format avbuf_gfx_fmts[] = {
 		.swap		= true,
 		.sf		= scaling_factors_888,
 	}, {
+		.drm_fmt	= DRM_FORMAT_XRGB8888,
+		.buf_fmt	= ZYNQMP_DISP_AV_BUF_FMT_NL_GFX_RGBA8888,
+		.swap		= true,
+		.sf		= scaling_factors_888,
+	}, {
 		.drm_fmt	= DRM_FORMAT_RGBA8888,
 		.buf_fmt	= ZYNQMP_DISP_AV_BUF_FMT_NL_GFX_ABGR8888,
 		.swap		= false,
