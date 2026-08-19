@@ -492,15 +492,21 @@ void mmi_dp_video_ts_change(struct dptx *dptx, int stream)
 	u32 reg;
 	struct video_params *vparams;
 
-	vparams = &dptx->vparams[0];
+	vparams = &dptx->vparams[stream];
 
 	reg = mmi_dp_read(dptx->base, DPTX_VIDEO_CONFIG5_N(stream));
 	reg = reg & (~DPTX_VIDEO_CONFIG5_TU_MASK);
 	reg = reg | (vparams->aver_bytes_per_tu <<
 			DPTX_VIDEO_CONFIG5_TU_SHIFT);
-	reg = reg & (~DPTX_VIDEO_CONFIG5_TU_FRAC_MASK_SST);
-	reg = reg | (vparams->aver_bytes_per_tu_frac <<
-			     DPTX_VIDEO_CONFIG5_TU_FRAC_SHIFT_SST);
+	if (dptx->mst) {
+		reg = reg & (~DPTX_VIDEO_CONFIG5_TU_FRAC_MASK_MST);
+		reg = reg | (vparams->aver_bytes_per_tu_frac <<
+				 DPTX_VIDEO_CONFIG5_TU_FRAC_SHIFT_MST);
+	} else {
+		reg = reg & (~DPTX_VIDEO_CONFIG5_TU_FRAC_MASK_SST);
+		reg = reg | (vparams->aver_bytes_per_tu_frac <<
+				 DPTX_VIDEO_CONFIG5_TU_FRAC_SHIFT_SST);
+	}
 	reg = reg & (~DPTX_VIDEO_CONFIG5_INIT_THRESHOLD_MASK);
 	reg = reg | (vparams->init_threshold <<
 		      DPTX_VIDEO_CONFIG5_INIT_THRESHOLD_SHIFT);
@@ -514,7 +520,7 @@ static void mmi_dp_video_set_core_bpc(struct dptx *dptx, int stream)
 	enum pixel_enc_type pix_enc;
 	struct video_params *vparams;
 
-	vparams = &dptx->vparams[0];
+	vparams = &dptx->vparams[stream];
 	bpc = vparams->bpc;
 	pix_enc = vparams->pix_enc;
 
@@ -535,7 +541,7 @@ static void mmi_dp_video_set_sink_col(struct dptx *dptx, int stream)
 	struct video_params *vparams;
 	enum pixel_enc_type pix_enc;
 
-	vparams = &dptx->vparams[0];
+	vparams = &dptx->vparams[stream];
 	pix_enc = vparams->pix_enc;
 	colorimetry = vparams->colorimetry;
 	dynamic_range = vparams->dynamic_range;
@@ -584,7 +590,7 @@ static void mmi_dp_video_set_sink_bpc(struct dptx *dptx, int stream)
 	struct video_params *vparams;
 	enum pixel_enc_type pix_enc;
 
-	vparams = &dptx->vparams[0];
+	vparams = &dptx->vparams[stream];
 	pix_enc = vparams->pix_enc;
 	bpc = vparams->bpc;
 

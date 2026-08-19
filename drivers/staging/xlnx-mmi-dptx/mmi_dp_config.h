@@ -199,6 +199,9 @@ void mmi_dp_video_bpc_change(struct dptx *dptx, int stream);
 void mmi_dp_video_ts_change(struct dptx *dptx, int stream);
 void mmi_dp_video_ts_calculate(struct dptx *dptx, int lane_num, int rate,
 			       int bpc, int encoding, int pixel_clock);
+void mmi_dp_video_ts_calculate_stream(struct dptx *dptx, int stream,
+				      int lane_num, int rate, int bpc,
+				      int encoding, int pixel_clock);
 void mmi_dp_enable_default_video_stream(struct dptx *dptx, int stream);
 void mmi_dp_disable_default_video_stream(struct dptx *dptx, int stream);
 void mmi_dp_vsd_ycbcr420_send(struct dptx *dptx, u8 enable);

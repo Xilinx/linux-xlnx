@@ -132,8 +132,9 @@ static int mmi_dp_set_pixel_enc(struct dptx *dptx, u8 pix_enc)
 	return 0;
 }
 
-void mmi_dp_video_ts_calculate(struct dptx *dptx, int lane_num, int rate,
-			       int bpc, int encoding, int pixel_clock)
+void mmi_dp_video_ts_calculate_stream(struct dptx *dptx, int stream,
+				      int lane_num, int rate, int bpc,
+				      int encoding, int pixel_clock)
 {
 	struct video_params *vparams;
 	struct dtd *mdtd;
@@ -141,7 +142,7 @@ void mmi_dp_video_ts_calculate(struct dptx *dptx, int lane_num, int rate,
 	int T1 = 0, T2 = 0;
 	s64 fixp;
 
-	vparams = &dptx->vparams[0];
+	vparams = &dptx->vparams[stream];
 	mdtd = &vparams->mdtd;
 	link_rate = mmi_dp_get_link_rate(rate);
 	color_dep = mmi_dp_get_color_depth_bpp(bpc, encoding);
@@ -163,7 +164,7 @@ void mmi_dp_video_ts_calculate(struct dptx *dptx, int lane_num, int rate,
 		link_clk = 40500;
 	}
 
-	numerator = (dptx->selected_pixel_clock * color_dep) / 8;
+	numerator = (pixel_clock * color_dep) / 8;
 	denominator = (link_rate) * 10 * lane_num * 100;
 	fixp = drm_fixp_from_fraction(numerator * 64, denominator);
 	tu = drm_fixp2int(fixp);
@@ -237,7 +238,7 @@ void mmi_dp_video_ts_calculate(struct dptx *dptx, int lane_num, int rate,
 			dptx_dbg(dptx, "Invalid param BPC = %d\n", bpc);
 		}
 
-		T2 = (link_clk * 1000 / dptx->selected_pixel_clock);
+		T2 = link_clk * 1000 / pixel_clock;
 
 		init_thrshld = T1 * T2 * tu / (1000 * 1000);
 		if (init_thrshld <= 16 || tu < 10)
@@ -248,6 +249,13 @@ void mmi_dp_video_ts_calculate(struct dptx *dptx, int lane_num, int rate,
 
 	vparams->aver_bytes_per_tu = tu;
 	vparams->aver_bytes_per_tu_frac = tu_frac;
+}
+
+void mmi_dp_video_ts_calculate(struct dptx *dptx, int lane_num, int rate,
+			       int bpc, int encoding, int pixel_clock)
+{
+	mmi_dp_video_ts_calculate_stream(dptx, DEFAULT_STREAM, lane_num, rate,
+					 bpc, encoding, pixel_clock);
 }
 
 static int mmi_dp_config_ctrl_video_mode(struct dptx *dptx)
