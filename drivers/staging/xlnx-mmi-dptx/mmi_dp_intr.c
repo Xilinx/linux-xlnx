@@ -182,7 +182,7 @@ static int mmi_dp_alpm_is_available(struct dptx *dptx)
 	return (alpm_cap & BIT(0));
 }
 
-static int mmi_dp_handle_hotplug(struct dptx *dptx)
+int mmi_dp_handle_hotplug(struct dptx *dptx)
 {
 	u8 rx_caps[DPTX_RECEIVER_CAP_SIZE];
 	int alpm_availability, retval;
@@ -190,7 +190,7 @@ static int mmi_dp_handle_hotplug(struct dptx *dptx)
 	u32 hpd_ien;
 	u8 sink_cnt;
 	u8 rx_link_rate;
-	u8 byte;
+	enum drm_dp_mst_mode mst_cap;
 
 	dptx_info(dptx, "DPTX - Hotplug Detected");
 
@@ -199,7 +199,6 @@ static int mmi_dp_handle_hotplug(struct dptx *dptx)
 	hpd_ien |= (DPTX_HPD_IEN_IRQ_EN |
 		    DPTX_HPD_IEN_HOT_UNPLUG_EN);
 	mmi_dp_write(dptx->base, HPD_INTERRUPT_ENABLE, hpd_ien);
-	mmi_dp_enable_hpd_intr(dptx);
 
 	mmi_dp_core_init_phy(dptx);
 	mmi_dp_clr(dptx->base, CCTL, CCTL_DEFAULT_FAST_LINK_TRAIN_EN);
@@ -263,6 +262,13 @@ static int mmi_dp_handle_hotplug(struct dptx *dptx)
 		dptx_dbg(dptx, "ENHANCED FRAME CAPABILITY ACTIVATED");
 	}
 
+	/* Define Stream Mode: enable MST when both TX and sink support it. */
+	mst_cap = drm_dp_read_mst_cap(&dptx->dp_aux, rx_caps);
+	retval = mmi_dp_mst_set_state(dptx,
+				      dptx->mst && mst_cap == DRM_DP_MST);
+	if (retval)
+		return retval;
+
 	retval = drm_dp_dpcd_read_byte(&dptx->dp_aux, DP_SINK_COUNT, &sink_cnt);
 	if (retval)
 		return retval;
@@ -270,6 +276,7 @@ static int mmi_dp_handle_hotplug(struct dptx *dptx)
 	sink_cnt = DP_GET_SINK_COUNT(sink_cnt);
 	if (sink_cnt == 0) {
 		dptx_dbg(dptx, "ZERO SINKS CONNECTED");
+		dptx->conn_status = connector_status_disconnected;
 		return 0;
 	}
 
@@ -283,27 +290,6 @@ static int mmi_dp_handle_hotplug(struct dptx *dptx)
 		alpm->status = DISABLED;
 	else
 		alpm->status = NOT_AVAILABLE;
-
-	/* Define Stream Mode */
-	mmi_dp_write_mask(dptx, CCTL, CCTL_ENABLE_MST_MODE, dptx->mst);
-	retval = drm_dp_dpcd_read_byte(&dptx->dp_aux, DP_MSTM_CAP, &byte);
-	if (retval)
-		return retval;
-
-	if (dptx->mst && (byte & DP_MST_CAP)) {
-		byte = DP_MST_EN | DP_UP_REQ_EN | DP_UPSTREAM_IS_SRC;
-		retval = drm_dp_dpcd_write_byte(&dptx->dp_aux, DP_MSTM_CTRL, byte);
-		if (retval)
-			return retval;
-
-		dptx_dbg(dptx, "ENABLING MST ON SINK");
-		byte = DP_BRANCH_DEVICE_IRQ_HPD;
-		retval = drm_dp_dpcd_write_byte(&dptx->dp_aux, DP_BRANCH_DEVICE_CTRL, byte);
-	} else {
-		retval = drm_dp_dpcd_write_byte(&dptx->dp_aux, DP_MSTM_CTRL, 0);
-	}
-	if (retval)
-		return retval;
 
 	rx_link_rate = mmi_dp_bw_to_phy_rate(dptx->rx_caps.max_link_rate);
 	dptx->link.rate = min_t(u8, dptx->max_rate, rx_link_rate);
@@ -365,6 +351,8 @@ irqreturn_t mmi_dp_threaded_irq(int irq, void *dev)
 
 	if (atomic_read(&dptx->sink_request)) {
 		atomic_set(&dptx->sink_request, 0);
+		if (dptx->mst)
+			mmi_dp_mst_handle_hpd_irq(dptx);
 		hpdsts = 0x1;
 		mmi_dp_write(dptx->base, HPD_STATUS, hpdsts);
 		mmi_dp_global_intr_en(dptx);
@@ -380,6 +368,7 @@ irqreturn_t mmi_dp_threaded_irq(int irq, void *dev)
 static void mmi_dp_handle_hpd_irq(struct dptx *dptx)
 {
 	dptx_dbg(dptx, "%s: HPD_IRQ\n", __func__);
+	atomic_set(&dptx->sink_request, 1);
 	mmi_dp_notify(dptx);
 }
 
