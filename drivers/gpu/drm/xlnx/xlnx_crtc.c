@@ -18,9 +18,12 @@
 
 #include <drm/drm_drv.h>
 #include <drm/drm_crtc.h>
+#include <drm/drm_property.h>
 
 #include <linux/list.h>
 #include <linux/dma-mapping.h>
+#include <linux/of.h>
+#include <linux/of_graph.h>
 
 #include "xlnx_crtc.h"
 #include "xlnx_drv.h"
@@ -206,3 +209,58 @@ void xlnx_crtc_unregister(struct drm_device *drm, struct xlnx_crtc *crtc)
 	mutex_unlock(&helper->lock);
 }
 EXPORT_SYMBOL_GPL(xlnx_crtc_unregister);
+
+/* Maximum DP Tx MST stream index a CRTC may be routed to. */
+#define XLNX_CRTC_STREAM_MAX	3
+
+/**
+ * xlnx_crtc_create_stream_property - Attach the immutable "stream" property
+ * @drm_crtc: DRM CRTC to attach the property to
+ * @of_node: Device node of the CRTC's source, used to resolve its OF graph
+ *
+ * In an MST pipeline several source CRTCs feed a single DRM bridge chain. The
+ * DP Tx stream a CRTC drives is fixed by the hardware wiring: it is the reg of
+ * the downstream live-video input port that this source's OF graph output
+ * endpoint connects to (port@0 -> stream 0, port@1 -> stream 1, ...). Expose
+ * that index as an immutable CRTC property so the DP Tx MST encoder selection
+ * can map a CRTC to its stream deterministically, independent of DRM CRTC
+ * creation order. Defaults to stream 0 when the OF graph cannot be resolved.
+ *
+ * Return: 0 on success or a negative error code otherwise.
+ */
+int xlnx_crtc_create_stream_property(struct drm_crtc *drm_crtc,
+				     struct device_node *of_node)
+{
+	struct device_node *ep, *remote_ep;
+	struct of_endpoint endpoint;
+	struct drm_property *prop;
+	u32 stream = 0;
+
+	ep = of_graph_get_endpoint_by_regs(of_node, 0, 0);
+	if (ep) {
+		remote_ep = of_graph_get_remote_endpoint(ep);
+		of_node_put(ep);
+		if (remote_ep) {
+			if (!of_graph_parse_endpoint(remote_ep, &endpoint))
+				stream = endpoint.port;
+			of_node_put(remote_ep);
+		}
+	}
+
+	if (stream > XLNX_CRTC_STREAM_MAX) {
+		dev_err(drm_crtc->dev->dev,
+			"CRTC %s: stream index %u exceeds max %u\n",
+			drm_crtc->name, stream, XLNX_CRTC_STREAM_MAX);
+		return -EINVAL;
+	}
+
+	prop = drm_property_create_range(drm_crtc->dev, DRM_MODE_PROP_IMMUTABLE,
+					 "stream", 0, XLNX_CRTC_STREAM_MAX);
+	if (!prop)
+		return -ENOMEM;
+
+	drm_object_attach_property(&drm_crtc->base, prop, stream);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(xlnx_crtc_create_stream_property);
