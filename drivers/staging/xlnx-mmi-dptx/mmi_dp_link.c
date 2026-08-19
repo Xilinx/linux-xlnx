@@ -480,7 +480,6 @@ int mmi_dp_disable_datapath_phy(struct dptx *dptx)
 
 static int mmi_dp_link_training_lanes_set(struct dptx *dptx)
 {
-	int retval;
 	unsigned int i;
 	u8 bytes[4] = { 0xff, 0xff, 0xff, 0xff };
 
@@ -504,12 +503,8 @@ static int mmi_dp_link_training_lanes_set(struct dptx *dptx)
 		bytes[i] = byte;
 	}
 
-	retval = mmi_dp_write_bytes_to_dpcd(dptx, DP_TRAINING_LANE0_SET, bytes,
-					    dptx->link.lanes);
-	if (retval)
-		return retval;
-
-	return 0;
+	return drm_dp_dpcd_write_data(&dptx->dp_aux, DP_TRAINING_LANE0_SET,
+				       bytes, dptx->link.lanes);
 }
 
 int mmi_dp_fast_link_training(struct dptx *dptx)
@@ -569,25 +564,33 @@ int mmi_dp_fast_link_training(struct dptx *dptx)
 
 static int mmi_dp_dpcd_link_configuration(struct dptx *dptx)
 {
-	u8 lanes, rate, byte;
+	u8 lanes;
+	int rate, ret;
 
 	/* LINK_BW_SET - rate */
 	rate = mmi_dp_phy_rate_to_bw(dptx->link.rate);
-	mmi_dp_write_dpcd(dptx, DP_LINK_BW_SET, rate);
+	if (rate < 0)
+		return rate;
+
+	ret = drm_dp_dpcd_write_byte(&dptx->dp_aux, DP_LINK_BW_SET, rate);
+	if (ret)
+		return ret;
 
 	/* LANE_COUNT_SET */
 	lanes = dptx->link.lanes | DP_LANE_COUNT_ENHANCED_FRAME_EN;
-	mmi_dp_write_dpcd(dptx, DP_LANE_COUNT_SET, lanes);
+	ret = drm_dp_dpcd_write_byte(&dptx->dp_aux, DP_LANE_COUNT_SET, lanes);
+	if (ret)
+		return ret;
 
-	/* DOWNSPREAD_CTRL */
-	byte = 0x00; /* SPREAD_AMP must be set to 0 */
-	mmi_dp_write_dpcd(dptx, DP_DOWNSPREAD_CTRL, byte);
+	/* SPREAD_AMP must be set to 0. */
+	ret = drm_dp_dpcd_write_byte(&dptx->dp_aux, DP_DOWNSPREAD_CTRL, 0);
+	if (ret)
+		return ret;
 
-	/* MAIN_LINK_CHANNEL_CODING_SET */
-	byte = 0x01; /* 8b/10b encoding selected */
-	mmi_dp_write_dpcd(dptx, DP_MAIN_LINK_CHANNEL_CODING_SET, byte);
-
-	return 0;
+	/* Select 8b/10b channel coding. */
+	return drm_dp_dpcd_write_byte(&dptx->dp_aux,
+				       DP_MAIN_LINK_CHANNEL_CODING_SET,
+				       DP_SET_ANSI_8B10B);
 }
 
 static int mmi_dp_transmit_TPS1(struct dptx *dptx)
@@ -653,9 +656,8 @@ static int mmi_dp_set_training_set_regs(struct dptx *dptx, u8 pattern)
 			reg[1 + i] = mmi_dp_set8_field(reg[1 + i], MAX_PREEMPH_MASK, 0);
 	}
 
-	mmi_dp_write_bytes_to_dpcd(dptx, DP_TRAINING_PATTERN_SET, reg, 5);
-
-	return 0;
+	return drm_dp_dpcd_write_data(&dptx->dp_aux,
+				       DP_TRAINING_PATTERN_SET, reg, 5);
 }
 
 static int mmi_dp_adjust_drive_settings(struct dptx *dptx, bool *settings_changed)
@@ -699,9 +701,7 @@ static int mmi_dp_adjust_drive_settings(struct dptx *dptx, bool *settings_change
 			 __func__, i, vs, pe);
 	}
 
-	mmi_dp_adjust_vswing_and_preemphasis(dptx);
-
-	return 0;
+	return mmi_dp_adjust_vswing_and_preemphasis(dptx);
 }
 
 static int mmi_dp_cr_done_seq(struct dptx *dptx)
@@ -714,23 +714,36 @@ static int mmi_dp_cr_done_seq(struct dptx *dptx)
 	int ret = 1;
 
 	/* Transmit TPS1 */
-	if (mmi_dp_transmit_TPS1(dptx)) {
+	ret = mmi_dp_transmit_TPS1(dptx);
+	if (ret) {
 		/* Reset PHY */
-		mmi_dp_power_up_phy(dptx);
-		mmi_dp_power_state_change_phy(dptx, DPTX_PHY_INTER_P2_POWER);
+		ret = mmi_dp_power_up_phy(dptx);
+		if (ret)
+			return ret;
 
-		mmi_dp_transmit_TPS1(dptx);
+		ret = mmi_dp_power_state_change_phy(dptx,
+						    DPTX_PHY_INTER_P2_POWER);
+		if (ret)
+			return ret;
+
+		ret = mmi_dp_transmit_TPS1(dptx);
+		if (ret)
+			return ret;
 	}
 
 	/* Set TRAINING_PATTERN_SET and TRAINING_LANEx_SET registers */
-	mmi_dp_set_training_set_regs(dptx, DP_TRAINING_PATTERN_1);
+	ret = mmi_dp_set_training_set_regs(dptx, DP_TRAINING_PATTERN_1);
+	if (ret)
+		return ret;
 
 	do {
 		/* Wait for 100us between training pattern set and reading Lane status */
 		fsleep(100);
 
 		/* Read LANEx_CR_DONE bits and ADJUST_REQUEST_LANEx_y regs */
-		mmi_dp_read_bytes_from_dpcd(dptx, DP_LANE0_1_STATUS, dptx->link.status, 6);
+		ret = drm_dp_dpcd_read_link_status(&dptx->dp_aux, dptx->link.status);
+		if (ret)
+			return ret;
 		main_ack_cnt++;
 
 		if (drm_dp_clock_recovery_ok(dptx->link.status, dptx->link.lanes)) {
@@ -744,13 +757,18 @@ static int mmi_dp_cr_done_seq(struct dptx *dptx)
 						(main_ack_cnt >= 10));
 
 			if (cr_fallback_required) {
-				ret = -CR_FAIL;
+				ret = CR_FAIL;
 				break;
 			}
 			/* Adjust driver settings */
-			mmi_dp_adjust_drive_settings(dptx, &settings_changed);
+			ret = mmi_dp_adjust_drive_settings(dptx,
+							   &settings_changed);
+			if (ret)
+				return ret;
 			/* Update TRAINING_LANE_SET regs */
-			mmi_dp_link_training_lanes_set(dptx);
+			ret = mmi_dp_link_training_lanes_set(dptx);
+			if (ret)
+				return ret;
 			settings_changed ? adj_req_ack_cnt = 0 : adj_req_ack_cnt++;
 		}
 	} while (ret != CR_DONE);
@@ -879,17 +897,19 @@ static int mmi_dp_transmit_ch_eq_TPS(struct dptx *dptx)
 	mmi_dp_phy_set_pattern(dptx, pattern);
 
 	/* Set TRAINING_PATTERN_SET and TRAINING_LANEx_SET registers */
-	mmi_dp_set_training_set_regs(dptx, dp_pattern);
-
-	return 0;
+	return mmi_dp_set_training_set_regs(dptx, dp_pattern);
 }
 
 static int mmi_dp_wait_aux_rd_interval(struct dptx *dptx)
 {
 	u32 reg;
 	u8 byte = 0;
+	int ret;
 
-	mmi_dp_read_dpcd(dptx, DP_TRAINING_AUX_RD_INTERVAL, &byte);
+	ret = drm_dp_dpcd_read_byte(&dptx->dp_aux,
+				    DP_TRAINING_AUX_RD_INTERVAL, &byte);
+	if (ret)
+		return ret;
 
 	/*
 	 * DP_TRAINING_AUX_RD_INTERVAL contains the timeout values which can be
@@ -926,21 +946,27 @@ static int mmi_dp_ch_eq_done_seq(struct dptx *dptx)
 
 	/* Transmit CH_EQ Pattern */
 	dptx_dbg(dptx, "Transmit CH_EQ Pattern");
-	mmi_dp_transmit_ch_eq_TPS(dptx);
+	ret = mmi_dp_transmit_ch_eq_TPS(dptx);
+	if (ret)
+		return ret;
 
 	do {
 		/* Wait specified Interval */
 		dptx_dbg(dptx, "Wait specified Interval");
-		mmi_dp_wait_aux_rd_interval(dptx);
+		ret = mmi_dp_wait_aux_rd_interval(dptx);
+		if (ret)
+			return ret;
 
 		/* Read CR_DONE, CH_EQ_DONE, SYMBOL_LOCKED and ADJ_REQ */
 		dptx_dbg(dptx, "Read CR_DONE, CH_EQ_DONE, SYMBOL_LOCKED and ADJ_REQ");
-		mmi_dp_read_bytes_from_dpcd(dptx, DP_LANE0_1_STATUS, dptx->link.status, 6);
+		ret = drm_dp_dpcd_read_link_status(&dptx->dp_aux, dptx->link.status);
+		if (ret)
+			return ret;
 
 		/* Check CR Done remains */
 		dptx_dbg(dptx, "Check if Clock Recovery is OK");
 		if (!drm_dp_clock_recovery_ok(dptx->link.status, dptx->link.lanes)) {
-			ret = -CH_EQ_FAIL;
+			ret = CH_EQ_FAIL;
 			break;
 		}
 
@@ -953,12 +979,17 @@ static int mmi_dp_ch_eq_done_seq(struct dptx *dptx)
 		dptx_err(dptx, "Channel EQ bits not OK");
 		main_ack_cnt++;
 		if (main_ack_cnt > 5) {
-			ret = -CH_EQ_FAIL;
+			ret = CH_EQ_FAIL;
 			break;
 		}
 
-		mmi_dp_adjust_drive_settings(dptx, &settings_changed);
-		mmi_dp_link_training_lanes_set(dptx);
+		ret = mmi_dp_adjust_drive_settings(dptx, &settings_changed);
+		if (ret)
+			return ret;
+
+		ret = mmi_dp_link_training_lanes_set(dptx);
+		if (ret)
+			return ret;
 
 		dptx_dbg(dptx, "Driver settings adjusted");
 	} while (1);
@@ -993,16 +1024,20 @@ int mmi_dp_full_link_training(struct dptx *dptx)
 		.bits_per_component	= 8,
 		.pixels_per_sample	= 1,
 	};
-	int ret, retval;
+	int cleanup_ret, ret, retval;
 	struct drm_bridge_state *bridge_state = mmi_dp_get_bridge_state(dptx);
 	const struct dptx_format_map *input_format = NULL;
 
 	/* Guarantee lanes and rates are supported by Source and Sink */
-	mmi_dp_check_allowed_link_configs(dptx);
+	ret = mmi_dp_check_allowed_link_configs(dptx);
+	if (ret < 0)
+		return ret;
 
 	do {
 		/* DPCD Link Configuration */
-		mmi_dp_dpcd_link_configuration(dptx);
+		ret = mmi_dp_dpcd_link_configuration(dptx);
+		if (ret < 0)
+			goto out;
 
 		/* CR Done Sequence */
 		do {
@@ -1012,8 +1047,14 @@ int mmi_dp_full_link_training(struct dptx *dptx)
 			/* Clean Link Status Info */
 			memset(dptx->link.status, 0, DP_LINK_STATUS_SIZE);
 
-			mmi_dp_adjust_vswing_and_preemphasis(dptx);
+			ret = mmi_dp_adjust_vswing_and_preemphasis(dptx);
+			if (ret < 0)
+				goto out;
+
 			ret = mmi_dp_cr_done_seq(dptx);
+			if (ret < 0)
+				goto out;
+
 			if (ret != CR_DONE) {
 				/* Reduce Link Rate */
 				ret = mmi_dp_reduce_link_rate(dptx);
@@ -1021,31 +1062,43 @@ int mmi_dp_full_link_training(struct dptx *dptx)
 				if (ret == -ELOWESTRATE) {
 					ret = reduce_link_lanes(dptx);
 					dptx->link.rate = dptx->max_rate;
-					mmi_dp_check_allowed_link_configs(dptx);
+					retval = mmi_dp_check_allowed_link_configs(dptx);
+					if (retval < 0) {
+						ret = retval;
+						goto out;
+					}
 
 					/* Not achieved? Stop Link Training */
 					if (ret == -ELOWESTLANENR) {
-						ret = -LT_CR_FAIL;
+						ret = LT_CR_FAIL;
 						break;
 					}
 				}
 				/* Force no Transmitted Pattern */
 				mmi_dp_phy_set_pattern(dptx, DPTX_PHYIF_CTRL_TPS_NONE);
-				mmi_dp_write_dpcd(dptx, DP_TRAINING_PATTERN_SET,
-						  DP_TRAINING_PATTERN_DISABLE);
+				ret = drm_dp_dpcd_write_byte(&dptx->dp_aux,
+							     DP_TRAINING_PATTERN_SET,
+							     DP_TRAINING_PATTERN_DISABLE);
+				if (ret < 0)
+					goto out;
 
 				/* DPCD Link Configuration - There is a lane/rate change */
-				mmi_dp_dpcd_link_configuration(dptx);
+				ret = mmi_dp_dpcd_link_configuration(dptx);
+				if (ret < 0)
+					goto out;
 			}
 		} while (ret != CR_DONE);
 
 		/* Clock Recovery Process Failed, stop LT */
-		if (ret == -LT_CR_FAIL)
+		if (ret == LT_CR_FAIL)
 			break;
 
 		/* Channel EQ Done Sequence */
 		do {
 			ret = mmi_dp_ch_eq_done_seq(dptx);
+			if (ret < 0)
+				goto out;
+
 			if (ret != CH_EQ_DONE) {
 				if (mmi_dp_any_lane_cr_bit_done(dptx)) {
 					ret = reduce_link_lanes(dptx);
@@ -1057,25 +1110,34 @@ int mmi_dp_full_link_training(struct dptx *dptx)
 
 				ret = mmi_dp_reduce_link_rate(dptx);
 				if (ret == -ELOWESTRATE) {
-					ret = -LT_CH_EQ_FAIL;
+					ret = LT_CH_EQ_FAIL;
 					break;
 				}
 				dptx->link.lanes = dptx->max_lanes;
-				mmi_dp_check_allowed_link_configs(dptx);
+				retval = mmi_dp_check_allowed_link_configs(dptx);
+				if (retval < 0) {
+					ret = retval;
+					goto out;
+				}
 				break;
 			}
 		} while (ret != CH_EQ_DONE);
 
-		if (ret == -LT_CH_EQ_FAIL)
+		if (ret == LT_CH_EQ_FAIL)
 			break;
 		else if (ret == CH_EQ_DONE)
 			ret = LT_DONE;
 
 	} while (ret != LT_DONE);
 
+out:
 	/* Clean Pattern and end LT */
 	mmi_dp_phy_set_pattern(dptx, DPTX_PHYIF_CTRL_TPS_NONE);
-	mmi_dp_write_dpcd(dptx, DP_TRAINING_PATTERN_SET, DP_TRAINING_PATTERN_DISABLE);
+	cleanup_ret = drm_dp_dpcd_write_byte(&dptx->dp_aux,
+					     DP_TRAINING_PATTERN_SET,
+					     DP_TRAINING_PATTERN_DISABLE);
+	if (ret == LT_DONE && cleanup_ret < 0)
+		ret = cleanup_ret;
 
 	if (ret == LT_DONE) {
 		if (bridge_state) {
