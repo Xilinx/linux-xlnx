@@ -438,6 +438,8 @@ u32 mmi_dp_set_field(u32 data, u32 mask, u32 value);
 u8 mmi_dp_set8_field(u8 data, u8 mask, u8 value);
 void mmi_dp_write_mask(struct dptx *dptx, u32 addr, u32 mask, u32 data);
 const struct dptx_format_map *mmi_dp_get_input_format(u32 media_bus_format);
+u32 mmi_dp_select_crtc_output_bus_format(struct drm_crtc *crtc,
+					 struct drm_crtc_state *crtc_state);
 
 /* Debug */
 #define dptx_dbg(_dp, _fmt...) dev_dbg((_dp)->dev, _fmt)

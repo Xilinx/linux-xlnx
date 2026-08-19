@@ -9,6 +9,7 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_bridge.h>
 #include <drm/drm_connector.h>
+#include <drm/drm_crtc_helper.h>
 #include <drm/drm_device.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_edid.h>
@@ -982,6 +983,34 @@ const struct dptx_format_map *mmi_dp_get_input_format(u32 media_bus_format)
 	}
 
 	return NULL;
+}
+
+/**
+ * mmi_dp_select_crtc_output_bus_format - Negotiate the CRTC output bus format
+ * @crtc: CRTC feeding the DP controller
+ * @crtc_state: new CRTC state to update
+ *
+ * In SST mode drm_atomic_bridge_chain_select_bus_fmts() walks the DP bridge
+ * chain and asks the CRTC to select one of the controller's supported input
+ * media bus formats, storing the result in crtc_state->output_bus_format. The
+ * MST virtual encoders have no bridge attached, so that negotiation never runs
+ * and the field is left at 0, which the CRTC atomic_check then rejects.
+ * Replicate the negotiation here using the same input format list the physical
+ * bridge advertises.
+ *
+ * Return: the selected media bus format, or 0 if the CRTC supports none.
+ */
+u32 mmi_dp_select_crtc_output_bus_format(struct drm_crtc *crtc,
+					 struct drm_crtc_state *crtc_state)
+{
+	u32 fmts[ARRAY_SIZE(dptx_input_format_map)];
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(dptx_input_format_map); ++i)
+		fmts[i] = dptx_input_format_map[i].media_bus_format;
+
+	return drm_helper_crtc_select_output_bus_format(crtc, crtc_state, fmts,
+							ARRAY_SIZE(fmts));
 }
 
 static u32 *mmi_dp_bridge_get_input_bus_fmts(struct drm_bridge *bridge,

@@ -154,6 +154,13 @@ static int mmi_dp_handle_hotunplug(struct dptx *dptx)
 	atomic_set(&dptx->sink_request, 0);
 	dptx->link.trained = false;
 
+	/*
+	 * Tear down the MST topology while the PHY is still up so the
+	 * sideband/DPCD teardown has a chance to reach the sink.
+	 */
+	if (dptx->mst_mgr.mst_state)
+		mmi_dp_mst_set_state(dptx, false);
+
 	/* PHY Standby */
 	mmi_dp_disable_datapath_phy(dptx);
 	mmi_dp_power_state_change_phy(dptx, DPTX_PHY_POWER_DOWN);
@@ -307,7 +314,14 @@ int mmi_dp_handle_hotplug(struct dptx *dptx)
 		}
 	}
 
-	dptx->conn_status = connector_status_connected;
+	/*
+	 * When the MST topology manager is active the sink is driven through
+	 * the dynamically created MST connectors, so keep the physical SST
+	 * connector disconnected to steer userspace onto the MST path.
+	 */
+	dptx->conn_status = dptx->mst_mgr.mst_state ?
+			    connector_status_disconnected :
+			    connector_status_connected;
 
 	/* Clean interrupts */
 	mmi_dp_clean_interrupts(dptx);
