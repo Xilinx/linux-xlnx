@@ -4,13 +4,13 @@
  *
  * Copyright (C) 2026, Advanced Micro Devices, Inc. All rights reserved.
  *
- * Boilerplate integration with the DRM DisplayPort MST topology manager.
+ * Integrate MMI DP TX driver with the DRM DisplayPort MST topology manager.
  * This provides the topology-manager lifecycle, sideband HPD IRQ plumbing,
  * dynamic creation of DRM connectors for discovered downstream sinks (with
  * detection and EDID/mode enumeration) and the virtual per-stream encoders
- * used to route each MST stream. Basic VCPI payload allocation/release is
- * wired through atomic MST helpers; virtual channel table programming and the
- * associated per-stream MST hardware setup remain future work.
+ * used to route each MST stream. Basic VCPI payload allocation/release,
+ * virtual channel table programming, and per-stream video setup are wired
+ * through atomic MST helpers.
  */
 
 #include <drm/display/drm_dp_helper.h>
@@ -25,6 +25,8 @@
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_probe_helper.h>
 
+#include <linux/delay.h>
+#include <linux/iopoll.h>
 #include <linux/slab.h>
 #include <linux/string.h>
 
@@ -39,6 +41,11 @@
 
 /* Bound the number of ESI batches handled for a single HPD IRQ. */
 #define MMI_DP_MST_MAX_ESI_ITERATIONS		30
+
+#define MMI_DP_MST_VCP_TABLE_REGS		8
+#define MMI_DP_MST_SLOTS_PER_VCP_REG		8
+#define MMI_DP_MST_VCP_TABLE_SLOTS		\
+	(MMI_DP_MST_VCP_TABLE_REGS * MMI_DP_MST_SLOTS_PER_VCP_REG)
 
 /**
  * struct mmi_dp_mst_encoder - A virtual per-stream MST encoder
@@ -60,15 +67,206 @@ struct mmi_dp_mst_encoder {
  * @base: The DRM connector
  * @dptx: Back-pointer to the owning DP TX core
  * @port: The MST topology port this connector represents
+ * @stream_id: Zero-based DP TX stream routed to this connector
  */
 struct mmi_dp_mst_connector {
 	struct drm_connector base;
 	struct dptx *dptx;
 	struct drm_dp_mst_port *port;
+	int stream_id;
 };
 
-#define to_mmi_dp_mst_connector(x) \
-	container_of(x, struct mmi_dp_mst_connector, base)
+static inline struct mmi_dp_mst_connector *
+to_mmi_dp_mst_connector(struct drm_connector *x)
+{
+	return container_of(x, struct mmi_dp_mst_connector, base);
+}
+
+static int mmi_dp_mst_trigger_act(struct dptx *dptx)
+{
+	u32 val;
+	int ret;
+
+	mmi_dp_write_mask(dptx, CCTL, DPTX_CCTL_INITIATE_MST_ACT_SEQ, 1);
+
+	/*
+	 * The controller clears INITIATE_MST_ACT_SEQ once the ACT sequence
+	 * has completed on the main link. Software must ensure the bit is back
+	 * to 0 before triggering it again, so wait for the self-clear here.
+	 */
+	ret = readl_poll_timeout(dptx->base + CCTL, val,
+				 !(val & DPTX_CCTL_INITIATE_MST_ACT_SEQ),
+				 200, 50000);
+	if (ret)
+		dptx_err(dptx, "MST: timed out waiting for ACT sequence\n");
+
+	return ret;
+}
+
+static void
+mmi_dp_mst_program_vcp_table(struct dptx *dptx,
+			     struct drm_dp_mst_topology_state *mst_state)
+{
+	struct drm_dp_mst_atomic_payload *payload;
+	u32 table[MMI_DP_MST_VCP_TABLE_REGS] = { 0 };
+	unsigned int i;
+
+	list_for_each_entry(payload, &mst_state->payloads, next) {
+		struct mmi_dp_mst_connector *mst_conn;
+		unsigned int shift;
+		unsigned int start_slot, slot;
+		unsigned int stream_id;
+
+		if (payload->delete || payload->time_slots <= 0)
+			continue;
+
+		if (!payload->port || !payload->port->connector)
+			continue;
+
+		if (payload->vc_start_slot < mst_state->start_slot)
+			continue;
+
+		mst_conn = to_mmi_dp_mst_connector(payload->port->connector);
+		if (mst_conn->stream_id < 0 ||
+		    mst_conn->stream_id >= DPTX_MAX_STREAM_NUMBER)
+			continue;
+
+		stream_id = mst_conn->stream_id + 1;
+		start_slot = payload->vc_start_slot;
+
+		for (slot = start_slot;
+		     slot < start_slot + payload->time_slots &&
+		     slot < MMI_DP_MST_VCP_TABLE_SLOTS; slot++) {
+			shift = (slot % MMI_DP_MST_SLOTS_PER_VCP_REG) * 4;
+			table[slot / MMI_DP_MST_SLOTS_PER_VCP_REG] |=
+				stream_id << shift;
+		}
+	}
+
+	for (i = 0; i < MMI_DP_MST_VCP_TABLE_REGS; i++)
+		mmi_dp_write(dptx->base, DPTX_MST_VCP_TABLE_REG_N(i), table[i]);
+}
+
+static struct mmi_dp_mst_connector *
+mmi_dp_mst_connector_get_for_encoder(struct drm_atomic_state *state,
+				     struct drm_encoder *encoder)
+{
+	struct drm_connector *connector;
+
+	connector = drm_atomic_get_new_connector_for_encoder(state, encoder);
+	if (!connector)
+		connector = drm_atomic_get_old_connector_for_encoder(state,
+								     encoder);
+	if (!connector)
+		return NULL;
+
+	return to_mmi_dp_mst_connector(connector);
+}
+
+static void mmi_dp_mst_fill_dtd(struct dtd *mdtd,
+				const struct drm_display_mode *mode)
+{
+	mmi_dp_dtd_reset(mdtd);
+
+	mdtd->pixel_clock = mode->clock;
+	mdtd->interlaced = mode->flags & DRM_MODE_FLAG_INTERLACE;
+	mdtd->h_active = mode->hdisplay;
+	mdtd->h_blanking = mode->htotal - mode->hdisplay;
+	mdtd->h_border = 0;
+	mdtd->h_image_size = mode->hdisplay * mode->width_mm;
+	mdtd->h_sync_pulse_width = mode->hsync_end - mode->hsync_start;
+	mdtd->h_sync_offset = mode->hsync_start - mode->hdisplay;
+	mdtd->h_sync_polarity = 1;
+	mdtd->v_active = mode->vdisplay;
+	mdtd->v_blanking = mode->vtotal - mode->vdisplay;
+	mdtd->v_border = 0;
+	mdtd->v_image_size = mode->vdisplay * mode->height_mm;
+	mdtd->v_sync_pulse_width = mode->vsync_end - mode->vsync_start;
+	mdtd->v_sync_offset = mode->vsync_start - mode->vdisplay;
+	mdtd->v_sync_polarity = 1;
+}
+
+static int mmi_dp_mst_program_stream(struct dptx *dptx, int stream,
+				     const struct drm_display_mode *mode,
+				     u32 bus_format)
+{
+	const struct dptx_format_map *input_format;
+	struct video_params *vparams;
+	struct dtd *mdtd;
+	int ret;
+
+	if (stream < 0 || stream >= DPTX_MAX_STREAM_NUMBER)
+		return -EINVAL;
+
+	if (!dptx->link.trained) {
+		mmi_dp_mst_fill_dtd(&dptx->vparams[0].mdtd, mode);
+		dptx->vparams[0].refresh_rate = drm_mode_vrefresh(mode) * 1000;
+		dptx->selected_pixel_clock = mode->clock;
+
+		drm_dp_dpcd_writeb(&dptx->dp_aux, DP_SET_POWER, 2);
+		mdelay(10);
+		drm_dp_dpcd_writeb(&dptx->dp_aux, DP_SET_POWER, 1);
+		mdelay(30);
+		drm_dp_dpcd_writeb(&dptx->dp_aux, DP_SET_POWER, 1);
+		mdelay(10);
+
+		dptx->link.rate = dptx->max_rate;
+		dptx->link.lanes = dptx->max_lanes;
+		ret = mmi_dp_full_link_training(dptx);
+		if (ret)
+			return ret;
+
+		if (stream != DEFAULT_STREAM)
+			mmi_dp_disable_video_stream(dptx, DEFAULT_STREAM);
+	}
+
+	dptx->vparams[stream] = dptx->vparams[0];
+	vparams = &dptx->vparams[stream];
+	mdtd = &vparams->mdtd;
+	mmi_dp_mst_fill_dtd(mdtd, mode);
+	vparams->refresh_rate = drm_mode_vrefresh(mode) * 1000;
+	dptx->selected_pixel_clock = mode->clock;
+
+	/*
+	 * Derive the pixel mode from the negotiated CRTC output bus format.
+	 * In SST this is done by mmi_dp_full_link_training() from the physical
+	 * bridge's input_bus_cfg, but in MST the physical dptx bridge is not
+	 * part of the atomic commit (the virtual encoder has no bridge chain),
+	 * so full_link_training() falls back to a single-pixel default. Using
+	 * the format the MST atomic_check negotiated keeps the controller's
+	 * pixels-per-clock in sync with what the CRTC actually feeds.
+	 */
+	input_format = mmi_dp_get_input_format(bus_format);
+	if (input_format)
+		dptx->multipixel = input_format->pixels_per_sample >> 1;
+
+	mmi_dp_disable_video_stream(dptx, stream);
+	mmi_dp_vinput_polarity_ctrl(dptx, stream);
+	mmi_dp_vsample_ctrl(dptx, stream);
+	mmi_dp_video_config1(dptx, stream);
+	mmi_dp_video_config2(dptx, stream);
+	mmi_dp_video_config3(dptx, stream);
+	mmi_dp_video_config4(dptx, stream);
+	mmi_dp_video_ts_calculate_stream(dptx, stream, dptx->link.lanes,
+					 dptx->link.rate, vparams->bpc,
+					 vparams->pix_enc, mdtd->pixel_clock);
+	mmi_dp_video_ts_change(dptx, stream);
+
+	if (dptx->rx_caps.enhanced_frame_cap)
+		mmi_dp_write_mask(dptx, CCTL, CCTL_ENHANCE_FRAMING_EN, 1);
+
+	mmi_dp_video_msa1(dptx, stream);
+	mmi_dp_video_msa2(dptx, stream);
+	mmi_dp_video_msa3(dptx, stream);
+	mmi_dp_video_hblank_interval(dptx, stream);
+	mmi_dp_enable_default_video_stream(dptx, stream);
+
+	dptx_info(dptx, "MST stream %d: %dx%d @ %dHz\n", stream,
+		  mdtd->h_active, mdtd->v_active,
+		  (vparams->refresh_rate + 500) / 1000);
+
+	return 0;
+}
 
 static int
 mmi_dp_mst_encoder_atomic_check(struct drm_encoder *encoder,
@@ -83,21 +281,25 @@ mmi_dp_mst_encoder_atomic_check(struct drm_encoder *encoder,
 
 	mst_conn = to_mmi_dp_mst_connector(conn_state->connector);
 
-	if (!conn_state->crtc || !crtc_state->enable) {
-		ret = drm_dp_atomic_release_time_slots(crtc_state->state,
-						       &dptx->mst_mgr,
-						       mst_conn->port);
-		if (ret < 0)
-			return ret;
-
-		return drm_dp_mst_atomic_check(crtc_state->state);
-	}
-
 	mst_state = drm_atomic_get_mst_topology_state(crtc_state->state,
 						      &dptx->mst_mgr);
 	if (IS_ERR(mst_state))
 		return PTR_ERR(mst_state);
 
+	/*
+	 * Select the CRTC output (pixel-pipeline) bus format. In SST mode the
+	 * bridge chain negotiates this; the MST encoders have no bridge, so do
+	 * it here or the CRTC atomic_check rejects the commit with -EINVAL.
+	 */
+	if (!mmi_dp_select_crtc_output_bus_format(crtc_state->crtc, crtc_state))
+		return -EINVAL;
+
+	/*
+	 * Tell the topology manager the per-timeslot bandwidth so it can
+	 * translate PBN into time slots. The link is trained at the
+	 * controller's maximum rate and lane count (see
+	 * mmi_dp_mst_program_stream()), so budget the slots accordingly.
+	 */
 	mst_state->pbn_div =
 		drm_dp_get_vc_payload_bw(mmi_dp_get_link_rate(dptx->max_rate) *
 					 1000, dptx->max_lanes);
@@ -116,8 +318,147 @@ mmi_dp_mst_encoder_atomic_check(struct drm_encoder *encoder,
 	return drm_dp_mst_atomic_check(crtc_state->state);
 }
 
+static void mmi_dp_mst_encoder_atomic_enable(struct drm_encoder *encoder,
+					     struct drm_atomic_state *state)
+{
+	struct mmi_dp_mst_encoder *mst_enc = to_mmi_dp_mst_encoder(encoder);
+	struct dptx *dptx = mst_enc->dptx;
+	struct drm_connector_state *conn_state;
+	struct drm_crtc_state *crtc_state;
+	struct mmi_dp_mst_connector *mst_conn;
+	struct drm_dp_mst_topology_state *mst_state;
+	struct drm_dp_mst_atomic_payload *payload;
+	int ret;
+
+	mst_conn = mmi_dp_mst_connector_get_for_encoder(state, encoder);
+	if (!mst_conn)
+		return;
+
+	conn_state = drm_atomic_get_new_connector_state(state, &mst_conn->base);
+	if (!conn_state || !conn_state->crtc)
+		return;
+
+	crtc_state = drm_atomic_get_new_crtc_state(state, conn_state->crtc);
+	if (!crtc_state)
+		return;
+
+	mst_state = drm_atomic_get_new_mst_topology_state(state,
+							  &dptx->mst_mgr);
+	if (!mst_state)
+		return;
+
+	payload = drm_atomic_get_mst_payload_state(mst_state, mst_conn->port);
+	if (!payload)
+		return;
+
+	mst_conn->stream_id = mst_enc->stream_id;
+	ret = mmi_dp_mst_program_stream(dptx, mst_enc->stream_id,
+					&crtc_state->adjusted_mode,
+					crtc_state->output_bus_format);
+	if (ret) {
+		dptx_err(dptx, "MST: stream %d programming failed: %d\n",
+			 mst_enc->stream_id, ret);
+		mst_conn->stream_id = -1;
+		return;
+	}
+
+	ret = drm_dp_add_payload_part1(&dptx->mst_mgr, mst_state, payload);
+	if (ret < 0) {
+		dptx_err(dptx, "MST: add payload part1 failed: %d\n", ret);
+		mmi_dp_disable_video_stream(dptx, mst_enc->stream_id);
+		mst_conn->stream_id = -1;
+		return;
+	}
+
+	mmi_dp_mst_program_vcp_table(dptx, mst_state);
+
+	ret = mmi_dp_mst_trigger_act(dptx);
+	if (ret)
+		return;
+
+	/* Wait for the sink to adopt the new VC payload table. */
+	ret = drm_dp_check_act_status(&dptx->mst_mgr);
+	if (ret < 0) {
+		dptx_err(dptx, "MST: ACT not handled by sink: %d\n", ret);
+		return;
+	}
+
+	ret = drm_dp_add_payload_part2(&dptx->mst_mgr, payload);
+	if (ret < 0) {
+		dptx_err(dptx, "MST: add payload part2 failed: %d\n", ret);
+		return;
+	}
+}
+
+static void mmi_dp_mst_encoder_atomic_disable(struct drm_encoder *encoder,
+					      struct drm_atomic_state *state)
+{
+	struct mmi_dp_mst_encoder *mst_enc = to_mmi_dp_mst_encoder(encoder);
+	struct dptx *dptx = mst_enc->dptx;
+	struct mmi_dp_mst_connector *mst_conn;
+	struct drm_dp_mst_topology_state *old_mst_state;
+	struct drm_dp_mst_topology_state *new_mst_state;
+	const struct drm_dp_mst_atomic_payload *old_payload;
+	struct drm_dp_mst_atomic_payload *new_payload;
+
+	mst_conn = mmi_dp_mst_connector_get_for_encoder(state, encoder);
+	if (!mst_conn)
+		return;
+
+	old_mst_state = drm_atomic_get_old_mst_topology_state(state,
+							      &dptx->mst_mgr);
+	if (!old_mst_state)
+		return;
+
+	if (IS_ERR(old_mst_state)) {
+		dptx_err(dptx, "MST: failed to get old topology state: %ld\n",
+			 PTR_ERR(old_mst_state));
+		return;
+	}
+	new_mst_state = drm_atomic_get_new_mst_topology_state(state,
+							      &dptx->mst_mgr);
+	if (!new_mst_state)
+		return;
+
+	if (IS_ERR(new_mst_state)) {
+		dptx_err(dptx, "MST: failed to get new topology state: %ld\n",
+			 PTR_ERR(new_mst_state));
+		return;
+	}
+
+	old_payload = drm_atomic_get_mst_payload_state(old_mst_state,
+						       mst_conn->port);
+	new_payload = drm_atomic_get_mst_payload_state(new_mst_state,
+						       mst_conn->port);
+	if (!old_payload || !new_payload)
+		return;
+
+	/*
+	 * Follow the payload-teardown contract documented by
+	 * drm_dp_remove_payload_part1(): deallocate the payload along the
+	 * virtual channel (part1), then reprogram the source VC payload table
+	 * and trigger the ACT sequence so the branch/sink adopt the new table,
+	 * and only afterwards finalize the local time-slot accounting (part2).
+	 * Doing part2 before the ACT (as before) invalidated vc_start_slot
+	 * while the hardware table was still being programmed.
+	 */
+	drm_dp_remove_payload_part1(&dptx->mst_mgr, new_mst_state, new_payload);
+
+	if (mst_conn->stream_id >= 0)
+		mmi_dp_disable_video_stream(dptx, mst_conn->stream_id);
+	mst_conn->stream_id = -1;
+
+	mmi_dp_mst_program_vcp_table(dptx, new_mst_state);
+	mmi_dp_mst_trigger_act(dptx);
+
+	drm_dp_remove_payload_part2(&dptx->mst_mgr, new_mst_state,
+				    old_payload, new_payload);
+}
+
 static const struct drm_encoder_helper_funcs mmi_dp_mst_encoder_helper_funcs = {
 	.atomic_check = mmi_dp_mst_encoder_atomic_check,
+	.atomic_enable = mmi_dp_mst_encoder_atomic_enable,
+	.atomic_disable = mmi_dp_mst_encoder_atomic_disable,
 };
 
 static int mmi_dp_mst_connector_get_modes(struct drm_connector *connector)
@@ -175,6 +516,37 @@ static int mmi_dp_mst_connector_detect_ctx(struct drm_connector *connector,
 				      mst_conn->port);
 }
 
+static int
+mmi_dp_mst_connector_atomic_check(struct drm_connector *connector,
+				  struct drm_atomic_state *state)
+{
+	struct mmi_dp_mst_connector *mst_conn =
+		to_mmi_dp_mst_connector(connector);
+	struct dptx *dptx = mst_conn->dptx;
+	int ret;
+
+	/*
+	 * Release the connector's MST time slots when it is being disabled.
+	 * This must live in the connector (not encoder) atomic_check: the DRM
+	 * atomic helper only invokes the encoder atomic_check for connectors
+	 * that still have a CRTC in the new state (see mode_fixup() in
+	 * drm_atomic_helper.c), so a plain display-off commit would otherwise
+	 * never pull the MST topology state into the commit. Without it,
+	 * drm_dp_remove_payload_part1/2 are skipped in atomic_disable and the
+	 * topology manager's time-slot accounting leaks across modesets.
+	 *
+	 * drm_dp_atomic_release_time_slots() self-gates (it is a no-op unless
+	 * this connector is actually losing its CRTC), so it is safe to call
+	 * on every connector check.
+	 */
+	ret = drm_dp_atomic_release_time_slots(state, &dptx->mst_mgr,
+					       mst_conn->port);
+	if (ret < 0)
+		return ret;
+
+	return drm_dp_mst_atomic_check(state);
+}
+
 static struct drm_encoder *
 mmi_dp_mst_connector_atomic_best_encoder(struct drm_connector *connector,
 					 struct drm_atomic_state *state)
@@ -198,6 +570,7 @@ mmi_dp_mst_connector_helper_funcs = {
 	.get_modes = mmi_dp_mst_connector_get_modes,
 	.mode_valid = mmi_dp_mst_connector_mode_valid,
 	.detect_ctx = mmi_dp_mst_connector_detect_ctx,
+	.atomic_check = mmi_dp_mst_connector_atomic_check,
 	.atomic_best_encoder = mmi_dp_mst_connector_atomic_best_encoder,
 };
 
@@ -319,6 +692,7 @@ mmi_dp_mst_add_connector(struct drm_dp_mst_topology_mgr *mgr,
 
 	mst_conn->dptx = dptx;
 	mst_conn->port = port;
+	mst_conn->stream_id = -1;
 	connector = &mst_conn->base;
 
 	/* Keep the port allocation alive for the lifetime of the connector. */
@@ -503,12 +877,13 @@ int mmi_dp_mst_set_state(struct dptx *dptx, bool enable)
 	if (!dptx->mst)
 		return 0;
 
-	/* TODO: Program the DP TX MST/SST mode bit in the hardware commit. */
 	if (enable) {
 		root_id = mmi_dp_mst_root_connector_id(dptx);
 		if (root_id >= 0)
 			dptx->mst_mgr.conn_base_id = root_id;
 	}
+
+	mmi_dp_write_mask(dptx, CCTL, CCTL_ENABLE_MST_MODE, enable);
 
 	ret = drm_dp_mst_topology_mgr_set_mst(&dptx->mst_mgr, enable);
 	if (ret) {
