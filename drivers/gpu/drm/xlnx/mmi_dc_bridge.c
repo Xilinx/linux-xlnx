@@ -171,8 +171,8 @@ static const struct mmi_dc_format *mmi_dc_find_live_format(u32 mbus_format)
  *
  * Bypass mode does not expose a local connector. Instead, the MMI DC bridge
  * acts as an upstream element and dynamically discovers the next bridge from
- * the device tree using the DP Tx port derived from @bridge->mst_id. The next
- * bridge is then attached to @encoder.
+ * the device tree using the physical DP Tx output port. The next bridge is then
+ * attached to @encoder.
  *
  * Return: 0 on success, -EINVAL if a connector was requested, or a negative
  * errno if bridge discovery/attach fails.
@@ -183,7 +183,6 @@ static int mmi_dc_attach_bypass_bridge(struct mmi_dc_bridge *bridge,
 {
 	struct mmi_dc *dc = bridge->dc;
 	struct drm_bridge *next_bridge;
-	u32 dptx_port = MMI_DC_DPTX_PORT_0 + bridge->mst_id;
 	int ret;
 
 	/* We don't want to host a connector for the bypass bridge */
@@ -192,7 +191,7 @@ static int mmi_dc_attach_bypass_bridge(struct mmi_dc_bridge *bridge,
 
 	/* Build the bridge chain */
 	next_bridge = devm_drm_of_get_bridge(dc->dev, dc->dev->of_node,
-					     dptx_port, 0);
+					     MMI_DC_DPTX_PORT_0, 0);
 	if (IS_ERR(next_bridge)) {
 		ret = PTR_ERR(next_bridge);
 		dev_err(dc->dev, "failed to find dptx bridge: %d\n", ret);

@@ -14,7 +14,6 @@
 #include <linux/io.h>
 #include <drm/drm_modes.h>
 
-#define MMI_DC_MAX_BRIDGES		(4)
 #define MMI_DC_NUM_PLANES		(3)
 #define MMI_DC_NUM_CC			(3)
 #define MMI_DC_CURSOR_WIDTH		(128)
@@ -84,7 +83,7 @@ struct mmi_audio;
  * struct mmi_dc - MMI DC device
  * @dev: generic device
  * @drm: MMI DC specific DRM data
- * @bridges: DC bridges (bypass mode, one per input stream)
+ * @byp_bridge: DC bridge (bypass mode)
  * @planes: DC planes
  * @dma_align: DMA alignment
  * @reconfig_hw: reset and reconfig HW in crtc flush callback
@@ -108,7 +107,7 @@ struct mmi_dc {
 	struct device		*dev;
 	struct mmi_dc_drm	*drm;
 
-	struct mmi_dc_bridge	*bridges[MMI_DC_MAX_BRIDGES];
+	struct mmi_dc_bridge	*byp_bridge;
 	struct mmi_dc_plane	*planes[MMI_DC_NUM_PLANES];
 	unsigned int		dma_align;
 	bool			reconfig_hw;
