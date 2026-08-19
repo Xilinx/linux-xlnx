@@ -480,20 +480,6 @@ to_video_plane(struct mmi_dc_plane *plane)
 }
 
 /**
- * mmi_dc_planes_get_dma_align - Get DMA align
- * @dc: DC device
- *
- * Return: DC DMA alignment constraint.
- */
-unsigned int mmi_dc_planes_get_dma_align(struct mmi_dc *dc)
-{
-	struct mmi_dc_plane *plane = dc->planes[MMI_DC_PLANE1];
-	struct mmi_dc_video_plane *video_plane = to_video_plane(plane);
-
-	return mmi_dc_dma_copy_align(video_plane->dmas[0]);
-}
-
-/**
  * mmi_dc_video_plane_request_dma - Request DMA channels for the plane
  * @plane: DC video plane
  *
