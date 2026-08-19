@@ -414,7 +414,7 @@ void mmi_dp_video_intr_dis(struct dptx *dptx)
  *
  * Enables (unmasks) HPD interrupts.
  */
-void mmi_dp_enable_hpd_intr(struct dptx *dptx)
+static void mmi_dp_enable_hpd_intr(struct dptx *dptx)
 {
 	mmi_dp_intr_en(dptx, DPTX_ISTS_HPD);
 }
@@ -836,6 +836,32 @@ static int mmi_dp_bridge_attach(struct drm_bridge *bridge,
 		return ret;
 	}
 
+	/* Initialize the MST topology manager */
+	if (dptx->mst) {
+		ret = mmi_dp_mst_init(dptx);
+		if (ret) {
+			dptx_err(dptx, "%s: Failed to initialize MST\n",
+				 __func__);
+			drm_dp_aux_unregister(&dptx->dp_aux);
+			dptx->dp_aux.drm_dev = NULL;
+			return ret;
+		}
+	}
+
+	/* Process a sink that was connected while HPD remained masked. */
+	if (mmi_dp_read_regfield(dptx->base, HPD_STATUS,
+				 HPD_STATUS_MASK)) {
+		atomic_set(&dptx->aux.abort, 0);
+		atomic_set(&dptx->aux.serving, 1);
+		ret = mmi_dp_handle_hotplug(dptx);
+		atomic_set(&dptx->aux.serving, 0);
+		if (ret)
+			dptx_warn(dptx, "Failed to process initial HPD state: %d\n",
+				  ret);
+	}
+
+	mmi_dp_enable_hpd_intr(dptx);
+
 	return 0;
 }
 
@@ -845,6 +871,24 @@ static void mmi_dp_bridge_detach(struct drm_bridge *bridge)
 
 	if (!dptx)
 		return;
+
+	/*
+	 * Quiesce the HPD path before tearing the MST topology down. The
+	 * threaded IRQ handler queues the MST link-probe work (via
+	 * mmi_dp_handle_hotplug()/mmi_dp_mst_handle_hpd_irq()), which touches
+	 * the DRM device. If it runs while the bridge is being detached the
+	 * work can dereference a DRM device that is going away. Mask the
+	 * interrupts, abort any in-flight AUX transfer, then wait for the
+	 * hard/threaded handler to finish so no new MST work can be queued.
+	 * mmi_dp_mst_deinit() below then drains the already-queued work via
+	 * drm_dp_mst_topology_mgr_destroy().
+	 */
+	mmi_dp_global_intr_dis(dptx);
+	atomic_set(&dptx->aux.abort, 1);
+	synchronize_irq(dptx->irq);
+
+	/* Tear down the MST topology manager */
+	mmi_dp_mst_deinit(dptx);
 
 	/* Unregister the aux */
 	drm_dp_aux_unregister(&dptx->dp_aux);
@@ -1216,7 +1260,7 @@ static int mmi_dp_probe(struct platform_device *pdev)
 	dptx->max_lanes = max_lanes;
 
 	dptx->cr_fail = false;
-	dptx->mst = false; /* Should be disabled for HDCP. */
+	dptx->mst = of_property_read_bool(dev->of_node, "xlnx,mst-mode-en");
 	dptx->ssc_en = false;
 	dptx->streams = 1;
 	dptx->multipixel = DPTX_MP_QUAD_PIXEL;
@@ -1262,9 +1306,6 @@ static int mmi_dp_probe(struct platform_device *pdev)
 		dev_err(dev, "Request for irq %d failed\n", dptx->irq);
 		return retval;
 	}
-
-	/* Enable HPD Interrupt */
-	mmi_dp_enable_hpd_intr(dptx);
 
 	dev_dbg(dev, "MMI DP Tx Driver probed\n");
 	return 0;

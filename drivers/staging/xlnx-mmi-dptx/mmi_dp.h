@@ -12,6 +12,7 @@
 #include <linux/io.h>
 
 #include <drm/display/drm_dp_helper.h>
+#include <drm/display/drm_dp_mst_helper.h>
 #include <drm/drm_bridge.h>
 
 #include "mmi_dp_config.h"
@@ -243,6 +244,8 @@ struct rx_capabilities {
  * @enabled: Is DRM bridge enabled?
  * @conn_status: connection status
  * @dp_aux: DRM DP Aux
+ * @mst_mgr: DRM DP MST topology manager
+ * @mst_encoders: Virtual per-stream encoders used for MST
  * @vparams: The video params to use
  * @hparams: The HDCP params to use
  * @waitq: The waitq
@@ -300,6 +303,8 @@ struct dptx {
 	/* struct drm_bridge *next_bridge; */
 	enum drm_connector_status conn_status;
 	struct drm_dp_aux dp_aux;
+	struct drm_dp_mst_topology_mgr mst_mgr;
+	struct drm_encoder *mst_encoders[DPTX_MAX_STREAM_NUMBER];
 
 	struct video_params vparams[DPTX_MAX_STREAM_NUMBER];
 	struct hdcp_params hparams;
@@ -388,7 +393,6 @@ irqreturn_t mmi_dp_threaded_irq(int irq, void *dev);
 
 void mmi_dp_global_intr_en(struct dptx *dp);
 void mmi_dp_global_intr_dis(struct dptx *dp);
-void mmi_dp_enable_hpd_intr(struct dptx *dp);
 void mmi_dp_video_intr_dis(struct dptx *dp);
 void mmi_dp_clean_interrupts(struct dptx *dp);
 
@@ -416,7 +420,14 @@ int mmi_dp_full_link_training(struct dptx *dptx);
 int mmi_dp_fast_link_training(struct dptx *dptx);
 
 int mmi_dp_adjust_vswing_and_preemphasis(struct dptx *dptx);
+int mmi_dp_handle_hotplug(struct dptx *dptx);
 void mmi_dp_notify(struct dptx *dptx);
+
+/* MST topology manager glue */
+int mmi_dp_mst_init(struct dptx *dptx);
+void mmi_dp_mst_deinit(struct dptx *dptx);
+int mmi_dp_mst_set_state(struct dptx *dptx, bool enable);
+void mmi_dp_mst_handle_hpd_irq(struct dptx *dptx);
 
 /* Phy */
 int mmi_dp_power_state_change_phy(struct dptx *dptx, u8 power_state);
