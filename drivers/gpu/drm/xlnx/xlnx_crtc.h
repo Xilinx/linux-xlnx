@@ -19,6 +19,8 @@
 #ifndef _XLNX_CRTC_H_
 #define _XLNX_CRTC_H_
 
+struct device_node;
+
 /**
  * struct xlnx_crtc - Xilinx CRTC device
  * @crtc: DRM CRTC device
@@ -72,5 +74,12 @@ static inline struct xlnx_crtc *to_xlnx_crtc(struct drm_crtc *crtc)
 
 void xlnx_crtc_register(struct drm_device *drm, struct xlnx_crtc *crtc);
 void xlnx_crtc_unregister(struct drm_device *drm, struct xlnx_crtc *crtc);
+
+/*
+ * Attach an immutable "stream" property to @crtc carrying the DP Tx MST stream
+ * index this CRTC is wired to, derived from @of_node's OF graph output endpoint.
+ */
+int xlnx_crtc_create_stream_property(struct drm_crtc *drm_crtc,
+				     struct device_node *of_node);
 
 #endif /* _XLNX_CRTC_H_ */
