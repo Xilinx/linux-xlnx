@@ -777,6 +777,12 @@ static int xlnx_avpg_bind(struct device *dev, struct device *master,
 		dev_err(dev, "failed to create properties: %d\n", ret);
 		goto err_encoder;
 	}
+	ret = xlnx_crtc_create_stream_property(&avpg->xlnx_crtc.crtc,
+					       dev->of_node);
+	if (ret) {
+		dev_err(dev, "failed to create stream property: %d\n", ret);
+		goto err_encoder;
+	}
 
 	xlnx_crtc_register(drm, &avpg->xlnx_crtc);
 
@@ -854,6 +860,7 @@ static int xlnx_avpg_probe(struct platform_device *pdev)
 {
 	struct xlnx_avpg *avpg;
 	struct device_node *node, *vtc_node;
+	struct platform_device *master;
 	u32 bpc;
 	int ret;
 
@@ -972,8 +979,21 @@ static int xlnx_avpg_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_bridge;
 
+	master = xlnx_drm_get_next_master(NULL);
+
 	/* Register master device for only one CRTC instance that owns VTC */
-	if (avpg->vtc) {
+	if (master) {
+		/*
+		 * Non-VTC AVPG instances attach to the first registered
+		 * master pipeline. This assumes a single PL DRM master is
+		 * present in the system; there is currently no way in the
+		 * xlnx-drm design to associate a component with a specific
+		 * master when multiple pipelines exist.
+		 */
+		ret = xlnx_drm_register_component(master, pdev);
+		if (ret)
+			goto err_component;
+	} else if (avpg->vtc) {
 		avpg->master = xlnx_drm_pipeline_init(pdev);
 		if (IS_ERR(avpg->master)) {
 			ret = PTR_ERR(avpg->master);
@@ -982,23 +1002,8 @@ static int xlnx_avpg_probe(struct platform_device *pdev)
 			goto err_component;
 		}
 	} else {
-		/*
-		 * Non-VTC AVPG instances attach to the first registered
-		 * master pipeline. This assumes a single PL DRM master is
-		 * present in the system; there is currently no way in the
-		 * xlnx-drm design to associate a component with a specific
-		 * master when multiple pipelines exist.
-		 */
-		struct platform_device *master = xlnx_drm_get_next_master(NULL);
-
-		if (!master) {
-			ret = -EPROBE_DEFER;
-			goto err_component;
-		}
-
-		ret = xlnx_drm_register_component(master, pdev);
-		if (ret)
-			goto err_component;
+		ret = -EPROBE_DEFER;
+		goto err_component;
 	}
 
 	return 0;
