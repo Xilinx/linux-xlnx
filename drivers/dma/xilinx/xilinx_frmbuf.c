@@ -1618,45 +1618,21 @@ static void xilinx_frmbuf_complete_descriptor(struct xilinx_frmbuf_chan *chan)
 }
 
 /**
- * xilinx_frmbuf_start_transfer - Starts frmbuf transfer
- * @chan: Driver specific channel struct pointer
+ * xilinx_frmbuf_program_desc - Program frmbuf HW registers for a descriptor
+ * @chan: Driver specific dma channel
+ * @desc: Descriptor to program into the hardware
+ *
+ * Writes the buffer addresses and frame parameters (width, stride, height,
+ * format and FID) for @desc into the IP registers. The IP latches these at
+ * each frame boundary, so this is safe to call both for the initial start
+ * and for an on-the-fly buffer swap while the channel is running.
  */
-static void xilinx_frmbuf_start_transfer(struct xilinx_frmbuf_chan *chan)
+static void xilinx_frmbuf_program_desc(struct xilinx_frmbuf_chan *chan,
+				       struct xilinx_frmbuf_tx_descriptor *desc)
 {
-	struct xilinx_frmbuf_tx_descriptor *desc;
-	struct xilinx_frmbuf_device *xdev;
+	struct xilinx_frmbuf_device *xdev =
+		container_of(chan, struct xilinx_frmbuf_device, chan);
 
-	xdev = container_of(chan, struct xilinx_frmbuf_device, chan);
-
-	if (!chan->idle)
-		return;
-
-	if (chan->staged_desc) {
-		chan->active_desc = chan->staged_desc;
-		chan->staged_desc = NULL;
-	}
-
-	if (list_empty(&chan->pending_list))
-		return;
-
-	desc = list_first_entry(&chan->pending_list,
-				struct xilinx_frmbuf_tx_descriptor,
-				node);
-
-	if (desc->earlycb == EARLY_CALLBACK_START_DESC) {
-		dma_async_tx_callback callback;
-		void *callback_param;
-
-		callback = desc->async_tx.callback;
-		callback_param = desc->async_tx.callback_param;
-		if (callback) {
-			callback(callback_param);
-			desc->async_tx.callback = NULL;
-			chan->active_desc = desc;
-		}
-	}
-
-	/* Start the transfer */
 	chan->write_addr(chan, XILINX_FRMBUF_ADDR_OFFSET,
 			 desc->hw.luma_plane_addr);
 	chan->write_addr(chan, XILINX_FRMBUF_ADDR2_OFFSET,
@@ -1687,7 +1663,73 @@ static void xilinx_frmbuf_start_transfer(struct xilinx_frmbuf_chan *chan)
 		&desc->hw.luma_plane_addr,
 		&desc->hw.chroma_plane_addr[0],
 		&desc->hw.chroma_plane_addr[1]);
-	dev_dbg(xdev->dev, "pitch = %u\n", frmbuf_read(chan, XILINX_FRMBUF_STRIDE_OFFSET));
+	dev_dbg(xdev->dev, "pitch = %u\n",
+		frmbuf_read(chan, XILINX_FRMBUF_STRIDE_OFFSET));
+}
+
+/**
+ * xilinx_frmbuf_start_transfer - Starts frmbuf transfer
+ * @chan: Driver specific channel struct pointer
+ */
+static void xilinx_frmbuf_start_transfer(struct xilinx_frmbuf_chan *chan)
+{
+	struct xilinx_frmbuf_tx_descriptor *desc;
+
+	if (!chan->idle) {
+		/*
+		 * Buffer flips are currently enabled for framebuffer reads only.
+		 * Register updates take effect at the next frame boundary. Remove
+		 * the direction check if framebuffer-write flips are needed too.
+		 */
+		if (chan->direction == DMA_MEM_TO_DEV &&
+		    chan->mode == XILINX_VID_DMA_AUTO_RESTART &&
+		    !list_empty(&chan->pending_list)) {
+			desc = list_first_entry(&chan->pending_list,
+						struct xilinx_frmbuf_tx_descriptor,
+						node);
+			list_del(&desc->node);
+
+			xilinx_frmbuf_program_desc(chan, desc);
+
+			if (chan->staged_desc) {
+				dma_cookie_complete(&chan->staged_desc->async_tx);
+				list_add_tail(&chan->staged_desc->node,
+					      &chan->done_list);
+			}
+			chan->staged_desc = desc;
+
+			tasklet_schedule(&chan->tasklet);
+		}
+		return;
+	}
+
+	if (chan->staged_desc) {
+		chan->active_desc = chan->staged_desc;
+		chan->staged_desc = NULL;
+	}
+
+	if (list_empty(&chan->pending_list))
+		return;
+
+	desc = list_first_entry(&chan->pending_list,
+				struct xilinx_frmbuf_tx_descriptor,
+				node);
+
+	if (desc->earlycb == EARLY_CALLBACK_START_DESC) {
+		dma_async_tx_callback callback;
+		void *callback_param;
+
+		callback = desc->async_tx.callback;
+		callback_param = desc->async_tx.callback_param;
+		if (callback) {
+			callback(callback_param);
+			desc->async_tx.callback = NULL;
+			chan->active_desc = desc;
+		}
+	}
+
+	/* Start the transfer */
+	xilinx_frmbuf_program_desc(chan, desc);
 
 	/* Start the hardware */
 	xilinx_frmbuf_start(chan);
