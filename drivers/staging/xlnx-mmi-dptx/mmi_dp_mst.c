@@ -24,6 +24,7 @@
 #include <drm/drm_encoder.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_probe_helper.h>
+#include <drm/drm_property.h>
 
 #include <linux/delay.h>
 #include <linux/iopoll.h>
@@ -82,6 +83,8 @@ to_mmi_dp_mst_connector(struct drm_connector *x)
 	return container_of(x, struct mmi_dp_mst_connector, base);
 }
 
+static void mmi_dp_mst_update_possible_crtcs(struct dptx *dptx);
+
 static int mmi_dp_mst_trigger_act(struct dptx *dptx)
 {
 	u32 val;
@@ -115,7 +118,7 @@ mmi_dp_mst_program_vcp_table(struct dptx *dptx,
 		struct mmi_dp_mst_connector *mst_conn;
 		unsigned int shift;
 		unsigned int start_slot, slot;
-		unsigned int stream_id;
+		unsigned int vcpi;
 
 		if (payload->delete || payload->time_slots <= 0)
 			continue;
@@ -131,7 +134,7 @@ mmi_dp_mst_program_vcp_table(struct dptx *dptx,
 		    mst_conn->stream_id >= DPTX_MAX_STREAM_NUMBER)
 			continue;
 
-		stream_id = mst_conn->stream_id + 1;
+		vcpi = payload->vcpi;
 		start_slot = payload->vc_start_slot;
 
 		for (slot = start_slot;
@@ -139,7 +142,7 @@ mmi_dp_mst_program_vcp_table(struct dptx *dptx,
 		     slot < MMI_DP_MST_VCP_TABLE_SLOTS; slot++) {
 			shift = (slot % MMI_DP_MST_SLOTS_PER_VCP_REG) * 4;
 			table[slot / MMI_DP_MST_SLOTS_PER_VCP_REG] |=
-				stream_id << shift;
+				vcpi << shift;
 		}
 	}
 
@@ -275,6 +278,7 @@ mmi_dp_mst_encoder_atomic_check(struct drm_encoder *encoder,
 {
 	struct mmi_dp_mst_encoder *mst_enc = to_mmi_dp_mst_encoder(encoder);
 	struct drm_dp_mst_topology_state *mst_state;
+	struct drm_dp_mst_atomic_payload *payload;
 	struct mmi_dp_mst_connector *mst_conn;
 	struct dptx *dptx = mst_enc->dptx;
 	int bpc, pbn, ret;
@@ -314,6 +318,12 @@ mmi_dp_mst_encoder_atomic_check(struct drm_encoder *encoder,
 					    mst_conn->port, pbn);
 	if (ret < 0)
 		return ret;
+
+	payload = drm_atomic_get_mst_payload_state(mst_state, mst_conn->port);
+	if (payload && !payload->vcpi) {
+		payload->vcpi = mst_enc->stream_id + 1;
+		mst_state->payload_mask |= BIT(payload->vcpi - 1);
+	}
 
 	return drm_dp_mst_atomic_check(crtc_state->state);
 }
@@ -547,6 +557,24 @@ mmi_dp_mst_connector_atomic_check(struct drm_connector *connector,
 	return drm_dp_mst_atomic_check(state);
 }
 
+/*
+ * Read the immutable "stream" property a source CRTC advertises, which encodes
+ * the DP Tx MST stream index it is hardwired to. Returns 0 when the CRTC does
+ * not carry the property (the default single-stream mapping).
+ */
+static int mmi_dp_crtc_stream_id(struct drm_crtc *crtc)
+{
+	struct drm_mode_object *obj = &crtc->base;
+	unsigned int i;
+
+	for (i = 0; i < obj->properties->count; i++) {
+		if (!strcmp(obj->properties->properties[i]->name, "stream"))
+			return obj->properties->values[i];
+	}
+
+	return 0;
+}
+
 static struct drm_encoder *
 mmi_dp_mst_connector_atomic_best_encoder(struct drm_connector *connector,
 					 struct drm_atomic_state *state)
@@ -556,13 +584,23 @@ mmi_dp_mst_connector_atomic_best_encoder(struct drm_connector *connector,
 	struct dptx *dptx = mst_conn->dptx;
 	struct drm_connector_state *conn_state =
 		drm_atomic_get_new_connector_state(state, connector);
+	int stream;
 
 	if (!conn_state->crtc)
 		return NULL;
 
-	/* Map the target CRTC to one of the controller's virtual MST encoders. */
-	return dptx->mst_encoders[drm_crtc_index(conn_state->crtc) %
-				  DPTX_MAX_STREAM_NUMBER];
+	/*
+	 * The target CRTC advertises the DP Tx MST stream it is hardwired to
+	 * through its immutable "stream" property (see
+	 * xlnx_crtc_create_stream_property()). Use it to pick the matching
+	 * virtual MST encoder so routing is deterministic regardless of DRM
+	 * CRTC creation order.
+	 */
+	stream = mmi_dp_crtc_stream_id(conn_state->crtc);
+	if (stream < 0 || stream >= DPTX_MAX_STREAM_NUMBER)
+		stream = 0;
+
+	return dptx->mst_encoders[stream];
 }
 
 static const struct drm_connector_helper_funcs
@@ -635,6 +673,9 @@ static int mmi_dp_mst_connector_late_register(struct drm_connector *connector)
 	struct mmi_dp_mst_connector *mst_conn =
 		to_mmi_dp_mst_connector(connector);
 	int ret;
+
+	/* All component CRTCs have been created by connector registration. */
+	mmi_dp_mst_update_possible_crtcs(mst_conn->dptx);
 
 	ret = mmi_dp_mst_connector_update_path(mst_conn);
 	if (ret) {
@@ -791,7 +832,16 @@ static int mmi_dp_mst_encoders_init(struct dptx *dptx)
 		mst_enc->stream_id = i;
 		drm_encoder_helper_add(&mst_enc->base,
 				       &mmi_dp_mst_encoder_helper_funcs);
-		/* Route through the same CRTCs as the primary bridge encoder */
+		/*
+		 * Advertise a valid CRTC mask so drm_dev_register()'s
+		 * possible_crtcs validation passes: at this point (bridge
+		 * attach) not all source CRTCs necessarily exist yet, so start
+		 * with the primary bridge encoder's CRTC. The mask is widened
+		 * to cover every source CRTC once MST comes up (see
+		 * mmi_dp_mst_update_possible_crtcs()); actual per-CRTC routing
+		 * is decided by mmi_dp_mst_connector_atomic_best_encoder()
+		 * using the CRTC's "stream" property.
+		 */
 		mst_enc->base.possible_crtcs =
 			dptx->bridge.encoder->possible_crtcs;
 
@@ -799,6 +849,32 @@ static int mmi_dp_mst_encoders_init(struct dptx *dptx)
 	}
 
 	return 0;
+}
+
+/**
+ * mmi_dp_mst_update_possible_crtcs - Widen MST encoder CRTC routing mask
+ * @dptx: The dptx struct
+ *
+ * Set every virtual MST encoder's possible_crtcs to the mask of all CRTCs
+ * currently present on the DRM device. Called when MST is brought up and again
+ * when an MST connector is registered, after all component CRTCs have been
+ * created. This allows any source CRTC to be paired with its per-stream encoder
+ * (the actual pairing is chosen by
+ * mmi_dp_mst_connector_atomic_best_encoder() from the CRTC "stream" property).
+ */
+static void mmi_dp_mst_update_possible_crtcs(struct dptx *dptx)
+{
+	struct drm_device *drm = dptx->bridge.dev;
+	struct drm_crtc *crtc;
+	u32 crtc_mask = 0;
+	unsigned int i;
+
+	drm_for_each_crtc(crtc, drm)
+		crtc_mask |= drm_crtc_mask(crtc);
+
+	for (i = 0; i < DPTX_MAX_STREAM_NUMBER; i++)
+		if (dptx->mst_encoders[i])
+			dptx->mst_encoders[i]->possible_crtcs = crtc_mask;
 }
 
 /**
@@ -882,6 +958,15 @@ int mmi_dp_mst_set_state(struct dptx *dptx, bool enable)
 		if (root_id >= 0)
 			dptx->mst_mgr.conn_base_id = root_id;
 	}
+
+	/*
+	 * Widen the virtual encoders' CRTC mask to every source CRTC currently
+	 * present. This can't be done at encoder creation (bridge attach)
+	 * because sibling source CRTCs may not have been created yet. Connector
+	 * late registration refreshes the mask after all component CRTCs exist.
+	 */
+	if (enable)
+		mmi_dp_mst_update_possible_crtcs(dptx);
 
 	mmi_dp_write_mask(dptx, CCTL, CCTL_ENABLE_MST_MODE, enable);
 
