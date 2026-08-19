@@ -60,8 +60,6 @@ enum established_timings {
 };
 
 struct dptx_aux {
-	u32 sts;
-	u32 data[4];
 	atomic_t abort;
 	atomic_t serving;
 };
@@ -408,43 +406,6 @@ void mmi_dp_phy_enable_xmit(struct dptx *dptx, unsigned int lane, bool enable);
 
 int mmi_dp_phy_rate_to_bw(unsigned int rate);
 int mmi_dp_bw_to_phy_rate(unsigned int bw);
-
-/*
- * AUX Channel
- */
-
-int __mmi_dp_read_dpcd(struct dptx *dptx, u32 addr, u8 *byte);
-int __mmi_dp_write_dpcd(struct dptx *dptx, u32 addr, u8 byte);
-
-int __mmi_dp_read_bytes_from_dpcd(struct dptx *dptx, unsigned int reg_addr,
-				  u8 *bytes, u32 len);
-
-int __mmi_dp_write_bytes_to_dpcd(struct dptx *dptx, unsigned int reg_addr,
-				 u8 *bytes, u32 len);
-
-static inline int mmi_dp_read_dpcd(struct dptx *dptx, u32 addr, u8 *byte)
-{
-	return __mmi_dp_read_dpcd(dptx, addr, byte);
-}
-
-static inline int mmi_dp_write_dpcd(struct dptx *dptx, u32 addr, u8 byte)
-{
-	return __mmi_dp_write_dpcd(dptx, addr, byte);
-}
-
-static inline int mmi_dp_read_bytes_from_dpcd(struct dptx *dptx,
-					      unsigned int reg_addr,
-					      u8 *bytes, u32 len)
-{
-	return __mmi_dp_read_bytes_from_dpcd(dptx, reg_addr, bytes, len);
-}
-
-static inline int mmi_dp_write_bytes_to_dpcd(struct dptx *dptx,
-					     unsigned int reg_addr,
-					     u8 *bytes, u32 len)
-{
-	return __mmi_dp_write_bytes_to_dpcd(dptx, reg_addr, bytes, len);
-}
 
 #define mmi_dp_read_regfield(_base, _offset, _bit_mask) ({ \
 	FIELD_GET(_bit_mask, mmi_dp_read(_base, _offset)); \

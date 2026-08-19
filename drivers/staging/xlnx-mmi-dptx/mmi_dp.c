@@ -16,6 +16,7 @@
 
 #include <linux/interrupt.h>
 #include <linux/irq.h>
+#include <linux/jiffies.h>
 #include <linux/kernel.h>
 #include <linux/media-bus-format.h>
 #include <linux/module.h>
@@ -25,7 +26,6 @@
 #include "mmi_dp.h"
 #include "mmi_dp_reg.h"
 
-#define MMI_DPTX_MAX_AUX_RETRIES	(80)
 #define MMI_DPTX_MAX_AUX_MSG_LEN	(16)
 
 /**
@@ -75,51 +75,9 @@ void mmi_dp_write_mask(struct dptx *dptx, u32 addr, u32 mask, u32 data)
 	mmi_dp_write(dptx->base, addr, temp);
 }
 
-/* Aux Related Api's */
-static int mmi_dp_handle_aux_reply(struct dptx *dptx)
-{
-	u32 auxsts;
-	u32 status;
+/* AUX channel */
 
-	while (1) {
-		if (!mmi_dp_read_regfield(dptx->base,
-					  AUX_STATUS, AUX_REPLY_MASK)) {
-			break;
-		}
-
-		if (mmi_dp_read_regfield(dptx->base,
-					 AUX_STATUS, AUX_TIMEOUT_MASK)) {
-			return -ETIMEDOUT;
-		}
-
-		fsleep(1);
-	}
-	auxsts = mmi_dp_read(dptx->base, AUX_STATUS);
-
-	status = mmi_dp_read_regfield(dptx->base, AUX_STATUS,
-				      AUX_STATUS_MASK) >> DPTX_AUX_STS_STATUS_SHIFT;
-
-	switch (status) {
-	case DPTX_AUX_STS_STATUS_ACK:
-	case DPTX_AUX_STS_STATUS_NACK:
-	case DPTX_AUX_STS_STATUS_DEFER:
-	case DPTX_AUX_STS_STATUS_I2C_NACK:
-	case DPTX_AUX_STS_STATUS_I2C_DEFER:
-		break;
-	default:
-		dptx_err(dptx, "Invalid AUX status 0x%x\n", status);
-		break;
-	}
-
-	dptx->aux.data[0] = mmi_dp_read(dptx->base, AUX_DATA0);
-	dptx->aux.data[1] = mmi_dp_read(dptx->base, AUX_DATA1);
-	dptx->aux.data[2] = mmi_dp_read(dptx->base, AUX_DATA2);
-	dptx->aux.data[3] = mmi_dp_read(dptx->base, AUX_DATA3);
-	dptx->aux.sts = auxsts;
-
-	return 0;
-}
-
+/* Reset the AUX payload registers. */
 static void mmi_dp_aux_clear_data(struct dptx *dptx)
 {
 	mmi_dp_write(dptx->base, AUX_DATA0, 0);
@@ -128,180 +86,249 @@ static void mmi_dp_aux_clear_data(struct dptx *dptx)
 	mmi_dp_write(dptx->base, AUX_DATA3, 0);
 }
 
-static int mmi_dp_aux_read_data(struct dptx *dptx, u8 *bytes, unsigned int len)
+/* Pack up to 16 payload bytes into the AUX registers ahead of a write. */
+static void mmi_dp_aux_write_data(struct dptx *dptx, const u8 *bytes,
+				  unsigned int len)
 {
-	const u32 *data = dptx->aux.data;
-
-	memcpy(bytes, data, len);
-
-	return len;
-}
-
-static int mmi_dp_aux_write_data(struct dptx *dptx, u8 const *bytes,
-				 unsigned int len)
-{
-	unsigned int i;
 	u32 data[4] = { 0 };
+	unsigned int i;
 
 	for (i = 0; i < len; i++)
-		data[i / 4] |= (bytes[i] << ((i % 4) * 8));
+		data[i / 4] |= bytes[i] << ((i % 4) * 8);
 
 	mmi_dp_write(dptx->base, AUX_DATA0, data[0]);
 	mmi_dp_write(dptx->base, AUX_DATA1, data[1]);
 	mmi_dp_write(dptx->base, AUX_DATA2, data[2]);
 	mmi_dp_write(dptx->base, AUX_DATA3, data[3]);
+}
+
+/* Unpack up to 16 payload bytes from the AUX registers after a read. */
+static void mmi_dp_aux_read_data(struct dptx *dptx, u8 *bytes, unsigned int len)
+{
+	u32 data[4];
+
+	data[0] = mmi_dp_read(dptx->base, AUX_DATA0);
+	data[1] = mmi_dp_read(dptx->base, AUX_DATA1);
+	data[2] = mmi_dp_read(dptx->base, AUX_DATA2);
+	data[3] = mmi_dp_read(dptx->base, AUX_DATA3);
+
+	memcpy(bytes, data, len);
+}
+
+/*
+ * mmi_dp_aux_wait_reply() - Wait for the controller to finish a transaction.
+ * @dptx: The dptx struct
+ * @status: Returns the raw AUX reply status field
+ * @bytes: Returns the number of payload bytes in the reply
+ *
+ * Return: 0 once the sink replied, -ETIMEDOUT if it never did.
+ */
+static int mmi_dp_aux_wait_reply(struct dptx *dptx, u32 *status,
+				 unsigned int *bytes)
+{
+	unsigned long deadline = jiffies + msecs_to_jiffies(50);
+	u32 auxsts;
+
+	while (1) {
+		auxsts = mmi_dp_read(dptx->base, AUX_STATUS);
+
+		if (auxsts & AUX_TIMEOUT_MASK)
+			return -ETIMEDOUT;
+
+		if (!(auxsts & AUX_REPLY_MASK))
+			break;
+
+		if (time_after_eq(jiffies, deadline))
+			return -ETIMEDOUT;
+
+		fsleep(1);
+	}
+
+	*status = (auxsts & AUX_STATUS_MASK) >> DPTX_AUX_STS_STATUS_SHIFT;
+	*bytes = FIELD_GET(AUX_BYTES_READ, auxsts);
+	/* The controller includes the AUX reply status byte in this count. */
+	if (*bytes)
+		(*bytes)--;
+
+	return 0;
+}
+
+/*
+ * mmi_dp_aux_xfer_one() - Issue a single (<= 16 byte) AUX transaction.
+ * @dptx: The dptx struct
+ * @request: DRM AUX request type
+ * @addr: DPCD address (native) or I2C address
+ * @buf: Payload buffer (NULL for an address-only transaction)
+ * @len: Payload length, 0 for an address-only transaction
+ * @reply: Returns the DP AUX reply code (ACK/NACK/DEFER)
+ *
+ * Return: number of payload bytes transferred, or a negative errno.
+ */
+static int mmi_dp_aux_xfer_one(struct dptx *dptx, u8 request, u32 addr,
+			       u8 *buf, size_t len,
+			       u8 *reply)
+{
+	bool addr_only = len == 0;
+	bool native = request & DP_AUX_NATIVE_WRITE;
+	bool read = request & DP_AUX_I2C_READ;
+	unsigned int br = 0;
+	u32 auxcmd, type, status;
+	int ret;
+
+	switch (request & ~DP_AUX_I2C_MOT) {
+	case DP_AUX_NATIVE_WRITE:
+		type = DPTX_AUX_CMD_TYPE_WRITE | DPTX_AUX_CMD_TYPE_NATIVE;
+		break;
+	case DP_AUX_NATIVE_READ:
+		type = DPTX_AUX_CMD_TYPE_READ | DPTX_AUX_CMD_TYPE_NATIVE;
+		break;
+	case DP_AUX_I2C_WRITE:
+		type = DPTX_AUX_CMD_TYPE_WRITE;
+		break;
+	case DP_AUX_I2C_READ:
+		type = DPTX_AUX_CMD_TYPE_READ;
+		break;
+	case DP_AUX_I2C_WRITE_STATUS_UPDATE:
+		type = DPTX_AUX_CMD_TYPE_WSU;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (request & DP_AUX_I2C_MOT) {
+		if (native)
+			return -EINVAL;
+		type |= DPTX_AUX_CMD_TYPE_MOT;
+	}
+
+	/* Space consecutive transactions out for the controller. */
+	mdelay(1);
+
+	mmi_dp_aux_clear_data(dptx);
+	if (!read && !addr_only)
+		mmi_dp_aux_write_data(dptx, buf, len);
+
+	auxcmd = type << DPTX_AUX_CMD_TYPE_SHIFT |
+		 addr << DPTX_AUX_CMD_ADDR_SHIFT;
+	if (addr_only)
+		auxcmd |= DPTX_AUX_CMD_I2C_ADDR_ONLY;
+	else
+		auxcmd |= (len - 1) << DPTX_AUX_CMD_REQ_LEN_SHIFT;
+
+	mmi_dp_write(dptx->base, AUX_CMD, auxcmd);
+
+	ret = mmi_dp_aux_wait_reply(dptx, &status, &br);
+	if (ret < 0) {
+		/* Hardware timeout - let the DRM core retry. */
+		dev_dbg_ratelimited(dptx->dev, "AUX timed out\n");
+		return ret;
+	}
+
+	switch (status) {
+	case DPTX_AUX_STS_STATUS_ACK:
+		*reply = native ? DP_AUX_NATIVE_REPLY_ACK : DP_AUX_I2C_REPLY_ACK;
+		break;
+	case DPTX_AUX_STS_STATUS_NACK:
+		*reply = DP_AUX_NATIVE_REPLY_NACK;
+		return 0;
+	case DPTX_AUX_STS_STATUS_DEFER:
+		*reply = DP_AUX_NATIVE_REPLY_DEFER;
+		return 0;
+	case DPTX_AUX_STS_STATUS_I2C_NACK:
+		*reply = DP_AUX_I2C_REPLY_NACK;
+		return 0;
+	case DPTX_AUX_STS_STATUS_I2C_DEFER:
+		*reply = DP_AUX_I2C_REPLY_DEFER;
+		return 0;
+	default:
+		dev_err_ratelimited(dptx->dev, "invalid AUX status 0x%x\n",
+				    status);
+		mmi_dp_soft_reset(dptx, DPTX_SRST_CTRL_AUX);
+		return -EBUSY;
+	}
+
+	/* Transaction was ACKed. */
+	if (addr_only)
+		return 0;
+
+	if (read) {
+		if (!br) {
+			/* Empty reply - reset and let the core retry. */
+			dev_err_ratelimited(dptx->dev, "AUX empty reply\n");
+			mmi_dp_soft_reset(dptx, DPTX_SRST_CTRL_AUX);
+			return -EBUSY;
+		}
+
+		br = min_t(unsigned int, br, len);
+		mmi_dp_aux_read_data(dptx, buf, br);
+
+		return br;
+	}
 
 	return len;
 }
 
-static int mmi_dp_aux_rw(struct dptx *dptx, bool rw, bool i2c, bool mot,
-			 bool addr_only, u32 addr, u8 *bytes, unsigned int len)
+/*
+ * mmi_dp_aux_transfer() - DP AUX transfer back-end for the DRM core.
+ *
+ * DRM-compliant AUX implementation: reports the sink reply through
+ * @msg->reply and returns the number of payload bytes transferred (or a
+ * negative errno), leaving the DRM core to drive the DEFER/NACK retry logic.
+ *
+ * A single AUX transaction carries at most 16 bytes, so larger native DPCD
+ * accesses are split into chunks here (I2C-over-AUX messages already arrive
+ * pre-chunked from the DRM I2C helper).
+ */
+static ssize_t mmi_dp_aux_transfer(struct drm_dp_aux *aux,
+				   struct drm_dp_aux_msg *msg)
 {
-	int retval, tries = 0;
-	u32 auxcmd, type;
-	unsigned int status, br;
+	struct dptx *dptx = container_of(aux, struct dptx, dp_aux);
+	bool native = msg->request & DP_AUX_NATIVE_WRITE;
+	size_t done = 0;
+	int ret;
 
-again:
-	tries++;
-	if (tries > MMI_DPTX_MAX_AUX_RETRIES)
-		return -ENODATA;
-
-	dptx_dbg(dptx, "%s: addr=0x%08x, len=%d, try=%d\n",
-		 __func__, addr, len, tries);
-
-	if (len > MMI_DPTX_MAX_AUX_MSG_LEN || len == 0) {
-		dptx_warn(dptx, "AUX read/write len must be 1-15, len=%d\n", len);
-		return -EINVAL;
-	}
-
-	type = rw ? DPTX_AUX_CMD_TYPE_READ : DPTX_AUX_CMD_TYPE_WRITE;
-
-	if (!i2c)
-		type |= DPTX_AUX_CMD_TYPE_NATIVE;
-
-	if (i2c && mot)
-		type |= DPTX_AUX_CMD_TYPE_MOT;
-
-	mdelay(1);
-	mmi_dp_aux_clear_data(dptx);
-
-	if (!rw)
-		mmi_dp_aux_write_data(dptx, bytes, len);
-
-	auxcmd = (type << DPTX_AUX_CMD_TYPE_SHIFT |
-		  addr << DPTX_AUX_CMD_ADDR_SHIFT |
-		  (len - 1) << DPTX_AUX_CMD_REQ_LEN_SHIFT);
-
-	if (addr_only)
-		auxcmd |= DPTX_AUX_CMD_I2C_ADDR_ONLY;
-
-	dptx_dbg(dptx, "%s - AUX_CMD: 0x%04X\n", __func__, auxcmd);
-	mmi_dp_write(dptx->base, AUX_CMD, auxcmd);
-
-	retval = mmi_dp_handle_aux_reply(dptx);
-
-	if (retval == -ETIMEDOUT) {
-		dev_err_ratelimited(dptx->dev, "AUX timed out\n");
-		goto again;
-	}
-
-	if (retval == -ESHUTDOWN) {
-		dptx_err(dptx, "AUX aborted on driver shutdown\n");
-		return retval;
-	}
-
-	if (atomic_read(&dptx->aux.abort) && !(atomic_read(&dptx->aux.serving))) {
-		dptx_err(dptx, "AUX aborted\n");
+	/*
+	 * Bail out if a hotplug/unplug event asked us to abort and we are not
+	 * currently servicing one - the sink is going away.
+	 */
+	if (atomic_read(&dptx->aux.abort) && !atomic_read(&dptx->aux.serving))
 		return -ETIMEDOUT;
+
+	/* Address-only I2C transaction (start/stop). */
+	if (msg->size == 0) {
+		ret = mmi_dp_aux_xfer_one(dptx, msg->request,
+					  msg->address, NULL, 0, &msg->reply);
+		return ret < 0 ? ret : 0;
 	}
 
-	if (retval) {
-		dptx_err(dptx, "new error\n");
-		return retval;
+	while (done < msg->size) {
+		size_t chunk = min_t(size_t, msg->size - done,
+				     MMI_DPTX_MAX_AUX_MSG_LEN);
+		/* Native accesses address consecutive DPCD registers. */
+		u32 addr = native ? msg->address + done : msg->address;
+
+		ret = mmi_dp_aux_xfer_one(dptx, msg->request, addr,
+					  msg->buffer + done, chunk,
+					  &msg->reply);
+		if (ret < 0)
+			return ret;
+
+		/*
+		 * The sink did not ACK this chunk. Report what we have; the
+		 * DRM core inspects msg->reply and retries as needed.
+		 */
+		if (msg->reply != DP_AUX_NATIVE_REPLY_ACK &&
+		    msg->reply != DP_AUX_I2C_REPLY_ACK)
+			return done;
+
+		done += ret;
+
+		/* Short reply - stop and let the caller cope. */
+		if (ret < chunk)
+			break;
 	}
 
-	status = mmi_dp_read_regfield(dptx->base, AUX_STATUS,
-				      AUX_STATUS_MASK) >> DPTX_AUX_STS_STATUS_SHIFT;
-
-	br = mmi_dp_read_regfield(dptx->base, AUX_STATUS, AUX_BYTES_READ);
-
-	switch (status) {
-	case DPTX_AUX_STS_STATUS_ACK:
-		dptx_dbg(dptx, "AUX Success\n");
-		if (!br) {
-			dev_err_ratelimited(dptx->dev, "BR=0, Retry\n");
-			mmi_dp_soft_reset(dptx, DPTX_SRST_CTRL_AUX);
-			goto again;
-		}
-		break;
-	case DPTX_AUX_STS_STATUS_NACK:
-	case DPTX_AUX_STS_STATUS_I2C_NACK:
-		dptx_err(dptx, "AUX Nack\n");
-		return -EINVAL;
-	case DPTX_AUX_STS_STATUS_I2C_DEFER:
-	case DPTX_AUX_STS_STATUS_DEFER:
-		dev_dbg_ratelimited(dptx->dev, "AUX Defer\n");
-		goto again;
-	default:
-		dev_err_ratelimited(dptx->dev, "AUX Status Invalid\n");
-		mmi_dp_soft_reset(dptx, DPTX_SRST_CTRL_AUX);
-		goto again;
-	}
-
-	if (rw)
-		mmi_dp_aux_read_data(dptx, bytes, len);
-
-	return 0;
-}
-
-static int mmi_dp_aux_rw_bytes(struct dptx *dptx, bool rw, bool i2c,
-			       u32 addr, u8 *bytes, unsigned int len)
-{
-	int retval;
-	unsigned int i;
-	u32 addr_v = addr;
-
-	for (i = 0; i < len;) {
-		unsigned int curlen;
-
-		curlen = min_t(unsigned int, len - i, MMI_DPTX_MAX_AUX_MSG_LEN);
-		/* In case of i2c address will be handled by i2c protocol */
-		if (!i2c)
-			addr_v = addr + i;
-		retval = mmi_dp_aux_rw(dptx, rw, i2c, true, false, addr_v, &bytes[i], curlen);
-		if (retval)
-			return retval;
-
-		i += curlen;
-	}
-
-	return 0;
-}
-
-int __mmi_dp_read_bytes_from_dpcd(struct dptx *dptx,
-				  u32 reg_addr,
-				  u8 *bytes,
-				  u32 len)
-{
-	return mmi_dp_aux_rw_bytes(dptx, true, false, reg_addr, bytes, len);
-}
-
-int __mmi_dp_write_bytes_to_dpcd(struct dptx *dptx,
-				 u32 reg_addr,
-				 u8 *bytes,
-				 u32 len)
-{
-	return mmi_dp_aux_rw_bytes(dptx, false, false, reg_addr, bytes, len);
-}
-
-int __mmi_dp_read_dpcd(struct dptx *dptx, u32 addr, u8 *byte)
-{
-	return __mmi_dp_read_bytes_from_dpcd(dptx, addr, byte, 1);
-}
-
-int __mmi_dp_write_dpcd(struct dptx *dptx, u32 addr, u8 byte)
-{
-	return __mmi_dp_write_bytes_to_dpcd(dptx, addr, &byte, 1);
+	return done;
 }
 
 /* Core Related api's */
@@ -767,43 +794,29 @@ static inline int mmi_dp_max_rate(int link_rate, u8 lane_num, u8 bpp)
 	return link_rate * lane_num * 8 / bpp;
 }
 
-static ssize_t mmi_dp_aux_transfer(struct drm_dp_aux *aux, struct drm_dp_aux_msg *msg)
+static void mmi_dp_aux_init(struct dptx *dptx)
 {
-	struct dptx *dptx = container_of(aux, struct dptx, dp_aux);
-
-	/* check if the aux is connected */
-	if (dptx->conn_status == connector_status_connected) {
-		if (msg->request & DPTX_AUX_CMD_TYPE_READ) {
-			mmi_dp_aux_rw_bytes(dptx, true, true, (u32)msg->address,
-					    (u8 *)msg->buffer, msg->size);
-		} else {
-			mmi_dp_aux_rw_bytes(dptx, false, true, msg->address,
-					    msg->buffer, msg->size);
-		}
-	} else {
-		dptx_err(dptx, "%s: Aux channel no connected\n", __func__);
-	}
-
-	return msg->size;
-}
-
-static int mmi_dp_aux_init(struct dptx *dptx)
-{
-	int ret = 0;
-
 	dptx->dp_aux.name = "MMI DPTx aux";
 	dptx->dp_aux.dev = dptx->dev;
-	dptx->dp_aux.drm_dev = dptx->bridge.dev;
 	dptx->dp_aux.transfer = mmi_dp_aux_transfer;
+	drm_dp_aux_init(&dptx->dp_aux);
+}
+
+static int mmi_dp_aux_register(struct dptx *dptx)
+{
+	int ret;
+
+	dptx->dp_aux.drm_dev = dptx->bridge.dev;
 
 	ret = drm_dp_aux_register(&dptx->dp_aux);
 	if (ret) {
 		dptx_err(dptx, "%s: Failed to register drm_dp_aux %d\n",
 			 __func__, ret);
+		dptx->dp_aux.drm_dev = NULL;
 		return ret;
 	}
 
-	return ret;
+	return 0;
 }
 
 static int mmi_dp_bridge_attach(struct drm_bridge *bridge,
@@ -816,10 +829,10 @@ static int mmi_dp_bridge_attach(struct drm_bridge *bridge,
 	if (flags == DRM_BRIDGE_ATTACH_NO_CONNECTOR)
 		dptx_err(dptx, "%s : DRM_BRIDGE_ATTACH_NO_CONNECTOR\n", __func__);
 
-	/* Initialize and Register Aux */
-	ret = mmi_dp_aux_init(dptx);
+	/* Register AUX with the DRM device. */
+	ret = mmi_dp_aux_register(dptx);
 	if (ret) {
-		dptx_err(dptx, "%s: Failed to initialize Dp aux\n", __func__);
+		dptx_err(dptx, "%s: Failed to register DP AUX\n", __func__);
 		return ret;
 	}
 
@@ -835,6 +848,7 @@ static void mmi_dp_bridge_detach(struct drm_bridge *bridge)
 
 	/* Unregister the aux */
 	drm_dp_aux_unregister(&dptx->dp_aux);
+	dptx->dp_aux.drm_dev = NULL;
 }
 
 static enum drm_connector_status mmi_dp_bridge_detect(struct drm_bridge *bridge,
@@ -1032,16 +1046,30 @@ static int mmi_dp_configure_video(struct dptx *dptx,
 	 * See sec 5.1.5 of DP 1.4 spec for guidance on downstream device
 	 * power management by source device.
 	 */
-	mmi_dp_write_dpcd(dptx, DP_SET_POWER, 2);
+	retval = drm_dp_dpcd_write_byte(&dptx->dp_aux, DP_SET_POWER,
+					DP_SET_POWER_D3);
+	if (retval)
+		return retval;
+
 	mdelay(10);
-	mmi_dp_write_dpcd(dptx, DP_SET_POWER, 1);
+	retval = drm_dp_dpcd_write_byte(&dptx->dp_aux, DP_SET_POWER,
+					DP_SET_POWER_D0);
+	if (retval)
+		return retval;
+
 	mdelay(30);
-	mmi_dp_write_dpcd(dptx, DP_SET_POWER, 1);
+	retval = drm_dp_dpcd_write_byte(&dptx->dp_aux, DP_SET_POWER,
+					DP_SET_POWER_D0);
+	if (retval)
+		return retval;
+
 	mdelay(10);
 
 	dptx->link.rate = dptx->max_rate;
 	dptx->link.lanes = dptx->max_lanes;
 	retval = mmi_dp_full_link_training(dptx);
+	if (retval < 0)
+		return retval;
 	if (retval)
 		return -EINVAL;
 
@@ -1210,6 +1238,9 @@ static int mmi_dp_probe(struct platform_device *pdev)
 	dptx->bridge.type = DRM_MODE_CONNECTOR_DisplayPort;
 	dptx->bridge.of_node = pdev->dev.of_node;
 	dptx->conn_status = connector_status_disconnected;
+
+	/* Initialize AUX before enabling HPD interrupts. */
+	mmi_dp_aux_init(dptx);
 
 	/* Get next bridge in chain using drm_of_find_panel_or_bridge */
 	devm_drm_bridge_add(dev, &dptx->bridge);

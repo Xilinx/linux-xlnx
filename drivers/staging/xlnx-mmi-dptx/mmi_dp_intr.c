@@ -96,11 +96,13 @@ int mmi_dp_adjust_vswing_and_preemphasis(struct dptx *dptx)
 	u8 lane_01 = 0, lane_23 = 0;
 	int retval, i;
 
-	retval = mmi_dp_read_dpcd(dptx, DP_ADJUST_REQUEST_LANE0_1, &lane_01);
+	retval = drm_dp_dpcd_read_byte(&dptx->dp_aux,
+				       DP_ADJUST_REQUEST_LANE0_1, &lane_01);
 	if (retval)
 		return retval;
 
-	retval = mmi_dp_read_dpcd(dptx, DP_ADJUST_REQUEST_LANE2_3, &lane_23);
+	retval = drm_dp_dpcd_read_byte(&dptx->dp_aux,
+				       DP_ADJUST_REQUEST_LANE2_3, &lane_23);
 	if (retval)
 		return retval;
 
@@ -172,7 +174,8 @@ static int mmi_dp_alpm_is_available(struct dptx *dptx)
 	u8 alpm_cap = 0;
 	int retval;
 
-	retval = mmi_dp_read_dpcd(dptx, RECEIVER_ALPM_CAPABILITIES, &alpm_cap);
+	retval = drm_dp_dpcd_read_byte(&dptx->dp_aux,
+				       RECEIVER_ALPM_CAPABILITIES, &alpm_cap);
 	if (retval)
 		return retval;
 	dptx_dbg(dptx, "ALPM Availability: %lu\n", alpm_cap & BIT(0));
@@ -209,8 +212,8 @@ static int mmi_dp_handle_hotplug(struct dptx *dptx)
 
 	/* Read Sink DPCD registers - Receiver Capability */
 	memset(rx_caps, 0, DPTX_RECEIVER_CAP_SIZE);
-	retval = mmi_dp_read_bytes_from_dpcd(dptx, DP_DPCD_REV,
-					     rx_caps, DPTX_RECEIVER_CAP_SIZE);
+	retval = drm_dp_dpcd_read_data(&dptx->dp_aux, DP_DPCD_REV, rx_caps,
+				       DPTX_RECEIVER_CAP_SIZE);
 	if (retval) {
 		dptx_err(dptx, "DPCD Sink Capabilities: Unable to retrieve. retval:%d\n", retval);
 		return retval;
@@ -221,8 +224,8 @@ static int mmi_dp_handle_hotplug(struct dptx *dptx)
 
 	/* Read Sink DPCD registers - Extended Receiver Capability */
 	if (dptx->rx_caps.extended_receiver_cap_present) {
-		retval = mmi_dp_read_bytes_from_dpcd(dptx, 0x2200, rx_caps,
-						     DPTX_RECEIVER_CAP_SIZE);
+		retval = drm_dp_dpcd_read_data(&dptx->dp_aux, 0x2200, rx_caps,
+					       DPTX_RECEIVER_CAP_SIZE);
 		if (retval) {
 			dptx_err(dptx, "DPCD Extended Sink Capabilities: Unable to retrieve\n");
 			return retval;
@@ -233,22 +236,38 @@ static int mmi_dp_handle_hotplug(struct dptx *dptx)
 			 dptx->rx_caps.minor_rev_num);
 	}
 
-	mmi_dp_write_dpcd(dptx, DP_SET_POWER, 0);
+	retval = drm_dp_dpcd_write_byte(&dptx->dp_aux, DP_SET_POWER, 0);
+	if (retval)
+		return retval;
 	msleep(100);
-	mmi_dp_write_dpcd(dptx, DP_SET_POWER, 1);
+	retval = drm_dp_dpcd_write_byte(&dptx->dp_aux, DP_SET_POWER,
+					DP_SET_POWER_D0);
+	if (retval)
+		return retval;
 	msleep(50);
 
 	if (dptx->rx_caps.enhanced_frame_cap) {
 		u8 val = 0;
 
-		mmi_dp_read_dpcd(dptx, 0x00101, &val);
+		retval = drm_dp_dpcd_read_byte(&dptx->dp_aux,
+					       DP_LANE_COUNT_SET, &val);
+		if (retval)
+			return retval;
+
 		val |= BIT(7);
-		mmi_dp_write_dpcd(dptx, 0x00101, val);
+		retval = drm_dp_dpcd_write_byte(&dptx->dp_aux,
+						DP_LANE_COUNT_SET, val);
+		if (retval)
+			return retval;
+
 		dptx_dbg(dptx, "ENHANCED FRAME CAPABILITY ACTIVATED");
 	}
 
-	mmi_dp_read_dpcd(dptx, DP_SINK_COUNT, &sink_cnt);
-	sink_cnt &= 0x3F;
+	retval = drm_dp_dpcd_read_byte(&dptx->dp_aux, DP_SINK_COUNT, &sink_cnt);
+	if (retval)
+		return retval;
+
+	sink_cnt = DP_GET_SINK_COUNT(sink_cnt);
 	if (sink_cnt == 0) {
 		dptx_dbg(dptx, "ZERO SINKS CONNECTED");
 		return 0;
@@ -257,6 +276,9 @@ static int mmi_dp_handle_hotplug(struct dptx *dptx)
 	/* Initialize ALPM variables */
 	alpm = &dptx->alpm;
 	alpm_availability = mmi_dp_alpm_is_available(dptx);
+	if (alpm_availability < 0)
+		return alpm_availability;
+
 	if (alpm_availability)
 		alpm->status = DISABLED;
 	else
@@ -264,14 +286,24 @@ static int mmi_dp_handle_hotplug(struct dptx *dptx)
 
 	/* Define Stream Mode */
 	mmi_dp_write_mask(dptx, CCTL, CCTL_ENABLE_MST_MODE, dptx->mst);
-	mmi_dp_read_dpcd(dptx, DP_MSTM_CAP, &byte);
-	if (dptx->mst && byte) {
-		mmi_dp_write_dpcd(dptx, DP_MSTM_CTRL, 0x7);
+	retval = drm_dp_dpcd_read_byte(&dptx->dp_aux, DP_MSTM_CAP, &byte);
+	if (retval)
+		return retval;
+
+	if (dptx->mst && (byte & DP_MST_CAP)) {
+		byte = DP_MST_EN | DP_UP_REQ_EN | DP_UPSTREAM_IS_SRC;
+		retval = drm_dp_dpcd_write_byte(&dptx->dp_aux, DP_MSTM_CTRL, byte);
+		if (retval)
+			return retval;
+
 		dptx_dbg(dptx, "ENABLING MST ON SINK");
-		mmi_dp_write_dpcd(dptx, DP_BRANCH_DEVICE_CTRL, 0x1);
+		byte = DP_BRANCH_DEVICE_IRQ_HPD;
+		retval = drm_dp_dpcd_write_byte(&dptx->dp_aux, DP_BRANCH_DEVICE_CTRL, byte);
 	} else {
-		mmi_dp_write_dpcd(dptx, DP_MSTM_CTRL, 0x0);
+		retval = drm_dp_dpcd_write_byte(&dptx->dp_aux, DP_MSTM_CTRL, 0);
 	}
+	if (retval)
+		return retval;
 
 	rx_link_rate = mmi_dp_bw_to_phy_rate(dptx->rx_caps.max_link_rate);
 	dptx->link.rate = min_t(u8, dptx->max_rate, rx_link_rate);
@@ -301,6 +333,7 @@ irqreturn_t mmi_dp_threaded_irq(int irq, void *dev)
 {
 	u32 hpdsts, hpd_ien;
 	struct dptx *dptx = dev;
+	int ret;
 
 	mutex_lock(&dptx->mutex);
 
@@ -315,10 +348,15 @@ irqreturn_t mmi_dp_threaded_irq(int irq, void *dev)
 	if (atomic_read(&dptx->c_connect)) {
 		atomic_set(&dptx->c_connect, 0);
 
-		if (mmi_dp_read_regfield(dptx->base, HPD_STATUS, HPD_STATUS_MASK))
-			mmi_dp_handle_hotplug(dptx);
-		else
+		if (mmi_dp_read_regfield(dptx->base, HPD_STATUS,
+					 HPD_STATUS_MASK)) {
+			ret = mmi_dp_handle_hotplug(dptx);
+			if (ret)
+				dptx_err(dptx, "failed to handle hotplug: %d\n",
+					 ret);
+		} else {
 			mmi_dp_handle_hotunplug(dptx);
+		}
 		hpd_ien = mmi_dp_read(dptx->base, HPD_INTERRUPT_ENABLE);
 		hpd_ien |= DPTX_HPD_IEN_IRQ_EN;
 		mmi_dp_write(dptx->base, HPD_INTERRUPT_ENABLE, hpd_ien);
