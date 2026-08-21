@@ -232,12 +232,12 @@ TRACE_EVENT(aie_part_block_write64,
 		__field(__u32, partition_id)
 		__field(size_t, offset)
 		__field(size_t, len)
-		__dynamic_array(u32, data, len)
+		__dynamic_array(u32, data, min_t(size_t, len, 16))
 	),
 	TP_fast_assign(
 		__entry->partition_id = apart->partition_id;
 		__entry->offset = offset;
-		__entry->len = len;
+		__entry->len = min_t(size_t, len, 16);
 		memcpy(__get_dynamic_array(data), data, __get_dynamic_array_len(data));
 	),
 	TP_printk("id: %d  offset: %zx, len: %zx, data: %s",

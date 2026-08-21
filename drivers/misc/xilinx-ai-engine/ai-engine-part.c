@@ -236,13 +236,14 @@ static int aie_part_block_write64(struct aie_partition *apart, size_t offset,
 	int ret;
 	u32 i;
 
-	trace_aie_part_block_write64(apart, offset, len, data);
 	if (len > 16) {
 		dev_err(&apart->dev,
 			"Invalid block write64 len %zu, max is 64 bytes.\n",
 			len);
 		return -EINVAL;
 	}
+
+	trace_aie_part_block_write64(apart, offset, len, data);
 
 	ret = aie_part_reg_validation(apart, offset, len * sizeof(u32), 1);
 	if (ret < 0) {
