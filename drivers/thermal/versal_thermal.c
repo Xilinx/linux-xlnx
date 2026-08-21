@@ -35,16 +35,13 @@ static int temperature_sensor_get_temp(struct thermal_zone_device *tz, int *temp
 	int ret, val;
 
 	ret = iio_read_channel_processed(vti->channel, &val);
-	if (ret == IIO_VAL_FRACTIONAL) {
-		/* Convert raw value to temperature in millidegrees Celsius */
-		*temp = val * 1000;
-		*temp /= SYSMON_FRACTIONAL_DENOM;
-	} else if (ret == IIO_VAL_INT) {
-		*temp = val;
-	} else {
+	if (ret < 0) {
 		dev_err(vti->dev, "iio_read_channel_processed failed, ret code = %d\n", ret);
 		return ret;
 	}
+
+	*temp = val;
+
 	return 0;
 }
 
@@ -59,19 +56,14 @@ static int temperature_sensor_get_temp_aie(struct thermal_zone_device *tz,
 	for (ch_index = 0; ch_index < vti->num_aie_channels;
 		 ch_index++) {
 		ret = iio_read_channel_processed(vti->channel_aie[ch_index], &val);
-		if (ret == IIO_VAL_FRACTIONAL) {
-			/* Convert raw value to temperature in millidegrees Celsius */
-			*temp = val * 1000;
-			*temp /= SYSMON_FRACTIONAL_DENOM;
-		} else if (ret == IIO_VAL_INT) {
-			*temp = val;
-		} else {
+		if (ret < 0) {
 			dev_err(vti->dev, "iio_read_channel_processed failed aie ch%d, ret = %d\n",
 				ch_index, ret);
 			return ret;
 		}
-		if (*temp > max_temp)
-			max_temp = *temp;
+
+		if (val > max_temp)
+			max_temp = val;
 	}
 	*temp = max_temp;
 	return 0;
