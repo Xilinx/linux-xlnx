@@ -158,6 +158,14 @@
 	power-domains = <&versal_firmware PM_DEV_CAN_FD_1>;
 };
 
+&cpm_pciea {
+	resets = <&versal_reset VERSAL_RST_PCIE_CORE0>;
+};
+
+&cpm5_pcie {
+	resets = <&versal_reset VERSAL_RST_PCIE_CORE0>;
+};
+
 &gem0 {
 	clocks = <&versal_clk LPD_LSBUS>,
 		 <&versal_clk GEM0_REF>, <&versal_clk GEM0_TX>,

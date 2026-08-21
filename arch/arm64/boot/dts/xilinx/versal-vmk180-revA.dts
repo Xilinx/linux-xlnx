@@ -56,6 +56,16 @@
 
 /* PMC_MIO 0 -12 - configuration header QSPI/OSPI/EMMC */
 /* FIXME PMC_MIO37 ZU4_TRIGGER/PMC_MIO37/38 PCIE */
+&cpm_pciea {
+	pcie@0,0 {
+		device_type = "pci";
+		reg = <0x0 0x0 0x0 0x0 0x0>;
+		reset-gpios = <&gpio1 38 GPIO_ACTIVE_LOW>;
+		#address-cells = <3>;
+		#size-cells = <2>;
+		ranges;
+	};
+};
 
 &can1 { /* MIO40-41 */
 	status = "okay";
