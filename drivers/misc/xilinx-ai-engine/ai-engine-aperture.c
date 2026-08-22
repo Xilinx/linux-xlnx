@@ -92,7 +92,7 @@ int aie_aperture_enquire_parts(struct aie_aperture *aperture,
 		return ret;
 
 	list_for_each_entry(apart, &aperture->partitions, node) {
-		struct aie_range_args query;
+		struct aie_range_args query = { };
 
 		if (!num_queries_left) {
 			*num_parts_left += 1;
@@ -123,7 +123,7 @@ int aie_aperture_enquire_parts(struct aie_aperture *aperture,
 
 	for_each_clear_bitrange(rs, re, aperture->cols_res.bitmap,
 				(aperture->range.size.col - 1)) {
-		struct aie_range_args query;
+		struct aie_range_args query = { };
 
 		if (!num_queries_left) {
 			*num_parts_left += 1;
