@@ -64,7 +64,7 @@ int aie_part_pm_ops(struct aie_partition *apart, void *data, u32 type, struct ai
 	struct aie_pm_ops *pm_ops = &apart->pm_ops;
 	struct aie_op_start_num_col *op_range;
 	ssize_t end;
-	int ret;
+	int ret = 0;
 
 again:
 	op_range = pm_ops->op_range;
