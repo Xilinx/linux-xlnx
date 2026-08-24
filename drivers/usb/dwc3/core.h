@@ -1731,18 +1731,19 @@ static inline void dwc3_gadget_clear_tx_fifos(struct dwc3 *dwc)
 #if IS_ENABLED(CONFIG_USB_DWC3_OTG) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)
 void dwc3_otg_init(struct dwc3 *dwc);
 void dwc3_otg_exit(struct dwc3 *dwc);
+#else
+static inline void dwc3_otg_init(struct dwc3 *dwc)
+{ }
+static inline void dwc3_otg_exit(struct dwc3 *dwc)
+{ }
+#endif
+
 #if IS_ENABLED(CONFIG_USB_DWC3_OTG)
 void dwc3_otg_suspend(struct dwc3 *dwc);
 void dwc3_otg_resume(struct dwc3 *dwc);
 #else
 static inline void dwc3_otg_suspend(struct dwc3 *dwc) { }
 static inline void dwc3_otg_resume(struct dwc3 *dwc) { }
-#endif
-#else
-static inline void dwc3_otg_init(struct dwc3 *dwc)
-{ }
-static inline void dwc3_otg_exit(struct dwc3 *dwc)
-{ }
 #endif
 
 #if IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)
