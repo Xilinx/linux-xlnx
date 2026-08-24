@@ -94,6 +94,7 @@ static bool switch_probed;
 
 #define HW_ADDR_AGING_TIME_SHIFT		(8)
 #define HW_ADDR_AGING_TIME_MASK			GENMASK(19, 0)
+#define HW_ADDR_LEARN_NO_VLAN_MEM_BIT		BIT(3)
 #define HW_ADDR_AGING_BIT			BIT(2)
 #define HW_ADDR_LEARN_UNTAG_BIT			BIT(1)
 #define HW_ADDR_LEARN_BIT			BIT(0)
@@ -1698,6 +1699,41 @@ static inline void tsn_switch_set_src_mac_filter(const u8 *mac, int port)
 	axienet_iow(&lp, XAS_PORT_STATE_CTRL_OFFSET, val);
 }
 
+static int tsn_switch_allow_hw_addr_learn_ignore_vlan_mem(void)
+{
+	static const u8 mac_ports[] = { PORT_MAC1, PORT_MAC2 };
+	int err, i;
+	u32 val;
+
+	val = axienet_ior(&lp, XAS_HW_ADDR_LEARN_CTRL_OFFSET);
+	val |= HW_ADDR_LEARN_NO_VLAN_MEM_BIT | HW_ADDR_LEARN_UNTAG_BIT;
+	axienet_iow(&lp, XAS_HW_ADDR_LEARN_CTRL_OFFSET, val);
+
+	for (i = 0; i < ARRAY_SIZE(mac_ports); i++) {
+		struct port_status ps = {
+			.port_num = mac_ports[i],
+			.port_status = TSN_SW_STATE_BLOCKING
+		};
+
+		err = tsn_switch_set_stp_state(&ps);
+		if (err)
+			return err;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(mac_ports); i++) {
+		struct port_status ps = {
+			.port_num = mac_ports[i],
+			.port_status = TSN_SW_STATE_FORWARDING
+		};
+
+		err = tsn_switch_set_stp_state(&ps);
+		if (err)
+			return err;
+	}
+
+	return 0;
+}
+
 /* initialize pre-configured fdbs in the system */
 static int tsn_switch_fdb_init(struct platform_device *pdev)
 {
@@ -2014,6 +2050,15 @@ static int tsnswitch_probe(struct platform_device *pdev)
 		goto err;
 	}
 	ep_lp = netdev_priv(ndev);
+
+	if (en_hw_addr_learning) {
+		ret = tsn_switch_allow_hw_addr_learn_ignore_vlan_mem();
+		if (ret) {
+			dev_err(&pdev->dev,
+				"Failed to configure HW address learning\n");
+			goto err;
+		}
+	}
 
 	ret = set_pmap_config(ep_lp->pcpmap);
 	if (ret)
