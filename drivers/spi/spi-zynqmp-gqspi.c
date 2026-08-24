@@ -104,6 +104,8 @@
 #define GQSPI_IER_TXEMPTY_MASK			0x00000100
 #define GQSPI_QSPIDMA_DST_INTR_ALL_MASK		0x000000FE
 #define GQSPI_QSPIDMA_DST_STS_WTC		0x0000E000
+#define GQSPI_QSPIDMA_DST_CTRL_PAUSE_MEM_MASK	0x00000001
+#define GQSPI_QSPIDMA_DST_CTRL_PAUSE_STRM_MASK	0x00000002
 #define GQSPI_CFG_MODE_EN_DMA_MASK		0x80000000
 #define GQSPI_ISR_IDR_MASK			0x00000994
 #define GQSPI_QSPIDMA_DST_I_EN_DONE_MASK	0x00000002
@@ -195,6 +197,8 @@ struct qspi_platform_data {
  * @speed_hz:          Current SPI bus clock speed in hz
  * @has_tapdelay:	Used for tapdelay register available in qspi
  * @is_parallel:		Used for multi CS support
+ * @shutting_down:	Set by ->shutdown() to reject further operations,
+ *			guarded by @op_lock
  */
 struct zynqmp_qspi {
 	struct spi_controller *ctlr;
@@ -219,6 +223,7 @@ struct zynqmp_qspi {
 	bool io_mode;
 	bool has_tapdelay;
 	bool is_parallel;
+	bool shutting_down;
 };
 
 /**
@@ -682,7 +687,19 @@ static int zynqmp_qspi_setup_op(struct spi_device *qspi)
 	if (ctlr->busy)
 		return -EBUSY;
 
+	/*
+	 * Refuse once ->shutdown() has run, since writing here would bring
+	 * the controller back up right after shutdown disabled it. op_lock
+	 * is what serialises this check against zynqmp_qspi_shutdown().
+	 */
+	mutex_lock(&xqspi->op_lock);
+	if (xqspi->shutting_down) {
+		mutex_unlock(&xqspi->op_lock);
+		return -ESHUTDOWN;
+	}
+
 	zynqmp_gqspi_write(xqspi, GQSPI_EN_OFST, GQSPI_EN_MASK);
+	mutex_unlock(&xqspi->op_lock);
 
 	return 0;
 }
@@ -1147,6 +1164,12 @@ static int zynqmp_qspi_exec_op(struct spi_mem *mem,
 	u8 addrbuswidth = zynqmp_get_addr_buswidth(op);
 
 	mutex_lock(&xqspi->op_lock);
+
+	if (xqspi->shutting_down) {
+		mutex_unlock(&xqspi->op_lock);
+		return -ESHUTDOWN;
+	}
+
 	zynqmp_qspi_config_op(xqspi, op);
 	zynqmp_qspi_chipselect(mem->spi, false);
 	genfifoentry |= xqspi->genfifocs;
@@ -1489,11 +1512,105 @@ static void zynqmp_qspi_remove(struct platform_device *pdev)
 	clk_disable_unprepare(xqspi->pclk);
 }
 
+/**
+ * zynqmp_qspi_shutdown - Stop the controller on reboot, poweroff or kexec
+ * @pdev:	Pointer to the platform_device structure
+ *
+ * Rejects further operations, waits for the one in flight, then disables the
+ * DMA and the controller. Only the rejection is unconditional: if the runtime
+ * resume fails the registers cannot be reached and the controller is left
+ * running.
+ */
+static void zynqmp_qspi_shutdown(struct platform_device *pdev)
+{
+	struct zynqmp_qspi *xqspi = platform_get_drvdata(pdev);
+	ulong timeout;
+	int ret;
+
+	/*
+	 * Refuse first, since that needs no clock. Blocking on op_lock is how
+	 * the operation in flight is waited for, deliberately without a
+	 * timeout. spi_controller_suspend() cannot serve here: it only sets
+	 * SPI_CONTROLLER_SUSPENDED, which the spi-mem path never reads.
+	 */
+	mutex_lock(&xqspi->op_lock);
+	xqspi->shutting_down = true;
+	mutex_unlock(&xqspi->op_lock);
+
+	ret = pm_runtime_resume_and_get(&pdev->dev);
+	if (ret < 0) {
+		dev_warn(&pdev->dev,
+			 "shutdown: resume failed (%d), controller left running\n",
+			 ret);
+		return;
+	}
+
+	mutex_lock(&xqspi->op_lock);
+
+	/*
+	 * Mask at the interrupt controller, not just the device: op_lock
+	 * doesn't exclude zynqmp_qspi_irq(), and disable_hw() below can't
+	 * recall a handler the GIC already dispatched. Must come after
+	 * op_lock so an operation still in flight gets its interrupt
+	 * instead of burning its full timeout.
+	 */
+	disable_irq(xqspi->irq);
+
+	/*
+	 * PAUSE_MEM stops new writes to memory; an outstanding one still
+	 * lands on its own and nothing here confirms when (BUSY in DST_STS
+	 * holds through a pause). Unmap stays last anyway - it narrows the
+	 * window, not closes it. PAUSE_STRM stops new flash data reaching
+	 * the DST FIFO, dropping whatever was in flight - fine here since
+	 * the transfer is being abandoned anyway.
+	 */
+	zynqmp_gqspi_write(xqspi, GQSPI_QSPIDMA_DST_CTRL_OFST,
+			   zynqmp_gqspi_read(xqspi, GQSPI_QSPIDMA_DST_CTRL_OFST) |
+			   GQSPI_QSPIDMA_DST_CTRL_PAUSE_MEM_MASK |
+			   GQSPI_QSPIDMA_DST_CTRL_PAUSE_STRM_MASK);
+
+	zynqmp_qspi_disable_dma(xqspi);
+	zynqmp_gqspi_write(xqspi, GQSPI_FIFO_CTRL_OFST,
+			   GQSPI_FIFO_CTRL_RST_RX_FIFO_MASK |
+			   GQSPI_FIFO_CTRL_RST_TX_FIFO_MASK |
+			   GQSPI_FIFO_CTRL_RST_GEN_FIFO_MASK);
+
+	/*
+	 * FIFO_CTRL's reset bits are write-only, so confirm via
+	 * RXEMPTY/TXEMPTY/GENFIFOEMPTY in ISR instead.
+	 */
+	timeout = jiffies + msecs_to_jiffies(1000);
+	while ((zynqmp_gqspi_read(xqspi, GQSPI_ISR_OFST) &
+		(GQSPI_ISR_RXEMPTY_MASK | GQSPI_ISR_TXEMPTY_MASK |
+		 GQSPI_ISR_GENFIFOEMPTY_MASK)) !=
+	       (GQSPI_ISR_RXEMPTY_MASK | GQSPI_ISR_TXEMPTY_MASK |
+		GQSPI_ISR_GENFIFOEMPTY_MASK)) {
+		if (time_after_eq(jiffies, timeout)) {
+			dev_warn(&pdev->dev, "FIFO reset timed out, stopping anyway\n");
+			break;
+		}
+		cpu_relax();
+	}
+
+	zynqmp_qspi_disable_hw(xqspi);
+
+	/* Unmap last, per the PAUSE_MEM comment above. */
+	if (xqspi->dma_rx_bytes) {
+		dma_unmap_single(xqspi->dev, xqspi->dma_addr,
+				 xqspi->dma_rx_bytes, DMA_FROM_DEVICE);
+		xqspi->dma_rx_bytes = 0;
+	}
+	mutex_unlock(&xqspi->op_lock);
+
+	pm_runtime_put_sync(&pdev->dev);
+}
+
 MODULE_DEVICE_TABLE(of, zynqmp_qspi_of_match);
 
 static struct platform_driver zynqmp_qspi_driver = {
 	.probe = zynqmp_qspi_probe,
 	.remove = zynqmp_qspi_remove,
+	.shutdown = zynqmp_qspi_shutdown,
 	.driver = {
 		.name = "zynqmp-qspi",
 		.of_match_table = zynqmp_qspi_of_match,
