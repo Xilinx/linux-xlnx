@@ -1932,7 +1932,9 @@ static int tsnswitch_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "FDB init failed\n");
 			goto err_fdb_init;
 		}
-		xlnx_switchdev_init();
+		ret = xlnx_switchdev_init();
+		if (ret)
+			goto err_fdb_init;
 	} else {
 		pr_info("TSN IP with inband mgmt: Linux SWITCHDEV turned off\n");
 	}
