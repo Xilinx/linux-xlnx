@@ -25,6 +25,7 @@
 #include "mmi_dc.h"
 #include "mmi_dc_audio.h"
 
+#define MMI_DC_AVBUF_AUDSTRM_SEL_NONE	1
 #define MMI_DC_AVBUF_AUDSTRM_SEL_MEM	2
 
 #define MMI_DC_AVBUF_OUTPUT_AUDSTREAM1_SEL_MASK	GENMASK(5, 4)
@@ -183,8 +184,15 @@ static int dc_dai_hw_free(struct snd_pcm_substream *substream,
 	struct mmi_dc *dc =
 		snd_soc_dai_get_drvdata(snd_soc_rtd_to_cpu(rtd, 0));
 	struct mmi_audio *audio = dc->audio;
+	u32 val;
 
 	guard(mutex)(&audio->enable_lock);
+
+	val = dc_read_avbuf(dc, MMI_DC_AV_BUF_OUTPUT_AUDIO_VIDEO_SELECT);
+	val &= ~MMI_DC_AVBUF_OUTPUT_AUDSTREAM1_SEL_MASK;
+	val |= FIELD_PREP(MMI_DC_AVBUF_OUTPUT_AUDSTREAM1_SEL_MASK,
+			  MMI_DC_AVBUF_AUDSTRM_SEL_NONE);
+	dc_write_avbuf(dc, MMI_DC_AV_BUF_OUTPUT_AUDIO_VIDEO_SELECT, val);
 
 	pm_runtime_put(dc->dev);
 
