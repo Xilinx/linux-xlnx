@@ -1497,19 +1497,25 @@ clk_dis_pclk:
 static void zynqmp_qspi_remove(struct platform_device *pdev)
 {
 	struct zynqmp_qspi *xqspi = platform_get_drvdata(pdev);
+	int ret;
 
-	pm_runtime_get_sync(&pdev->dev);
+	ret = pm_runtime_get_sync(&pdev->dev);
 
 	spi_unregister_controller(xqspi->ctlr);
 
 	/*
 	 * Mask at the interrupt controller, same reasoning as
-	 * zynqmp_qspi_shutdown(): the write below cannot recall a handler
-	 * the GIC already dispatched.
+	 * zynqmp_qspi_shutdown(). Placed before the ret >= 0 check so it
+	 * also covers the branch where disable_hw() is skipped.
 	 */
 	disable_irq(xqspi->irq);
 
-	zynqmp_gqspi_write(xqspi, GQSPI_EN_OFST, 0x0);
+	if (ret >= 0)
+		zynqmp_qspi_disable_hw(xqspi);
+	else
+		dev_warn(&pdev->dev,
+			 "failed to resume device, skip hw disable (%d)\n",
+			 ret);
 
 	pm_runtime_disable(&pdev->dev);
 	pm_runtime_dont_use_autosuspend(&pdev->dev);
