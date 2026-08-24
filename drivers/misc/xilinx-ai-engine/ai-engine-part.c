@@ -66,7 +66,7 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 				   size_t len, u8 is_write)
 {
 	struct aie_device *adev;
-	u32 regend32, ttype;
+	u32 ttype;
 	u64 regoff, regend64;
 	struct aie_location loc, aloc;
 	unsigned int i, num_mems;
@@ -133,20 +133,15 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 		if (pmem[i].mem.range.start.row <= aloc.row &&
 		    (pmem[i].mem.range.start.row +
 		     pmem[i].mem.range.size.row) > aloc.row) {
-			if (pmem[i].mem.offset <= regoff &&
-			    ((pmem[i].mem.offset + pmem[i].mem.size)
-			      > regoff)) {
-				if ((pmem[i].mem.offset + pmem[i].mem.size)
-				     < regend64) {
-					dev_err(&apart->dev,
-						"address 0x%zx, 0x%zx not accessible.\n",
-						offset, len);
-					return -EINVAL;
-				}
-			} else if (pmem[i].mem.offset > regoff &&
-				   (pmem[i].mem.offset <= regend64 &&
-				    ((pmem[i].mem.offset + pmem[i].mem.size)
-				     > regend64))) {
+			u64 mem_start = pmem[i].mem.offset;
+			u64 mem_end;
+
+			if (!pmem[i].mem.size)
+				continue;
+			mem_end = mem_start + pmem[i].mem.size - 1;
+			/* Reject any access that overlaps but is not fully inside. */
+			if (regoff <= mem_end && regend64 >= mem_start &&
+			    (regoff < mem_start || regend64 > mem_end)) {
 				dev_err(&apart->dev,
 					"address 0x%zx, 0x%zx not accessible.\n",
 					offset, len);
@@ -158,7 +153,6 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 	if (!is_write)
 		return 0;
 
-	regend32 = lower_32_bits(regend64);
 	ttype = adev->ops->get_tile_type(adev, &loc);
 	for (i = 0; i < adev->num_kernel_regs; i++) {
 		const struct aie_tile_regs *regs;
@@ -171,8 +165,11 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 			   AIE_REGS_ATTR_PERM_SHIFT;
 		if (!(BIT(ttype) & rttype))
 			continue;
-		if ((regoff >= regs->soff && regoff <= regs->eoff) ||
-		    (regend32 >= regs->soff && regend32 <= regs->eoff)) {
+		/*
+		 * Inclusive interval overlap: also catches a range that
+		 * fully encloses the protected regs.
+		 */
+		if (regoff <= regs->eoff && regend64 >= regs->soff) {
 			if (!writable) {
 				dev_err(&apart->dev,
 					"reg 0x%zx,0x%zx not writable.\n",
