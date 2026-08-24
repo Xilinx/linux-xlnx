@@ -856,6 +856,8 @@ static int get_mac_addr_learn(void __user *arg)
 	struct mac_addr_learn mac_learn;
 	u32 u_value;
 
+	memset(&mac_learn, 0, sizeof(mac_learn));
+
 	u_value = axienet_ior(&lp, XAS_HW_ADDR_LEARN_CTRL_OFFSET);
 	mac_learn.aging_time = (u_value >> HW_ADDR_AGING_TIME_SHIFT) &
 				HW_ADDR_AGING_TIME_MASK;
