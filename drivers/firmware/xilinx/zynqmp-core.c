@@ -29,6 +29,7 @@ static u32 query_features[FEATURE_PAYLOAD_SIZE];
 
 static u32 sip_svc_version;
 static struct platform_device *em_dev;
+static struct platform_device *securefw_dev;
 
 static const struct mfd_cell firmware_devs[] = {
 	{
@@ -926,6 +927,15 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
 			dev_err_probe(&pdev->dev, PTR_ERR(em_dev), "EM register fail with error\n");
 	}
 
+	/* Register securefw device only if the firmware supports secure image load */
+	if (zynqmp_pm_feature(PM_SECURE_IMAGE) >= 0) {
+		securefw_dev = platform_device_register_data(&pdev->dev, "securefw",
+							     -1, NULL, 0);
+		if (IS_ERR(securefw_dev))
+			dev_err_probe(&pdev->dev, PTR_ERR(securefw_dev),
+				      "securefw register fail with error\n");
+	}
+
 	return of_platform_populate(dev->of_node, NULL, NULL, dev);
 }
 
@@ -949,6 +959,7 @@ static void zynqmp_firmware_remove(struct platform_device *pdev)
 	}
 
 	platform_device_unregister(em_dev);
+	platform_device_unregister(securefw_dev);
 }
 
 static const struct platform_fw_data platform_fw_data_versal2 = {

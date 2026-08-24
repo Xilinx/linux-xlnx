@@ -193,34 +193,7 @@ static struct platform_driver securefw_driver = {
 	.remove = securefw_remove,
 };
 
-static struct platform_device *securefw_dev_reg;
-
-static int __init zynqmp_secure_init(void)
-{
-	int ret;
-
-	ret = platform_driver_register(&securefw_driver);
-	if (ret)
-		return ret;
-
-	securefw_dev_reg = platform_device_register_simple("securefw", -1,
-							   NULL, 0);
-	if (IS_ERR(securefw_dev_reg)) {
-		ret = PTR_ERR(securefw_dev_reg);
-		platform_driver_unregister(&securefw_driver);
-		return ret;
-	}
-	return 0;
-}
-
-static void __exit zynqmp_secure_exit(void)
-{
-	platform_device_unregister(securefw_dev_reg);
-	platform_driver_unregister(&securefw_driver);
-}
-
-module_init(zynqmp_secure_init);
-module_exit(zynqmp_secure_exit);
+module_platform_driver(securefw_driver);
 
 MODULE_DESCRIPTION("Xilinx ZynqMP Secure Driver");
 MODULE_LICENSE("GPL");
