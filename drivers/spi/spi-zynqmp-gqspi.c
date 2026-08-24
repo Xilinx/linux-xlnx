@@ -338,6 +338,38 @@ static void zynqmp_gqspi_selecttarget(struct zynqmp_qspi *instanceptr,
 }
 
 /**
+ * zynqmp_qspi_disable_hw - Clear and mask all interrupts, stop the controller
+ * @xqspi:	Pointer to the zynqmp_qspi structure
+ *
+ * Acknowledges any pending GQSPI and DMA status, masks every interrupt source
+ * and disables the controller. Used when (re)initialising the hardware and
+ * when handing the system over on reboot, poweroff or kexec.
+ */
+static void zynqmp_qspi_disable_hw(struct zynqmp_qspi *xqspi)
+{
+	/* Select the GQSPI mode */
+	zynqmp_gqspi_write(xqspi, GQSPI_SEL_OFST, GQSPI_SEL_MASK);
+	/* Clear and disable interrupts */
+	zynqmp_gqspi_write(xqspi, GQSPI_ISR_OFST,
+			   zynqmp_gqspi_read(xqspi, GQSPI_ISR_OFST) |
+			   GQSPI_ISR_WR_TO_CLR_MASK);
+	/* Clear the DMA STS */
+	zynqmp_gqspi_write(xqspi, GQSPI_QSPIDMA_DST_I_STS_OFST,
+			   zynqmp_gqspi_read(xqspi,
+					     GQSPI_QSPIDMA_DST_I_STS_OFST));
+	zynqmp_gqspi_write(xqspi, GQSPI_QSPIDMA_DST_STS_OFST,
+			   zynqmp_gqspi_read(xqspi,
+					     GQSPI_QSPIDMA_DST_STS_OFST) |
+					     GQSPI_QSPIDMA_DST_STS_WTC);
+	zynqmp_gqspi_write(xqspi, GQSPI_IDR_OFST, GQSPI_IDR_ALL_MASK);
+	zynqmp_gqspi_write(xqspi,
+			   GQSPI_QSPIDMA_DST_I_DIS_OFST,
+			   GQSPI_QSPIDMA_DST_INTR_ALL_MASK);
+	/* Disable the GQSPI */
+	zynqmp_gqspi_write(xqspi, GQSPI_EN_OFST, 0x0);
+}
+
+/**
  * zynqmp_qspi_set_tapdelay:   To configure qspi tap delays
  * @xqspi:             Pointer to the zynqmp_qspi structure
  * @baudrateval:       Buadrate to configure
@@ -412,26 +444,8 @@ static void zynqmp_qspi_init_hw(struct zynqmp_qspi *xqspi)
 	u32 config_reg, baud_rate_val = 0;
 	ulong clk_rate;
 
-	/* Select the GQSPI mode */
-	zynqmp_gqspi_write(xqspi, GQSPI_SEL_OFST, GQSPI_SEL_MASK);
-	/* Clear and disable interrupts */
-	zynqmp_gqspi_write(xqspi, GQSPI_ISR_OFST,
-			   zynqmp_gqspi_read(xqspi, GQSPI_ISR_OFST) |
-			   GQSPI_ISR_WR_TO_CLR_MASK);
-	/* Clear the DMA STS */
-	zynqmp_gqspi_write(xqspi, GQSPI_QSPIDMA_DST_I_STS_OFST,
-			   zynqmp_gqspi_read(xqspi,
-					     GQSPI_QSPIDMA_DST_I_STS_OFST));
-	zynqmp_gqspi_write(xqspi, GQSPI_QSPIDMA_DST_STS_OFST,
-			   zynqmp_gqspi_read(xqspi,
-					     GQSPI_QSPIDMA_DST_STS_OFST) |
-					     GQSPI_QSPIDMA_DST_STS_WTC);
-	zynqmp_gqspi_write(xqspi, GQSPI_IDR_OFST, GQSPI_IDR_ALL_MASK);
-	zynqmp_gqspi_write(xqspi,
-			   GQSPI_QSPIDMA_DST_I_DIS_OFST,
-			   GQSPI_QSPIDMA_DST_INTR_ALL_MASK);
-	/* Disable the GQSPI */
-	zynqmp_gqspi_write(xqspi, GQSPI_EN_OFST, 0x0);
+	zynqmp_qspi_disable_hw(xqspi);
+
 	config_reg = zynqmp_gqspi_read(xqspi, GQSPI_CONFIG_OFST);
 	config_reg &= ~GQSPI_CFG_MODE_EN_MASK;
 	/* Manual start */
