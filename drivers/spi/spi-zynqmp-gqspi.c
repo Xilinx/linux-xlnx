@@ -1502,6 +1502,13 @@ static void zynqmp_qspi_remove(struct platform_device *pdev)
 
 	spi_unregister_controller(xqspi->ctlr);
 
+	/*
+	 * Mask at the interrupt controller, same reasoning as
+	 * zynqmp_qspi_shutdown(): the write below cannot recall a handler
+	 * the GIC already dispatched.
+	 */
+	disable_irq(xqspi->irq);
+
 	zynqmp_gqspi_write(xqspi, GQSPI_EN_OFST, 0x0);
 
 	pm_runtime_disable(&pdev->dev);
