@@ -922,7 +922,7 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 	}
 
 	if (args->init_opts & AIE_PART_INIT_OPT_HW_ERR_INT) {
-		u16 data = 0;
+		u16 data = 1;
 
 		opts |= AIE_PART_INIT_OPT_HW_ERR_INT;
 		ret = aie_part_pm_ops(apart, &data, AIE_PART_INIT_OPT_HW_ERR_INT, apart->range, 0);
