@@ -442,12 +442,6 @@ again:
 		op->offset = hs_addr->offset;
 		op->low_addr = hs_addr->hs_dma & 0xFFFFFFFFULL;
 		op->high_addr = hs_addr->hs_dma >> 32;
-		if (flush)
-			ret = aie_part_pm_ops_flush(apart);
-
-		if (ret)
-			return ret;
-		goto again;
 	}
 
 	if (type)
