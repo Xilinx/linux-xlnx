@@ -859,11 +859,11 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 	    (args->init_opts & AIE_PART_INIT_OPT_SHIM_RST)) {
 		ret = aie_part_maskpoll_noc_outstanding_aximm_txn(apart);
 		if (ret)
-			goto out;
+			goto flush_out;
 
 		ret = aie_part_maskpoll_uc_outstanding_aximm_txn(apart);
 		if (ret)
-			goto out;
+			goto flush_out;
 		args->init_opts &= ~(AIE_PART_INIT_OPT_ENB_UC_DMA_PAUSE |
 				     AIE_PART_INIT_OPT_ENB_NOC_DMA_PAUSE);
 	}
@@ -881,14 +881,7 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 	ret = aie_part_pm_ops(apart, NULL, opts, apart->range, 1);
 	if (ret) {
 		dev_err(&apart->dev, "pm ops: 0x%x failed: %d", opts, ret);
-		goto out;
-	}
-
-	if (args->init_opts & AIE_PART_INIT_OPT_ISOLATE) {
-		opts |= AIE_PART_INIT_OPT_ISOLATE;
-		ret = aie_part_init_isolation(apart);
-		if (ret)
-			goto out;
+		goto flush_out;
 	}
 
 	if (args->init_opts & AIE_PART_INIT_OPT_UC_ZEROIZATION) {
@@ -896,17 +889,47 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 
 		opts |= AIE_PART_INIT_OPT_UC_ZEROIZATION;
 		ret = aie_part_pm_ops(apart, &data, AIE_PART_INIT_OPT_UC_ZEROIZATION,
-				      apart->range, 1);
+				      apart->range, 0);
 		if (ret)
-			goto out;
+			goto flush_out;
 	}
 
-	if (args->init_opts & AIE_PART_INIT_OPT_SET_L2_IRQ) {
-		opts |= AIE_PART_INIT_OPT_SET_L2_IRQ;
+	if (args->init_opts & AIE_PART_INIT_OPT_HW_ERR_INT) {
+		u16 data = 1;
 
-		ret = aie2ps_part_set_l2_irq(apart);
+		opts |= AIE_PART_INIT_OPT_HW_ERR_INT;
+		ret = aie_part_pm_ops(apart, &data, AIE_PART_INIT_OPT_HW_ERR_INT, apart->range, 0);
 		if (ret)
-			goto out;
+			goto flush_out;
+	}
+
+	if (args->init_opts & AIE_PART_INIT_OPT_HW_ERR_MASK) {
+		u16 data = 0x2;
+
+		opts |= AIE_PART_INIT_OPT_HW_ERR_MASK;
+		ret = aie_part_pm_ops(apart, &data, AIE_PART_INIT_OPT_HW_ERR_MASK,
+				      apart->range, 0);
+		if (ret)
+			goto flush_out;
+	}
+
+	if (args->init_opts & AIE_PART_INIT_OPT_SET_ECC_SCRUB_PERIOD) {
+		opts |= AIE_PART_INIT_OPT_SET_ECC_SCRUB_PERIOD;
+
+		ret = aie_part_pm_ops(apart, &args->ecc_scrub,
+				      AIE_PART_INIT_OPT_SET_ECC_SCRUB_PERIOD, apart->range, 0);
+		if (ret)
+			goto flush_out;
+	}
+
+	if (args->init_opts & AIE_PART_INIT_OPT_DIS_TLAST_ERROR) {
+		u16 data = 0;
+
+		opts |= AIE_PART_INIT_OPT_DIS_TLAST_ERROR;
+		ret = aie_part_pm_ops(apart, &data,
+				      AIE_PART_INIT_OPT_DIS_TLAST_ERROR, apart->range, 0);
+		if (ret)
+			goto flush_out;
 	}
 
 	if (args->init_opts & AIE_PART_INIT_OPT_NMU_CONFIG) {
@@ -917,35 +940,29 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 			range.size.col = 2;
 			ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_NMU_CONFIG, range, 0);
 			if (ret)
-				goto out;
+				goto flush_out;
 		}
 	}
 
-	if (args->init_opts & AIE_PART_INIT_OPT_HW_ERR_INT) {
-		u16 data = 1;
+	if (args->init_opts & AIE_PART_INIT_OPT_SET_L2_IRQ) {
+		opts |= AIE_PART_INIT_OPT_SET_L2_IRQ;
 
-		opts |= AIE_PART_INIT_OPT_HW_ERR_INT;
-		ret = aie_part_pm_ops(apart, &data, AIE_PART_INIT_OPT_HW_ERR_INT, apart->range, 0);
+		ret = aie2ps_part_set_l2_irq(apart);
 		if (ret)
-			goto out;
+			goto flush_out;
 	}
 
-	if (args->init_opts & AIE_PART_INIT_OPT_HW_ERR_MASK) {
-		u16 data = 0x2;
+	if (args->init_opts & AIE_PART_INIT_OPT_HANDSHAKE) {
+		if (!args->handshake || args->handshake_cols < 1U) {
+			dev_err(&apart->dev, "failed to write handshake region!\n");
+			goto flush_out;
+		}
 
-		opts |= AIE_PART_INIT_OPT_HW_ERR_MASK;
-		ret = aie_part_pm_ops(apart, &data, AIE_PART_INIT_OPT_HW_ERR_MASK, apart->range, 0);
+		opts |= AIE_PART_INIT_OPT_HANDSHAKE;
+		ret = aie2ps_part_write_handshake(apart, args->handshake,
+						  args->handshake_cols);
 		if (ret)
-			goto out;
-	}
-
-	if (args->init_opts & AIE_PART_INIT_OPT_SET_ECC_SCRUB_PERIOD) {
-		opts |= AIE_PART_INIT_OPT_SET_ECC_SCRUB_PERIOD;
-
-		ret = aie_part_pm_ops(apart, &args->ecc_scrub,
-				      AIE_PART_INIT_OPT_SET_ECC_SCRUB_PERIOD, apart->range, 0);
-		if (ret)
-			goto out;
+			goto flush_out;
 	}
 
 	/* Request tile locations */
@@ -956,18 +973,16 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 
 	ret = aie_part_request_tiles(apart, args->num_tiles, args->locs);
 	if (ret)
-		goto out;
+		goto flush_out;
 
-	if (args->init_opts & AIE_PART_INIT_OPT_HANDSHAKE) {
-		if (!args->handshake || args->handshake_cols < 1U) {
-			dev_err(&apart->dev, "failed to write handshake region!\n");
-			goto out;
-		}
-
-		opts |= AIE_PART_INIT_OPT_HANDSHAKE;
-		ret = aie2ps_part_write_handshake(apart, args->handshake,
-						  args->handshake_cols);
-
+	/* aie_part_request_tiles() -> aie2ps_set_part_clocks() flushes the pm_ops.
+	 * No need to call aie_part_pm_ops_flush().
+	 *
+	 * Only iowrite from here
+	 */
+	if (args->init_opts & AIE_PART_INIT_OPT_ISOLATE) {
+		opts |= AIE_PART_INIT_OPT_ISOLATE;
+		ret = aie_part_init_isolation(apart);
 		if (ret)
 			goto out;
 	}
@@ -979,20 +994,13 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 			goto out;
 	}
 
-	if (args->init_opts & AIE_PART_INIT_OPT_DIS_TLAST_ERROR) {
-		u16 data = 0;
-
-		opts |= AIE_PART_INIT_OPT_DIS_TLAST_ERROR;
-		ret = aie_part_pm_ops(apart, &data,
-				      AIE_PART_INIT_OPT_DIS_TLAST_ERROR,
-				      apart->range, 1);
-		if (ret)
-			goto out;
-	}
-
 	if (opts != args->init_opts)
 		dev_warn(&apart->dev, "Invalid init_opts: 0x%x", opts ^ args->init_opts);
 
+	goto out;
+
+flush_out:
+	aie_part_pm_ops_flush(apart);
 out:
 	mutex_unlock(&apart->mlock);
 	return ret;
