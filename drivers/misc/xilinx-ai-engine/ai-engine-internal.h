@@ -1928,6 +1928,7 @@ int aie_part_maskpoll_register(struct aie_partition *apart, u32 offset, u32 data
 int aie_partition_uc_zeroize_mem(struct device *dev, struct aie_location *loc, u32 regval);
 int aie_config_error_halt_event(struct aie_partition *apart);
 int aie2ps_error_handling_init_shim(struct aie_partition *apart);
+int aie2ps_error_handling_init_user_event1_col0_1(struct aie_partition *apart);
 int aie2ps_error_handling_init_mem_aie(struct aie_partition *apart);
 int aie2ps_part_write_handshake(struct aie_partition *apart,
 				struct aie_op_handshake_data *data,
