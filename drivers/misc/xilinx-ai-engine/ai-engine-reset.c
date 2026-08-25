@@ -865,11 +865,13 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 
 	/* First lets send non-data aie_op_type_len ops */
 	opts = 0;
-	/* This operation will do first 4 steps of sequence */
+	/* This operation will do first 6 steps of sequence */
 	opts |= (args->init_opts & AIE_PART_INIT_OPT_COLUMN_RST);
 	opts |= (args->init_opts & AIE_PART_INIT_OPT_SHIM_RST);
 	opts |= (args->init_opts & AIE_PART_INIT_OPT_BLOCK_NOCAXIMMERR);
 	opts |= (args->init_opts & AIE_PART_INIT_OPT_ENB_COLCLK_BUFF);
+	opts |= (args->init_opts & AIE_PART_INIT_OPT_ZEROIZEMEM);
+	opts |= (args->init_opts & AIE_PART_INIT_OPT_UC_ENB_MEM_PRIV);
 	/* push opts to pm and flush, these ops needs to complete before we perform next ones*/
 	ret = aie_part_pm_ops(apart, NULL, opts, apart->range, 1);
 	if (ret) {
@@ -880,13 +882,6 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 	if (args->init_opts & AIE_PART_INIT_OPT_ISOLATE) {
 		opts |= AIE_PART_INIT_OPT_ISOLATE;
 		ret = aie_part_init_isolation(apart);
-		if (ret)
-			goto out;
-	}
-
-	if (args->init_opts & AIE_PART_INIT_OPT_ZEROIZEMEM) {
-		opts |= AIE_PART_INIT_OPT_ZEROIZEMEM;
-		ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_ZEROIZEMEM, apart->range, 1);
 		if (ret)
 			goto out;
 	}
@@ -944,15 +939,6 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 
 		ret = aie_part_pm_ops(apart, &args->ecc_scrub,
 				      AIE_PART_INIT_OPT_SET_ECC_SCRUB_PERIOD, apart->range, 0);
-		if (ret)
-			goto out;
-	}
-
-	if (args->init_opts & AIE_PART_INIT_OPT_UC_ENB_MEM_PRIV) {
-		opts |= AIE_PART_INIT_OPT_UC_ENB_MEM_PRIV;
-
-		ret = aie_part_pm_ops(apart, NULL, AIE_PART_INIT_OPT_UC_ENB_MEM_PRIV, apart->range,
-				      0);
 		if (ret)
 			goto out;
 	}
