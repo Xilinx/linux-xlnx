@@ -5,6 +5,7 @@
  * Copyright (C) 2020 Xilinx, Inc.
  */
 
+#include "linux/xlnx-ai-engine.h"
 #include <linux/bitfield.h>
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/io.h>
@@ -847,6 +848,7 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 				   AIE_PART_INIT_OPT_ERR_SHIM_INIT |
 				   AIE_PART_INIT_OPT_ERR_MEM_AIE_INIT;
 		args->init_opts &= ~AIE_PART_INIT_ERROR_HANDLING;
+		args->init_opts &= ~AIE_PART_INIT_OPT_USER_EVENT1_INIT;
 	}
 
 	if ((args->init_opts & AIE_PART_INIT_OPT_COLUMN_RST) ||
@@ -1011,6 +1013,12 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 	if (args->init_opts & AIE_PART_INIT_OPT_ERR_HALT_EVENT) {
 		opts |= AIE_PART_INIT_OPT_ERR_HALT_EVENT;
 		ret = aie_config_error_halt_event(apart);
+		if (ret)
+			goto out;
+	}
+	if (args->init_opts & AIE_PART_INIT_OPT_USER_EVENT1_INIT) {
+		opts |= AIE_PART_INIT_OPT_USER_EVENT1_INIT;
+		ret = aie2ps_error_handling_init_user_event1_col0_1(apart);
 		if (ret)
 			goto out;
 	}

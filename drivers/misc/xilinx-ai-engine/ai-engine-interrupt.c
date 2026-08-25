@@ -2638,6 +2638,88 @@ int aie2ps_error_handling_init_shim(struct aie_partition *apart)
 	return 0;
 }
 
+/**
+ * aie2ps_error_handling_init_user_event1_col0_1() - configure USER_EVENT1
+ *						     handling on the first two
+ *						     columns of a partition.
+ * @apart: AIE partition pointer.
+ * @return: 0 for success, negative value for failure.
+ *
+ * USER_EVENT1 is raised by software on the first column of the partition and
+ * routed to the second column, which is the only column whose L2 interrupt
+ * controller listens to the USER_EVENT1 L1 IRQ event. This performs the
+ * partial configuration needed for that path: on column 0 the USER_EVENT1
+ * broadcast is driven out towards column 1, and on column 1 the broadcast is
+ * mapped onto the L1 interrupt controller so the event reaches the L2
+ * controller and, from there, the host. All remaining columns only take part
+ * in error broadcast handling and are untouched here.
+ */
+int aie2ps_error_handling_init_user_event1_col0_1(struct aie_partition *apart)
+{
+	u32 start_col = apart->range.start.col;
+	struct aie_location loc = { .row = 0 };
+	const struct aie_event_attr *attr;
+	u32 bcast_bitmap;
+	u32 l2_enable;
+	int ret;
+
+	attr = apart->adev->pl_events;
+
+	/* Configure relative Col0 for user_event1
+	 */
+	loc.col = start_col;
+	bcast_bitmap = BIT(AIE_SHIM_USER_EVENT1_BC_ID);
+	ret = aie_intr_ctrl_l1_broadcast_block(apart, loc, AIE_SHIM_SWITCH_A, bcast_bitmap);
+	if (ret)
+		return ret;
+	ret = aie_intr_ctrl_l1_broadcast_block(apart, loc, AIE_SHIM_SWITCH_B, bcast_bitmap);
+	if (ret)
+		return ret;
+	ret = aie2ps_init_shim_tile_col0(apart, loc);
+	if (ret)
+		return ret;
+	ret = aie_set_broadcast_event(apart, loc, attr,
+				      attr->user_event1,
+				      AIE_SHIM_USER_EVENT1_BC_ID);
+	if (ret)
+		return ret;
+
+	/* Configure relative Col1 for user_event1
+	 */
+	loc.col = start_col + 1;
+	bcast_bitmap = BIT(AIE_SHIM_UC_EVENT_BC_ID) |
+		       BIT(AIE_SHIM_USER_EVENT1_BC_ID);
+	ret = aie_intr_ctrl_l1_broadcast_block(apart, loc, AIE_SHIM_SWITCH_A,
+					       bcast_bitmap);
+	if (ret)
+		return ret;
+	ret = aie_intr_ctrl_l1_broadcast_block(apart, loc, AIE_SHIM_SWITCH_B,
+					       bcast_bitmap);
+	if (ret)
+		return ret;
+
+	ret = aie_set_l1_ctrl_irq_event(apart, loc, AIE_SHIM_SWITCH_A,
+					AIE_SHIM_USER_EVENT1_L1_IRQ_EVENT_ID,
+					attr->user_event1);
+	if (ret)
+		return ret;
+	ret = aie_enable_l1_intr(apart, loc, AIE_SHIM_SWITCH_A,
+				 AIE_SHIM_USER_EVENT1_IRQ_ID);
+	if (ret)
+		return ret;
+	ret = aie_set_l1_ctrl_irq_id(apart, loc, AIE_SHIM_SWITCH_A,
+				     AIE_SHIM_USER_EVENT1_BC_ID);
+	if (ret)
+		return ret;
+
+	l2_enable = BIT(AIE_SHIM_USER_EVENT1_L1_IRQ_EVENT_ID);
+	aie_aperture_enable_l2_ctrl(apart->aperture, &loc, l2_enable);
+	ret = aie2ps_init_shim_tile_lead_col(apart, loc);
+	if (ret)
+		return ret;
+	return 0;
+}
+
 int aie2ps_error_handling_init_mem_aie(struct aie_partition *apart)
 {
 	u32 mem_start = apart->adev->ttype_attr[AIE_TILE_TYPE_MEMORY].start_row;
