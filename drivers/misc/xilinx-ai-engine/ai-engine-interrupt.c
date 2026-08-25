@@ -2530,77 +2530,73 @@ static int aie_event_group_error0_enable(struct aie_partition *apart,
 	return 0;
 }
 
-static int aie_group_error_init_loc(struct aie_partition *apart,
+static int aie_group_error_init_shim(struct aie_partition *apart,
+				     struct aie_location loc)
+{
+	const struct aie_event_attr *attr = apart->adev->pl_events;
+	int ret;
+
+	ret = aie_event_group_error0_enable(apart, loc, attr);
+	if (ret)
+		return ret;
+	ret = aie_set_broadcast_event(apart, loc, attr,
+				      attr->base_error_group,
+				      AIE_ARRAY_TILE_ERROR_BC_ID);
+	if (ret)
+		return ret;
+	if (loc.col != (apart->range.start.col + 1)) {
+		ret = aie_set_broadcast_event(apart, loc, attr,
+					      attr->user_event1,
+					      AIE_SHIM_USER_EVENT1_BC_ID);
+		if (ret)
+			return ret;
+	}
+	return 0;
+}
+
+static int aie_group_error_init_aie(struct aie_partition *apart,
 				    struct aie_location loc)
 {
-	int ret = 0;
-	u32 ttype;
 	const struct aie_event_attr *attr;
+	int ret;
 
-	if (!aie_part_check_clk_enable_loc(apart, &loc))
-		return 0;
-	ttype = apart->adev->ops->get_tile_type(apart->adev, &loc);
-	switch (ttype) {
-	case AIE_TILE_TYPE_SHIMNOC:
-	case AIE_TILE_TYPE_SHIMPL:
-		attr = apart->adev->pl_events;
-		ret = aie_event_group_error0_enable(apart, loc, attr);
-		if (ret)
-			return ret;
-		ret = aie_set_broadcast_event(apart, loc, attr,
-					      attr->base_error_group,
-					      AIE_ARRAY_TILE_ERROR_BC_ID);
-		if (ret)
-			return ret;
-		if (loc.col != (apart->range.start.col + 1)) {
-			ret = aie_set_broadcast_event(apart, loc, attr,
-						      attr->user_event1,
-						      AIE_SHIM_USER_EVENT1_BC_ID);
-			if (ret)
-				return ret;
-		}
+	attr = apart->adev->mem_events;
+	ret = aie_event_group_error0_enable(apart, loc, attr);
+	if (ret)
+		return ret;
+	ret = aie_set_broadcast_event(apart, loc, attr,
+				      attr->base_error_group,
+				      AIE_ARRAY_TILE_ERROR_BC_ID);
+	if (ret)
+		return ret;
 
-		break;
-	case AIE_TILE_TYPE_TILE:
-		attr = apart->adev->mem_events;
-		ret = aie_event_group_error0_enable(apart, loc, attr);
-		if (ret)
-			return ret;
-		ret = aie_set_broadcast_event(apart, loc, attr,
-					      attr->base_error_group,
-					      AIE_ARRAY_TILE_ERROR_BC_ID);
-		if (ret)
-			return ret;
+	attr = apart->adev->core_events;
+	ret = aie_event_group_error0_enable(apart, loc, attr);
+	if (ret)
+		return ret;
+	ret = aie_set_broadcast_event(apart, loc, attr,
+				      attr->base_error_group,
+				      AIE_ARRAY_TILE_ERROR_BC_ID);
+	if (ret)
+		return ret;
+	return 0;
+}
 
-		attr = apart->adev->core_events;
-		ret = aie_event_group_error0_enable(apart, loc, attr);
-		if (ret)
-			return ret;
-		ret = aie_set_broadcast_event(apart, loc, attr,
-					      attr->base_error_group,
-					      AIE_ARRAY_TILE_ERROR_BC_ID);
-		if (ret)
-			return ret;
+static int aie_group_error_init_mem(struct aie_partition *apart,
+				    struct aie_location loc)
+{
+	const struct aie_event_attr *attr = apart->adev->memtile_events;
+	int ret;
 
-		break;
-	case AIE_TILE_TYPE_MEMORY:
-		attr = apart->adev->memtile_events;
-		ret = aie_event_group_error0_enable(apart, loc, attr);
-		if (ret)
-			return ret;
-		ret = aie_set_broadcast_event(apart, loc, attr,
-					      attr->base_error_group,
-					      AIE_ARRAY_TILE_ERROR_BC_ID);
-		if (ret)
-			return ret;
-		break;
-	default:
-		dev_err(&apart->dev, "Invalid tile type for [%d, %d]: %d",
-			loc.col, loc.row, ttype);
-		return -ENODEV;
-	}
-
-	return ret;
+	ret = aie_event_group_error0_enable(apart, loc, attr);
+	if (ret)
+		return ret;
+	ret = aie_set_broadcast_event(apart, loc, attr,
+				      attr->base_error_group,
+				      AIE_ARRAY_TILE_ERROR_BC_ID);
+	if (ret)
+		return ret;
+	return 0;
 }
 
 int aie2ps_error_handling_init_shim(struct aie_partition *apart)
@@ -2635,7 +2631,7 @@ int aie2ps_error_handling_init_shim(struct aie_partition *apart)
 			if (ret)
 				return ret;
 		}
-		ret = aie_group_error_init_loc(apart, loc);
+		ret = aie_group_error_init_shim(apart, loc);
 		if (ret)
 			return ret;
 	}
@@ -2660,14 +2656,14 @@ int aie2ps_error_handling_init_mem_aie(struct aie_partition *apart)
 			ret = aie2ps_init_mem_tile(apart, loc);
 			if (ret)
 				return ret;
-			ret = aie_group_error_init_loc(apart, loc);
+			ret = aie_group_error_init_mem(apart, loc);
 			if (ret)
 				return ret;
 		}
 		for (loc.row = aie_start; loc.row < aie_end; loc.row++) {
 			if (!aie_part_check_clk_enable_loc(apart, &loc))
 				continue;
-			ret = aie_group_error_init_loc(apart, loc);
+			ret = aie_group_error_init_aie(apart, loc);
 			if (ret)
 				return ret;
 			ret = aie2ps_init_aie_tile(apart, loc);
