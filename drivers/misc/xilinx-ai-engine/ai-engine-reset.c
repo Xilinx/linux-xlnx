@@ -841,18 +841,21 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 	}
 	trace_aie_part_initialize(apart, args->init_opts, args->num_tiles);
 
-	opts = AIE_PART_INIT_OPT_ENB_UC_DMA_PAUSE | AIE_PART_INIT_OPT_ENB_NOC_DMA_PAUSE;
-	ret = aie_part_pm_ops(apart, NULL, opts, apart->range, 1);
-	if (ret)
-		goto out;
+	if ((args->init_opts & AIE_PART_INIT_OPT_COLUMN_RST) ||
+	    (args->init_opts & AIE_PART_INIT_OPT_SHIM_RST)) {
+		opts = AIE_PART_INIT_OPT_ENB_UC_DMA_PAUSE | AIE_PART_INIT_OPT_ENB_NOC_DMA_PAUSE;
+		ret = aie_part_pm_ops(apart, NULL, opts, apart->range, 1);
+		if (ret)
+			goto out;
 
-	ret = aie_part_maskpoll_noc_outstanding_aximm_txn(apart);
-	if (ret)
-		goto out;
+		ret = aie_part_maskpoll_noc_outstanding_aximm_txn(apart);
+		if (ret)
+			goto out;
 
-	ret = aie_part_maskpoll_uc_outstanding_aximm_txn(apart);
-	if (ret)
-		goto out;
+		ret = aie_part_maskpoll_uc_outstanding_aximm_txn(apart);
+		if (ret)
+			goto out;
+	}
 
 	/* Clear resources */
 	aie_part_clear_cached_events(apart);
