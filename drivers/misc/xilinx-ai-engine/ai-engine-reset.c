@@ -847,14 +847,6 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 		ret = aie_part_pm_ops(apart, NULL, opts, apart->range, 1);
 		if (ret)
 			goto out;
-
-		ret = aie_part_maskpoll_noc_outstanding_aximm_txn(apart);
-		if (ret)
-			goto out;
-
-		ret = aie_part_maskpoll_uc_outstanding_aximm_txn(apart);
-		if (ret)
-			goto out;
 	}
 
 	/* Clear resources */
@@ -862,6 +854,19 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 	aie_part_rscmgr_reset(apart);
 	aie_resource_clear_all(&apart->tiles_inuse);
 	aie_resource_clear_all(&apart->cores_clk_state);
+
+	if ((args->init_opts & AIE_PART_INIT_OPT_COLUMN_RST) ||
+	    (args->init_opts & AIE_PART_INIT_OPT_SHIM_RST)) {
+		ret = aie_part_maskpoll_noc_outstanding_aximm_txn(apart);
+		if (ret)
+			goto out;
+
+		ret = aie_part_maskpoll_uc_outstanding_aximm_txn(apart);
+		if (ret)
+			goto out;
+		args->init_opts &= ~(AIE_PART_INIT_OPT_ENB_UC_DMA_PAUSE |
+				     AIE_PART_INIT_OPT_ENB_NOC_DMA_PAUSE);
+	}
 
 	/* First lets send non-data aie_op_type_len ops */
 	opts = 0;
