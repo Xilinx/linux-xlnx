@@ -738,6 +738,7 @@ int aie2ps_part_write_handshake(struct aie_partition *apart,
 				GFP_KERNEL);
 	if (!hs_addr)
 		return -ENOMEM;
+	memset(hs_addr, 0, handshake_cols * sizeof(*hs_addr));
 
 	for (u32 i = 0; i < handshake_cols; i++) {
 		hs_data = &data[i];
