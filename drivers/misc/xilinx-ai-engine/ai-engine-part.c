@@ -1059,7 +1059,7 @@ static int aie_part_reg_blockwrite_uring_cmd(struct io_uring_cmd *cmd, unsigned 
 static int aie_part_init_uring_cmd(struct io_uring_cmd *cmd, unsigned int issue_flags)
 {
 	struct aie_partition *apart = cmd->file->private_data;
-	struct aie_partition_init_args part_init_args;
+	struct aie_partition_init_args part_init_args = {};
 	const struct aie_partition_init_args *args;
 	struct aie_location *locs = NULL;
 	unsigned long locs_size;
