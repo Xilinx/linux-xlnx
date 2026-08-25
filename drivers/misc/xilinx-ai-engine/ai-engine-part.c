@@ -878,6 +878,12 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		if (copy_from_user(&part_init_args, argp, sizeof(part_init_args)))
 			return -EFAULT;
 
+		if (part_init_args.init_opts & AIE_PART_INIT_OPT_HANDSHAKE)
+			return -EINVAL;
+
+		part_init_args.handshake = NULL;
+		part_init_args.handshake_cols = 0;
+
 		if (part_init_args.num_tiles) {
 			locs = kmalloc_array(part_init_args.num_tiles, sizeof(*locs), GFP_KERNEL);
 			if (!locs)
