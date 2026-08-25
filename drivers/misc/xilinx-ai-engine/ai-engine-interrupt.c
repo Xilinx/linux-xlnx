@@ -2444,7 +2444,7 @@ static int aie2ps_init_mem_tile(struct aie_partition *apart, struct aie_location
 	return 0;
 }
 
-static int aie_config_error_halt_event(struct aie_partition *apart)
+int aie_config_error_halt_event(struct aie_partition *apart)
 {
 	u32 ttype;
 	struct aie_location loc;
@@ -2701,7 +2701,6 @@ int aie_error_handling_init(struct aie_partition *apart)
 	ret = aie_group_error_init(apart);
 	if (ret)
 		return ret;
-	ret = aie_config_error_halt_event(apart);
 
 	return ret;
 }

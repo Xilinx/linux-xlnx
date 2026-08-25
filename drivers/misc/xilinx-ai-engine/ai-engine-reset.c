@@ -841,6 +841,10 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 	}
 	trace_aie_part_initialize(apart, args->init_opts, args->num_tiles);
 
+	/* backward compatibility for error handling */
+	if (args->init_opts & AIE_PART_INIT_ERROR_HANDLING)
+		args->init_opts |= AIE_PART_INIT_OPT_ERR_HALT_EVENT;
+
 	if ((args->init_opts & AIE_PART_INIT_OPT_COLUMN_RST) ||
 	    (args->init_opts & AIE_PART_INIT_OPT_SHIM_RST)) {
 		opts = AIE_PART_INIT_OPT_ENB_UC_DMA_PAUSE | AIE_PART_INIT_OPT_ENB_NOC_DMA_PAUSE;
@@ -990,6 +994,13 @@ int aie2ps_part_initialize(struct aie_partition *apart, struct aie_partition_ini
 	if (args->init_opts & AIE_PART_INIT_ERROR_HANDLING) {
 		opts |= AIE_PART_INIT_ERROR_HANDLING;
 		ret = aie_error_handling_init(apart);
+		if (ret)
+			goto out;
+	}
+
+	if (args->init_opts & AIE_PART_INIT_OPT_ERR_HALT_EVENT) {
+		opts |= AIE_PART_INIT_OPT_ERR_HALT_EVENT;
+		ret = aie_config_error_halt_event(apart);
 		if (ret)
 			goto out;
 	}

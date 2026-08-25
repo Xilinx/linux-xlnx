@@ -1926,6 +1926,7 @@ int aie2ps_part_reset(struct aie_partition *apart);
 int aie_part_maskpoll_register(struct aie_partition *apart, u32 offset, u32 data, u32 mask,
 			       u32 timeout);
 int aie_partition_uc_zeroize_mem(struct device *dev, struct aie_location *loc, u32 regval);
+int aie_config_error_halt_event(struct aie_partition *apart);
 int aie_error_handling_init(struct aie_partition *apart);
 int aie2ps_part_write_handshake(struct aie_partition *apart,
 				struct aie_op_handshake_data *data,
