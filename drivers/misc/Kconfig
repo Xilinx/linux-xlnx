@@ -514,6 +514,22 @@ config XILINX_AIE
 
 	  If unsure, say N
 
+config XILINX_AIE_DEBUGFS
+	bool "Xilinx AI Engine DebugFS entries"
+	depends on XILINX_AIE
+	depends on DEBUG_FS
+	help
+	  Enables debugfs entries for the Xilinx AI Engine driver.
+
+	  This creates entries under:
+	    /sys/kernel/debug/xilinx_ai_engine/
+
+	  and provides methods of creating and destroying partitions as well as
+	  per-partition debugging interfaces such as tile register poke and
+	  available resources.
+
+	  If unsure, say N.
+
 config XILINX_PUF
 	tristate "Xilinx PUF driver"
 	depends on ZYNQMP_FIRMWARE

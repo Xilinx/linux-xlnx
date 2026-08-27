@@ -15,6 +15,7 @@
 #include <linux/bits.h>
 #include <linux/cdev.h>
 #include <linux/clk.h>
+#include <linux/debugfs.h>
 #include <linux/device.h>
 #include <linux/dma-buf.h>
 #include <linux/file.h>
@@ -1127,17 +1128,29 @@ struct aie_sysfs_attr {
 };
 
 /**
+ * struct aie_tile_debugfs_data - AI engine tile debugfs data
+ * @reg_val: register value for poke debugfs file
+ */
+struct aie_tile_debugfs_data {
+	u32 reg_val;
+};
+
+/**
  * struct aie_tile - AI engine tile structure
  * @loc: tile co-ordinates
  * @apart: parent partition the tile belongs to
  * @dev: device for the AI engine tile device
  * @attr_grp: attribute group
+ * @debugfs_dir: debugfs directory for tile
+ * @debug_data: tile debugfs data
  */
 struct aie_tile {
 	struct aie_location loc;
 	struct aie_partition *apart;
 	struct device dev;
 	struct attribute_group *attr_grp;
+	struct dentry *debugfs_dir;
+	struct aie_tile_debugfs_data debug_data;
 };
 
 /**
@@ -1221,6 +1234,7 @@ struct aie_addrlen {
  * @core_lr: link register attribute
  * @core_sp: stack pointer attribute
  * @hw_err_status: hw error status register attribute
+ * @debugfs_dir: debugfs directory
  */
 struct aie_device {
 	struct list_head apertures;
@@ -1282,6 +1296,7 @@ struct aie_device {
 	const struct aie_single_reg_field *core_lr;
 	const struct aie_single_reg_field *core_sp;
 	const struct aie_single_reg_field *hw_err_status;
+	struct dentry *debugfs_dir;
 };
 
 struct aie_l2_mask {
@@ -1453,6 +1468,8 @@ struct aie_op_handshake_addr {
  *		     the application. This value is set to true if errors are
  *		     found during backtracking, and error interrupt was
  *		     received when partition was not requested yet.
+ * @debugfs_dir: debugfs directory
+ * @is_part_debugfs: flag to know if partition was created through debugfs
  */
 struct aie_partition {
 	struct list_head node;
@@ -1483,6 +1500,8 @@ struct aie_partition {
 	void (*user_event1_complete)(__u32 partition_id, void *user_event1_priv);
 	void *user_event1_priv;
 	u8 error_to_report;
+	struct dentry *debugfs_dir;
+	bool is_part_debugfs;
 };
 
 /**
@@ -1705,6 +1724,9 @@ void aie_part_remove(struct aie_partition *apart);
 int aie_part_clear_context(struct aie_partition *apart);
 int aie_part_clean(struct aie_partition *apart);
 int aie_part_open(struct aie_partition *apart, void *rsc_metadata);
+struct aie_partition *
+aie_partition_request_from_adev(struct aie_device *adev,
+				struct aie_partition_req *req);
 int aie_part_initialize(struct aie_partition *apart, struct aie_partition_init_args *args);
 int aie_part_teardown(struct aie_partition *apart);
 int aie_mem_get_info(struct aie_partition *apart, unsigned long arg);
@@ -1735,6 +1757,8 @@ int aie_part_prealloc_dbufs_cache(struct aie_partition *apart);
 int aie_part_scan_clk_state(struct aie_partition *apart);
 bool aie_part_check_clk_enable_loc(struct aie_partition *apart,
 				   struct aie_location *loc);
+int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
+			    size_t len, u8 is_write);
 int aie_part_set_freq(struct aie_partition *apart, u64 freq);
 int aie_part_get_freq(struct aie_partition *apart, u64 *freq);
 int aie_init_freq(struct aie_aperture *aperture);
@@ -1940,4 +1964,32 @@ int aie_part_enable_noc_to_aie(struct aie_partition *apart,
 			       struct aie_location *loc, u8 port_num);
 int aie_part_enable_aie_to_noc(struct aie_partition *apart,
 			       struct aie_location *loc, u8 port_num);
+
+#ifdef CONFIG_XILINX_AIE_DEBUGFS
+void aie_tile_debugfs_create(struct aie_tile *atile);
+void aie_part_debugfs_create(struct aie_partition *apart);
+void aie_part_debugfs_remove(struct aie_partition *apart);
+void xilinx_ai_engine_debugfs_init(struct aie_device *adev);
+void xilinx_ai_engine_debugfs_remove(struct aie_device *adev);
+#else
+static inline void aie_tile_debugfs_create(struct aie_tile *atile)
+{
+}
+
+static inline void aie_part_debugfs_create(struct aie_partition *apart)
+{
+}
+
+static inline void aie_part_debugfs_remove(struct aie_partition *apart)
+{
+}
+
+static inline void xilinx_ai_engine_debugfs_init(struct aie_device *adev)
+{
+}
+
+static inline void xilinx_ai_engine_debugfs_remove(struct aie_device *adev)
+{
+}
+#endif /* CONFIG_XILINX_AIE_DEBUGFS */
 #endif /* AIE_INTERNAL_H */

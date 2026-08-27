@@ -62,8 +62,8 @@ static void aie_cal_loc(struct aie_device *adev,
  * This function validate if the register to access is within the AI engine
  * partition. If it is write access, if the register is writable by user.
  */
-static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
-				   size_t len, u8 is_write)
+int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
+			    size_t len, u8 is_write)
 {
 	struct aie_device *adev;
 	u32 ttype;
@@ -1386,6 +1386,9 @@ static int aie_create_tiles(struct aie_partition *apart)
 				return ret;
 			}
 
+			if (apart->debugfs_dir)
+				aie_tile_debugfs_create(atile);
+
 			ret = aie_tile_sysfs_create_entries(atile);
 			if (ret) {
 				dev_err(tdev,
@@ -1458,6 +1461,9 @@ struct aie_partition *aie_create_partition(struct aie_aperture *aperture,
 			 "Failed to set DMA mask %llx. Trying to continue... %x\n",
 			 dma_get_mask(&aperture->dev), ret);
 	}
+
+	if (apart->adev->debugfs_dir)
+		aie_part_debugfs_create(apart);
 
 	/* Create AI Engine tile devices */
 	ret = aie_create_tiles(apart);
@@ -1557,6 +1563,7 @@ void aie_part_remove(struct aie_partition *apart)
 	     index++, atile++)
 		aie_tile_remove(atile);
 
+	aie_part_debugfs_remove(apart);
 	aie_part_sysfs_remove_entries(apart);
 
 	device_del(&apart->dev);
