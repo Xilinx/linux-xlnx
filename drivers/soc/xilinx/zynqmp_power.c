@@ -101,7 +101,7 @@ static void suspend_event_callback(const u32 *payload, void *data)
 
 static irqreturn_t zynqmp_pm_isr(int irq, void *data)
 {
-	u32 payload[CB_PAYLOAD_SIZE];
+	u32 payload[PAYLOAD_ARG_CNT];
 
 	zynqmp_pm_get_callback_data(payload);
 

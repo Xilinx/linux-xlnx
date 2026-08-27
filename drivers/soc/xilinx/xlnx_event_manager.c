@@ -521,7 +521,7 @@ static void xlnx_get_event_callback_data(u32 *buf)
 static irqreturn_t xlnx_event_handler(int irq, void *dev_id)
 {
 	u32 cb_type, node_id, event, pos;
-	u32 payload[CB_MAX_PAYLOAD_SIZE] = {0};
+	u32 payload[PAYLOAD_ARG_CNT] = {0};
 	u32 event_data[CB_MAX_PAYLOAD_SIZE] = {0};
 
 	/* Get event data */
