@@ -828,7 +828,57 @@ long aie_part_rscmgr_rsc_req_specific(struct aie_partition *apart,
 }
 
 /**
- * aie_part_rscmgr_rsc_check_avail() - check how many resources vailable for
+ * aie_part_rscmgr_rsc_get_avail() - get the number of available resources for
+ *				     the specified resource type
+ *
+ * @apart: AI engine partition
+ * @loc: AI engine tile location
+ * @mod: module type of resource
+ * @rsc_type: type of resource
+ * @num_rscs: pointer to where number of resources will be stored
+ *
+ * Return: 0 for success, negative value for failure
+ */
+int aie_part_rscmgr_rsc_get_avail(struct aie_partition *apart,
+				  struct aie_location loc,
+				  enum aie_module_type mod,
+				  u32 rsc_type, u32 *num_rscs)
+{
+	int ret, mod_num_rscs, start_bit;
+	struct aie_location adjloc;
+	struct aie_rsc_stat *rstat;
+
+	if (rsc_type >= AIE_RSCTYPE_MAX) {
+		dev_err(&apart->dev,
+			"invalid resource to request, invalid resource type %u.\n",
+			rsc_type);
+		return -EINVAL;
+	}
+
+	ret = aie_part_adjust_loc(apart, loc, &adjloc);
+	if (ret < 0)
+		return ret;
+
+	rstat = aie_part_get_rsc_bitmaps(apart, adjloc, mod, rsc_type);
+	start_bit = aie_part_get_rsc_startbit(apart, adjloc, mod, rsc_type);
+	if (!rstat || start_bit < 0) {
+		dev_err(&apart->dev,
+			"invalid resource to request(%u,%u),mod:%u,rsc:%u.\n",
+			loc.col, loc.row, mod, rsc_type);
+		return -EINVAL;
+	}
+
+	mod_num_rscs = aie_part_get_mod_num_rscs(apart, adjloc, mod, rsc_type);
+	mutex_lock(&apart->mlock);
+	*num_rscs = aie_resource_check_common_avail(&rstat->rbits, &rstat->sbits,
+						    start_bit, mod_num_rscs);
+	mutex_unlock(&apart->mlock);
+
+	return 0;
+}
+
+/**
+ * aie_part_rscmgr_rsc_check_avail() - check how many resources available for
  *				       the specified resource type
  *
  * @apart: AI engine partition
