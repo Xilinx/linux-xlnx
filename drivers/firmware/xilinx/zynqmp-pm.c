@@ -26,17 +26,15 @@
 
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/firmware/xlnx-event-manager.h>
+#include "versal2-scmi-power.h"
 #include "zynqmp-debug.h"
 
 /* SCMI Node ID encoding constants */
 #define SCMI_NODEID_CLASS_SHIFT		26
-#define SCMI_NODEID_SUBCLASS_SHIFT	20
-#define SCMI_NODEID_TYPE_SHIFT		14
 #define SCMI_NODEID_FIELD_MASK		GENMASK(5, 0)
-#define SCMI_NODEID_INDEX_MASK		0x3FFF
-#define SCMI_NODECLASS			0x06U
-#define SCMI_NODESUBCLASS		0x0AU
-#define SCMI_NODETYPE			0x0FU
+
+/* Node ID which no device owns, the firmware rejects a call made with it */
+#define SCMI_INVALID_NODEID		U32_MAX
 
 /* CRL registers and bitfields */
 #define CRL_APB_BASE			0xFF5E0000U
@@ -47,45 +45,172 @@
 
 static unsigned long register_address;
 
+/*
+ * SCMI device ID is the array index and the entry holds the EEMI node ID which
+ * the platform management firmware expects for that device. Both ID spaces are
+ * a fixed interface shared with the SCMI server in EL3, so this table has to be
+ * updated whenever that server adds or renumbers a device.
+ *
+ * Devices which a board does not instantiate keep their node ID here. The
+ * firmware rejects requests for them, so the per board topology does not have
+ * to be described again in the kernel.
+ */
+static const u32 versal2_scmi_device_map[] = {
+	[SCMI_PD_VERSAL2_DEV_RPU_A_0] = 0x181100BFU,
+	[SCMI_PD_VERSAL2_DEV_RPU_A_1] = 0x181100C0U,
+	[SCMI_PD_VERSAL2_DEV_RPU_B_0] = 0x181100C1U,
+	[SCMI_PD_VERSAL2_DEV_RPU_B_1] = 0x181100C2U,
+	[SCMI_PD_VERSAL2_DEV_RPU_C_0] = 0x181100F1U,
+	[SCMI_PD_VERSAL2_DEV_RPU_C_1] = 0x181100F2U,
+	[SCMI_PD_VERSAL2_DEV_RPU_D_0] = 0x181100F3U,
+	[SCMI_PD_VERSAL2_DEV_RPU_D_1] = 0x181100F4U,
+	[SCMI_PD_VERSAL2_DEV_RPU_E_0] = 0x181100F5U,
+	[SCMI_PD_VERSAL2_DEV_RPU_E_1] = 0x181100F6U,
+	[SCMI_PD_VERSAL2_DEV_USB_0] = 0x18224018U,
+	[SCMI_PD_VERSAL2_DEV_GEM_0] = 0x18224019U,
+	[SCMI_PD_VERSAL2_DEV_GEM_1] = 0x1822401AU,
+	[SCMI_PD_VERSAL2_DEV_SPI_0] = 0x1822401BU,
+	[SCMI_PD_VERSAL2_DEV_SPI_1] = 0x1822401CU,
+	[SCMI_PD_VERSAL2_DEV_I2C_0] = 0x1822401DU,
+	[SCMI_PD_VERSAL2_DEV_I2C_1] = 0x1822401EU,
+	[SCMI_PD_VERSAL2_DEV_CAN_FD_0] = 0x1822401FU,
+	[SCMI_PD_VERSAL2_DEV_CAN_FD_1] = 0x18224020U,
+	[SCMI_PD_VERSAL2_DEV_UART_0] = 0x18224021U,
+	[SCMI_PD_VERSAL2_DEV_UART_1] = 0x18224022U,
+	[SCMI_PD_VERSAL2_DEV_GPIO] = 0x18224023U,
+	[SCMI_PD_VERSAL2_DEV_TTC_0] = 0x18224024U,
+	[SCMI_PD_VERSAL2_DEV_TTC_1] = 0x18224025U,
+	[SCMI_PD_VERSAL2_DEV_TTC_2] = 0x18224026U,
+	[SCMI_PD_VERSAL2_DEV_TTC_3] = 0x18224027U,
+	[SCMI_PD_VERSAL2_DEV_SWDT_LPD] = 0x18224028U,
+	[SCMI_PD_VERSAL2_DEV_OSPI] = 0x1822402AU,
+	[SCMI_PD_VERSAL2_DEV_QSPI] = 0x1822402BU,
+	[SCMI_PD_VERSAL2_DEV_GPIO_PMC] = 0x1822402CU,
+	[SCMI_PD_VERSAL2_DEV_I2C_PMC] = 0x1822402DU,
+	[SCMI_PD_VERSAL2_DEV_SDIO_0] = 0x1822402EU,
+	[SCMI_PD_VERSAL2_DEV_SDIO_1] = 0x1822402FU,
+	[SCMI_PD_VERSAL2_DEV_RTC] = 0x18224034U,
+	[SCMI_PD_VERSAL2_DEV_ADMA_0] = 0x18224035U,
+	[SCMI_PD_VERSAL2_DEV_ADMA_1] = 0x18224036U,
+	[SCMI_PD_VERSAL2_DEV_ADMA_2] = 0x18224037U,
+	[SCMI_PD_VERSAL2_DEV_ADMA_3] = 0x18224038U,
+	[SCMI_PD_VERSAL2_DEV_ADMA_4] = 0x18224039U,
+	[SCMI_PD_VERSAL2_DEV_ADMA_5] = 0x1822403AU,
+	[SCMI_PD_VERSAL2_DEV_ADMA_6] = 0x1822403BU,
+	[SCMI_PD_VERSAL2_DEV_ADMA_7] = 0x1822403CU,
+	[SCMI_PD_VERSAL2_DEV_USB_1] = 0x182240D7U,
+	[SCMI_PD_VERSAL2_DEV_LPD_SWDT_0] = 0x182240D9U,
+	[SCMI_PD_VERSAL2_DEV_LPD_SWDT_1] = 0x182240DAU,
+	[SCMI_PD_VERSAL2_DEV_FPD_SWDT_0] = 0x182240DBU,
+	[SCMI_PD_VERSAL2_DEV_FPD_SWDT_1] = 0x182240DCU,
+	[SCMI_PD_VERSAL2_DEV_FPD_SWDT_2] = 0x182240DDU,
+	[SCMI_PD_VERSAL2_DEV_FPD_SWDT_3] = 0x182240DEU,
+	[SCMI_PD_VERSAL2_DEV_UFS] = 0x18224116U,
+	[SCMI_PD_VERSAL2_DEV_I2C_2] = 0x18224117U,
+	[SCMI_PD_VERSAL2_DEV_I2C_3] = 0x18224118U,
+	[SCMI_PD_VERSAL2_DEV_I2C_4] = 0x18224119U,
+	[SCMI_PD_VERSAL2_DEV_I2C_5] = 0x1822411AU,
+	[SCMI_PD_VERSAL2_DEV_I2C_6] = 0x1822411BU,
+	[SCMI_PD_VERSAL2_DEV_I2C_7] = 0x1822411CU,
+	[SCMI_PD_VERSAL2_DEV_CAN_FD_2] = 0x1822411DU,
+	[SCMI_PD_VERSAL2_DEV_CAN_FD_3] = 0x1822411EU,
+	[SCMI_PD_VERSAL2_DEV_TTC_4] = 0x1822411FU,
+	[SCMI_PD_VERSAL2_DEV_TTC_5] = 0x18224120U,
+	[SCMI_PD_VERSAL2_DEV_TTC_6] = 0x18224121U,
+	[SCMI_PD_VERSAL2_DEV_TTC_7] = 0x18224122U,
+	[SCMI_PD_VERSAL2_DEV_MMI_USB_DRD] = 0x18224135U,
+	[SCMI_PD_VERSAL2_DEV_MMI_GPU] = 0x18224136U,
+	[SCMI_PD_VERSAL2_DEV_MMI_DC] = 0x18224137U,
+	[SCMI_PD_VERSAL2_DEV_MMI_HDCP] = 0x18224138U,
+	[SCMI_PD_VERSAL2_DEV_MMI_DP] = 0x18224139U,
+	[SCMI_PD_VERSAL2_DEV_MMI_GEM] = 0x1822413AU,
+	[SCMI_PD_VERSAL2_DEV_TCM_A_0A] = 0x183180CBU,
+	[SCMI_PD_VERSAL2_DEV_TCM_A_0B] = 0x183180CCU,
+	[SCMI_PD_VERSAL2_DEV_TCM_A_0C] = 0x183180CDU,
+	[SCMI_PD_VERSAL2_DEV_TCM_A_1A] = 0x183180CEU,
+	[SCMI_PD_VERSAL2_DEV_TCM_A_1B] = 0x183180CFU,
+	[SCMI_PD_VERSAL2_DEV_TCM_A_1C] = 0x183180D0U,
+	[SCMI_PD_VERSAL2_DEV_TCM_B_0A] = 0x183180D1U,
+	[SCMI_PD_VERSAL2_DEV_TCM_B_0B] = 0x183180D2U,
+	[SCMI_PD_VERSAL2_DEV_TCM_B_0C] = 0x183180D3U,
+	[SCMI_PD_VERSAL2_DEV_TCM_B_1A] = 0x183180D4U,
+	[SCMI_PD_VERSAL2_DEV_TCM_B_1B] = 0x183180D5U,
+	[SCMI_PD_VERSAL2_DEV_TCM_B_1C] = 0x183180D6U,
+	[SCMI_PD_VERSAL2_DEV_TCM_C_0A] = 0x18318100U,
+	[SCMI_PD_VERSAL2_DEV_TCM_C_0B] = 0x18318101U,
+	[SCMI_PD_VERSAL2_DEV_TCM_C_0C] = 0x18318102U,
+	[SCMI_PD_VERSAL2_DEV_TCM_C_1A] = 0x18318103U,
+	[SCMI_PD_VERSAL2_DEV_TCM_C_1B] = 0x18318104U,
+	[SCMI_PD_VERSAL2_DEV_TCM_C_1C] = 0x18318105U,
+	[SCMI_PD_VERSAL2_DEV_TCM_D_0A] = 0x18318106U,
+	[SCMI_PD_VERSAL2_DEV_TCM_D_0B] = 0x18318107U,
+	[SCMI_PD_VERSAL2_DEV_TCM_D_0C] = 0x18318108U,
+	[SCMI_PD_VERSAL2_DEV_TCM_D_1A] = 0x18318109U,
+	[SCMI_PD_VERSAL2_DEV_TCM_D_1B] = 0x1831810AU,
+	[SCMI_PD_VERSAL2_DEV_TCM_D_1C] = 0x1831810BU,
+	[SCMI_PD_VERSAL2_DEV_TCM_E_0A] = 0x1831810CU,
+	[SCMI_PD_VERSAL2_DEV_TCM_E_0B] = 0x1831810DU,
+	[SCMI_PD_VERSAL2_DEV_TCM_E_0C] = 0x1831810EU,
+	[SCMI_PD_VERSAL2_DEV_TCM_E_1A] = 0x1831810FU,
+	[SCMI_PD_VERSAL2_DEV_TCM_E_1B] = 0x18318110U,
+	[SCMI_PD_VERSAL2_DEV_TCM_E_1C] = 0x18318111U,
+	[SCMI_PD_VERSAL2_DEV_EIO_UART_0] = 0x1822413DU,
+	[SCMI_PD_VERSAL2_DEV_EIO_UART_1] = 0x1822413EU,
+	[SCMI_PD_VERSAL2_DEV_EIO_UART_2] = 0x1822413FU,
+	[SCMI_PD_VERSAL2_DEV_EIO_SPI_0] = 0x18224140U,
+	[SCMI_PD_VERSAL2_DEV_EIO_SPI_1] = 0x18224141U,
+	[SCMI_PD_VERSAL2_DEV_EIO_SPI_2] = 0x18224142U,
+	[SCMI_PD_VERSAL2_DEV_EIO_SPI_3] = 0x18224143U,
+	[SCMI_PD_VERSAL2_DEV_GPIO_EIO] = 0x18224144U,
+};
+
 /**
  * prepare_node_id() - Prepare node ID for PM firmware calls
  * @node_id:	Input ID - either a full firmware Node ID or a simple SCMI index
  *
  * This function handles two types of input and produces a properly formatted
- * firmware Node ID. For ZynqMP platform, returns the node_id unchanged.
- * For all other platforms, performs SCMI encoding if needed.
+ * firmware Node ID. Only Versal Gen 2 names its devices with SCMI indices, so
+ * on every other platform the node_id is already a firmware Node ID.
  *
  * 1. Full firmware Node ID (class bits [31:26] are non-zero):
  *    Returns the ID unchanged as it's already properly formatted.
  *
  * 2. Simple SCMI Index (class bits [31:26] are zero):
- *    Encodes the index into a full firmware Node ID using hardcoded values:
- *    - SCMI_NODECLASS (0x06) for Class field [31:26]
- *    - SCMI_NODESUBCLASS (0x0A) for Subclass field [25:20]
- *    - SCMI_NODETYPE (0x0F) for Type field [19:14]
- *    - node_id for Index field [13:0]
- *    (e.g., 0xBF -> 0x18A3C0BF with class=0x06, subclass=0x0A, type=0x0F, index=0xBF)
+ *    Translates the index through versal2_scmi_device_map[], which holds the
+ *    Node ID the firmware expects for each SCMI device
+ *    (e.g., 27 (OSPI) -> 0x1822402A). An index which the table does not
+ *    describe cannot be translated, so SCMI_INVALID_NODEID is returned to let
+ *    the firmware reject the call.
  *
- * Return: Full firmware node ID (or) SCMI encoded node ID (or) unchanged node_id for ZynqMP
+ * Return: Full firmware node ID (or) SCMI_INVALID_NODEID when the SCMI index
+ * cannot be translated
  */
-static inline u32 prepare_node_id(u32 node_id)
+static u32 prepare_node_id(u32 node_id)
 {
 	u32 family;
 
-	if (zynqmp_pm_get_family_info(&family))
-		return node_id;
-
-	/* SCMI encoding is not applicable for ZynqMP */
-	if (family == PM_ZYNQMP_FAMILY_CODE)
-		return node_id;
-
+	/* A full Node ID is already formatted, its Class field is non-zero */
 	if (node_id & (SCMI_NODEID_FIELD_MASK << SCMI_NODEID_CLASS_SHIFT))
 		return node_id;
 
-	return ((SCMI_NODECLASS & SCMI_NODEID_FIELD_MASK) << SCMI_NODEID_CLASS_SHIFT) |
-	       ((SCMI_NODESUBCLASS & SCMI_NODEID_FIELD_MASK) << SCMI_NODEID_SUBCLASS_SHIFT) |
-	       ((SCMI_NODETYPE & SCMI_NODEID_FIELD_MASK) << SCMI_NODEID_TYPE_SHIFT) |
-	       (node_id & SCMI_NODEID_INDEX_MASK);
+	/* Without the platform data the index cannot be translated */
+	if (zynqmp_pm_get_family_info(&family))
+		return SCMI_INVALID_NODEID;
+
+	/*
+	 * ZynqMP, Versal and Versal NET pass the Node IDs of the firmware
+	 * itself, for example the PD_* IDs of the device tree, so those need
+	 * no translation.
+	 */
+	if (family != PM_VERSAL2_FAMILY_CODE)
+		return node_id;
+
+	/* An SCMI device which the table does not describe is not translatable */
+	if (node_id >= ARRAY_SIZE(versal2_scmi_device_map))
+		return SCMI_INVALID_NODEID;
+
+	/* Translate the SCMI index into the Node ID used by the firmware */
+	return versal2_scmi_device_map[node_id];
 }
 
 int zynqmp_pm_register_sgi(u32 sgi_num, u32 reset)
