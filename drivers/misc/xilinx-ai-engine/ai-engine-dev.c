@@ -270,7 +270,7 @@ static int aie_partition_get(struct aie_partition *apart,
  * This function finds a defined partition which matches the specified
  * partition id, and request it.
  */
-static struct aie_partition *
+struct aie_partition *
 aie_partition_request_from_adev(struct aie_device *adev,
 				struct aie_partition_req *req)
 {
@@ -684,6 +684,8 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	xilinx_ai_engine_debugfs_init(adev);
+
 	ret = xilinx_ai_engine_add_auxdev(adev);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to register auxiliary device.\n");
@@ -715,6 +717,8 @@ static void xilinx_ai_engine_remove(struct platform_device *pdev)
 		if (ret)
 			return;
 	}
+
+	xilinx_ai_engine_debugfs_remove(adev);
 
 	auxiliary_device_delete(&adev->auxdev);
 	auxiliary_device_uninit(&adev->auxdev);
