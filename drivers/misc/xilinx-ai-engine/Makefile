@@ -37,3 +37,6 @@ xilinx-aie-y := \
 	ai-engine-sysfs-status.o	\
 	ai-engine-sysfs-ucstatus.o	\
 	ai-engine-pm.o
+
+xilinx-aie-$(CONFIG_XILINX_AIE_DEBUGFS) += \
+	ai-engine-debugfs.o
