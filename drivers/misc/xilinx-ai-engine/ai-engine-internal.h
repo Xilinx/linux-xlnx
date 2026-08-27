@@ -1826,6 +1826,10 @@ long aie_part_rscmgr_rsc_free(struct aie_partition *apart,
 			      void __user *user_args);
 long aie_part_rscmgr_rsc_req_specific(struct aie_partition *apart,
 				      void __user *user_args);
+int aie_part_rscmgr_rsc_get_avail(struct aie_partition *apart,
+				  struct aie_location loc,
+				  enum aie_module_type mod,
+				  u32 rsc_type, u32 *num_rscs);
 long aie_part_rscmgr_rsc_check_avail(struct aie_partition *apart,
 				     void __user *user_args);
 long aie_part_rscmgr_get_broadcast(struct aie_partition *apart,
