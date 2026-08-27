@@ -72,7 +72,7 @@ static int amd_bram_rproc_prepare(struct rproc *rproc)
 				   resource_size(&res), da,
 				   rproc_mem_entry_ioremap_wc,
 				   rproc_mem_entry_iounmap,
-				   dev_name(priv->dev));
+				   "%.31s", dev_name(priv->dev));
 	if (!mem)
 		return -ENOMEM;
 
