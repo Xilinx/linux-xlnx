@@ -54,8 +54,6 @@ source "drivers/staging/fclk/Kconfig"
 
 source "drivers/staging/xlnxsync/Kconfig"
 
-source "drivers/staging/xroetrafficgen/Kconfig"
-
 source "drivers/staging/uartlite-rs485/Kconfig"
 
 source "drivers/staging/xilinx-tsn/Kconfig"
