@@ -617,24 +617,24 @@ static void zynqmp_dma_chan_desc_cleanup(struct zynqmp_dma_chan *chan)
 {
 	struct zynqmp_dma_desc_sw *desc, *next;
 	unsigned long irqflags;
+	LIST_HEAD(done_list);
 
 	spin_lock_irqsave(&chan->lock, irqflags);
+	list_splice_init(&chan->done_list, &done_list);
+	spin_unlock_irqrestore(&chan->lock, irqflags);
 
-	list_for_each_entry_safe(desc, next, &chan->done_list, node) {
+	list_for_each_entry_safe(desc, next, &done_list, node) {
 		struct dmaengine_desc_callback cb;
 
 		dmaengine_desc_get_callback(&desc->async_tx, &cb);
-		if (dmaengine_desc_callback_valid(&cb)) {
-			spin_unlock_irqrestore(&chan->lock, irqflags);
+		if (dmaengine_desc_callback_valid(&cb))
 			dmaengine_desc_callback_invoke(&cb, NULL);
-			spin_lock_irqsave(&chan->lock, irqflags);
-		}
 
 		/* Run any dependencies, then free the descriptor */
+		spin_lock_irqsave(&chan->lock, irqflags);
 		zynqmp_dma_free_descriptor(chan, desc);
+		spin_unlock_irqrestore(&chan->lock, irqflags);
 	}
-
-	spin_unlock_irqrestore(&chan->lock, irqflags);
 }
 
 /**
