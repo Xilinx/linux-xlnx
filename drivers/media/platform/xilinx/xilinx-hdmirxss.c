@@ -4309,19 +4309,24 @@ static int xhdmirx_register_hdcp1x_dev(struct xhdmirx_state *xhdmirxss)
 static int xhdmirx_hdcp2x_rd_handler(void *ref, u32 offset, u8 *buff, u32 rsize)
 {
 	struct xhdmirx_state *state = (struct xhdmirx_state *)ref;
-	int size, read_size, i;
+	u32 size, read_size, i;
 
 	size = xhdmi_read(state, HDMIRX_DDC_HDCP_STA_OFFSET);
 	size >>= HDMIRX_DDC_STA_HDCP_WMSG_WORDS_SHIFT;
 	size &= HDMIRX_DDC_STA_HDCP_WMSG_WORDS_MASK;
-	read_size = size;
+	read_size = min(size, rsize);
 
 	xhdmi_write(state,
 		    HDMIRX_DDC_HDCP_ADDRESS_OFFSET,
 		    offset);
 
-	for (i = 0; i < size; i++)
-		buff[i] = xhdmi_read(state, HDMIRX_DDC_HDCP_DATA_OFFSET);
+	/* the transmitter sets the FIFO depth, so drain whatever it wrote */
+	for (i = 0; i < size; i++) {
+		u32 data = xhdmi_read(state, HDMIRX_DDC_HDCP_DATA_OFFSET);
+
+		if (i < read_size)
+			buff[i] = data;
+	}
 
 	return (int)read_size;
 }
