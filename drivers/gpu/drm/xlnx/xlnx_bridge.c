@@ -334,52 +334,50 @@ static ssize_t xlnx_bridge_debugfs_write(struct file *f, const char __user *buf,
 					 size_t size, loff_t *pos)
 {
 	struct xlnx_bridge *bridge = f->f_inode->i_private;
+	char *cmd;
 
 	if (*pos != 0 || size <= 0)
 		return -EINVAL;
 
-	if (!strncmp(buf, "enable", 5)) {
+	cmd = kzalloc(size, GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd = memdup_user_nul(buf, size);
+	if (IS_ERR(cmd)) {
+		kfree(cmd);
+		return PTR_ERR(cmd);
+	}
+
+	if (sysfs_streq(cmd, "enable")) {
 		xlnx_bridge_enable(bridge);
-	} else if (!strncmp(buf, "disable", 6)) {
+	} else if (sysfs_streq(cmd, "disable")) {
 		xlnx_bridge_disable(bridge);
-	} else if (!strncmp(buf, "set_input", 3)) {
-		char *cmd, **tmp;
-		char *w, *h, *bus_fmt;
+	} else if (str_has_prefix(cmd, "set_input")) {
+		char *w, *h, *bus_fmt, *tmp;
 		u32 width = 0, height = 0, fmt = 0;
 		int ret;
 
-		cmd = kzalloc(size, GFP_KERNEL);
-		if (!cmd)
-			return -ENOMEM;
-
-		ret = strncpy_from_user(cmd, buf, size);
-		if (ret < 0) {
-			pr_err("%s %d failed to copy the command  %s\n",
-			       __func__, __LINE__, buf);
-			kfree(cmd);
-			return ret;
-		}
-
-		tmp = &cmd;
-		strsep(tmp, " ");
-		w = strsep(tmp, " ");
-		h = strsep(tmp, " ");
-		bus_fmt = strsep(tmp, " ");
+		tmp = cmd;
+		strsep(&tmp, " ");
+		w = strsep(&tmp, " ");
+		h = strsep(&tmp, " ");
+		bus_fmt = strsep(&tmp, " ");
 		if (w && h && bus_fmt) {
 			ret = kstrtouint(w, 0, &width);
 			ret |= kstrtouint(h, 0, &height);
 			ret |= kstrtouint(bus_fmt, 0, &fmt);
 		}
 
-		kfree(cmd);
 		if (ret) {
 			pr_err("%s %d invalid command: %s\n",
-			       __func__, __LINE__, buf);
+			       __func__, __LINE__, cmd);
 			return -EINVAL;
 		}
 		xlnx_bridge_set_input(bridge, width, height, fmt);
 	}
 
+	kfree(cmd);
 	return size;
 }
 
