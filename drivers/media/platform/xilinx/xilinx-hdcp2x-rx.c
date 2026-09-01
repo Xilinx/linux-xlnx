@@ -666,7 +666,8 @@ static int xhdcp2x_rx_poll_message(struct xlnx_hdcp2x_config *xhdcp2x_rx)
 		if (xhdcp2x_rx_is_write_message_available(xhdcp2x_rx))
 			return xhdcp2x_rx->handlers.rd_handler(xhdcp2x_rx->interface_ref,
 							       XHDCP2X_RX_HDMI_WRITE_MESSAGE,
-							       xhdcp2x_rx->msg_buffer, 0xFF);
+							       xhdcp2x_rx->msg_buffer,
+							       sizeof(xhdcp2x_rx->msg_buffer));
 	}
 
 	return 0;
