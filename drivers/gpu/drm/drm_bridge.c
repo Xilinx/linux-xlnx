@@ -944,7 +944,6 @@ static int select_bus_fmt_recursive(struct drm_bridge *first_bridge,
 	struct drm_bridge_state *cur_state;
 	struct drm_bridge *prev_bridge __free(drm_bridge_put) =
 		drm_bridge_get_prev_bridge(cur_bridge);
-	struct drm_crtc *crtc = crtc_state->crtc;
 	u32 *in_bus_fmts, in_fmt;
 	int ret;
 
@@ -998,6 +997,8 @@ static int select_bus_fmt_recursive(struct drm_bridge *first_bridge,
 		return -ENOMEM;
 
 	if (first_bridge == cur_bridge) {
+#if IS_REACHABLE(CONFIG_DRM_KMS_HELPER)
+		struct drm_crtc *crtc = crtc_state->crtc;
 		in_fmt = drm_helper_crtc_select_output_bus_format(crtc,
 							crtc_state,
 							in_bus_fmts,
@@ -1006,6 +1007,9 @@ static int select_bus_fmt_recursive(struct drm_bridge *first_bridge,
 			kfree(in_bus_fmts);
 			return -ENOTSUPP;
 		}
+#else
+		in_fmt = in_bus_fmts[0];
+#endif
 		cur_state->input_bus_cfg.format = in_fmt;
 		cur_state->output_bus_cfg.format = out_bus_fmt;
 		kfree(in_bus_fmts);
