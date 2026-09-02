@@ -1076,6 +1076,16 @@ static inline int axienet_mrmac_gt_reset(struct net_device *ndev)
 	return 0;
 }
 
+static void axienet_xxv_mac_only_get_fixed_state(struct phylink_config *config,
+						 struct phylink_link_state *state)
+{
+	struct axienet_local *lp = netdev_priv(to_net_dev(config->dev));
+
+	state->speed = lp->max_speed;
+	state->duplex = DUPLEX_FULL;
+	state->link = 1;
+}
+
 static inline int xxv_gt_reset(struct net_device *ndev)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
@@ -6089,19 +6099,19 @@ static int axienet_probe(struct platform_device *pdev)
 		lp->phylink_config.mac_capabilities = MAC_SYM_PAUSE | MAC_ASYM_PAUSE;
 
 		if (lp->axienet_config->mactype == XAXIENET_10G_25G) {
-			u32 core_speed;
+			if (lp->xxv_core_variant != AXIENET_MAC_ONLY) {
+				u32 core_speed;
 
-			core_speed = axienet_ior(lp, XXV_STAT_CORE_SPEED_OFFSET);
-			if (core_speed & XXV_STAT_CORE_SPEED_RTSW_MASK) {
-				/* Runtime 10G/25G speed switching supported */
-				lp->phylink_config.mac_capabilities |= (MAC_10000FD |
-									MAC_25000FD);
-				__set_bit(PHY_INTERFACE_MODE_10GBASER,
-					  lp->phylink_config.supported_interfaces);
-				__set_bit(PHY_INTERFACE_MODE_25GBASER,
-					  lp->phylink_config.supported_interfaces);
-			} else {
-				if (core_speed & XXV_STAT_CORE_SPEED_10G_MASK) {
+				core_speed = axienet_ior(lp, XXV_STAT_CORE_SPEED_OFFSET);
+				if (core_speed & XXV_STAT_CORE_SPEED_RTSW_MASK) {
+					/* Runtime 10G/25G speed switching supported */
+					lp->phylink_config.mac_capabilities |= (MAC_10000FD |
+										MAC_25000FD);
+					__set_bit(PHY_INTERFACE_MODE_10GBASER,
+						  lp->phylink_config.supported_interfaces);
+					__set_bit(PHY_INTERFACE_MODE_25GBASER,
+						  lp->phylink_config.supported_interfaces);
+				} else if (core_speed & XXV_STAT_CORE_SPEED_10G_MASK) {
 					/* Standalone 10G supported */
 					lp->phylink_config.mac_capabilities |= MAC_10000FD;
 					__set_bit(PHY_INTERFACE_MODE_10GBASER,
@@ -6112,6 +6122,12 @@ static int axienet_probe(struct platform_device *pdev)
 					__set_bit(PHY_INTERFACE_MODE_25GBASER,
 						  lp->phylink_config.supported_interfaces);
 				}
+			} else {
+				lp->phylink_config.get_fixed_state =
+					axienet_xxv_mac_only_get_fixed_state;
+				lp->phylink_config.mac_capabilities |= MAC_10000FD;
+				__set_bit(PHY_INTERFACE_MODE_10GBASER,
+					  lp->phylink_config.supported_interfaces);
 			}
 		} else if (lp->axienet_config->mactype == XAXIENET_1G_10G_25G) {
 			const char *rt_switch = NULL;
