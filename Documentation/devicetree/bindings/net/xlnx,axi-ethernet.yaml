@@ -91,6 +91,8 @@ properties:
 
   phy-handle: true
 
+  fixed-link: true
+
   xlnx,rxmem:
     description:
       Set to allocated memory buffer for Rx/Tx in the hardware.
@@ -103,6 +105,7 @@ properties:
       - rgmii
       - sgmii
       - 1000base-x
+      - 10gbase-r
 
   xlnx,phy-type:
     description:
@@ -229,6 +232,13 @@ properties:
     type: boolean
     description: Indicates whether IP supports Auto Negotiation
       and Link Training.
+
+  xlnx,core-variant:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description:
+      Identifies the synthesized configuration of the 10G/25G High
+      Speed Ethernet Subsystem. 0 = MAC and PCS/PMA both present,
+      1 = MAC only (PCS/PMA absent), 2 = PCS/PMA only.
 
   max-speed: true
 
@@ -400,6 +410,18 @@ allOf:
           enum:
             - 1G / 10G
             - 1G / 10G / 25G
+
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - xlnx,xxv-ethernet-1.0
+
+    then:
+      properties:
+        xlnx,core-variant:
+          enum: [0, 1, 2]
 
   - if:
       properties:
@@ -594,5 +616,22 @@ examples:
                 device_type = "ethernet-phy";
                 reg = <1>;
             };
+        };
+    };
+
+# 6) #Example for 10G/25G High Speed Ethernet Subsystem, MAC-only configuration
+  - |
+    ethernet@80010000 {
+        compatible = "xlnx,xxv-ethernet-1.0";
+        reg = <0x80010000 0x10000>;
+        axistream-connected = <&axi_mcdma_0>;
+        interrupts = <0 84 4>;
+        phy-mode = "10gbase-r";
+        xlnx,core-variant = <1>;
+        xlnx,rxmem = <0x40000>;
+
+        fixed-link {
+            speed = <10000>;
+            full-duplex;
         };
     };
