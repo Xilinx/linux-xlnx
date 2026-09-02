@@ -1246,7 +1246,8 @@ static int axienet_device_reset(struct net_device *ndev)
 		axienet_mrmac_reset(lp);
 	}
 
-	if (lp->axienet_config->gt_reset) {
+	if (lp->axienet_config->gt_reset &&
+	    lp->xxv_core_variant != AXIENET_MAC_ONLY) {
 		ret = lp->axienet_config->gt_reset(ndev);
 		if (ret)
 			return ret;
@@ -1296,30 +1297,32 @@ static int axienet_device_reset(struct net_device *ndev)
 
 	if (lp->axienet_config->mactype == XAXIENET_10G_25G ||
 	    lp->axienet_config->mactype == XAXIENET_1G_10G_25G) {
-		/* Check for block lock bit got set or not
-		 * This ensures that 10G ethernet IP
-		 * is functioning normally or not.
-		 * IP version 3.2 and above, check GT status
-		 * before reading any register
-		 */
-		maj = lp->xxv_ip_version & XXV_MAJ_MASK;
-		minor = (lp->xxv_ip_version & XXV_MIN_MASK) >> 8;
+		if (lp->xxv_core_variant != AXIENET_MAC_ONLY) {
+			/* Check for block lock bit got set or not
+			 * This ensures that 10G ethernet IP
+			 * is functioning normally or not.
+			 * IP version 3.2 and above, check GT status
+			 * before reading any register
+			 */
+			maj = lp->xxv_ip_version & XXV_MAJ_MASK;
+			minor = (lp->xxv_ip_version & XXV_MIN_MASK) >> 8;
 
-		if (maj == 3 ? minor >= 2 : maj > 3) {
-			err = readl_poll_timeout(lp->regs + XXV_STAT_GTWIZ_OFFSET,
-						 val, (val & XXV_GTWIZ_RESET_DONE),
-						 10, DELAY_OF_ONE_MILLISEC);
-			if (err) {
-				netdev_err(ndev, "XXV MAC GT reset not complete! Cross-check the MAC ref clock configuration\n");
-				axienet_dma_bd_release(ndev);
-				return err;
+			if (maj == 3 ? minor >= 2 : maj > 3) {
+				err = readl_poll_timeout(lp->regs + XXV_STAT_GTWIZ_OFFSET,
+							 val, (val & XXV_GTWIZ_RESET_DONE),
+							 10, DELAY_OF_ONE_MILLISEC);
+				if (err) {
+					netdev_err(ndev, "XXV MAC GT reset not complete! Cross-check the MAC ref clock configuration\n");
+					axienet_dma_bd_release(ndev);
+					return err;
+				}
 			}
+			err = readl_poll_timeout(lp->regs + XXV_STATRX_BLKLCK_OFFSET,
+						 val, (val & XXV_RX_BLKLCK_MASK),
+						 10, DELAY_OF_ONE_MILLISEC);
+			if (err)
+				netdev_err(ndev, "XXV MAC block lock not complete! Cross-check the MAC ref clock configuration\n");
 		}
-		err = readl_poll_timeout(lp->regs + XXV_STATRX_BLKLCK_OFFSET,
-					 val, (val & XXV_RX_BLKLCK_MASK),
-					 10, DELAY_OF_ONE_MILLISEC);
-		if (err)
-			netdev_err(ndev, "XXV MAC block lock not complete! Cross-check the MAC ref clock configuration\n");
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 		axienet_rxts_iow(lp, XAXIFIFO_TXTS_RDFR,
 				 XAXIFIFO_TXTS_RESET_MASK);
@@ -3184,6 +3187,7 @@ static int axienet_open(struct net_device *ndev)
 	/* If Runtime speed switching supported */
 	if (lp->axienet_config->mactype == XAXIENET_10G_25G &&
 	    lp->phy_mode != PHY_INTERFACE_MODE_USXGMII &&
+	    lp->xxv_core_variant != AXIENET_MAC_ONLY &&
 	    (axienet_ior(lp, XXV_STAT_CORE_SPEED_OFFSET) &
 	     XXV_STAT_CORE_SPEED_RTSW_MASK)) {
 		axienet_iow(lp, XXVS_AN_ABILITY_OFFSET,
@@ -4907,6 +4911,10 @@ static struct phylink_pcs *axienet_mac_select_pcs(struct phylink_config *config,
 {
 	struct net_device *ndev = to_net_dev(config->dev);
 	struct axienet_local *lp = netdev_priv(ndev);
+
+	if (lp->axienet_config->mactype == XAXIENET_10G_25G &&
+	    lp->xxv_core_variant == AXIENET_MAC_ONLY)
+		return NULL;
 
 	return &lp->pcs;
 }
