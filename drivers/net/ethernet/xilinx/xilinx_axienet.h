@@ -935,6 +935,18 @@ struct skbuf_dma_descriptor {
 };
 
 /**
+ * enum axienet_xxv_core_variant - Sub-block configuration of a Xilinx Ethernet IP
+ * @AXIENET_MAC_PCS: MAC + PCS/PMA present.
+ * @AXIENET_MAC_ONLY: MAC only, no PCS/PMA/GT.
+ * @AXIENET_PCS_ONLY: PCS/PMA only, no MAC.
+ */
+enum axienet_xxv_core_variant {
+	AXIENET_MAC_PCS = 0,
+	AXIENET_MAC_ONLY,
+	AXIENET_PCS_ONLY,
+};
+
+/**
  * struct axienet_local - axienet private per device data
  * @ndev:	Pointer for net_device to which it will be attached.
  * @dev:	Pointer to device structure
@@ -1002,6 +1014,7 @@ struct skbuf_dma_descriptor {
  * @axienet_config: Ethernet config structure
  * @ptp_os_cf: CF TS of PTP PDelay req for one step usage.
  * @xxv_ip_version: XXV IP version
+ * @xxv_core_variant: Which MAC/PCS sub-blocks this instance was built with
  * @tx_ts_regs:		Base address for the axififo device address space.
  * @rx_ts_regs:		Base address for the rx axififo device address space.
  * @tstamp_config: Hardware timestamp config structure.
@@ -1119,6 +1132,7 @@ struct axienet_local {
 	const struct axienet_config *axienet_config;
 	u64 ptp_os_cf;		/* CF TS of PTP PDelay req for one step usage */
 	u32 xxv_ip_version;
+	enum axienet_xxv_core_variant xxv_core_variant;
 
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 	void __iomem *tx_ts_regs;

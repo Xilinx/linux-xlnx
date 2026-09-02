@@ -5633,6 +5633,17 @@ static int axienet_probe(struct platform_device *pdev)
 	    lp->axienet_config->mactype == XAXIENET_1G_10G_25G)
 		lp->xxv_ip_version = axienet_ior(lp, XXV_CONFIG_REVISION);
 
+	if (lp->axienet_config->mactype == XAXIENET_10G_25G) {
+		u32 core_variant;
+
+		if (!of_property_read_u32(pdev->dev.of_node, "xlnx,core-variant",
+					  &core_variant) &&
+		    core_variant == AXIENET_MAC_ONLY) {
+			lp->xxv_core_variant = AXIENET_MAC_ONLY;
+			lp->max_speed = SPEED_10000;
+		}
+	}
+
 	if (lp->axienet_config->mactype == XAXIENET_MRMAC) {
 		gpio_count = gpiod_count(&pdev->dev, "gt-ctrl");
 		if (gpio_count > 0) {
