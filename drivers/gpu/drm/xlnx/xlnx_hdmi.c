@@ -176,12 +176,10 @@
 #define HDMI_TX_VTC_GVSIZE_FRAME_VSIZE		GENMASK(13, 0)
 
 #define HDMI_TX_VTC_GHSYNC			0x078
-#define HDMI_TX_VTC_GH1BPSTART_SHIFT		16
 #define HDMI_TX_VTC_GHSYNC_END_MASK		GENMASK(29, 16)
 #define HDMI_TX_VTC_GHSYNC_START_MASK		GENMASK(13, 0)
 
 #define HDMI_TX_VTC_GVBHOFF			0x07c
-#define HDMI_TX_VTC_F0VSYNC_HEND_SHIFT		16
 #define HDMI_TX_VTC_F0VBLANK_HEND_MASK		GENMASK(29, 16)
 #define HDMI_TX_VTC_F0VBLANK_HSTART_MASK	GENMASK(13, 0)
 
@@ -939,14 +937,12 @@ static void xlnx_hdmi_vtc_set_timing(struct xlnx_hdmi *hdmi,
 	if (is_interlaced)
 		xlnx_hdmi_vtc_writel(hdmi, HDMI_TX_VTC_GASIZE_F1, reg);
 
-	reg = hsync_start & HDMI_TX_VTC_GHSYNC_START_MASK;
-	reg |= (hbackporch_start << HDMI_TX_VTC_GH1BPSTART_SHIFT) &
-		HDMI_TX_VTC_GHSYNC_END_MASK;
+	reg = FIELD_PREP(HDMI_TX_VTC_GHSYNC_START_MASK, hsync_start) |
+	      FIELD_PREP(HDMI_TX_VTC_GHSYNC_END_MASK, hbackporch_start);
 	xlnx_hdmi_vtc_writel(hdmi, HDMI_TX_VTC_GHSYNC, reg);
 
-	reg = (vsync_start - 1) & HDMI_TX_VTC_F0_VSYNC_VSTART_MASK;
-	reg |= ((vbackporch_start - 1) << HDMI_TX_VTC_FIELD1_VSIZE_SHIFT) &
-		HDMI_TX_VTC_F0_VSYNC_VEND_MASK;
+	reg = FIELD_PREP(HDMI_TX_VTC_F0_VSYNC_VSTART_MASK, vsync_start - 1) |
+	      FIELD_PREP(HDMI_TX_VTC_F0_VSYNC_VEND_MASK, vbackporch_start - 1);
 	xlnx_hdmi_vtc_writel(hdmi, HDMI_TX_VTC_GVSYNC, reg);
 	/* VSync timing for field 1 (interlaced only) */
 	if (is_interlaced)
@@ -961,9 +957,8 @@ static void xlnx_hdmi_vtc_set_timing(struct xlnx_hdmi *hdmi,
 				  HDMI_TX_VTC_GFENC_MASK);
 
 	/* Calculate and update Generator VBlank Hori field 0 */
-	reg = hactive & HDMI_TX_VTC_F0VBLANK_HSTART_MASK;
-	reg |= (hactive << HDMI_TX_VTC_F0VSYNC_HEND_SHIFT) &
-		HDMI_TX_VTC_F0VBLANK_HEND_MASK;
+	reg = FIELD_PREP(HDMI_TX_VTC_F0VBLANK_HSTART_MASK, hactive) |
+	      FIELD_PREP(HDMI_TX_VTC_F0VBLANK_HEND_MASK, hactive);
 	xlnx_hdmi_vtc_writel(hdmi, HDMI_TX_VTC_GVBHOFF, reg);
 
 	/* VBlank Hori field 1 (interlaced only) */
@@ -971,9 +966,8 @@ static void xlnx_hdmi_vtc_set_timing(struct xlnx_hdmi *hdmi,
 		xlnx_hdmi_vtc_writel(hdmi, HDMI_TX_VTC_GVBHOFF_F1, reg);
 
 	/* Calculate and update Generator VSync Hori field 0 */
-	reg = hsync_start & HDMI_TX_VTC_F0VBLANK_HSTART_MASK;
-	reg |= (hsync_start << HDMI_TX_VTC_F0VSYNC_HEND_SHIFT) &
-		HDMI_TX_VTC_F0VBLANK_HEND_MASK;
+	reg = FIELD_PREP(HDMI_TX_VTC_F0VBLANK_HSTART_MASK, hsync_start) |
+	      FIELD_PREP(HDMI_TX_VTC_F0VBLANK_HEND_MASK, hsync_start);
 	xlnx_hdmi_vtc_writel(hdmi, HDMI_TX_VTC_GVSHOFF, reg);
 
 	/* VSync Hori field 1 (interlaced only) */
