@@ -3356,7 +3356,7 @@ static u64 xlnx_hdmi_get_tmdsclk(struct xlnx_hdmi *hdmi, struct drm_display_mode
 {
 	u64 tmdsclk;
 
-	tmdsclk = adjusted_mode->clock * 1000;
+	tmdsclk = (u64)adjusted_mode->clock * 1000;
 
 	if ((adjusted_mode->flags & DRM_MODE_FLAG_DBLCLK) &&
 	    (adjusted_mode->flags & DRM_MODE_FLAG_INTERLACE))
