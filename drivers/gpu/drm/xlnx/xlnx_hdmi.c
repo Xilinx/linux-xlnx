@@ -787,43 +787,43 @@ static struct attribute_group xlnx_hdcp_key_attr_group = {
 };
 
 static inline void
-xlnx_hdmi_writel(struct xlnx_hdmi *hdmi, u32 offset, u32 val)
+xlnx_hdmi_writel(const struct xlnx_hdmi *hdmi, u32 offset, u32 val)
 {
 	writel(val, hdmi->base + offset);
 }
 
-static inline u32 xlnx_hdmi_readl(struct xlnx_hdmi *hdmi, int offset)
+static inline u32 xlnx_hdmi_readl(const struct xlnx_hdmi *hdmi, u32 offset)
 {
 	return readl(hdmi->base + offset);
 }
 
 static inline void
-xlnx_hdmi_vtc_writel(struct xlnx_hdmi *hdmi, u32 offset, u32 val)
+xlnx_hdmi_vtc_writel(const struct xlnx_hdmi *hdmi, u32 offset, u32 val)
 {
 	writel(val, hdmi->base + HDMI_TX_VTC_BASE + offset);
 }
 
 static inline u32
-xlnx_hdmi_vtc_readl(struct xlnx_hdmi *hdmi, u32 offset)
+xlnx_hdmi_vtc_readl(const struct xlnx_hdmi *hdmi, u32 offset)
 {
 	return readl(hdmi->base + HDMI_TX_VTC_BASE + offset);
 }
 
 static inline void
-xlnx_hdmi_vtc_clr(struct xlnx_hdmi *hdmi, u32 offset, u32 clr)
+xlnx_hdmi_vtc_clr(const struct xlnx_hdmi *hdmi, u32 offset, u32 clr)
 {
 	xlnx_hdmi_vtc_writel(hdmi, offset,
 			     xlnx_hdmi_vtc_readl(hdmi, offset) & ~clr);
 }
 
 static inline void
-xlnx_set_frl_link_clk(struct xlnx_hdmi *hdmi, u32 val)
+xlnx_set_frl_link_clk(const struct xlnx_hdmi *hdmi, u32 val)
 {
 	xlnx_hdmi_writel(hdmi, HDMI_TX_FRL_LNK_CLK, val);
 }
 
 static inline void
-xlnx_set_frl_vid_clk(struct xlnx_hdmi *hdmi, u32 val)
+xlnx_set_frl_vid_clk(const struct xlnx_hdmi *hdmi, u32 val)
 {
 	xlnx_hdmi_writel(hdmi, HDMI_TX_FRL_VID_CLK, val);
 }
@@ -840,7 +840,7 @@ struct xlnx_hdmi *connector_to_hdmi(struct drm_connector *connector)
 	return container_of(connector, struct xlnx_hdmi, connector);
 }
 
-static bool xlnx_hdmi_is_lnk_vid_rdy(struct xlnx_hdmi *hdmi)
+static bool xlnx_hdmi_is_lnk_vid_rdy(const struct xlnx_hdmi *hdmi)
 {
 	u32 reg_val;
 
@@ -1048,7 +1048,7 @@ static bool xlnx_hdmi_ddcwaitfordone(struct xlnx_hdmi *hdmi)
  *
  * Returns: 0 on success, 1 if fifo full error
  */
-static u32 xlnx_hdmi_ddcwrite_cmd(struct xlnx_hdmi *hdmi, u32 cmd)
+static u32 xlnx_hdmi_ddcwrite_cmd(const struct xlnx_hdmi *hdmi, u32 cmd)
 {
 	int tries = 0;
 	u32 status;
@@ -1091,7 +1091,7 @@ static u32 xlnx_hdmi_ddcwrite_cmd(struct xlnx_hdmi *hdmi, u32 cmd)
  * Returns: 0 if write is successful, 1 on failure.
  */
 static u32 xlnx_hdmi_ddcwrite(struct xlnx_hdmi *hdmi, u8 slave,
-			      u16 length, u8 *buffer, u8 stop)
+			      u16 length, const u8 *buffer, u8 stop)
 {
 	u32 data, index, status;
 
