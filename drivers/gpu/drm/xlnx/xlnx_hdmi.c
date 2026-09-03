@@ -690,10 +690,6 @@ static struct clk_bulk_data hdmitx_clks[] = {
 	xlnx_hdmi_writel(hdmi, HDMI_TX_PIO_OUT_SET,\
 			 HDMI_TX_PIO_OUT_BRIDGE_YUV420)
 
-#define xlnx_hdmi_auxintr_enable(hdmi) \
-	xlnx_hdmi_writel(hdmi, HDMI_TX_AUX_CTRL_SET,\
-			 HDMI_TX_AUD_CTRL_IE)
-
 /* Data Display Channel */
 #define xlnx_hdmi_ddc_disable(hdmi) \
 	xlnx_hdmi_writel(hdmi, HDMI_TX_DDC_CTRL_CLR,\
