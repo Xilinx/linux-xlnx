@@ -1424,6 +1424,9 @@ static int xlnx_mix_set_layer_scaling(struct xlnx_mix_hw *mixer,
 	u32 x_pos, y_pos, width, height, offset;
 
 	l_data = xlnx_mix_get_layer_data(mixer, id);
+	if (!l_data)
+		return -EINVAL;
+
 	x_pos = l_data->layer_regs.x_pos;
 	y_pos = l_data->layer_regs.y_pos;
 	width  = l_data->layer_regs.width;
@@ -1445,7 +1448,7 @@ static int xlnx_mix_set_layer_scaling(struct xlnx_mix_hw *mixer,
 		}
 	} else {
 		 /* Layer0-Layer15 */
-		if (id < mixer->layer_cnt && l_data->hw_config.can_scale) {
+		if (l_data->hw_config.can_scale) {
 			offset = id * XVMIX_REG_OFFSET;
 
 			reg_writel(reg, (XVMIX_LAYERSCALE_0_DATA + offset),
@@ -1512,6 +1515,8 @@ static int xlnx_mix_set_layer_alpha(struct xlnx_mix_hw *mixer,
 	int status = -EINVAL;
 
 	layer_data = xlnx_mix_get_layer_data(mixer, layer_id);
+	if (!layer_data)
+		return status;
 
 	if (layer_id == mixer->logo_layer_id) {
 		if (mixer->logo_layer_en) {
@@ -1525,8 +1530,7 @@ static int xlnx_mix_set_layer_alpha(struct xlnx_mix_hw *mixer,
 		}
 	} else {
 		 /*Layer1-Layer15*/
-		if (layer_id < mixer->layer_cnt &&
-		    layer_data->hw_config.can_alpha) {
+		if (layer_data->hw_config.can_alpha) {
 			u32 offset =  layer_id * XVMIX_REG_OFFSET;
 
 			reg = XVMIX_LAYERALPHA_0_DATA;
@@ -1586,15 +1590,14 @@ static int xlnx_mix_set_layer_buff_addr(struct xlnx_mix_hw *mixer,
 
 	memset(reg, 0, sizeof(reg));
 
-	if (id >= mixer->layer_cnt)
+	layer_data = xlnx_mix_get_layer_data(mixer, id);
+	if (!layer_data)
 		return -EINVAL;
 
 	/* Check if addr is aligned to aximm width (PPC * 64-bits) */
 	align = mixer->ppc * 8;
 	if ((luma_addr % align) || (chroma_addr % align) || (chroma_addr2 % align))
 		return -EINVAL;
-
-	layer_data = &mixer->layer_data[id];
 
 	offset = (id - 1) * XVMIX_REG_OFFSET;
 	reg[0] = XVMIX_LAYER1_BUF1_V_DATA + offset;
@@ -1715,14 +1718,13 @@ xlnx_mix_disp_plane_atomic_get_property(struct drm_plane *base_plane,
 				      uint64_t *val)
 {
 	struct xlnx_mix_plane *plane = to_xlnx_plane(base_plane);
+	struct xlnx_mix_layer_data *layer_data = plane->mixer_layer;
 	struct xlnx_mix *mixer = plane->mixer;
-	struct xlnx_mix_hw *mixer_hw = to_mixer_hw(plane);
-	u32 layer_id = plane->mixer_layer->id;
 
 	if (property == mixer->alpha_prop)
-		*val = mixer_hw->layer_data[layer_id].layer_regs.alpha;
+		*val = layer_data->layer_regs.alpha;
 	else if (property == mixer->scale_prop)
-		*val = mixer_hw->layer_data[layer_id].layer_regs.scale_fact;
+		*val = layer_data->layer_regs.scale_fact;
 	else
 		return -EINVAL;
 
