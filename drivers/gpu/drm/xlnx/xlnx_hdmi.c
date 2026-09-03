@@ -143,7 +143,6 @@
 #define HDMI_TX_AUD_CTRL_AUD_RESET		BIT(5)
 #define HDMI_TX_AUD_CTRL_AUD_FMT		BIT(4)
 #define HDMI_TX_AUD_CTRL_CH			GENMASK(3, 2)
-#define HDMI_TX_AUD_CTRL_IE			BIT(1)
 #define HDMI_TX_AUD_CTRL_RUN			BIT(0)
 #define HDMI_TX_AUD_CTRL_SET			0x108
 #define HDMI_TX_AUD_CTRL_CLR			0x10c
@@ -743,11 +742,7 @@ static struct clk_bulk_data hdmitx_clks[] = {
 
 #define xlnx_hdmi_auxintr_enable(hdmi) \
 	xlnx_hdmi_writel(hdmi, HDMI_TX_AUX_CTRL_SET,\
-			 HDMI_TX_AUD_CTRL_IE)
-
-#define xlnx_hdmi_auxintr_disable(hdmi) \
-	xlnx_hdmi_writel(hdmi, HDMI_TX_AUX_CTRL_CLR,\
-			 HDMI_TX_AUD_CTRL_IE)
+			 HDMI_TX_AUX_CTRL_IE)
 
 /* Fixed Rate Link */
 #define xlnx_hdmi_frl_intr_disable(hdmi) \
