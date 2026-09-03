@@ -234,9 +234,6 @@
 #define HDMI_TX_DDC_CMD_RD_TOKEN		0x102
 #define HDMI_TX_DDC_CMD_WR_TOKEN		0x103
 
-#define hdmi_mutex_lock(x)	mutex_lock(x)
-#define hdmi_mutex_unlock(x)	mutex_unlock(x)
-
 #define TIMEOUT_2MS		2
 #define TIMEOUT_5MS		5
 #define TIMEOUT_100MS		100
@@ -1980,17 +1977,17 @@ static void xlnx_hdmi_hpd_work_func(struct work_struct *work)
 	struct xlnx_hdmi *hdmi = container_of(to_delayed_work(work),
 					      struct xlnx_hdmi, hpd_work);
 
-	hdmi_mutex_lock(&hdmi->hdmi_mutex);
+	mutex_lock(&hdmi->hdmi_mutex);
 
 	if (hdmi->cable_connected) {
-		hdmi_mutex_unlock(&hdmi->hdmi_mutex);
+		mutex_unlock(&hdmi->hdmi_mutex);
 		return;
 	}
 
 	xlnx_hdmi_streamdown_callback(hdmi);
 	xlnx_hdmi_connect_callback(hdmi);
 
-	hdmi_mutex_unlock(&hdmi->hdmi_mutex);
+	mutex_unlock(&hdmi->hdmi_mutex);
 
 	if (hdmi->connector.dev)
 		drm_sysfs_hotplug_event(hdmi->connector.dev);
@@ -2894,7 +2891,7 @@ static irqreturn_t hdmitx_irq_thread(int irq, void *data)
 	if (!hdmi)
 		return IRQ_HANDLED;
 
-	hdmi_mutex_lock(&hdmi->hdmi_mutex);
+	mutex_lock(&hdmi->hdmi_mutex);
 
 	if (hdmi->intr_status)
 		xlnx_hdmi_piointr_handler(hdmi);
@@ -2909,7 +2906,7 @@ static irqreturn_t hdmitx_irq_thread(int irq, void *data)
 			hdmi->frl_status);
 	}
 
-	hdmi_mutex_unlock(&hdmi->hdmi_mutex);
+	mutex_unlock(&hdmi->hdmi_mutex);
 
 	spin_lock_irqsave(&hdmi->irq_lock, flags);
 	xlnx_hdmi_piointr_ie_enable(hdmi);
@@ -2940,14 +2937,14 @@ xlnx_hdmi_connector_detect(struct drm_connector *connector, bool force)
 		first_time_ms = 0;
 	}
 
-	hdmi_mutex_lock(&hdmi->hdmi_mutex);
+	mutex_lock(&hdmi->hdmi_mutex);
 	if (hdmi->cable_connected) {
-		hdmi_mutex_unlock(&hdmi->hdmi_mutex);
+		mutex_unlock(&hdmi->hdmi_mutex);
 		dev_dbg(hdmi->dev, "hdmi_connector_detect() = connected\n");
 		return connector_status_connected;
 	}
 
-	hdmi_mutex_unlock(&hdmi->hdmi_mutex);
+	mutex_unlock(&hdmi->hdmi_mutex);
 	dev_dbg(hdmi->dev, "hdmi_connector_detect() = disconnected\n");
 
 	return connector_status_disconnected;
@@ -3036,12 +3033,12 @@ xlnx_hdmi_connector_mode_valid(struct drm_connector *connector,
 	}
 
 	drm_mode_debug_printmodeline(mode);
-	hdmi_mutex_lock(&hdmi->hdmi_mutex);
+	mutex_lock(&hdmi->hdmi_mutex);
 
 	/* pixel clock too high for sink? */
 	if (clock > HDMI_TX_PIXEL_MAXRATE)
 		status = MODE_CLOCK_HIGH;
-	hdmi_mutex_unlock(&hdmi->hdmi_mutex);
+	mutex_unlock(&hdmi->hdmi_mutex);
 
 	return status;
 }
@@ -3119,14 +3116,14 @@ static int xlnx_hdmi_connector_get_modes(struct drm_connector *connector)
 	int ret;
 	bool is_hdmi_sink;
 
-	hdmi_mutex_lock(&hdmi->hdmi_mutex);
+	mutex_lock(&hdmi->hdmi_mutex);
 
 	drm_edid = drm_edid_read_custom(connector, xlnx_hdmi_get_edid_block, hdmi);
 
 	/* Set HDMI FRL or TMDS Mode */
 	xlnx_hdmi_set_frl_tmds_mode(connector);
 
-	hdmi_mutex_unlock(&hdmi->hdmi_mutex);
+	mutex_unlock(&hdmi->hdmi_mutex);
 	drm_edid_connector_update(connector, drm_edid);
 
 	if (!drm_edid) {
@@ -3179,9 +3176,9 @@ static void xlnx_hdmi_encoder_dpms(struct drm_encoder *encoder, int dpms)
 {
 	struct xlnx_hdmi *hdmi = encoder_to_hdmi(encoder);
 
-	hdmi_mutex_lock(&hdmi->hdmi_mutex);
+	mutex_lock(&hdmi->hdmi_mutex);
 	hdmi->dpms = dpms;
-	hdmi_mutex_unlock(&hdmi->hdmi_mutex);
+	mutex_unlock(&hdmi->hdmi_mutex);
 }
 
 static void xlnx_hdmi_encoder_enable(struct drm_encoder *encoder)
@@ -3215,9 +3212,9 @@ static void xlnx_hdmi_encoder_enable(struct drm_encoder *encoder)
  */
 static void xlnx_hdmi_frl_teardown(struct xlnx_hdmi *hdmi)
 {
-	hdmi_mutex_lock(&hdmi->hdmi_mutex);
+	mutex_lock(&hdmi->hdmi_mutex);
 	if (!hdmi->stream.is_frl) {
-		hdmi_mutex_unlock(&hdmi->hdmi_mutex);
+		mutex_unlock(&hdmi->hdmi_mutex);
 		return;
 	}
 
@@ -3228,7 +3225,7 @@ static void xlnx_hdmi_frl_teardown(struct xlnx_hdmi *hdmi)
 	xlnx_hdmi_frl_ext_vidsrc(hdmi);
 	xlnx_hdmi_frl_sleep(hdmi);
 	hdmi->stream.is_frl = false;
-	hdmi_mutex_unlock(&hdmi->hdmi_mutex);
+	mutex_unlock(&hdmi->hdmi_mutex);
 }
 
 static void xlnx_hdmi_encoder_disable(struct drm_encoder *encoder)
@@ -3698,11 +3695,11 @@ static int xlnx_hdmi_bind(struct device *dev, struct device *master,
 		return ret;
 	}
 
-	hdmi_mutex_lock(&hdmi->hdmi_mutex);
+	mutex_lock(&hdmi->hdmi_mutex);
 	xlnx_hdmi_hpd_sync_from_hw(hdmi);
 	if (hdmi->cable_connected)
 		xlnx_hdmi_connect_callback(hdmi);
-	hdmi_mutex_unlock(&hdmi->hdmi_mutex);
+	mutex_unlock(&hdmi->hdmi_mutex);
 	if (hdmi->connector.dev)
 		drm_sysfs_hotplug_event(hdmi->connector.dev);
 
@@ -3828,9 +3825,9 @@ static int xlnx_hdmi_initialize(struct xlnx_hdmi *hdmi)
 	xlnx_hdmi_piointr_ie_enable(hdmi);
 	xlnx_hdmi_piointr_run_enable(hdmi);
 
-	hdmi_mutex_lock(&hdmi->hdmi_mutex);
+	mutex_lock(&hdmi->hdmi_mutex);
 	xlnx_hdmi_hpd_sync_from_hw(hdmi);
-	hdmi_mutex_unlock(&hdmi->hdmi_mutex);
+	mutex_unlock(&hdmi->hdmi_mutex);
 
 	return 0;
 }
