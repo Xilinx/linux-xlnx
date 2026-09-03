@@ -358,6 +358,8 @@ int aie_aperture_remove(struct aie_aperture *aperture)
 	/* Remove from apertures list */
 	list_del(&aperture->node);
 
+	dev_set_uevent_suppress(&aperture->dev, true);
+
 	of_node_clear_flag(aperture->dev.of_node, OF_POPULATED);
 	device_del(&aperture->dev);
 	put_device(&aperture->dev);
@@ -392,7 +394,10 @@ int aie_aperture_add_dev(struct aie_aperture *aperture,
 	/* We can now rely on the release function for cleanup */
 	dev->release = aie_aperture_release_device;
 
-	return device_register(&aperture->dev);
+	device_initialize(dev);
+	dev_set_uevent_suppress(dev, true);
+
+	return device_add(dev);
 }
 
 /**
