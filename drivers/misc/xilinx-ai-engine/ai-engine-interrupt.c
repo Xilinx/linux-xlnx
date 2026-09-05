@@ -563,6 +563,15 @@ static bool aie_tile_backtrack(struct aie_partition *apart,
 	aie_read_event_status(apart, &loc, module, status);
 	trace_aie_tile_status(apart, &loc, module, status);
 
+	/*
+	 * grevent is read from hardware and may be out of range. Validate it
+	 * against the number of event status registers of this tile before
+	 * indexing. The check is done after reading the status so that callers
+	 * still see a populated status array.
+	 */
+	if (grevent / 32 >= aie_get_tile_status_size(apart, &loc))
+		return false;
+
 	if (!(status[grevent / 32] & BIT(grevent % 32)))
 		return ret;
 
