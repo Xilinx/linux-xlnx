@@ -20,6 +20,7 @@
 #include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
+#include <linux/overflow.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/uio.h>
@@ -831,7 +832,7 @@ static int aie_part_mmap(struct file *fp, struct vm_area_struct *vma)
 	struct aie_device *adev = apart->adev;
 	unsigned long offset = vma->vm_pgoff * PAGE_SIZE;
 	phys_addr_t addr;
-	size_t size;
+	size_t size, remaining;
 
 	if (vma->vm_end < vma->vm_start)
 		return -EINVAL;
@@ -844,7 +845,12 @@ static int aie_part_mmap(struct file *fp, struct vm_area_struct *vma)
 	vma->vm_private_data = apart;
 	vma->vm_ops = &aie_part_physical_vm_ops;
 	size = apart->range.size.col << adev->col_shift;
-	if ((vma->vm_end - vma->vm_start) > (size - offset)) {
+	if (check_sub_overflow(size, (size_t)offset, &remaining)) {
+		dev_dbg(&apart->dev,
+			"%s: offset exceed.\n", __func__);
+		return -EINVAL;
+	}
+	if ((vma->vm_end - vma->vm_start) > remaining) {
 		dev_err(&apart->dev,
 			"%s: size exceed.\n", __func__);
 		return -EINVAL;
