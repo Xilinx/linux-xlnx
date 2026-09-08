@@ -2176,6 +2176,10 @@ static int cqspi_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)
 	if (refcount_read(&cqspi->inflight_ops) == 0)
 		return -ENODEV;
 
+	/* refcount is 0 once shutdown or remove has run. */
+	if (!refcount_read(&cqspi->refcount))
+		return -EBUSY;
+
 	if (!(ddata && (ddata->quirks & CQSPI_DISABLE_RUNTIME_PM))) {
 		ret = pm_runtime_resume_and_get(dev);
 		if (ret) {
@@ -3080,9 +3084,62 @@ static const struct of_device_id cqspi_dt_ids[] = {
 
 MODULE_DEVICE_TABLE(of, cqspi_dt_ids);
 
+static void cqspi_shutdown(struct platform_device *pdev)
+{
+	struct cqspi_st *cqspi = platform_get_drvdata(pdev);
+	struct spi_mem *mem;
+	u32 reg;
+	int ret, i;
+
+	/* Runtime suspend already turned off the controller and clock. */
+	if (pm_runtime_suspended(&pdev->dev))
+		return;
+
+	/* refcount 0 makes cqspi_exec_mem_op() reject new operations. */
+	refcount_set(&cqspi->refcount, 0);
+
+	/* Takes the bus lock, so an operation already running is drained. */
+	ret = spi_controller_suspend(cqspi->host);
+	if (ret)
+		dev_warn(&pdev->dev, "controller suspend failed (%d)\n", ret);
+
+	if (cqspi->tuning_scheduled) {
+		for (i = 0; i < cqspi->num_chipselect; i++) {
+			mem = cqspi->f_pdata[i].tuning_mem;
+			/* Only the CS that scheduled the work has it set up. */
+			if (mem && mem->complete_work.work.func)
+				disable_delayed_work_sync(&mem->complete_work);
+		}
+		cqspi->tuning_scheduled = false;
+	}
+
+	/* The bus is free, wait for the controller itself to settle. */
+	ret = cqspi_wait_idle(cqspi);
+	if (ret)
+		dev_warn(&pdev->dev, "still busy (%d), stopping anyway\n", ret);
+
+	/* Clear all pending status before disabling the interrupts. */
+	writel(CQSPI_IRQ_STATUS_MASK, cqspi->iobase + CQSPI_REG_IRQSTATUS);
+	writel(0, cqspi->iobase + CQSPI_REG_IRQMASK);
+
+	if (cqspi->use_dma_read) {
+		/* DST_I_STS is write-one-to-clear. */
+		reg = readl(cqspi->iobase + CQSPI_REG_VERSAL_DMA_DST_I_STS);
+		writel(reg, cqspi->iobase + CQSPI_REG_VERSAL_DMA_DST_I_STS);
+		writel(CQSPI_REG_VERSAL_DMA_DST_ALL_I_DIS_MASK,
+		       cqspi->iobase + CQSPI_REG_VERSAL_DMA_DST_I_DIS);
+		zynqmp_pm_ospi_mux_select(cqspi->pd_dev_id,
+					  PM_OSPI_MUX_SEL_LINEAR);
+	}
+
+	cqspi_controller_enable(cqspi, 0);
+	clk_disable_unprepare(cqspi->clk);
+}
+
 static struct platform_driver cqspi_platform_driver = {
 	.probe = cqspi_probe,
 	.remove = cqspi_remove,
+	.shutdown = cqspi_shutdown,
 	.driver = {
 		.name = CQSPI_NAME,
 		.pm = pm_ptr(&cqspi_dev_pm_ops),
