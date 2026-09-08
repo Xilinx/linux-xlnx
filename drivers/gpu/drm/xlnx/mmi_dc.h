@@ -12,6 +12,7 @@
 
 #include <linux/device.h>
 #include <linux/io.h>
+#include <linux/xlnx/mmi_audio.h>
 #include <drm/drm_modes.h>
 
 #define MMI_DC_NUM_PLANES		(3)
@@ -99,8 +100,10 @@ struct mmi_audio;
  * @ps_pixel_clk: PS pixel clock mmi_aux0_ref_clk
  * @mmi_pll_clk: parent to pixel clock
  * @stc_ref_clk: 27Mhz DC reference clock for AV sync
- * @aud_clk: audio clock
+ * @pl_aud_clk: PL audio clock
+ * @ps_aud_clk: PS audio clock
  * @audio: Audio data
+ * @aud_clk_src: selected audio clock source
  * @irq_num: interrupt lane number
  */
 struct mmi_dc {
@@ -124,8 +127,10 @@ struct mmi_dc {
 	struct clk		*ps_pixel_clk;
 	struct clk		*mmi_pll_clk;
 	struct clk		*stc_ref_clk;
-	struct clk		*aud_clk;
+	struct clk		*pl_aud_clk;
+	struct clk		*ps_aud_clk;
 	struct mmi_audio	*audio;
+	enum mmi_dc_aud_clk_src aud_clk_src;
 	int			irq_num;
 };
 
@@ -167,6 +172,19 @@ enum mmi_dc_operating_mode {
 
 int mmi_dc_check_operating_mode(struct mmi_dc *dc,
 				enum mmi_dc_operating_mode *mode);
+
+static inline struct clk *mmi_dc_get_aud_clk(struct mmi_dc *dc)
+{
+	switch (dc->aud_clk_src) {
+	case MMIDC_PL_AUD_CLK:
+		return dc->pl_aud_clk;
+	case MMIDC_27M:
+		return dc->ps_aud_clk;
+	default:
+		return NULL;
+	}
+}
+
 void mmi_dc_set_global_alpha(struct mmi_dc *dc, u8 alpha, bool enable);
 void mmi_dc_enable_vblank(struct mmi_dc *dc);
 void mmi_dc_disable_vblank(struct mmi_dc *dc);
@@ -180,5 +198,7 @@ void mmi_dc_set_video_timing_source(struct mmi_dc *dc,
 void mmi_dc_drm_handle_vblank(struct mmi_dc_drm *drm);
 int mmi_dc_set_vid_clk_src(struct mmi_dc *dc, enum mmi_dc_vid_clk_src vidclksrc);
 enum mmi_dc_vid_clk_src mmi_dc_get_vid_clk_src(struct mmi_dc *dc);
+int mmi_dc_set_aud_clk_src(struct mmi_dc *dc, enum mmi_dc_aud_clk_src audclksrc);
+enum mmi_dc_aud_clk_src mmi_dc_get_aud_clk_src(struct mmi_dc *dc);
 
 #endif /* __MMI_DC_H__ */

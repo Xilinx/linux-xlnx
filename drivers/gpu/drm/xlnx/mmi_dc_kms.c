@@ -32,6 +32,7 @@
 #include <drm/drm_vblank.h>
 
 #include "mmi_dc.h"
+#include "mmi_dc_audio.h"
 #include "mmi_dc_plane.h"
 
 #define MMI_DC_VBLANKS			(3)
@@ -55,6 +56,8 @@ MODULE_PARM_DESC(wb, "Enable writeback through PL feedback path");
  * @bridge: DRM chain pointer
  * @vid_clk_src_prop: DC Video clock source property associated with this crtc
  * @vid_clk_src_val: property value of vid_clk_src_prop
+ * @aud_clk_src_prop: DC Audio clock source property associated with this crtc
+ * @aud_clk_src_val: property value of aud_clk_src_prop
  */
 struct mmi_dc_drm {
 	struct mmi_dc	*dc;
@@ -66,11 +69,18 @@ struct mmi_dc_drm {
 
 	struct drm_property	*vid_clk_src_prop;
 	enum mmi_dc_vid_clk_src vid_clk_src_val;
+	struct drm_property	*aud_clk_src_prop;
+	enum mmi_dc_aud_clk_src aud_clk_src_val;
 };
 
 static const char * const mmi_dc_vid_clk_src_names[] = {
 	[MMIDC_AUX0_REF_CLK]	= "PS_VID_CLK",
 	[MMIDC_PL_CLK]		= "PL_VID_CLK",
+};
+
+static const char * const mmi_dc_aud_clk_src_names[] = {
+	[MMIDC_27M]		= "PS_AUD_CLK",
+	[MMIDC_PL_AUD_CLK]	= "PL_AUD_CLK",
 };
 
 /**
@@ -337,6 +347,14 @@ static int mmi_dc_crtc_set_property(struct drm_crtc *crtc,
 
 		vidclksrc = (enum mmi_dc_vid_clk_src)val;
 		ret = mmi_dc_set_vid_clk_src(dc, vidclksrc);
+	} else if (property == dc_drm->aud_clk_src_prop) {
+		enum mmi_dc_aud_clk_src audclksrc;
+
+		if (val != MMIDC_27M && val != MMIDC_PL_AUD_CLK)
+			return -EINVAL;
+
+		audclksrc = (enum mmi_dc_aud_clk_src)val;
+		ret = mmi_dc_audio_set_clk_src(dc, audclksrc);
 	}
 
 	return ret;
@@ -354,6 +372,10 @@ static int mmi_dc_crtc_get_property(struct drm_crtc *crtc,
 	if (property == dc_drm->vid_clk_src_prop) {
 		dc_drm->vid_clk_src_val = mmi_dc_get_vid_clk_src(dc);
 		*val = dc_drm->vid_clk_src_val;
+		ret = 0;
+	} else if (property == dc_drm->aud_clk_src_prop) {
+		dc_drm->aud_clk_src_val = mmi_dc_get_aud_clk_src(dc);
+		*val = dc_drm->aud_clk_src_val;
 		ret = 0;
 	}
 
@@ -402,6 +424,19 @@ static struct drm_property *mmi_dc_create_vid_clk_property(struct mmi_dc *dc, co
 	return drm_property_create_enum(&dc->drm->drm, DRM_MODE_PROP_ENUM, name, enum_list, len);
 }
 
+static struct drm_property *mmi_dc_create_aud_clk_property(struct mmi_dc *dc, const char *name)
+{
+	struct drm_prop_enum_list enum_list[MMIDC_AUD_CLK_SRC_COUNT];
+	int len;
+
+	for (len = 0; len < MMIDC_AUD_CLK_SRC_COUNT; len++) {
+		enum_list[len].type = len;
+		enum_list[len].name = mmi_dc_aud_clk_src_names[len];
+	}
+
+	return drm_property_create_enum(&dc->drm->drm, DRM_MODE_PROP_ENUM, name, enum_list, len);
+}
+
 /**
  * mmi_dc_create_crtc - Create DRM CRTC interface for MMI DC
  * @dc: MMI DC device
@@ -438,6 +473,18 @@ static int mmi_dc_create_crtc(struct mmi_dc *dc)
 		}
 		drm_object_attach_property(obj, dc_drm->vid_clk_src_prop,
 					   MMIDC_AUX0_REF_CLK);
+	}
+
+	/* create the dc_aud_clk_src property */
+	if (dc->ps_aud_clk && dc->pl_aud_clk) {
+		dc_drm->aud_clk_src_prop = mmi_dc_create_aud_clk_property(dc, "dc_aud_clk_src");
+		if (!dc_drm->aud_clk_src_prop) {
+			dev_err(dc->dev, "failed to create crtc property\n");
+			drm_crtc_cleanup(crtc);
+			return -ENOMEM;
+		}
+		drm_object_attach_property(obj, dc_drm->aud_clk_src_prop,
+					   mmi_dc_get_aud_clk_src(dc));
 	}
 
 	return 0;
