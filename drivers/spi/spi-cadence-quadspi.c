@@ -967,19 +967,15 @@ static void cqspi_periodictuning(struct work_struct *work)
 
 	/*
 	 * Don't do tuning if operations are in progress - reschedule instead.
+	 * inflight_ops covers one controller operation, request_completion a
+	 * whole MTD operation.
 	 */
-	if (refcount_read(&cqspi->inflight_ops) > 1) {
+	if (refcount_read(&cqspi->inflight_ops) > 1 ||
+	    !mem->request_completion.done) {
 		schedule_delayed_work(&mem->complete_work,
 				      msecs_to_jiffies(CQSPI_TUNING_PERIODICITY_MS));
 		return;
 	}
-
-	/*
-	 * Wait for any ongoing flash operation to complete before tuning.
-	 * The request_completion is signaled when the flash is idle.
-	 */
-	if (!mem->request_completion.done)
-		wait_for_completion(&mem->request_completion);
 
 	/*
 	 * Block new operations during tuning by reinit'ing tuning_complete.
