@@ -8,7 +8,7 @@
 #include <linux/bitfield.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
-#include <linux/dma/xilinx_dpdma.h>
+#include <linux/dma/mmi_dcdma.h>
 #include <linux/dmapool.h>
 #include <linux/dma-mapping.h>
 #include <linux/iopoll.h>
@@ -22,6 +22,9 @@
 
 #define MMI_DCDMA_NUM_CHAN		8
 #define MMI_DCDMA_AUD_CHAN_ID		6
+#define MMI_DCDMA_AUDIO_CH_MIN		1
+#define MMI_DCDMA_AUDIO_CH_MAX		8
+#define MMI_DCDMA_AUDIO_SAMPLE_BYTES	2
 
 /* DCDMA registers */
 #define MMI_DCDMA_WPROTS		0x0000
@@ -194,6 +197,30 @@ struct mmi_dcdma_sw_desc {
 struct mmi_dcdma_device;
 
 /**
+ * struct mmi_dcdma_audio - Audio-specific channel state
+ * @src_vaddr: CPU vaddr of cyclic buffer (for audio shadow copy)
+ * @shadow_buf: CPU vaddr of audio shadow buffer
+ * @shadow_buf_dma: DMA address of audio shadow buffer
+ * @shadow_buf_size: total size of audio shadow buffer
+ * @shadow_period_len: bytes per period in shadow buffer
+ * @source_period_len: bytes per period in source/app buffer
+ * @num_channels: number of audio channels, 1 to 8
+ * @periods: number of periods in cyclic transfer
+ * @period_index: current period index in cyclic transfer
+ */
+struct mmi_dcdma_audio {
+	void *src_vaddr;
+	void *shadow_buf;
+	dma_addr_t shadow_buf_dma;
+	size_t shadow_buf_size;
+	size_t shadow_period_len;
+	size_t source_period_len;
+	u32 num_channels;
+	u32 periods;
+	u32 period_index;
+};
+
+/**
  * struct mmi_dcdma_chan - DCDMA channel
  * @vchan: virtual DMA channel
  * @reg: channel registers base address
@@ -202,20 +229,22 @@ struct mmi_dcdma_device;
  * @mdev: DCDMA device
  * @active_desc: descriptor currently running by the hardware
  * @wait_to_stop: queue to wait for outstanding transactions before the stop
- * @dst_addr: in-device channel destination address
  * @video_group: flag if multi-channel operations are requested for a video
+ * @dst_addr: in-device channel destination address
+ * @audio: audio-specific channel state
  */
 struct mmi_dcdma_chan {
 	struct virt_dma_chan vchan;
 	void __iomem *reg;
 	unsigned int id;
+	bool video_group;
 	struct dma_pool *desc_pool;
 	struct mmi_dcdma_device *mdev;
 
 	struct mmi_dcdma_sw_desc *active_desc;
 	wait_queue_head_t wait_to_stop;
 	dma_addr_t dst_addr;
-	bool video_group;
+	struct mmi_dcdma_audio audio;
 };
 
 /**
@@ -581,16 +610,218 @@ static void mmi_dcdma_chan_handle_error(struct mmi_dcdma_chan *chan, u32 error)
 }
 
 /**
+ * mmi_dcdma_audio_copy_period - Expand one period from N channels to 8
+ * @dst: shadow buffer period start (8 channels, 16 bytes per sample frame)
+ * @src: application buffer period start (N channels, N*2 bytes per sample)
+ * @source_period_len: size of one period in the application buffer (bytes)
+ * @num_audio_channels: active channel count. The peripheral configuration
+ *	carries 1 to 8; only 1 to 7 reach here, since 8 channels already match
+ *	the container and are transferred without a copy.
+ *
+ * The padding channels are zeroed once for the whole period rather than per
+ * frame, since the shadow buffer is only ever written by this function and the
+ * padding never changes for a given channel count.
+ */
+static void mmi_dcdma_audio_copy_period(u8 *dst, const u8 *src,
+					size_t source_period_len,
+					u32 num_audio_channels)
+{
+	size_t src_frame = num_audio_channels * MMI_DCDMA_AUDIO_SAMPLE_BYTES;
+	size_t dst_frame = MMI_DCDMA_AUDIO_CH_MAX * MMI_DCDMA_AUDIO_SAMPLE_BYTES;
+	size_t samples_per_period = source_period_len / src_frame;
+	u32 sample_idx;
+
+	memset(dst, 0, samples_per_period * dst_frame);
+
+	for (sample_idx = 0; sample_idx < samples_per_period; sample_idx++) {
+		memcpy(dst, src, src_frame);
+		src += src_frame;
+		dst += dst_frame;
+	}
+}
+
+static inline bool
+mmi_dcdma_audio_shadow_enabled(const struct mmi_dcdma_audio *audio)
+{
+	return audio->num_channels >= MMI_DCDMA_AUDIO_CH_MIN &&
+	       audio->num_channels < MMI_DCDMA_AUDIO_CH_MAX &&
+	       audio->src_vaddr;
+}
+
+/**
+ * mmi_dcdma_audio_clear_shadow_buf - Silence the whole shadow buffer
+ * @chan: DCDMA channel
+ *
+ * The shadow buffer starts out silent, since dma_alloc_coherent() returns
+ * zeroed memory, and each period is filled from the application buffer by the
+ * DONE handler as the transfer runs. That leaves the first lap playing silence,
+ * which is what a fresh stream wants.
+ *
+ * A restart reuses the buffer, so without this the first lap would replay
+ * whatever the previous run left behind. Called from mmi_dcdma_synchronize(),
+ * which runs in a context that is allowed to sleep, rather than from the prep
+ * path, which the ALSA trigger reaches with interrupts disabled.
+ */
+static void mmi_dcdma_audio_clear_shadow_buf(struct mmi_dcdma_chan *chan)
+{
+	struct mmi_dcdma_audio *audio = &chan->audio;
+
+	if (audio->shadow_buf)
+		memset(audio->shadow_buf, 0, audio->shadow_buf_size);
+}
+
+static void mmi_dcdma_audio_reset_shadow_state(struct mmi_dcdma_audio *audio)
+{
+	audio->shadow_buf = NULL;
+	audio->shadow_buf_dma = 0;
+	audio->shadow_buf_size = 0;
+	audio->shadow_period_len = 0;
+	audio->source_period_len = 0;
+	audio->periods = 0;
+	audio->period_index = 0;
+}
+
+/**
+ * mmi_dcdma_audio_free_shadow_buf - Release the audio shadow buffer
+ * @chan: DCDMA channel
+ *
+ * Must run in a context that can sleep, since dma_free_coherent() warns when
+ * called with interrupts disabled.
+ */
+static void mmi_dcdma_audio_free_shadow_buf(struct mmi_dcdma_chan *chan)
+{
+	struct mmi_dcdma_audio *audio = &chan->audio;
+
+	if (audio->shadow_buf)
+		dma_free_coherent(chan->mdev->base.dev, audio->shadow_buf_size,
+				  audio->shadow_buf, audio->shadow_buf_dma);
+
+	mmi_dcdma_audio_reset_shadow_state(audio);
+}
+
+static void mmi_dcdma_audio_reset_stream_config(struct mmi_dcdma_audio *audio)
+{
+	audio->num_channels = 0;
+	audio->src_vaddr = NULL;
+}
+
+/**
+ * mmi_dcdma_audio_alloc_shadow_buf - Allocate the audio shadow buffer
+ * @chan: DCDMA channel
+ * @buffer_bytes: size of the application buffer
+ * @period_bytes: size of one period of the application buffer
+ *
+ * Called from mmi_dcdma_config(), which the DC reaches from hw_params() where
+ * sleeping is allowed. Allocating here rather than at trigger time keeps this
+ * off the atomic path and lets an allocation failure be reported before the
+ * stream starts.
+ *
+ * Return: 0 on success or a negative error code.
+ */
+static int mmi_dcdma_audio_alloc_shadow_buf(struct mmi_dcdma_chan *chan,
+					    size_t buffer_bytes,
+					    size_t period_bytes)
+{
+	struct mmi_dcdma_audio *audio = &chan->audio;
+	size_t samples_per_period, shadow_period_len;
+
+	mmi_dcdma_audio_free_shadow_buf(chan);
+
+	if (!period_bytes || !buffer_bytes || (buffer_bytes % period_bytes))
+		return -EINVAL;
+
+	samples_per_period = period_bytes / (audio->num_channels *
+					     MMI_DCDMA_AUDIO_SAMPLE_BYTES);
+	shadow_period_len = samples_per_period * MMI_DCDMA_AUDIO_CH_MAX *
+			    MMI_DCDMA_AUDIO_SAMPLE_BYTES;
+
+	audio->periods = buffer_bytes / period_bytes;
+	audio->shadow_buf_size = shadow_period_len * audio->periods;
+	audio->shadow_buf = dma_alloc_coherent(chan->mdev->base.dev,
+					       audio->shadow_buf_size,
+					       &audio->shadow_buf_dma,
+					       GFP_KERNEL);
+	if (!audio->shadow_buf) {
+		mmi_dcdma_audio_reset_shadow_state(audio);
+		return -ENOMEM;
+	}
+
+	audio->shadow_period_len = shadow_period_len;
+	audio->source_period_len = period_bytes;
+	audio->period_index = 0;
+
+	dev_dbg(chan->mdev->base.dev,
+		"chan%u: shadow buffer %u->8 channels, period %zu->%zu bytes\n",
+		chan->id, audio->num_channels, period_bytes, shadow_period_len);
+
+	return 0;
+}
+
+/**
  * mmi_dcdma_chan_handle_done - Handle done interrupt
  * @chan: DCDMA channel
  */
 static void mmi_dcdma_chan_handle_done(struct mmi_dcdma_chan *chan)
 {
+	const u8 *source_period_src = NULL;
+	u8 *shadow_period_dst = NULL;
+	size_t source_period_len = 0;
+	u32 num_audio_channels = 0;
 	unsigned long flags;
 
 	spin_lock_irqsave(&chan->vchan.lock, flags);
 	if (chan->active_desc) {
 		if (chan->id == MMI_DCDMA_AUD_CHAN_ID) {
+			/*
+			 * Refresh the period before the one that just
+			 * completed, not the completed one itself.
+			 *
+			 * This DONE is what tells the application period k is
+			 * free, so it is about to write into app[k]. Copying
+			 * app[k] here would take the contents it is replacing
+			 * and hold the new ones back until the next lap, adding
+			 * a whole buffer of delay that ALSA cannot report
+			 * through snd_pcm_delay() and an application therefore
+			 * cannot compensate for. app[k - 1] was released a
+			 * period ago and has already been written, so it is
+			 * both current and no longer being stored into.
+			 *
+			 * The hardware is fetching k + 1, leaving periods - 2
+			 * periods of margin before it reaches k - 1.
+			 *
+			 * period_index advances once per vchan_cyclic_callback(),
+			 * which is the same callback that advances the position
+			 * dmaengine_pcm_dma_complete() reports to ALSA, so the
+			 * refresh stays aligned with the period the application
+			 * has been told is free. It does not stay aligned with
+			 * the hardware: if two completions coalesce into one
+			 * pass of the threaded handler, period_index advances
+			 * once while the hardware advances twice, spending a
+			 * period of that margin. The DC holds the expansion path
+			 * at 4 periods or more through a channel-count hw rule,
+			 * which leaves two periods nominally and absorbs one
+			 * coalesced completion before a refresh could land on
+			 * the period being read.
+			 */
+			if (chan->audio.shadow_buf &&
+			    chan->audio.src_vaddr &&
+			    chan->audio.periods) {
+				u32 completed_period = chan->audio.period_index;
+				u32 periods = chan->audio.periods;
+				u32 next_period = (completed_period + 1) % periods;
+				u32 refresh_period = (completed_period + periods - 1) %
+						     periods;
+
+				shadow_period_dst = (u8 *)chan->audio.shadow_buf +
+						    refresh_period *
+						    chan->audio.shadow_period_len;
+				source_period_src = (const u8 *)chan->audio.src_vaddr +
+						    refresh_period *
+						    chan->audio.source_period_len;
+				source_period_len = chan->audio.source_period_len;
+				num_audio_channels = chan->audio.num_channels;
+				chan->audio.period_index = next_period;
+			}
 			vchan_cyclic_callback(&chan->active_desc->vdesc);
 		} else {
 			vchan_cookie_complete(&chan->active_desc->vdesc);
@@ -598,6 +829,28 @@ static void mmi_dcdma_chan_handle_done(struct mmi_dcdma_chan *chan)
 		}
 	}
 	spin_unlock_irqrestore(&chan->vchan.lock, flags);
+
+	/*
+	 * Copy outside the vchan lock to keep the IRQ-disabled critical section
+	 * short. The next DONE interrupt advances period_index under the lock.
+	 *
+	 * This runs after vchan_cyclic_callback() has queued the tasklet that
+	 * reports a period free and wakes the writer, and this handler is
+	 * preemptible, so the copy is not ordered against application writes.
+	 * That is by design: the refresh re-expands a period every lap without
+	 * knowing who wrote it, which is what lets it pick up mmap stores and
+	 * the silence snd_pcm_playback_silence() writes straight into dma_area,
+	 * neither of which reaches a driver callback.
+	 *
+	 * Refreshing the period before the completed one keeps the window
+	 * narrow without needing any ordering. The period this DONE releases is
+	 * the one the woken writer is about to store into; the one before it was
+	 * released a period earlier and has already been written.
+	 */
+	if (shadow_period_dst)
+		mmi_dcdma_audio_copy_period(shadow_period_dst, source_period_src,
+					    source_period_len,
+					    num_audio_channels);
 }
 
 /**
@@ -969,6 +1222,11 @@ static void mmi_dcdma_free_chan_resources(struct dma_chan *dchan)
 
 	vchan_free_chan_resources(&chan->vchan);
 
+	if (chan->id == MMI_DCDMA_AUD_CHAN_ID) {
+		mmi_dcdma_audio_free_shadow_buf(chan);
+		mmi_dcdma_audio_reset_stream_config(&chan->audio);
+	}
+
 	dma_pool_destroy(chan->desc_pool);
 	chan->desc_pool = NULL;
 }
@@ -992,12 +1250,50 @@ mmi_dcdma_setup_cyclic_transfer(struct dma_chan *dchan, dma_addr_t buf_addr,
 {
 	struct mmi_dcdma_sw_desc *sw_desc, *head_sw_desc, *last = NULL;
 	struct mmi_dcdma_chan *chan = to_dcdma_chan(dchan);
+	struct mmi_dcdma_audio *audio = &chan->audio;
+	bool use_shadow_buf;
+	dma_addr_t work_buf_addr;
+	unsigned long flags_irq;
 	u32 periods, i;
 
 	if (direction != DMA_MEM_TO_DEV || (buf_len % period_len))
 		return NULL;
 
 	periods = buf_len / period_len;
+
+	/*
+	 * The ALSA trigger reaches this under snd_pcm_stream_lock_irq(), so
+	 * nothing here may sleep or touch more than a few bytes. The shadow
+	 * buffer is allocated by mmi_dcdma_config() and silenced by
+	 * mmi_dcdma_synchronize(), both of which are allowed to sleep.
+	 */
+	spin_lock_irqsave(&chan->vchan.lock, flags_irq);
+	use_shadow_buf = mmi_dcdma_audio_shadow_enabled(audio);
+	if (use_shadow_buf)
+		audio->period_index = 0;
+	spin_unlock_irqrestore(&chan->vchan.lock, flags_irq);
+
+	/*
+	 * Narrower streams play out of the shadow buffer, which holds the same
+	 * frames expanded to the eight channels the datapath consumes. It is
+	 * allocated by mmi_dcdma_config() against the geometry the DC reported
+	 * in hw_params(), so a mismatch here means the two disagree.
+	 */
+	if (use_shadow_buf) {
+		if (!audio->shadow_buf ||
+		    audio->source_period_len != period_len ||
+		    audio->periods != periods) {
+			dev_err(chan->mdev->base.dev,
+				"chan%u: shadow buffer does not match transfer\n",
+				chan->id);
+			return NULL;
+		}
+
+		work_buf_addr = audio->shadow_buf_dma;
+		period_len = audio->shadow_period_len;
+	} else {
+		work_buf_addr = buf_addr;
+	}
 
 	head_sw_desc = mmi_dcdma_chan_alloc_sw_desc(chan);
 	if (!head_sw_desc)
@@ -1006,7 +1302,7 @@ mmi_dcdma_setup_cyclic_transfer(struct dma_chan *dchan, dma_addr_t buf_addr,
 	for (i = 0; i < periods; i++) {
 		struct mmi_dcdma_hw_desc *hw_desc;
 
-		if (!IS_ALIGNED(buf_addr, MMI_DCDMA_ALIGN_BYTES)) {
+		if (!IS_ALIGNED(work_buf_addr, MMI_DCDMA_ALIGN_BYTES)) {
 			dev_err(chan->mdev->base.dev,
 				"chan%u: buffer should be aligned at %d B\n",
 				chan->id, MMI_DCDMA_ALIGN_BYTES);
@@ -1022,18 +1318,24 @@ mmi_dcdma_setup_cyclic_transfer(struct dma_chan *dchan, dma_addr_t buf_addr,
 			list_add_tail(&sw_desc->node, &head_sw_desc->node);
 		}
 
-		mmi_dcdma_sw_desc_set_dma_addr(sw_desc, last, buf_addr);
+		mmi_dcdma_sw_desc_set_dma_addr(sw_desc, last, work_buf_addr);
 		hw_desc = &sw_desc->hw;
 		hw_desc->data_size = period_len;
 		hw_desc->line_size = period_len;
 		hw_desc->line_stride = period_len >> 4;
 		hw_desc->ctrl.preamble = MMI_DCDMA_DESC_CTRL_PREAMBLE;
 		hw_desc->ctrl.update_en = 0; /* set 1 to receive PTS */
+		/*
+		 * The engine re-reads these descriptors on every lap, so it has
+		 * to ignore the done status it wrote on the previous one.
+		 * irq_en is what raises the per-period DESC_DONE interrupt that
+		 * mmi_dcdma_chan_handle_done() refreshes the shadow buffer from.
+		 */
 		hw_desc->ctrl.ignore_done = 1;
 		hw_desc->ctrl.last_descriptor = 0;
 		hw_desc->irq_en = 1;
 
-		buf_addr += period_len;
+		work_buf_addr += period_len;
 		last = sw_desc;
 	}
 	/* Logic to make list cyclic i.e pointing last's next desc to the head */
@@ -1111,8 +1413,10 @@ static int mmi_dcdma_config(struct dma_chan *dchan,
 			    struct dma_slave_config *config)
 {
 	struct mmi_dcdma_chan *chan = to_dcdma_chan(dchan);
-	struct xilinx_dpdma_peripheral_config *pconfig;
+	struct mmi_dcdma_peripheral_config *pconfig;
 	unsigned long flags;
+	bool need_shadow_buf;
+	int ret;
 
 	pconfig = config->peripheral_config;
 	if (WARN_ON(pconfig && config->peripheral_size != sizeof(*pconfig)))
@@ -1120,9 +1424,30 @@ static int mmi_dcdma_config(struct dma_chan *dchan,
 
 	spin_lock_irqsave(&chan->vchan.lock, flags);
 	chan->dst_addr = config->dst_addr;
-	if (pconfig)
+	if (pconfig) {
 		chan->video_group = pconfig->video_group;
+		chan->audio.num_channels = pconfig->num_audio_channels;
+		chan->audio.src_vaddr = pconfig->audio_src_vaddr;
+	}
+	need_shadow_buf = mmi_dcdma_audio_shadow_enabled(&chan->audio);
 	spin_unlock_irqrestore(&chan->vchan.lock, flags);
+
+	if (!pconfig || chan->id != MMI_DCDMA_AUD_CHAN_ID)
+		return 0;
+
+	if (!need_shadow_buf) {
+		mmi_dcdma_audio_free_shadow_buf(chan);
+		return 0;
+	}
+
+	ret = mmi_dcdma_audio_alloc_shadow_buf(chan, pconfig->audio_buffer_bytes,
+					       pconfig->audio_period_bytes);
+	if (ret) {
+		dev_err(chan->mdev->base.dev,
+			"chan%u: failed to allocate shadow buffer: %d\n",
+			chan->id, ret);
+		return ret;
+	}
 
 	return 0;
 }
@@ -1177,6 +1502,25 @@ static void mmi_dcdma_synchronize(struct dma_chan *dchan)
 	spin_unlock_irqrestore(&chan->vchan.lock, flags);
 
 	vchan_dma_desc_free_list(&chan->vchan, &descriptors);
+
+	/*
+	 * mmi_dcdma_chan_handle_done() may still be refreshing the shadow
+	 * buffer on another CPU after chan_stop().
+	 *
+	 * The cached stream configuration and the shadow buffer itself stay
+	 * put: snd_pcm_prepare() reaches here through snd_pcm_sync_stop()
+	 * without going back through hw_params(), so dropping them would leave
+	 * a restart after an underrun feeding unexpanded data to the hardware.
+	 * mmi_dcdma_config() replaces them, and free_chan_resources() releases
+	 * them.
+	 *
+	 * Silence the buffer once the refresh has been fenced out, so a restart
+	 * does not replay the tail of the previous run.
+	 */
+	if (chan->id == MMI_DCDMA_AUD_CHAN_ID) {
+		synchronize_irq(chan->mdev->irq);
+		mmi_dcdma_audio_clear_shadow_buf(chan);
+	}
 }
 
 /* DCDMA IRQ Handling */

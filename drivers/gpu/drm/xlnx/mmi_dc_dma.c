@@ -8,7 +8,7 @@
 #include "mmi_dc_dma.h"
 
 #include <linux/dmaengine.h>
-#include <linux/dma/xilinx_dpdma.h>
+#include <linux/dma/mmi_dcdma.h>
 
 /**
  * struct mmi_dc_dma_chan - DC DMA channel
@@ -95,7 +95,7 @@ unsigned int mmi_dc_dma_copy_align(struct mmi_dc_dma_chan *chan)
 void mmi_dc_dma_config_channel(struct mmi_dc_dma_chan *chan,
 			       dma_addr_t target_addr, bool video_group)
 {
-	struct xilinx_dpdma_peripheral_config platform_config = {
+	struct mmi_dcdma_peripheral_config platform_config = {
 		.video_group = video_group,
 	};
 	struct dma_slave_config dma_config = {
