@@ -9,9 +9,166 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_fixed.h>
 
+#include <linux/export.h>
 #include <linux/media-bus-format.h>
+#include <linux/mutex.h>
 
 #include "mmi_dp.h"
+
+#define MMI_DP_AUDIO_CH_MIN	1
+#define MMI_DP_AUDIO_CH_MAX	8
+
+/*
+ * The MMI DC owns both the channel count and the audio clock source and pushes
+ * them down through the exported setters below. The values live in struct dptx
+ * so they do not outlive a bind, and the lock also guards the instance pointer
+ * the setters resolve.
+ */
+static struct dptx *mmi_dp_audio_dptx;
+static DEFINE_MUTEX(mmi_dp_audio_lock);
+
+static int mmi_dp_validate_audio_channels(u32 num_audio_channels)
+{
+	return (num_audio_channels < MMI_DP_AUDIO_CH_MIN ||
+		num_audio_channels > MMI_DP_AUDIO_CH_MAX) ? -EINVAL : 0;
+}
+
+/**
+ * mmi_dp_enable_audio_locked() - Initializes SDP and AUD for audio
+ * @dptx: The dptx struct
+ *
+ * Enable the SDP paths unconditionally, and program AUD_CONFIG1 for 16-bit
+ * 1-8 channel audio once the MMI DC has pushed both the channel count and the
+ * clock source.
+ *
+ * TODO: the push path from the MMI DC does not look at dptx->mst, while the
+ * modeset path reaches audio only through mmi_dp_sst_configuration(), so it is
+ * limited to SST by construction. Gate this on SST when MST audio support is
+ * added.
+ *
+ * TODO: there is no runtime PM or link state check here. A push from the MMI DC
+ * arrives from dc_dai_hw_params(), which can run before the first modeset or
+ * while the display is off, and this writes SDP_VERTICAL_CTRL,
+ * SDP_HORIZONTAL_CTRL and AUD_CONFIG1 regardless.
+ */
+static void mmi_dp_enable_audio_locked(struct dptx *dptx)
+{
+	u32 num_audio_channels = dptx->aud_channels;
+	u32 aud_config, sdp_vert, sdp_hori;
+	u32 aud_clk_mult_fs;
+	u32 data_in_en;
+	u32 num_ch_cfg;
+	u32 pair_count;
+
+	sdp_vert = SDP_VER_CTRL_EN_TIMESTAMP |
+		   SDP_VER_CTRL_EN_STREAM |
+		   SDP_VER_CTRL_FIXED_PRIO_ARB;
+	mmi_dp_write(dptx->base, SDP_VERTICAL_CTRL, sdp_vert);
+
+	sdp_hori = SDP_HORI_CTRL_EN_TIMESTAMP |
+		   SDP_HORI_CTRL_EN_STREAM |
+		   SDP_HORI_CTRL_FIXED_PRIO_ARB;
+	mmi_dp_write(dptx->base, SDP_HORIZONTAL_CTRL, sdp_hori);
+
+	if (!num_audio_channels ||
+	    dptx->aud_clk_src == MMIDC_AUD_CLK_SRC_COUNT) {
+		dptx_dbg(dptx, "audio not configured by DC, skipping AUD setup\n");
+		return;
+	}
+
+	pair_count = DIV_ROUND_UP(num_audio_channels, 2);
+	data_in_en = ((1U << pair_count) - 1U) <<
+		     DPTX_AUD_CONFIG1_DATA_EN_IN_SHIFT;
+	num_ch_cfg = (num_audio_channels - 1U) << AUD_CONFIG1_NUM_CH_SHIFT;
+	aud_clk_mult_fs = dptx->aud_clk_src == MMIDC_PL_AUD_CLK ?
+			      AUD_CONFIG1_AUDCLK_512FS :
+			      AUD_CONFIG1_AUDCLK_64FS;
+
+	aud_config = data_in_en |
+		     AUD_CONFIG1_DATA_WIDTH_16 |
+		     num_ch_cfg |
+		     (AUD_CONFIG1_TIMESTAMP_VER << AUD_CONFIG1_TS_VER_SHIFT) |
+		     (aud_clk_mult_fs << AUD_CONFIG1_AUDIO_CLK_MULT_FS_SHIFT);
+
+	mmi_dp_write(dptx->base, AUD_CONFIG1, aud_config);
+}
+
+static void mmi_dp_enable_audio(struct dptx *dptx)
+{
+	mutex_lock(&mmi_dp_audio_lock);
+	mmi_dp_enable_audio_locked(dptx);
+	mutex_unlock(&mmi_dp_audio_lock);
+}
+
+/**
+ * mmi_dp_audio_register - Publish the DPTX instance to the MMI DC audio path
+ * @dptx: The dptx struct, or NULL to withdraw the current instance
+ *
+ * Call once probe has finished bringing the device up, since a push arriving
+ * after this writes the audio and SDP registers.
+ */
+void mmi_dp_audio_register(struct dptx *dptx)
+{
+	mutex_lock(&mmi_dp_audio_lock);
+	if (dptx) {
+		dptx->aud_channels = 0;
+		dptx->aud_clk_src = MMIDC_AUD_CLK_SRC_COUNT;
+	}
+	mmi_dp_audio_dptx = dptx;
+	mutex_unlock(&mmi_dp_audio_lock);
+}
+
+/**
+ * mmi_dp_set_audio_channels - Update DPTX audio channel count
+ * @num_audio_channels: requested audio channel count
+ *
+ * Stores the channel count and reapplies DPTX audio configuration when
+ * an active DPTX instance is available.
+ *
+ * Return: 0 on success, or -EINVAL if @num_audio_channels is out of range.
+ */
+int mmi_dp_set_audio_channels(u32 num_audio_channels)
+{
+	if (mmi_dp_validate_audio_channels(num_audio_channels))
+		return -EINVAL;
+
+	guard(mutex)(&mmi_dp_audio_lock);
+
+	if (!mmi_dp_audio_dptx)
+		return -ENODEV;
+
+	mmi_dp_audio_dptx->aud_channels = num_audio_channels;
+	mmi_dp_enable_audio_locked(mmi_dp_audio_dptx);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(mmi_dp_set_audio_channels);
+
+/**
+ * mmi_dp_set_audio_clk_src - Update DPTX audio clock source selection
+ * @aud_clk_src: requested audio clock source selector
+ *
+ * Stores the clock-source selection and reapplies DPTX audio configuration
+ * when an active DPTX instance is available.
+ *
+ * Return: 0 on success, or -EINVAL if @aud_clk_src is invalid.
+ */
+int mmi_dp_set_audio_clk_src(enum mmi_dc_aud_clk_src aud_clk_src)
+{
+	if (aud_clk_src != MMIDC_27M && aud_clk_src != MMIDC_PL_AUD_CLK)
+		return -EINVAL;
+
+	guard(mutex)(&mmi_dp_audio_lock);
+
+	if (!mmi_dp_audio_dptx)
+		return -ENODEV;
+
+	mmi_dp_audio_dptx->aud_clk_src = aud_clk_src;
+	mmi_dp_enable_audio_locked(mmi_dp_audio_dptx);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(mmi_dp_set_audio_clk_src);
 
 /**
  * mmi_dp_set_video_format() - Set video format
@@ -305,35 +462,6 @@ static int mmi_dp_config_ctrl_video_mode(struct dptx *dptx)
 	return 0;
 }
 
-/**
- * mmi_dp_enable_audio() - Initializes SDP and AUD for audio
- * @dptx: The dptx struct
- *
- * Configure SDP and AUD for 16-bit 8 channel audio.
- */
-static void mmi_dp_enable_audio(struct dptx *dptx)
-{
-	u32 aud_config, sdp_vert, sdp_hori;
-
-	aud_config = AUD_CONFIG1_DATA_IN_EN_8CH |
-		     AUD_CONFIG1_DATA_WIDTH_16 |
-		     AUD_CONFIG1_NUM_CH_8 |
-		     (AUD_CONFIG1_TIMESTAMP_VER << AUD_CONFIG1_TS_VER_SHIFT) |
-		     (AUD_CONFIG1_AUDCLK_512FS << AUD_CONFIG1_AUDIO_CLK_MULT_FS_SHIFT);
-
-	mmi_dp_write(dptx->base, AUD_CONFIG1, aud_config);
-
-	sdp_vert = SDP_VER_CTRL_EN_TIMESTAMP |
-		   SDP_VER_CTRL_EN_STREAM |
-		   SDP_VER_CTRL_FIXED_PRIO_ARB;
-	mmi_dp_write(dptx->base, SDP_VERTICAL_CTRL, sdp_vert);
-
-	sdp_hori = SDP_HORI_CTRL_EN_TIMESTAMP |
-		   SDP_HORI_CTRL_EN_STREAM |
-		   SDP_HORI_CTRL_FIXED_PRIO_ARB;
-	mmi_dp_write(dptx->base, SDP_HORIZONTAL_CTRL, sdp_hori);
-}
-
 int mmi_dp_sst_configuration(struct dptx *dptx)
 {
 	struct video_params *vparams;
@@ -345,7 +473,7 @@ int mmi_dp_sst_configuration(struct dptx *dptx)
 	/* Configure CTRL for Timing requested */
 	mmi_dp_config_ctrl_video_mode(dptx);
 
-	/* Configure SDP and AUD for 8 channel audio */
+	/* Configure SDP and AUD for 1-8 channel audio */
 	mmi_dp_enable_audio(dptx);
 
 	/* Enable Video Stream */
