@@ -78,6 +78,10 @@
 #define MMI_DC_MISC_VID_CLK_PS			BIT(1)
 #define MMI_DC_MISC_VID_CLK_PL			0
 
+#define MMI_DC_MISC_AUD_CLK			(0x0c60)
+#define MMI_DC_MISC_AUD_CLK_PL			0
+#define MMI_DC_MISC_AUD_CLK_PS			BIT(1)
+
 /* IRQ Registers */
 #define MMI_DC_INT_STATUS			(0x0000)
 #define MMI_DC_INT_MASK				(0x0004)
@@ -452,6 +456,65 @@ enum mmi_dc_vid_clk_src mmi_dc_get_vid_clk_src(struct mmi_dc *dc)
 	return ret;
 }
 
+/**
+ * mmi_dc_set_aud_clk_src - Set MMI DC audio clock source
+ * @dc: MMI DC device
+ * @audclksrc: requested audio clock source
+ *
+ * Programs the DC audio clock-source selection register and pushes the
+ * selected source to DPTX. A failure to reach DPTX is not fatal: the DC side
+ * is already programmed and audio stays usable.
+ *
+ * Return: 0 on success, or -EINVAL for an invalid/unavailable clock source.
+ */
+int mmi_dc_set_aud_clk_src(struct mmi_dc *dc, enum mmi_dc_aud_clk_src audclksrc)
+{
+	u32 val;
+	int ret;
+
+	switch (audclksrc) {
+	case MMIDC_PL_AUD_CLK:
+		if (!dc->pl_aud_clk)
+			return -EINVAL;
+		dc->aud_clk_src = MMIDC_PL_AUD_CLK;
+		val = MMI_DC_MISC_AUD_CLK_PL;
+		break;
+	case MMIDC_27M:
+		if (!dc->ps_aud_clk)
+			return -EINVAL;
+		dc->aud_clk_src = MMIDC_27M;
+		val = MMI_DC_MISC_AUD_CLK_PS;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	dc_write_misc(dc, MMI_DC_MISC_AUD_CLK, val);
+
+	/* -ENODEV just means no DPTX is bound yet; it picks this up on probe. */
+	ret = mmi_dp_set_audio_clk_src(audclksrc);
+	if (ret && ret != -ENODEV)
+		dev_warn(dc->dev, "failed to push audio clock source to dptx: %d\n",
+			 ret);
+
+	return 0;
+}
+
+/**
+ * mmi_dc_get_aud_clk_src - Get MMI DC audio clock source
+ * @dc: MMI DC device
+ *
+ * MMI_DC_MISC_AUD_CLK encodes PL as 0, which is also its reset value, so the
+ * register cannot distinguish a selected PL source from no selection at all.
+ * The cached value carries MMIDC_AUD_CLK_SRC_COUNT until a source is chosen.
+ *
+ * Return: the audio clock source last selected by mmi_dc_set_aud_clk_src()
+ */
+enum mmi_dc_aud_clk_src mmi_dc_get_aud_clk_src(struct mmi_dc *dc)
+{
+	return dc->aud_clk_src;
+}
+
 static struct clk *mmi_dc_init_clk(struct mmi_dc *dc, const char *clk_name)
 {
 	struct clk *dc_clk = devm_clk_get(dc->dev, clk_name);
@@ -530,12 +593,9 @@ static int mmi_dc_init_clocks(struct mmi_dc *dc)
 
 	dc->mmi_pll_clk = mmi_dc_init_clk(dc, "mmi_pll");
 	dc->stc_ref_clk = mmi_dc_init_clk(dc, "stc_ref_clk");
-
-	dc->aud_clk = devm_clk_get(dc->dev, "pl_aud_clk");
-	if (IS_ERR(dc->aud_clk)) {
-		dev_warn(dc->dev, "PL audio clock is unavailable\n");
-		dc->aud_clk = NULL;
-	}
+	dc->pl_aud_clk = mmi_dc_init_clk(dc, "pl_aud_clk");
+	dc->ps_aud_clk = mmi_dc_init_clk(dc, "ps_aud_clk");
+	dc->aud_clk_src = MMIDC_AUD_CLK_SRC_COUNT;
 
 	/* Set video clock source */
 	if (dc->pl_pixel_clk)
@@ -707,16 +767,24 @@ int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm)
 	mmi_dc_set_global_alpha(dc, 0, true);
 	mmi_dc_blend_set_bg_color(dc, MMI_BG_CLR_MIN, MMI_BG_CLR_MIN,
 				  MMI_BG_CLR_MAX);
-	/*
-	 * TODO: Audio driver initialization to be handled separately ensuring
-	 * that if audio driver fails, video pipeline shouldn't be affected.
-	 */
-	if (dc->aud_clk) {
-		ret = mmi_dc_audio_init(dc);
+	/* Audio failures are non-fatal: the video pipeline stays usable. */
+	if (!dc->pl_aud_clk && !dc->ps_aud_clk) {
+		dev_warn(dc->dev,
+			 "no audio clock available, skipping audio initialization\n");
+	} else {
+		if (dc->pl_aud_clk)
+			ret = mmi_dc_set_aud_clk_src(dc, MMIDC_PL_AUD_CLK);
+		else
+			ret = mmi_dc_set_aud_clk_src(dc, MMIDC_27M);
+
 		if (ret < 0) {
-			mmi_dc_destroy_planes(dc);
-			return dev_err_probe(dc->dev, ret,
-					     "failed to initialize audio\n");
+			dev_warn(dc->dev,
+				 "failed to select audio clock source: %d\n", ret);
+		} else {
+			ret = mmi_dc_audio_init(dc);
+			if (ret < 0)
+				dev_warn(dc->dev,
+					 "failed to initialize audio: %d\n", ret);
 		}
 	}
 
