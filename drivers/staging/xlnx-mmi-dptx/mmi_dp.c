@@ -1336,6 +1336,8 @@ static int mmi_dp_probe(struct platform_device *pdev)
 		return retval;
 	}
 
+	mmi_dp_audio_register(dptx);
+
 	dev_dbg(dev, "MMI DP Tx Driver probed\n");
 	return 0;
 }
@@ -1344,6 +1346,7 @@ static void mmi_dp_remove(struct platform_device *plat)
 {
 	struct dptx *dptx = platform_get_drvdata(plat);
 
+	mmi_dp_audio_register(NULL);
 	mmi_dp_notify_shutdown(dptx);
 
 	/* wait for completing outstanding transmission on phy */

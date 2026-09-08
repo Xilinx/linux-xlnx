@@ -10,6 +10,7 @@
 
 #include <linux/bitfield.h>
 #include <linux/io.h>
+#include <linux/xlnx/mmi_audio.h>
 
 #include <drm/display/drm_dp_helper.h>
 #include <drm/display/drm_dp_mst_helper.h>
@@ -259,6 +260,9 @@ struct rx_capabilities {
  * @aux: AUX channel state for performing an AUX transfer.
  * @link: The current link state.
  * @multipixel: Controls multipixel configuration. 0-Single, 1-Dual, 2-Quad.
+ * @aud_channels: Audio channel count pushed by the MMI DC, 0 until pushed
+ * @aud_clk_src: Audio clock source pushed by the MMI DC,
+ *		 MMIDC_AUD_CLK_SRC_COUNT until pushed
  */
 struct dptx {
 	struct mutex mutex; /* generic mutex for dptx */
@@ -321,6 +325,9 @@ struct dptx {
 	struct sdp_full_data sdp_list[DPTX_SDP_NUM];
 	struct dptx_aux aux;
 	struct dptx_link link;
+
+	u32 aud_channels;
+	enum mmi_dc_aud_clk_src aud_clk_src;
 };
 
 /**
@@ -422,6 +429,7 @@ int mmi_dp_fast_link_training(struct dptx *dptx);
 int mmi_dp_adjust_vswing_and_preemphasis(struct dptx *dptx);
 int mmi_dp_handle_hotplug(struct dptx *dptx);
 void mmi_dp_notify(struct dptx *dptx);
+void mmi_dp_audio_register(struct dptx *dptx);
 
 /* MST topology manager glue */
 int mmi_dp_mst_init(struct dptx *dptx);
