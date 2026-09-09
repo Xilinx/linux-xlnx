@@ -11,6 +11,7 @@
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
+#include <linux/string.h>
 
 /* firmware required uid buff size */
 #define UID_BUFF_SIZE	786
@@ -72,10 +73,15 @@ int zynqmp_pm_get_meta_header(const u64 src, const u64 dst,
 				  upper_32_bits(src), lower_32_bits(src),
 				  upper_32_bits(dst), lower_32_bits(dst),
 				  size);
+	if (ret)
+		return ret;
+
+	if (ret_payload[1] > size)
+		return -EINVAL;
 
 	*count = ret_payload[1];
 
-	return ret;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_get_meta_header);
 
@@ -190,8 +196,7 @@ static ssize_t firmware_meta_header_get_data(struct file *filp,
 	if (ret)
 		goto free_dma;
 
-	memcpy(buf, kbuf, size);
-	ret = size;
+	ret = memory_read_from_buffer(buf, count, &off, kbuf, size);
 
 free_dma:
 	dma_free_coherent(kdev, fw->size, kbuf, dma_addr);
@@ -204,7 +209,7 @@ free_firmware:
 static const struct bin_attribute meta_header_attr = {
 	.attr.name = "meta-header-read",
 	.attr.mode = 00400,
-	.size = 1,
+	.size = 0,
 	.read = firmware_meta_header_get_data,
 };
 
