@@ -333,15 +333,17 @@ static int aie_partition_fd_from_adev(struct aie_device *adev,
 			if (ret)
 				goto unlock_aperture;
 
-			ret = aie_partition_fd(apart);
-			if (ret < 0)
-				goto unlock_apart;
-
 			get_file(apart->filep);
+			ret = aie_partition_fd(apart);
+			if (ret < 0) {
+				fput(apart->filep);
+				goto unlock_apart;
+			}
 
 			if (pcount >= aiepartlist->num_entries) {
 				dev_info(&adev->dev, "%s: part list too small",
 					 __func__);
+				fput(apart->filep);
 				ret = -EINVAL;
 				goto unlock_apart;
 			}
@@ -356,6 +358,7 @@ static int aie_partition_fd_from_adev(struct aie_device *adev,
 					 sizeof(*user_fd_list))) {
 				dev_info(&adev->dev, "%s: Copy to user failed.",
 					 __func__);
+				fput(apart->filep);
 				ret = -EFAULT;
 				goto unlock_apart;
 			}
@@ -986,11 +989,10 @@ int aie_partition_get_fd(struct device *dev)
 
 	apart = dev_to_aiepart(dev);
 	trace_aie_partition_get_fd(apart);
+	get_file(apart->filep);
 	ret = aie_partition_fd(apart);
 	if (ret < 0)
-		return ret;
-
-	get_file(apart->filep);
+		fput(apart->filep);
 
 	return ret;
 }
