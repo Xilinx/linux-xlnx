@@ -416,6 +416,9 @@ static long xilinx_ai_engine_ioctl(struct file *filp, unsigned int cmd,
 		if (copy_from_user(&req, argp, sizeof(req)))
 			return -EFAULT;
 
+		/* do not support loading meta data from ioctl */
+		req.meta_data = 0;
+
 		apart = aie_partition_request_from_adev(adev, &req);
 		if (IS_ERR(apart))
 			return PTR_ERR(apart);
