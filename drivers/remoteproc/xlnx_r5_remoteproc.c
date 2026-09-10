@@ -898,12 +898,94 @@ static struct resource_table *zynqmp_r5_get_loaded_rsc_table(struct rproc *rproc
 	return (struct resource_table *)r5_core->rsc_tbl_va;
 }
 
+/**
+ * zynqmp_r5_range_to_pa() - translate a device-address range
+ * @da: start of the device-address range to translate
+ * @len: length of the range to translate
+ * @region_da: device address of the memory region
+ * @region_pa: physical address of the memory region
+ * @region_len: length of the memory region
+ * @pa: translated physical address
+ *
+ * Check that the complete device-address range is contained in one memory
+ * region and translate its start to a physical address.
+ *
+ * Return: 0 on success, -EINVAL if the range is outside the memory region.
+ */
+static int zynqmp_r5_range_to_pa(u64 da, resource_size_t len, u64 region_da,
+				 phys_addr_t region_pa, resource_size_t region_len,
+				 phys_addr_t *pa)
+{
+	u64 offset;
+
+	if (da < region_da || len > region_len)
+		return -EINVAL;
+
+	offset = da - region_da;
+	if (offset > region_len - len ||
+	    check_add_overflow(region_pa, offset, pa))
+		return -EINVAL;
+
+	return 0;
+}
+
+/**
+ * zynqmp_r5_rsc_table_to_pa() - validate and translate a resource table range
+ * @r5_core: remote core for which the resource table was reported
+ * @da: resource table device address
+ * @len: resource table size retrieved from resource table metadata
+ * @pa: translated physical address
+ *
+ * A remote core can place its resource table in any memory assigned to it.
+ * Search the reserved-memory, SRAM and TCM regions described by the device tree
+ * and translate the table's device address to a physical address. The complete
+ * table must be contained in a single region.
+ *
+ * Return: 0 on success, -EINVAL if the range is not assigned to the remote core.
+ */
+static int zynqmp_r5_rsc_table_to_pa(struct zynqmp_r5_core *r5_core, u64 da,
+				     resource_size_t len, phys_addr_t *pa)
+{
+	struct zynqmp_sram_bank *sram;
+	struct mem_bank_data *tcm;
+	struct resource res;
+	int i;
+
+	for (i = 0; !of_reserved_mem_region_to_resource(r5_core->np, i, &res); i++) {
+		if (!zynqmp_r5_range_to_pa(da, len, res.start, res.start,
+					   resource_size(&res), pa))
+			return 0;
+	}
+
+	for (i = 0; i < r5_core->num_sram; i++) {
+		sram = &r5_core->sram[i];
+		if (!zynqmp_r5_range_to_pa(da, len, sram->da,
+					   sram->sram_res.start,
+					   resource_size(&sram->sram_res), pa))
+			return 0;
+	}
+
+	for (i = 0; i < r5_core->tcm_bank_count; i++) {
+		tcm = r5_core->tcm_banks[i];
+		if (!zynqmp_r5_range_to_pa(da, len, tcm->da, tcm->addr,
+					   tcm->size, pa))
+			return 0;
+	}
+
+	return -EINVAL;
+}
+
 static int zynqmp_r5_get_rsc_table_va(struct zynqmp_r5_core *r5_core)
 {
 	struct resource_table *rsc_tbl_addr;
 	struct device *dev = r5_core->dev;
 	struct rsc_tbl_data *rsc_data_va;
+	struct rsc_tbl_data rsc_data;
 	struct resource res_mem;
+	resource_size_t rsc_tbl_size;
+	phys_addr_t rsc_tbl_pa;
+	u64 rsc_tbl_da;
+	resource_size_t res_size;
 	int ret;
 
 	/*
@@ -918,6 +1000,11 @@ static int zynqmp_r5_get_rsc_table_va(struct zynqmp_r5_core *r5_core)
 		dev_err(dev, "failed to get memory-region resource addr\n");
 		return -EINVAL;
 	}
+	res_size = resource_size(&res_mem);
+	if (res_size < sizeof(rsc_data)) {
+		dev_err(dev, "memory-region too small for resource table data\n");
+		return -EINVAL;
+	}
 
 	rsc_data_va = (struct rsc_tbl_data *)ioremap_wc(res_mem.start,
 							sizeof(struct rsc_tbl_data));
@@ -925,19 +1012,35 @@ static int zynqmp_r5_get_rsc_table_va(struct zynqmp_r5_core *r5_core)
 		dev_err(dev, "failed to map resource table data address\n");
 		return -EIO;
 	}
+	memcpy_fromio(&rsc_data, rsc_data_va, sizeof(rsc_data));
+	iounmap((void __iomem *)rsc_data_va);
 
 	/*
 	 * If RSC_TBL_XLNX_MAGIC number and its complement isn't found then
 	 * do not consider resource table address valid and don't attach
 	 */
-	if (rsc_data_va->magic_num != RSC_TBL_XLNX_MAGIC ||
-	    rsc_data_va->comp_magic_num != ~RSC_TBL_XLNX_MAGIC) {
+	if (rsc_data.magic_num != RSC_TBL_XLNX_MAGIC ||
+	    rsc_data.comp_magic_num != ~RSC_TBL_XLNX_MAGIC) {
 		dev_dbg(dev, "invalid magic number, won't attach\n");
 		return -EINVAL;
 	}
 
-	r5_core->rsc_tbl_va = ioremap_wc(rsc_data_va->rsc_tbl,
-					 rsc_data_va->rsc_tbl_size);
+	rsc_tbl_da = rsc_data.rsc_tbl;
+	rsc_tbl_size = rsc_data.rsc_tbl_size;
+	if (rsc_tbl_size < sizeof(struct resource_table)) {
+		dev_err(dev, "invalid resource table size\n");
+		return -EINVAL;
+	}
+
+	ret = zynqmp_r5_rsc_table_to_pa(r5_core, rsc_tbl_da, rsc_tbl_size,
+					&rsc_tbl_pa);
+	if (ret) {
+		dev_err(dev, "resource table range da 0x%llx size 0x%llx is not assigned to remote core\n",
+			rsc_tbl_da, (u64)rsc_tbl_size);
+		return -EINVAL;
+	}
+
+	r5_core->rsc_tbl_va = ioremap_wc(rsc_tbl_pa, rsc_tbl_size);
 	if (!r5_core->rsc_tbl_va) {
 		dev_err(dev, "failed to get resource table va\n");
 		return -EINVAL;
@@ -953,9 +1056,7 @@ static int zynqmp_r5_get_rsc_table_va(struct zynqmp_r5_core *r5_core)
 		dev_warn(dev, "unexpected resource table version %d\n",
 			 rsc_tbl_addr->ver);
 
-	r5_core->rsc_tbl_size = rsc_data_va->rsc_tbl_size;
-
-	iounmap((void __iomem *)rsc_data_va);
+	r5_core->rsc_tbl_size = rsc_tbl_size;
 
 	return 0;
 }
