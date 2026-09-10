@@ -577,7 +577,7 @@ long aie_part_rscmgr_rsc_req(struct aie_partition *apart,
 		return -EINVAL;
 	}
 
-	rscs = kmalloc_array(args.req.num_rscs, sizeof(*rscs), GFP_KERNEL);
+	rscs = kcalloc(args.req.num_rscs, sizeof(*rscs), GFP_KERNEL);
 	if (!rscs)
 		return -ENOMEM;
 
@@ -1272,7 +1272,7 @@ long aie_part_rscmgr_get_broadcast(struct aie_partition *apart,
 		return -EFAULT;
 
 	trace_aie_part_rsc_bc_rsp(apart, &args);
-	rscs = kmalloc_array(args.num_rscs, sizeof(*rscs), GFP_KERNEL);
+	rscs = kcalloc(args.num_rscs, sizeof(*rscs), GFP_KERNEL);
 	if (!rscs)
 		return -ENOMEM;
 
