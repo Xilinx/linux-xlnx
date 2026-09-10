@@ -86,6 +86,12 @@ int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 		return -EINVAL;
 	}
 
+	/* ensure bits above array shift are not set */
+	if (offset & ~GENMASK_ULL(adev->array_shift - 1, 0)) {
+		dev_err(&apart->dev, "Invalid offset %zu.\n");
+		return -EINVAL;
+	}
+
 	regoff = aie_cal_tile_reg(adev, offset);
 	regend64 = regoff + len - 1;
 	if (regend64 >= BIT_ULL(adev->row_shift)) {
