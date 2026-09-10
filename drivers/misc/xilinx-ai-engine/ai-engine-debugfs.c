@@ -15,11 +15,16 @@ static int aie_tile_debugfs_avail_rsc_show(struct seq_file *seq, void *data)
 	struct aie_partition *apart = atile->apart;
 	u32 num_rscs[AIE_RSCTYPE_MAX];
 	enum aie_module_type mod;
+	struct aie_location loc;
 	enum aie_rsc_type r;
 	u8 ttype;
 	int ret;
 
-	ttype = apart->adev->ops->get_tile_type(apart->adev, &atile->loc);
+	/* atile is created with absolute location, we need to use relative */
+	loc.col = atile->loc.col - apart->range.start.col;
+	loc.row = atile->loc.row;
+
+	ttype = apart->adev->ops->get_tile_type(apart->adev, &loc);
 	switch (ttype) {
 	case AIE_TILE_TYPE_TILE:
 		mod = AIE_CORE_MOD;
@@ -38,7 +43,7 @@ static int aie_tile_debugfs_avail_rsc_show(struct seq_file *seq, void *data)
 	for (r = AIE_RSCTYPE_PERF; r < AIE_RSCTYPE_MAX; r++) {
 		if (ttype != AIE_TILE_TYPE_TILE && r == AIE_RSCTYPE_PCEVENT)
 			continue;
-		ret = aie_part_rscmgr_rsc_get_avail(apart, atile->loc, mod, r,
+		ret = aie_part_rscmgr_rsc_get_avail(apart, loc, mod, r,
 						    &num_rscs[r]);
 		if (ret < 0)
 			return ret;
@@ -61,7 +66,7 @@ static int aie_tile_debugfs_avail_rsc_show(struct seq_file *seq, void *data)
 		for (r = AIE_RSCTYPE_PERF; r < AIE_RSCTYPE_MAX; r++) {
 			if (r == AIE_RSCTYPE_PCEVENT || r == AIE_RSCTYPE_SSSELECT)
 				continue;
-			ret = aie_part_rscmgr_rsc_get_avail(apart, atile->loc, mod, r,
+			ret = aie_part_rscmgr_rsc_get_avail(apart, loc, mod, r,
 							    &num_rscs[r]);
 			if (ret < 0)
 				return ret;
