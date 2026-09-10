@@ -9,6 +9,7 @@
 #include <linux/crash_dump.h>
 #include <linux/dma-mapping.h>
 #include <linux/hashtable.h>
+#include <linux/kexec.h>
 #include <linux/mfd/core.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
@@ -941,7 +942,25 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
 
 static void zynqmp_firmware_shutdown(struct platform_device *pdev)
 {
-	zynqmp_clear_pm_state(&pdev->dev);
+	/*
+	 * Clearing PM state resets the shutdown scope to its default
+	 * (system). Do not clear on a normal reboot or poweroff, or a
+	 * user-requested subsystem restart becomes a full system
+	 * restart. Clear only during kexec so EL3 and the new kernel
+	 * start aligned. The kdump capture kernel still clears at
+	 * probe time via is_kdump_kernel().
+	 *
+	 * This is a temporary workaround: firmware currently exposes
+	 * no way for Linux to detect whether the default subsystem is
+	 * in use, or whether it contains only IPs assigned to Linux.
+	 * Clearing PM state releases all peripherals owned by that
+	 * subsystem, so Linux can only assume it is the sole user.
+	 * Until firmware can report subsystem ownership, kexec and
+	 * kdump are only safe when Linux is the only user of the
+	 * default subsystem.
+	 */
+	if (kexec_in_progress)
+		zynqmp_clear_pm_state(&pdev->dev);
 }
 
 static void zynqmp_firmware_remove(struct platform_device *pdev)
