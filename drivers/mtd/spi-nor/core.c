@@ -683,7 +683,8 @@ static int spi_nor_write_ear(struct spi_nor *nor, u32 addr)
 		code = SPINOR_OP_BRWR;
 	if (spi_nor_mfr_is(nor, CFI_MFR_ST) ||
 	    spi_nor_mfr_is(nor, CFI_MFR_MACRONIX) ||
-	    spi_nor_mfr_is(nor, CFI_MFR_PMC)) {
+	    spi_nor_mfr_is(nor, CFI_MFR_PMC) || 
+		spi_nor_mfr_is(nor, CFI_MFR_WINBOND)) {
 		spi_nor_write_enable(nor);
 		code = SPINOR_OP_WREAR;
 	}
