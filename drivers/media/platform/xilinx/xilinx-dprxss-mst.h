@@ -6,7 +6,7 @@
  *
  * Copyright (C) 2026, Advanced Micro Devices, Inc. All rights reserved.
  *
- * Author: Lakshmi Prasanna Eachuri <lakshmi.prasanna.eachuri@amd.com>
+ * Author: Lakshmi Prasanna Eachuri
  * Author: Katta Dhanunjanrao <katta.dhanunjanrao@amd.com>
  */
 
