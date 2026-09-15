@@ -3901,6 +3901,8 @@ static int xhdmirx_get_edid(struct v4l2_subdev *subdev, struct v4l2_edid *edid)
 {
 	struct xhdmirx_state *xhdmi = to_xhdmirx_state(subdev);
 	int do_copy = 1;
+	const u8 *src;
+	u32 blocks;
 
 	if (edid->pad > 0)
 		return -EINVAL;
@@ -3915,15 +3917,18 @@ static int xhdmirx_get_edid(struct v4l2_subdev *subdev, struct v4l2_edid *edid)
 	mutex_lock(&xhdmi->xhdmi_mutex);
 	/* user EDID active? */
 	if (xhdmi->edid_user_blocks) {
-		if (do_copy)
-			memcpy(edid->edid, xhdmi->edid_user,
-			       128 * (u16)xhdmi->edid_user_blocks);
-		edid->blocks = xhdmi->edid_user_blocks;
+		src = xhdmi->edid_user;
+		blocks = xhdmi->edid_user_blocks;
 	} else {
-		if (do_copy)
-			memcpy(edid->edid, &xilinx_frl_edid[0], sizeof(xilinx_frl_edid));
-		edid->blocks = sizeof(xilinx_frl_edid) / 128;
+		src = xilinx_frl_edid;
+		blocks = sizeof(xilinx_frl_edid) / XEDID_BLOCK_SIZE;
 	}
+
+	if (do_copy) {
+		blocks = min_t(u32, edid->blocks, blocks);
+		memcpy(edid->edid, src, blocks * XEDID_BLOCK_SIZE);
+	}
+	edid->blocks = blocks;
 	mutex_unlock(&xhdmi->xhdmi_mutex);
 
 	return 0;
