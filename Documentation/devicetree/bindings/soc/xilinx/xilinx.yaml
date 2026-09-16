@@ -45,6 +45,11 @@ properties:
           - const: xlnx,zynq-7000
 
       - items:
+          - const: ifm,zynqmp-vhip6-evalboard
+          - const: ifm,zynqmp-vhip6
+          - const: xlnx,zynqmp
+
+      - items:
           - enum:
               - xlnx,zynqmp-zc1751
           - const: xlnx,zynqmp
