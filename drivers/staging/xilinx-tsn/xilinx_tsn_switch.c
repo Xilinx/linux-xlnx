@@ -1656,6 +1656,9 @@ static long switch_ioctl(struct file *file, unsigned int cmd,
 		}
 		break;
 #endif
+	default:
+		retval = -ENOTTY;
+		break;
 	}
 end:
 	return retval;
