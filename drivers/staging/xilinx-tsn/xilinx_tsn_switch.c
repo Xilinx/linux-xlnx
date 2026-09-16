@@ -825,9 +825,12 @@ static int set_mac_addr_learn(void __user *arg)
 
 	u_value = axienet_ior(&lp, XAS_HW_ADDR_LEARN_CTRL_OFFSET);
 	if (mac_learn.aging_time) {
+		if (mac_learn.aging_time > HW_ADDR_AGING_TIME_MASK)
+			return -EINVAL;
 		u_value &= ~(HW_ADDR_AGING_TIME_MASK <<
 				HW_ADDR_AGING_TIME_SHIFT);
-		u_value |= (mac_learn.aging_time << HW_ADDR_AGING_TIME_SHIFT);
+		u_value |= ((mac_learn.aging_time & HW_ADDR_AGING_TIME_MASK) <<
+				HW_ADDR_AGING_TIME_SHIFT);
 	}
 	if (mac_learn.is_age) {
 		if (!mac_learn.aging)
