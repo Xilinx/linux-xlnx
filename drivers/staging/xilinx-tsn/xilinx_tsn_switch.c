@@ -815,41 +815,62 @@ static int read_cam_entry(struct cam_struct data, void __user *arg)
 	return 0;
 }
 
+static int mac_addr_learn_to_reg(const struct mac_addr_learn *mac_learn,
+				 u32 *u_value)
+{
+	if (mac_learn->aging_time) {
+		if (mac_learn->aging_time > HW_ADDR_AGING_TIME_MASK)
+			return -EINVAL;
+		*u_value &= ~(HW_ADDR_AGING_TIME_MASK <<
+				HW_ADDR_AGING_TIME_SHIFT);
+		*u_value |= ((mac_learn->aging_time & HW_ADDR_AGING_TIME_MASK) <<
+				HW_ADDR_AGING_TIME_SHIFT);
+	}
+	if (mac_learn->is_age) {
+		if (!mac_learn->aging)
+			*u_value |= HW_ADDR_AGING_BIT;
+		else
+			*u_value &= ~HW_ADDR_AGING_BIT;
+	}
+	if (mac_learn->is_learn) {
+		if (!mac_learn->learning)
+			*u_value |= HW_ADDR_LEARN_BIT;
+		else
+			*u_value &= ~HW_ADDR_LEARN_BIT;
+	}
+	if (mac_learn->is_untag) {
+		if (mac_learn->learn_untag)
+			*u_value |= HW_ADDR_LEARN_UNTAG_BIT;
+		else
+			*u_value &= ~HW_ADDR_LEARN_UNTAG_BIT;
+	}
+
+	return 0;
+}
+
+static void mac_addr_learn_from_reg(struct mac_addr_learn *mac_learn,
+				    u32 u_value)
+{
+	mac_learn->aging_time = (u_value >> HW_ADDR_AGING_TIME_SHIFT) &
+				HW_ADDR_AGING_TIME_MASK;
+	mac_learn->aging = u_value & HW_ADDR_AGING_BIT;
+	mac_learn->learning = u_value & HW_ADDR_LEARN_BIT;
+	mac_learn->learn_untag = u_value & HW_ADDR_LEARN_UNTAG_BIT;
+}
+
 static int set_mac_addr_learn(void __user *arg)
 {
 	struct mac_addr_learn mac_learn;
 	u32 u_value;
+	int ret;
 
 	if (copy_from_user(&mac_learn, arg, sizeof(struct mac_addr_learn)))
 		return -EFAULT;
 
 	u_value = axienet_ior(&lp, XAS_HW_ADDR_LEARN_CTRL_OFFSET);
-	if (mac_learn.aging_time) {
-		if (mac_learn.aging_time > HW_ADDR_AGING_TIME_MASK)
-			return -EINVAL;
-		u_value &= ~(HW_ADDR_AGING_TIME_MASK <<
-				HW_ADDR_AGING_TIME_SHIFT);
-		u_value |= ((mac_learn.aging_time & HW_ADDR_AGING_TIME_MASK) <<
-				HW_ADDR_AGING_TIME_SHIFT);
-	}
-	if (mac_learn.is_age) {
-		if (!mac_learn.aging)
-			u_value |= HW_ADDR_AGING_BIT;
-		else
-			u_value &= ~HW_ADDR_AGING_BIT;
-	}
-	if (mac_learn.is_learn) {
-		if (!mac_learn.learning)
-			u_value |= HW_ADDR_LEARN_BIT;
-		else
-			u_value &= ~HW_ADDR_LEARN_BIT;
-	}
-	if (mac_learn.is_untag) {
-		if (mac_learn.learn_untag)
-			u_value |= HW_ADDR_LEARN_UNTAG_BIT;
-		else
-			u_value &= ~HW_ADDR_LEARN_UNTAG_BIT;
-	}
+	ret = mac_addr_learn_to_reg(&mac_learn, &u_value);
+	if (ret)
+		return ret;
 	axienet_iow(&lp, XAS_HW_ADDR_LEARN_CTRL_OFFSET, u_value);
 
 	return 0;
@@ -863,11 +884,7 @@ static int get_mac_addr_learn(void __user *arg)
 	memset(&mac_learn, 0, sizeof(mac_learn));
 
 	u_value = axienet_ior(&lp, XAS_HW_ADDR_LEARN_CTRL_OFFSET);
-	mac_learn.aging_time = (u_value >> HW_ADDR_AGING_TIME_SHIFT) &
-				HW_ADDR_AGING_TIME_MASK;
-	mac_learn.aging = u_value & HW_ADDR_AGING_BIT;
-	mac_learn.learning = u_value & HW_ADDR_LEARN_BIT;
-	mac_learn.learn_untag = u_value & HW_ADDR_LEARN_UNTAG_BIT;
+	mac_addr_learn_from_reg(&mac_learn, u_value);
 
 	u_value = axienet_ior(&lp, XAS_PORT_STATE_CTRL_OFFSET);
 
