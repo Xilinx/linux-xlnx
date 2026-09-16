@@ -462,6 +462,21 @@ static int mmi_dp_config_ctrl_video_mode(struct dptx *dptx)
 	return 0;
 }
 
+static inline void mmi_dptx_print_transmission(struct dptx *dptx,
+					       const struct video_params *vparams)
+{
+	u32 hz, hz_frac;
+
+	hz = vparams->refresh_rate / 1000;
+	hz_frac = ((vparams->refresh_rate % 1000) + 5) / 10;
+	if (hz_frac >= 100) {
+		hz++;
+		hz_frac = 0;
+	}
+	dptx_info(dptx, "Video Transmission: %dx%d @ %u.%02uHz\n",
+		  vparams->mdtd.h_active, vparams->mdtd.v_active, hz, hz_frac);
+}
+
 int mmi_dp_sst_configuration(struct dptx *dptx)
 {
 	struct video_params *vparams;
@@ -479,8 +494,7 @@ int mmi_dp_sst_configuration(struct dptx *dptx)
 	/* Enable Video Stream */
 	mmi_dp_set(dptx->base, VSAMPLE_CTRL, VIDEO_STREAM_ENABLE_MASK);
 
-	dptx_info(dptx, "Video Transmission: %dx%d @ %dHz", vparams->mdtd.h_active,
-		  vparams->mdtd.v_active, ((vparams->refresh_rate + 500) / 1000));
+	mmi_dptx_print_transmission(dptx, vparams);
 
 	return 0;
 }

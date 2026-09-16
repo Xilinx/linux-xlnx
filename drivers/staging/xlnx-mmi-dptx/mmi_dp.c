@@ -1078,8 +1078,22 @@ static void mmi_dp_configure_params(struct drm_display_mode *mode,
 				    struct display_mode_t *cmode)
 
 {
-	/* FPS */
-	cmode->refresh_rate = drm_mode_vrefresh(mode) * 1000;
+	/*
+	 * Refresh rate in milli-Hz. mode->clock is in kHz, so scaling it by
+	 * 1000000 and dividing by the total timing yields milli-Hz directly,
+	 * preserving fractional rates such as 59.94 Hz that drm_mode_vrefresh()
+	 * rounds away. Interlaced modes double the clock to give the field
+	 * rate; DBLSCAN and vscan are not handled, as neither is reachable on
+	 * this path.
+	 */
+	u64 millihz_num = (u64)mode->clock * 1000000ULL;
+
+	if (mode->flags & DRM_MODE_FLAG_INTERLACE)
+		millihz_num *= 2;
+
+	cmode->refresh_rate = DIV_ROUND_CLOSEST_ULL(millihz_num,
+						    (u32)mode->htotal * mode->vtotal);
+
 	/* Pixel Clock */
 	cmode->dtd.m_pixel_clock = mode->clock;
 	/* Interlaced */
@@ -1153,6 +1167,7 @@ static int mmi_dp_configure_video(struct dptx *dptx,
 	mmi_dp_dtd_fill(&mdtd, &current_vmode);
 
 	vparams->mdtd = mdtd;
+	vparams->refresh_rate = current_vmode.refresh_rate;
 	dptx->selected_pixel_clock = mode->clock;
 
 	/* check if the link is enough for the payload requested */
