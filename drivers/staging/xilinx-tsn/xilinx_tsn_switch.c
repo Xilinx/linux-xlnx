@@ -894,6 +894,40 @@ static int get_mac_addr_learn(void __user *arg)
 	return 0;
 }
 
+static int set_mac_addr_learn_new(void __user *arg)
+{
+	struct mac_addr_learn_v2 mac_learn;
+	u32 u_value;
+	int ret;
+
+	if (copy_from_user(&mac_learn, arg, sizeof(mac_learn)))
+		return -EFAULT;
+
+	u_value = axienet_ior(&lp, XAS_HW_ADDR_LEARN_CTRL_OFFSET);
+	ret = mac_addr_learn_to_reg(&mac_learn.v1, &u_value);
+	if (ret)
+		return ret;
+	axienet_iow(&lp, XAS_HW_ADDR_LEARN_CTRL_OFFSET, u_value);
+
+	return 0;
+}
+
+static int get_mac_addr_learn_new(void __user *arg)
+{
+	struct mac_addr_learn_v2 mac_learn;
+	u32 u_value;
+
+	memset(&mac_learn, 0, sizeof(mac_learn));
+
+	u_value = axienet_ior(&lp, XAS_HW_ADDR_LEARN_CTRL_OFFSET);
+	mac_addr_learn_from_reg(&mac_learn.v1, u_value);
+
+	if (copy_to_user(arg, &mac_learn, sizeof(mac_learn)))
+		return -EFAULT;
+
+	return 0;
+}
+
 static int get_mac_addr_learnt_list(void __user *arg)
 {
 	struct mac_addr_list *mac_list;
@@ -1447,6 +1481,18 @@ static long switch_ioctl(struct file *file, unsigned int cmd,
 		if (!en_hw_addr_learning)
 			return -EPERM;
 		retval = get_mac_addr_learn((void __user *)arg);
+		goto end;
+
+	case SET_MAC_ADDR_LEARN_CONFIG_NEW:
+		if (!en_hw_addr_learning)
+			return -EPERM;
+		retval = set_mac_addr_learn_new((void __user *)arg);
+		goto end;
+
+	case GET_MAC_ADDR_LEARN_CONFIG_NEW:
+		if (!en_hw_addr_learning)
+			return -EPERM;
+		retval = get_mac_addr_learn_new((void __user *)arg);
 		goto end;
 
 	case GET_MAC_ADDR_LEARNT_LIST:

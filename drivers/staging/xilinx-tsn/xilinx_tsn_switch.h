@@ -19,6 +19,7 @@
 #ifndef XILINX_TSN_SWITCH_H
 #define XILINX_TSN_SWITCH_H
 
+#include <linux/ioctl.h>
 #include "xilinx_axienet_tsn.h"
 
 /* ioctls */
@@ -403,6 +404,21 @@ struct mac_addr_learn {
 	bool is_untag;
 	u32 aging_time;
 };
+
+#define TSN_SWITCH_IOC_MAGIC			'x'
+
+/*
+ * SET/GET_MAC_ADDR_LEARN_CONFIG_NEW. Encoded with _IOW/_IOR so the command
+ * number includes the direction and sizeof(struct mac_addr_learn_v2).
+ */
+struct mac_addr_learn_v2 {
+	struct mac_addr_learn v1;
+};
+
+#define SET_MAC_ADDR_LEARN_CONFIG_NEW \
+	_IOW(TSN_SWITCH_IOC_MAGIC, 0x01, struct mac_addr_learn_v2)
+#define GET_MAC_ADDR_LEARN_CONFIG_NEW \
+	_IOR(TSN_SWITCH_IOC_MAGIC, 0x02, struct mac_addr_learn_v2)
 
 struct mac_learnt {
 	u8 mac_addr[6];
