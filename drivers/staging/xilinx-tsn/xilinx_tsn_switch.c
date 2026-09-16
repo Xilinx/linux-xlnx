@@ -94,6 +94,7 @@ static bool switch_probed;
 
 #define HW_ADDR_AGING_TIME_SHIFT		(8)
 #define HW_ADDR_AGING_TIME_MASK			GENMASK(19, 0)
+#define HW_ADDR_DEFAULT_VLAN_LEARN_BIT		BIT(4)
 #define HW_ADDR_LEARN_NO_VLAN_MEM_BIT		BIT(3)
 #define HW_ADDR_AGING_BIT			BIT(2)
 #define HW_ADDR_LEARN_UNTAG_BIT			BIT(1)
@@ -907,6 +908,20 @@ static int set_mac_addr_learn_new(void __user *arg)
 	ret = mac_addr_learn_to_reg(&mac_learn.v1, &u_value);
 	if (ret)
 		return ret;
+
+	if (mac_learn.is_default_vlan_learn) {
+		if (mac_learn.default_vlan_learn)
+			u_value |= HW_ADDR_DEFAULT_VLAN_LEARN_BIT;
+		else
+			u_value &= ~HW_ADDR_DEFAULT_VLAN_LEARN_BIT;
+	}
+	if (mac_learn.is_learn_no_vlan) {
+		if (mac_learn.learn_no_vlan)
+			u_value |= HW_ADDR_LEARN_NO_VLAN_MEM_BIT;
+		else
+			u_value &= ~HW_ADDR_LEARN_NO_VLAN_MEM_BIT;
+	}
+
 	axienet_iow(&lp, XAS_HW_ADDR_LEARN_CTRL_OFFSET, u_value);
 
 	return 0;
@@ -921,6 +936,8 @@ static int get_mac_addr_learn_new(void __user *arg)
 
 	u_value = axienet_ior(&lp, XAS_HW_ADDR_LEARN_CTRL_OFFSET);
 	mac_addr_learn_from_reg(&mac_learn.v1, u_value);
+	mac_learn.default_vlan_learn = !!(u_value & HW_ADDR_DEFAULT_VLAN_LEARN_BIT);
+	mac_learn.learn_no_vlan = !!(u_value & HW_ADDR_LEARN_NO_VLAN_MEM_BIT);
 
 	if (copy_to_user(arg, &mac_learn, sizeof(mac_learn)))
 		return -EFAULT;

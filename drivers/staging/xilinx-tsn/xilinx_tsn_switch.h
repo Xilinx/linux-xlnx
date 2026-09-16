@@ -410,9 +410,16 @@ struct mac_addr_learn {
 /*
  * SET/GET_MAC_ADDR_LEARN_CONFIG_NEW. Encoded with _IOW/_IOR so the command
  * number includes the direction and sizeof(struct mac_addr_learn_v2).
+ *
+ * New fields belong here, not in struct mac_addr_learn, which is the ABI of
+ * the original unencoded commands.
  */
 struct mac_addr_learn_v2 {
 	struct mac_addr_learn v1;
+	u8 default_vlan_learn;
+	u8 is_default_vlan_learn;
+	u8 learn_no_vlan;
+	u8 is_learn_no_vlan;
 };
 
 #define SET_MAC_ADDR_LEARN_CONFIG_NEW \
