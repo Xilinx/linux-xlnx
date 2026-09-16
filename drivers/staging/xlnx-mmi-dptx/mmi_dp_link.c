@@ -473,8 +473,9 @@ static inline void mmi_dptx_print_transmission(struct dptx *dptx,
 		hz++;
 		hz_frac = 0;
 	}
-	dptx_info(dptx, "Video Transmission: %dx%d @ %u.%02uHz\n",
-		  vparams->mdtd.h_active, vparams->mdtd.v_active, hz, hz_frac);
+	dptx_info(dptx, "Video Transmission: %dx%d%s @ %u.%02uHz\n",
+		  vparams->mdtd.h_active, vparams->mdtd.v_active,
+		  vparams->mdtd.interlaced ? "i" : "", hz, hz_frac);
 }
 
 int mmi_dp_sst_configuration(struct dptx *dptx)
