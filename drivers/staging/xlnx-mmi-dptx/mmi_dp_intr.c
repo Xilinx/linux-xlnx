@@ -392,37 +392,34 @@ irqreturn_t mmi_dp_irq(int irq, void *dev)
 	struct dptx *dptx = dev;
 	u32 ists;
 
-	ists = mmi_dp_read(dptx->base, GENERAL_INTERRUPT);
+	ists = mmi_dp_read(dptx->base, GENERAL_INTERRUPT) & DPTX_ISTS_ALL_INTR;
 
-	if (!(ists & DPTX_ISTS_ALL_INTR)) {
+	if (!ists) {
 		dptx_dbg(dptx, "%s: IRQ_NONE\n", __func__);
 		return IRQ_NONE;
 	}
 
-	if (FIELD_GET(GEN_INTR_SDP_EVENT_STREAM0, ists)) {
+	/*
+	 * GENERAL_INTERRUPT is write-1-to-clear. Acknowledge every source
+	 * seen in this snapshot with a single write, then dispatch from the
+	 * snapshot. Clearing per source with a read-modify-write would ack
+	 * unrelated bits that got set in the meantime and lose those events.
+	 */
+	mmi_dp_write(dptx->base, GENERAL_INTERRUPT, ists);
+
+	if (ists & DPTX_ISTS_SDP)
 		dptx_dbg(dptx, "%s: DPTX_ISTS_SDP\n", __func__);
-		/* TODO Handle and clear */
-	}
 
-	if (FIELD_GET(GEN_INTR_AUDIO_FIFO_OVERFLOW_STREAM0, ists)) {
+	if (ists & DPTX_ISTS_AUDIO_FIFO_OVERFLOW)
 		dptx_dbg(dptx, "%s: DPTX_ISTS_AUDIO_FIFO_OVERFLOW\n", __func__);
-		mmi_dp_set(dptx->base, GENERAL_INTERRUPT,
-			   GEN_INTR_AUDIO_FIFO_OVERFLOW_STREAM0);
-	}
 
-	if (FIELD_GET(GEN_INTR_VIDEO_FIFO_OVERFLOW_STREAM0, ists)) {
+	if (ists & DPTX_ISTS_VIDEO_FIFO_OVERFLOW)
 		dptx_dbg(dptx, "%s: DPTX_ISTS_VIDEO_FIFO_OVERFLOW\n", __func__);
-		ists |= BIT(6);
-		mmi_dp_write(dptx->base, GENERAL_INTERRUPT, ists);
-	}
 
-	if (FIELD_GET(GEN_INTR_VIDEO_FIFO_UNDERFLOW_STREAM0, ists)) {
+	if (ists & DPTX_ISTS_VIDEO_FIFO_UNDERFLOW)
 		dptx_dbg(dptx, "%s: DPTX_ISTS_VIDEO_FIFO_UNDERFLOW\n", __func__);
-		ists |= BIT(8);
-		mmi_dp_write(dptx->base, GENERAL_INTERRUPT, ists);
-	}
 
-	if (FIELD_GET(GEN_INTR_HPD_EVENT, ists)) {
+	if (ists & DPTX_ISTS_HPD) {
 		u32 hpdsts;
 
 		mmi_dp_global_intr_dis(dptx);
