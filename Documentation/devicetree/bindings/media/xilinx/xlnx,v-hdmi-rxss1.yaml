@@ -44,16 +44,26 @@ properties:
       - const: irq
 
   clocks:
-    items:
-      - description: Clock for AXI4-Lite control interface
-      - description: Fixed FRL Link clock
-      - description: AXI4-Stream clock
+    description:
+      Clock phandles, in clock-names order, for the AXI4-Lite control
+      interface, the fixed FRL link clock and the AXI4-Stream interface.
+    minItems: 1
+    maxItems: 3
 
   clock-names:
-    items:
-      - const: s_axi_cpu_aclk
-      - const: frl_clk
-      - const: s_axis_video_aclk
+    oneOf:
+      - items:
+          - const: s_axi_cpu_aclk
+          - const: frl_clk
+          - const: s_axis_video_aclk
+      - items:
+          - const: s_axi_cpu_aclk
+          - const: frl_clk
+      - items:
+          - const: s_axi_cpu_aclk
+          - const: s_axis_video_aclk
+      - items:
+          - const: s_axi_cpu_aclk
 
   xlnx,edid-ram-size:
     description: |
@@ -80,9 +90,10 @@ properties:
   xlnx,max-frl-rate:
     description: |
       Maximum FRL rate.
+      A value of 0 means that the IP is configured in TMDS-only mode.
       This property has to be specified as '/bits/ 8' value.
     $ref: /schemas/types.yaml#/definitions/uint8
-    enum: [ 4, 5, 6 ]
+    enum: [ 0, 4, 5, 6 ]
 
   xlnx,vid-interface:
     description: |
@@ -123,9 +134,13 @@ properties:
 
   phys:
     description: |
-      This denotes phandles for phy lanes registered for HDMI protocol.
+      One PHY phandle for each HDMI data lane. TMDS-only designs use three
+      data lanes, while FRL-capable designs expose four.
+    minItems: 3
+    maxItems: 4
 
   phy-names:
+    minItems: 3
     items:
       - const: hdmi-phy0
       - const: hdmi-phy1
@@ -192,13 +207,106 @@ required:
   - xlnx,edid-ram-size
   - xlnx,max-bits-per-component
   - xlnx,max-frl-rate
-  - xlnx,frl-clk-freq-khz
   - xlnx,vid-clk-freq-khz
   - xlnx,input-pixels-per-clock
   - xlnx,vid-interface
   - phys
   - phy-names
   - ports
+
+allOf:
+  - if:
+      required:
+        - xlnx,max-frl-rate
+      properties:
+        xlnx,max-frl-rate:
+          const: 0
+    then:
+      properties:
+        clocks:
+          maxItems: 2
+        clock-names:
+          not:
+            contains:
+              const: frl_clk
+        xlnx,frl-clk-freq-khz: false
+        xlnx,vid-clk-freq-khz:
+          minimum: 149000
+          maximum: 151000
+        phys:
+          maxItems: 3
+        phy-names:
+          maxItems: 3
+    else:
+      required:
+        - xlnx,frl-clk-freq-khz
+      properties:
+        clocks:
+          minItems: 2
+        clock-names:
+          contains:
+            const: frl_clk
+        phys:
+          minItems: 4
+        phy-names:
+          minItems: 4
+
+  - if:
+      required:
+        - xlnx,max-frl-rate
+      properties:
+        xlnx,max-frl-rate:
+          const: 4
+    then:
+      properties:
+        xlnx,frl-clk-freq-khz:
+          minimum: 324000
+          maximum: 326000
+        xlnx,vid-clk-freq-khz:
+          minimum: 299000
+          maximum: 301000
+
+  - if:
+      required:
+        - xlnx,max-frl-rate
+      properties:
+        xlnx,max-frl-rate:
+          const: 5
+    then:
+      properties:
+        xlnx,frl-clk-freq-khz:
+          minimum: 379000
+          maximum: 381000
+        xlnx,vid-clk-freq-khz:
+          minimum: 374000
+          maximum: 376000
+
+  - if:
+      required:
+        - xlnx,max-frl-rate
+      properties:
+        xlnx,max-frl-rate:
+          const: 6
+    then:
+      properties:
+        xlnx,frl-clk-freq-khz:
+          minimum: 449000
+          maximum: 451000
+        xlnx,vid-clk-freq-khz:
+          minimum: 399000
+          maximum: 401000
+
+  - if:
+      required:
+        - xlnx,vid-interface
+      properties:
+        xlnx,vid-interface:
+          const: 0
+    then:
+      properties:
+        clock-names:
+          contains:
+            const: s_axis_video_aclk
 
 additionalProperties: false
 
@@ -247,5 +355,45 @@ examples:
     hdcp_keymngmt_blk_1: hdcp-keymngmt-blk@80040000 {
        compatible = "xlnx,hdcp-keymngmt-blk-1.0", "syscon";
        reg = <0x80040000 0x10000>;
+    };
+  - |
+    /* HDMI 2.1 RX subsystem configured without FRL support. */
+    v-hdmi-rxss1@80000000 {
+      compatible = "xlnx,v-hdmi-rxss1-1.2";
+      reg = <0x80000000 0x10000>;
+      clock-names = "s_axi_cpu_aclk", "s_axis_video_aclk";
+      clocks = <&zynqmp_clk 71>, <&misc_clk_5>;
+      interrupt-parent = <&gic>;
+      interrupt-names = "hdcp14_irq", "hdcp14_timer_irq", "hdcp22_irq",
+                        "hdcp22_timer_irq", "irq";
+      interrupts = <0 106 4>, <0 107 4>, <0 110 4>, <0 111 4>, <0 91 4>;
+      xlnx,edid-ram-size = /bits/ 16 <0x100>;
+      xlnx,input-pixels-per-clock = /bits/ 8 <0x8>;
+      xlnx,max-bits-per-component = /bits/ 8 <0xa>;
+      xlnx,vid-interface = /bits/ 8 <0>;
+      xlnx,max-frl-rate = /bits/ 8 <0>;
+      xlnx,vid-clk-freq-khz = <150000>;
+      xlnx,include-hdcp-1-4;
+      xlnx,include-hdcp-2-2;
+      phy-names = "hdmi-phy0", "hdmi-phy1", "hdmi-phy2";
+      phys = <&hdmiphy1_lane0 0 1 1 0>,
+             <&hdmiphy1_lane1 0 1 1 0>,
+             <&hdmiphy1_lane2 0 1 1 0>;
+      ports {
+        #address-cells = <1>;
+        #size-cells = <0>;
+        port@0 {
+           reg = <0>;
+           hdmi_rx_tmds_in: endpoint {
+             remote-endpoint = <&hdmi_connector_out>;
+           };
+        };
+        port@1 {
+           reg = <1>;
+           hdmi_rx_tmds_out: endpoint {
+             remote-endpoint = <&vpss_in>;
+           };
+        };
+      };
     };
 ...
