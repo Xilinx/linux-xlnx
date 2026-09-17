@@ -65,18 +65,18 @@ static int rpmsg_sample_probe(struct rpmsg_device *rpdev)
 
 	mtu = rpmsg_get_mtu(rpdev->ept);
 	if (mtu < 0) {
-		dev_warn(&rpdev->dev, "invalid rpmsg MTU size = %ld\n", mtu);
+		dev_warn(&rpdev->dev, "invalid rpmsg MTU size = %zd\n", mtu);
 		return mtu;
 	}
 
-	dev_info(&rpdev->dev, "rpmsg MTU size = %ld\n", mtu);
+	dev_info(&rpdev->dev, "rpmsg MTU size = %zd\n", mtu);
 
 	msg_len = strlen(MSG);
 	/* make sure our message fits in a single rpmsg buffer */
 	if (msg_len > mtu) {
 		dev_err(&rpdev->dev,
-			"message size %zu exceeds rpmsg MTU size %ld\n",
-			strlen(MSG), mtu);
+			"message size %zd exceeds rpmsg MTU size %zd\n",
+			msg_len, mtu);
 		return -EMSGSIZE;
 	}
 
