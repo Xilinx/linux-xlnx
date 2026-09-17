@@ -928,8 +928,14 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
 			dev_err_probe(&pdev->dev, PTR_ERR(em_dev), "EM register fail with error\n");
 	}
 
-	/* Register securefw device only if the firmware supports secure image load */
-	if (zynqmp_pm_feature(PM_SECURE_IMAGE) >= 0) {
+	/*
+	 * Register securefw only on ZynqMP, and only if firmware supports
+	 * PM_SECURE_IMAGE. That API is ZynqMP-only; probing it on other
+	 * platforms still issues PM_FEATURE_CHECK and firmware logs an
+	 * access error even though Linux treats the result as unsupported.
+	 */
+	if (pm_family_code == PM_ZYNQMP_FAMILY_CODE &&
+	    zynqmp_pm_feature(PM_SECURE_IMAGE) >= 0) {
 		securefw_dev = platform_device_register_data(&pdev->dev, "securefw",
 							     -1, NULL, 0);
 		if (IS_ERR(securefw_dev))
