@@ -409,6 +409,7 @@ struct xhdmi_aux {
  * @max_ppc: Maximum input pixels per clock from IP configuration
  * @max_bpc: Maximum bit per component from IP configuration
  * @max_frl_rate: Maximum FRL rate supported from IP configuration
+ * @num_lanes: Number of PHY lanes the design connects
  * @hdmi_stream_up: hdmi stream is up or not
  * @hdcp1x_key_available: flag to indicate HDCP 1.4 key is loaded properly
  * @hdcp2x_key_available: flag to indicate HDCP 2.2 key is loaded properly
@@ -453,6 +454,7 @@ struct xhdmirx_state {
 	u8 max_ppc;
 	u8 max_bpc;
 	u8 max_frl_rate;
+	u8 num_lanes;
 	u8 hdmi_stream_up;
 	bool hdcp1x_key_available;
 	bool hdcp2x_key_available;
@@ -1808,7 +1810,7 @@ static int xhdmirx_phy_configure(struct xhdmirx_state *xhdmi,
 {
 	int ret, i;
 
-	for (i = 0; i < XHDMI_MAX_LANES; i++) {
+	for (i = 0; i < xhdmi->num_lanes; i++) {
 		ret = phy_configure(xhdmi->phy[i], opts);
 		if (ret) {
 			dev_err(xhdmi->dev, "phy_configure error %d\n", ret);
@@ -3722,6 +3724,17 @@ static int xhdmirx_parse_of(struct xhdmirx_state *xhdmi)
 		return -EINVAL;
 	}
 
+	ret = of_count_phandle_with_args(node, "phys", "#phy-cells");
+	if (ret < 0) {
+		dev_err(dev, "phys property not found.\n");
+		return ret;
+	}
+	if (!ret || ret > XHDMI_MAX_LANES) {
+		dev_err(dev, "dt phy lanes %d is invalid.\n", ret);
+		return -EINVAL;
+	}
+	xhdmi->num_lanes = ret;
+
 	ret = of_property_read_u32(node, "xlnx,frl-clk-freq-khz",
 				   &xhdmi->frlclkfreqkhz);
 	if (ret) {
@@ -3819,7 +3832,7 @@ static void xhdmirx_phy_release(struct xhdmirx_state *xhdmi)
 {
 	int i, ret;
 
-	for (i = 0; i < XHDMI_MAX_LANES; i++) {
+	for (i = 0; i < xhdmi->num_lanes; i++) {
 		ret = phy_exit(xhdmi->phy[i]);
 		if (ret)
 			dev_err(xhdmi->dev, "fail to exit phy(%d) %d\n", i, ret);
@@ -4584,7 +4597,7 @@ static int xhdmirx_probe(struct platform_device *pdev)
 		goto wrkq_err;
 	}
 
-	for (i = 0; i < XHDMI_MAX_LANES; i++) {
+	for (i = 0; i < xhdmi->num_lanes; i++) {
 		char phy_name[16];
 
 		snprintf(phy_name, sizeof(phy_name), "hdmi-phy%d", i);
