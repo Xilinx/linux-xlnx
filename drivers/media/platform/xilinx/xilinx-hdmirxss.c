@@ -3785,40 +3785,7 @@ static int xhdmirx_parse_of(struct xhdmirx_state *xhdmi)
 			ret = -EINVAL;
 		}
 		break;
-	case 3:
-		/* 6G @ 4 Lanes */
-		if (xhdmi->frlclkfreqkhz < 249000 || xhdmi->frlclkfreqkhz > 251000) {
-			print_dt_clk_err_msg(xhdmi, 1, "249-251");
-			ret = -EINVAL;
-		}
-		if (xhdmi->vidclkfreqkhz < 224000 || xhdmi->vidclkfreqkhz > 226000) {
-			print_dt_clk_err_msg(xhdmi, 0, "224-226");
-			ret = -EINVAL;
-		}
-		break;
-	case 2:
-		/* 6G @ 4 Lanes */
-		if (xhdmi->frlclkfreqkhz < 199000 || xhdmi->frlclkfreqkhz > 201000) {
-			print_dt_clk_err_msg(xhdmi, 1, "199-201");
-			ret = -EINVAL;
-		}
-		if (xhdmi->vidclkfreqkhz < 174000 || xhdmi->vidclkfreqkhz > 176000) {
-			print_dt_clk_err_msg(xhdmi, 0, "174-176");
-			ret = -EINVAL;
-		}
-		break;
-	case 1:
-		/* 3G @ 3 Lanes */
-		if (xhdmi->frlclkfreqkhz < 149000 || xhdmi->frlclkfreqkhz > 151000) {
-			print_dt_clk_err_msg(xhdmi, 1, "149-151");
-			ret = -EINVAL;
-		}
-		if (xhdmi->vidclkfreqkhz < 149000 || xhdmi->vidclkfreqkhz > 151000) {
-			print_dt_clk_err_msg(xhdmi, 0, "149-151");
-			ret = -EINVAL;
-		}
-		break;
-	default:
+	case 0:
 		/* TMDS */
 		if (xhdmi->frlclkfreqkhz < 149000 || xhdmi->frlclkfreqkhz > 151000) {
 			print_dt_clk_err_msg(xhdmi, 1, "149-151");
@@ -3829,6 +3796,8 @@ static int xhdmirx_parse_of(struct xhdmirx_state *xhdmi)
 			ret = -EINVAL;
 		}
 	}
+	if (ret)
+		return ret;
 
 	ret = of_property_read_u8(node, "xlnx,vid-interface",
 				  &xhdmi->vid_interface);
