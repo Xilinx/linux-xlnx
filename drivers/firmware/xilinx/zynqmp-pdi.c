@@ -42,10 +42,15 @@ int zynqmp_pm_get_uid_info(const u64 address, const u32 size, u32 *count)
 				  upper_32_bits(address),
 				  lower_32_bits(address),
 				  size);
+	if (ret)
+		return ret;
+
+	if (ret_payload[1] > size / (UID_SET_LEN * UID_LEN))
+		return -EINVAL;
 
 	*count = ret_payload[1];
 
-	return ret;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_get_uid_info);
 
@@ -151,16 +156,16 @@ static ssize_t firmware_uid_get_data(struct file *filp, struct kobject *kobj,
 	}
 
 	size = size * UID_SET_LEN * UID_LEN;
-	memcpy(buf, kbuf, size);
+	ret = memory_read_from_buffer(buf, count, &off, kbuf, size);
 	dma_free_coherent(kdev, UID_BUFF_SIZE, kbuf, dma_addr);
 
-	return size;
+	return ret;
 }
 
 static const struct bin_attribute uid_attr = {
 	.attr.name = "uid-read",
 	.attr.mode = 00400,
-	.size = 1,
+	.size = 0,
 	.read = firmware_uid_get_data,
 };
 
