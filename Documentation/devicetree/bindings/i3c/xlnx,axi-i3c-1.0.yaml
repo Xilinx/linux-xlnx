@@ -32,10 +32,32 @@ properties:
   interrupts:
     maxItems: 1
 
+  xlnx,in-band-interrupt-capable:
+    type: boolean
+    description:
+      The IP is synthesized with In-Band Interrupt support. An In-Band
+      Interrupt lets a target signal the controller over the SDA and SCL
+      pair instead of a dedicated side-band interrupt line, by driving its
+      own dynamic address during bus arbitration. Such requests are
+      reported through the controller interrupt.
+
+  xlnx,hot-join-capable:
+    type: boolean
+    description:
+      The IP is synthesized with Hot-Join support. Hot-Join lets a target
+      attached or powered up after the bus is already running announce
+      itself using the reserved Hot-Join address, so that the controller
+      can assign it a dynamic address. The request is acknowledged by the
+      same machinery as an In-Band Interrupt.
+
 required:
   - compatible
   - reg
   - clocks
+
+dependencies:
+  xlnx,hot-join-capable: ["xlnx,in-band-interrupt-capable"]
+  xlnx,in-band-interrupt-capable: [interrupts]
 
 allOf:
   - $ref: i3c.yaml#
@@ -54,5 +76,7 @@ examples:
         interrupts = <GIC_SPI 89 IRQ_TYPE_LEVEL_HIGH>;
         #address-cells = <3>;
         #size-cells = <0>;
+        xlnx,in-band-interrupt-capable;
+        xlnx,hot-join-capable;
     };
 ...
