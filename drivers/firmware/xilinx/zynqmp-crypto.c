@@ -9,7 +9,7 @@
 
 int zynqmp_pm_secure_load(const u64 src_addr, u64 key_addr, u64 *dst)
 {
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 ret_payload[PAYLOAD_ARG_CNT] = { 0 };
 	int ret_value;
 
 	if (!dst)
@@ -85,7 +85,7 @@ EXPORT_SYMBOL_GPL(versal_pm_puf_regeneration);
  */
 int versal_pm_sha_hash(const u64 src, const u64 dst, const u32 size, u32 *out_status)
 {
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 ret_payload[PAYLOAD_ARG_CNT] = { 0 };
 	int ret;
 
 	if (!out_status)
@@ -211,7 +211,7 @@ EXPORT_SYMBOL_GPL(versal_pm_aes_key_zero);
  */
 int versal_pm_aes_op_init(const u64 hw_req, u32 *out_status)
 {
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 ret_payload[PAYLOAD_ARG_CNT] = { 0 };
 	int ret;
 
 	if (!out_status)
@@ -238,7 +238,7 @@ EXPORT_SYMBOL_GPL(versal_pm_aes_op_init);
  */
 int versal_pm_aes_update_aad(const u64 aad_addr, const u32 aad_len, u32 *out_status)
 {
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 ret_payload[PAYLOAD_ARG_CNT] = { 0 };
 	int ret;
 
 	if (!out_status)
@@ -265,7 +265,7 @@ EXPORT_SYMBOL_GPL(versal_pm_aes_update_aad);
  */
 int versal_pm_aes_enc_update(const u64 in_params, const u64 in_addr, u32 *out_status)
 {
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 ret_payload[PAYLOAD_ARG_CNT] = { 0 };
 	int ret;
 
 	if (!out_status)
@@ -291,7 +291,7 @@ EXPORT_SYMBOL_GPL(versal_pm_aes_enc_update);
  */
 int versal_pm_aes_enc_final(const u64 gcm_addr, u32 *out_status)
 {
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 ret_payload[PAYLOAD_ARG_CNT] = { 0 };
 	int ret;
 
 	if (!out_status)
@@ -317,7 +317,7 @@ EXPORT_SYMBOL_GPL(versal_pm_aes_enc_final);
  */
 int versal_pm_aes_dec_update(const u64 in_params, const u64 in_addr, u32 *out_status)
 {
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 ret_payload[PAYLOAD_ARG_CNT] = { 0 };
 	int ret;
 
 	if (!out_status)
@@ -343,7 +343,7 @@ EXPORT_SYMBOL_GPL(versal_pm_aes_dec_update);
  */
 int versal_pm_aes_dec_final(const u64 gcm_addr, u32 *out_status)
 {
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 ret_payload[PAYLOAD_ARG_CNT] = { 0 };
 	int ret;
 
 	if (!out_status)
@@ -381,7 +381,7 @@ EXPORT_SYMBOL_GPL(versal_pm_aes_init);
  */
 int zynqmp_pm_aes_engine(const u64 address, u32 *out)
 {
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 ret_payload[PAYLOAD_ARG_CNT] = { 0 };
 	int ret;
 
 	if (!out)
