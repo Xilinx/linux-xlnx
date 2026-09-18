@@ -121,7 +121,7 @@ static int zynqmp_rsa_xcrypt(struct akcipher_request *req)
 				    req->dst_len);
 	}
 end:
-	kfree(kbuf);
+	kfree_sensitive(kbuf);
 	return ret;
 }
 
@@ -184,7 +184,7 @@ static int versal_rsa_xcrypt(struct akcipher_request *req)
 	}
 
 end:
-	kfree(dmabuf);
+	kfree_sensitive(dmabuf);
 	return ret;
 }
 
