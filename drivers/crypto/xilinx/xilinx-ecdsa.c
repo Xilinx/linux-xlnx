@@ -61,8 +61,8 @@ struct xilinx_ecdsa_tfm_ctx {
 	const struct ecc_curve *curve;
 	unsigned int curve_id;
 	struct device *dev;
-	size_t key_size;
 	char *pub_kbuf;
+	bool pub_key_set;
 };
 
 static unsigned int xilinx_ecdsa_key_size(struct crypto_sig *tfm)
@@ -88,16 +88,24 @@ static int xilinx_ecdsa_verify(struct crypto_sig *tfm,
 			       const void *digest, unsigned int dlen)
 {
 	struct xilinx_ecdsa_tfm_ctx *ctx = crypto_sig_ctx(tfm);
-	size_t keylen = ctx->curve->g.ndigits * sizeof(u64);
 	struct xilinx_sign_verify_params *para;
+	const struct ecdsa_raw_sig *sig = src;
 	u8 rawhash[ECC_MAX_BYTES] = {0};
 	char *hash_buf, *sign_buf;
 	dma_addr_t dma_addr;
 	void *dmabuf = NULL;
+	size_t keylen;
 	ssize_t diff;
 	u32 buflen;
 	int ret;
-	const struct ecdsa_raw_sig *sig = src;
+
+	if (!ctx->pub_key_set)
+		return -EINVAL;
+
+	if (slen != sizeof(*sig))
+		return -EINVAL;
+
+	keylen = ctx->curve->g.ndigits * sizeof(u64);
 	/*
 	 * If the hash is shorter then we will add leading zeros
 	 * to fit to ndigits
@@ -115,7 +123,7 @@ static int xilinx_ecdsa_verify(struct crypto_sig *tfm,
 	}
 	/* ecc_swap_digits operates on u64 size data buffer */
 	buflen = sizeof(struct xilinx_sign_verify_params) + round_up(keylen, sizeof(u64)) +
-		ctx->key_size;
+		 (2 * keylen);
 	dmabuf = kmalloc(buflen, GFP_KERNEL);
 	if (!dmabuf) {
 		ret = -ENOMEM;
@@ -177,6 +185,9 @@ static int xilinx_ecdsa_set_pub_key(struct crypto_sig *tfm,
 	struct xilinx_ecdsa_tfm_ctx *ctx = crypto_sig_ctx(tfm);
 	unsigned int ndigits, key_size;
 	const unsigned char *d = key;
+	int ret;
+
+	ctx->pub_key_set = false;
 
 	if (keylen < 1 || ((keylen - 1) & 1) != 0)
 		return -EINVAL;
@@ -186,8 +197,6 @@ static int xilinx_ecdsa_set_pub_key(struct crypto_sig *tfm,
 		return -EINVAL;
 
 	keylen--;
-	ctx->key_size = keylen;
-
 	key_size = keylen >> 1;
 	ndigits = DIV_ROUND_UP(key_size, sizeof(u64));
 	if (ndigits != ctx->curve->g.ndigits)
@@ -198,7 +207,12 @@ static int xilinx_ecdsa_set_pub_key(struct crypto_sig *tfm,
 	ecc_digits_from_bytes(&d[key_size], key_size, (u64 *)(ctx->pub_kbuf + key_size), ndigits);
 	dma_sync_single_for_device(ctx->dev, ctx->pub_key_addr, ECDSA_MAX_KEY_SIZE, DMA_TO_DEVICE);
 
-	return versal_pm_ecdsa_validate_key(ctx->pub_key_addr, ctx->curve_id);
+	ret = versal_pm_ecdsa_validate_key(ctx->pub_key_addr, ctx->curve_id);
+	if (ret)
+		return ret;
+
+	ctx->pub_key_set = true;
+	return 0;
 }
 
 static void xilinx_ecdsa_exit_tfm(struct crypto_sig *tfm)
