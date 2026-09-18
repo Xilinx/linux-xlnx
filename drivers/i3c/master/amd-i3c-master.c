@@ -55,9 +55,11 @@
 #define XI3C_CR_EN_MASK				BIT(0)	/* Core Enable */
 #define XI3C_CR_RESUME_MASK			BIT(2)	/* Core Resume */
 #define XI3C_CR_IBI_MASK			BIT(3)	/* IBI ACK enable */
+#define XI3C_CR_HJ_MASK				BIT(4)	/* Hot-Join ACK enable */
 #define XI3C_SR_RESP_NOT_EMPTY_MASK		BIT(4)	/* Resp Fifo not empty status mask */
 #define XI3C_RD_FIFO_NOT_EMPTY_MASK		BIT(15)	/* Read Fifo not empty status mask */
 #define XI3C_INTR_IBI_MASK			BIT(7)	/* IBI event (INTR status/enable) */
+#define XI3C_INTR_HJ_MASK			BIT(8)	/* Hot-Join event */
 
 #define XI3C_BCR_MASK				GENMASK(23, 16)
 #define XI3C_DCR_MASK				GENMASK(31, 24)
@@ -190,12 +192,15 @@ struct xi3c_xfer {
  * @xfer_resp_valid: True once the in-flight transfer's own response word has
  *		     been taken from the shared response FIFO. Guarded by @lock.
  * @ibi_capable: True when the IP was synthesized with In-Band Interrupt
- *		 support ("xlnx,in-band-interrupt-capable"); also the
- *		 condition for the controller interrupt being present.
+ *		 support ("xlnx,in-band-interrupt-capable"). Since Hot-Join
+ *		 requests are ACKed by the IBI machinery, this is also the
+ *		 condition for the controller interrupt being present at all.
+ * @hj_capable: True when the IP was synthesized with Hot-Join support
+ *		("xlnx,hot-join-capable"); implies @ibi_capable.
  * @xfer_resp: Response word claimed for the transfer in flight; valid while
  *	       @xfer_resp_valid is set. Guarded by @lock.
- * @irq: Controller interrupt line, used for IBI events. Only valid when
- *	 @ibi_capable is set.
+ * @irq: Controller interrupt line, used for IBI/Hot-Join events. Only valid
+ *	 when @ibi_capable is set.
  * @ops: Controller ops handed to the framework, assembled at probe time from
  *	 the base ops plus the callbacks the design actually supports.
  * @ibi: In-Band Interrupt slot tracking.
@@ -222,6 +227,7 @@ struct xi3c_master {
 	} daa;
 	bool xfer_resp_valid;
 	bool ibi_capable;
+	bool hj_capable;
 	u32 xfer_resp;
 	int irq;
 	struct i3c_master_controller_ops ops;
@@ -1244,13 +1250,14 @@ static void xi3c_master_bus_cleanup(struct i3c_master_controller *m)
 	struct xi3c_master *master = to_xi3c_master(m);
 
 	/*
-	 * Disarm all interrupt sources and the IBI ACK so the controller can't
-	 * assert once disabled; reset the refcount that tracks them.
+	 * Disarm the interrupts and the IBI/Hot-Join ACKs so nothing is left
+	 * armed for a later bus_init(); reset the refcount that tracks them.
 	 */
 	scoped_guard(spinlock_irqsave, &master->reg_lock) {
 		iowrite32(0, master->membase + XI3C_INTR_RE_OFFSET);
 		iowrite32(ioread32(master->membase + XI3C_CR_OFFSET) &
-			  ~XI3C_CR_IBI_MASK, master->membase + XI3C_CR_OFFSET);
+			  ~(XI3C_CR_IBI_MASK | XI3C_CR_HJ_MASK),
+			  master->membase + XI3C_CR_OFFSET);
 		master->ibi.enabled_count = 0;
 	}
 
@@ -1552,6 +1559,32 @@ err_drain:
 	xi3c_master_drain_ibi_fifo(master, len);
 }
 
+static int xi3c_master_enable_hotjoin(struct i3c_master_controller *m)
+{
+	struct xi3c_master *master = to_xi3c_master(m);
+
+	guard(spinlock_irqsave)(&master->reg_lock);
+	iowrite32(ioread32(master->membase + XI3C_CR_OFFSET) | XI3C_CR_HJ_MASK,
+		  master->membase + XI3C_CR_OFFSET);
+	iowrite32(ioread32(master->membase + XI3C_INTR_RE_OFFSET) |
+		  XI3C_INTR_HJ_MASK, master->membase + XI3C_INTR_RE_OFFSET);
+
+	return 0;
+}
+
+static int xi3c_master_disable_hotjoin(struct i3c_master_controller *m)
+{
+	struct xi3c_master *master = to_xi3c_master(m);
+
+	guard(spinlock_irqsave)(&master->reg_lock);
+	iowrite32(ioread32(master->membase + XI3C_INTR_RE_OFFSET) &
+		  ~XI3C_INTR_HJ_MASK, master->membase + XI3C_INTR_RE_OFFSET);
+	iowrite32(ioread32(master->membase + XI3C_CR_OFFSET) & ~XI3C_CR_HJ_MASK,
+		  master->membase + XI3C_CR_OFFSET);
+
+	return 0;
+}
+
 static irqreturn_t xi3c_master_irq_handler(int irq, void *dev_id)
 {
 	struct xi3c_master *master = dev_id;
@@ -1571,6 +1604,9 @@ static irqreturn_t xi3c_master_irq_handler(int irq, void *dev_id)
 		while (pending-- && xi3c_is_resp_available(master))
 			xi3c_master_handle_ibi(master);
 	}
+
+	if (master->hj_capable && (status & XI3C_INTR_HJ_MASK))
+		i3c_master_queue_hotjoin(&master->base);
 
 	return IRQ_HANDLED;
 }
@@ -1592,6 +1628,11 @@ static void xi3c_master_init_ibi_ops(struct xi3c_master *master)
 	master->ops.enable_ibi = xi3c_master_enable_ibi;
 	master->ops.disable_ibi = xi3c_master_disable_ibi;
 	master->ops.recycle_ibi_slot = xi3c_master_recycle_ibi_slot;
+
+	if (master->hj_capable) {
+		master->ops.enable_hotjoin = xi3c_master_enable_hotjoin;
+		master->ops.disable_hotjoin = xi3c_master_disable_hotjoin;
+	}
 }
 
 static int xi3c_master_probe(struct platform_device *pdev)
@@ -1627,10 +1668,18 @@ static int xi3c_master_probe(struct platform_device *pdev)
 	master->ibi_capable =
 		device_property_read_bool(master->dev,
 					  "xlnx,in-band-interrupt-capable");
+	master->hj_capable =
+		device_property_read_bool(master->dev,
+					  "xlnx,hot-join-capable");
+
+	/* Hot-Join requests are ACKed by the IBI machinery. */
+	if (master->hj_capable && !master->ibi_capable)
+		return dev_err_probe(master->dev, -EINVAL,
+				     "hot-join-capable requires in-band-interrupt-capable\n");
 
 	/*
-	 * The interrupt only carries IBI events, so it is only described for
-	 * designs synthesized with that feature.
+	 * The interrupt only carries IBI and Hot-Join events, so it is only
+	 * described for designs synthesized with those features.
 	 */
 	if (master->ibi_capable) {
 		xi3c_master_init_ibi_ops(master);
