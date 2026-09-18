@@ -1000,6 +1000,8 @@ void *kmalloc_nolock_noprof(size_t size, gfp_t gfp_flags, int node);
 	const size_t __count = (COUNT);					\
 	const size_t __obj_size = struct_size_t(TYPE, FAM, __count);	\
 	TYPE *__obj_ptr = KMALLOC(__obj_size, GFP);			\
+	if (__obj_ptr)							\
+		__set_flex_counter(__obj_ptr->FAM, __count);		\
 	__obj_ptr;							\
 })
 
