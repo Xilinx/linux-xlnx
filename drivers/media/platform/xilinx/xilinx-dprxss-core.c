@@ -1739,12 +1739,21 @@ static int xdprxss_subscribe_event(struct v4l2_subdev *sd,
 static int xdprxss_s_stream(struct v4l2_subdev *sd, int enable)
 {
 	struct xdprxss_state *xdprxss = to_xdprxssstate(sd);
+	unsigned long active = xdprxss_mst_active_mask(xdprxss->mst,
+						       xdprxss->num_mst_streams);
 
 	/* DP does not need to be enabled when we start streaming */
 	if (enable == xdprxss->streaming)
 		return 0;
 
-	if (enable && !xdprxss_is_stream_valid(xdprxss))
+	/*
+	 * s_stream() is not pad-aware, so start the pipeline once any active
+	 * stream is locked. Per-pad validity is enforced in getset_format() and
+	 * query_dv_timings().
+	 */
+	if (enable &&
+	    !bitmap_intersects(&active, &xdprxss->valid_streams,
+			       xdprxss->num_mst_streams))
 		return -EINVAL;
 
 	xdprxss->streaming = enable;
