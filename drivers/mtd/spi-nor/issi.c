@@ -225,6 +225,17 @@ static const struct spi_nor_fixups pm25lv_nor_fixups = {
 	.late_init = pm25lv_nor_late_init,
 };
 
+static int is25lp_nor_post_sfdp_fixups(struct spi_nor *nor)
+{
+	nor->params->hwcaps.mask &= ~SNOR_HWCAPS_READ_1_4_4;
+
+	return 0;
+}
+
+static const struct spi_nor_fixups is25lp_nor_fixups = {
+	.post_sfdp = is25lp_nor_post_sfdp_fixups,
+};
+
 static const struct flash_info issi_nor_parts[] = {
 	/* ISSI */
 	{
@@ -309,6 +320,7 @@ static const struct flash_info issi_nor_parts[] = {
 				SPI_NOR_TB_SR_BIT6,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
 		.fixup_flags = SPI_NOR_4B_OPCODES,
+		.fixups = &is25lp_nor_fixups,
 	}, {
 		.id = SNOR_ID(0x9d, 0x60, 0x21),
 		.name = "is25lp01gg",
@@ -325,6 +337,7 @@ static const struct flash_info issi_nor_parts[] = {
 				SPI_NOR_TB_SR_BIT6,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
 		.fixup_flags = SPI_NOR_4B_OPCODES,
+		.fixups = &is25lp_nor_fixups,
 	}, {
 		.id = SNOR_ID(0x9d, 0x70, 0x16),
 		.name = "is25wp032",

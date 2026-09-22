@@ -858,6 +858,17 @@ static const struct spi_nor_fixups s25fs_s_nor_fixups = {
 	.post_bfpt = s25fs_s_nor_post_bfpt_fixups,
 };
 
+static int s25fl512s_post_sfdp_fixups(struct spi_nor *nor)
+{
+	nor->params->hwcaps.mask &= ~SNOR_HWCAPS_READ_1_4_4;
+
+	return 0;
+}
+
+static const struct spi_nor_fixups s25fl512s_fixups = {
+	.post_sfdp = s25fl512s_post_sfdp_fixups,
+};
+
 static const struct flash_info spansion_nor_parts[] = {
 	{
 		.id = SNOR_ID(0x01, 0x02, 0x12),
@@ -925,6 +936,7 @@ static const struct flash_info spansion_nor_parts[] = {
 		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB,
 		.no_sfdp_flags = SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
 		.mfr_flags = USE_CLSR,
+		.fixups = &s25fl512s_fixups,
 	}, {
 		.id = SNOR_ID(0x01, 0x02, 0x20, 0x4d, 0x00, 0x81),
 		.name = "s25fs512s",
