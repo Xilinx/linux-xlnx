@@ -297,6 +297,8 @@ static int xlnx_spdif_probe(struct platform_device *pdev)
 		if (ret < 0)
 			return ret;
 
+		init_waitqueue_head(&ctx->chsts_q);
+
 		ret = devm_request_irq(dev, ret,
 				       xlnx_spdifrx_irq_handler,
 				       0, "XLNX_SPDIF_RX", ctx);
@@ -305,7 +307,6 @@ static int xlnx_spdif_probe(struct platform_device *pdev)
 			return -ENODEV;
 		}
 
-		init_waitqueue_head(&ctx->chsts_q);
 		dai_drv = &xlnx_spdif_rx_dai;
 	}
 
