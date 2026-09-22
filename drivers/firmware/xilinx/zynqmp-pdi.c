@@ -129,8 +129,38 @@ static ssize_t firmware_store(struct device *dev,
 }
 static DEVICE_ATTR_WO(firmware);
 
+static ssize_t meta_header_flags_show(struct device *dev,
+				      struct device_attribute *attr, char *buf)
+{
+	struct zynqmp_devinfo *devinfo = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "0x%x\n", devinfo->pdi_meta_header_flags);
+}
+
+static ssize_t meta_header_flags_store(struct device *dev,
+				       struct device_attribute *attr,
+				       const char *buf, size_t count)
+{
+	struct zynqmp_devinfo *devinfo = dev_get_drvdata(dev);
+	u32 flags;
+	int ret;
+
+	ret = kstrtou32(buf, 16, &flags);
+	if (ret)
+		return ret;
+
+	if (flags != 0 && flags != PM_GET_META_HEADER_IDCODE_BYPASS_FLAG)
+		return -EINVAL;
+
+	devinfo->pdi_meta_header_flags = flags;
+
+	return count;
+}
+static DEVICE_ATTR_RW(meta_header_flags);
+
 static const struct attribute *firmware_attrs[] = {
 	&dev_attr_firmware.attr,
+	&dev_attr_meta_header_flags.attr,
 	NULL,
 };
 
@@ -176,8 +206,11 @@ static ssize_t firmware_meta_header_get_data(struct file *filp,
 					     size_t count)
 {
 	struct device *kdev = kobj_to_dev(kobj);
+	struct zynqmp_devinfo *devinfo = dev_get_drvdata(kdev);
+	u32 ret_payload[PAYLOAD_ARG_CNT];
 	const struct firmware *fw;
 	dma_addr_t dma_addr = 0;
+	u32 sip_svc_version;
 	char *kbuf;
 	u32 size;
 	int ret;
@@ -196,11 +229,38 @@ static ssize_t firmware_meta_header_get_data(struct file *filp,
 
 	memcpy(kbuf, fw->data, fw->size);
 
-	/* Read from the firmware memory */
-	ret = zynqmp_pm_get_meta_header(dma_addr, dma_addr, fw->size, &size);
+	ret = zynqmp_pm_get_sip_svc_version(&sip_svc_version);
 	if (ret)
 		goto free_dma;
 
+	if (sip_svc_version >= SIP_SVC_PASSTHROUGH_VERSION)
+		ret = zynqmp_pm_fw_call_extended(PM_GET_META_HEADER_INFO_LIST,
+						 ret_payload, 6,
+						 upper_32_bits(dma_addr),
+						 lower_32_bits(dma_addr),
+						 upper_32_bits(dma_addr),
+						 lower_32_bits(dma_addr),
+						 (u32)fw->size,
+						 devinfo->pdi_meta_header_flags);
+	else if (devinfo->pdi_meta_header_flags)
+		ret = -EOPNOTSUPP;
+	else
+		ret = zynqmp_pm_invoke_fn(PM_GET_META_HEADER_INFO_LIST,
+					  ret_payload, 5,
+					  upper_32_bits(dma_addr),
+					  lower_32_bits(dma_addr),
+					  upper_32_bits(dma_addr),
+					  lower_32_bits(dma_addr),
+					  (u32)fw->size);
+	if (ret)
+		goto free_dma;
+
+	if (ret_payload[1] > fw->size) {
+		ret = -EINVAL;
+		goto free_dma;
+	}
+
+	size = ret_payload[1];
 	ret = memory_read_from_buffer(buf, count, &off, kbuf, size);
 
 free_dma:
