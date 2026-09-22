@@ -17,6 +17,7 @@
  * https://www.digital-cp.com/sites/default/files/HDCP%20on%20DisplayPort%20Specification%20Rev2_3.pdf
  */
 
+#include <drm/display/drm_dp.h>
 #include <linux/io.h>
 #include <linux/slab.h>
 #include <linux/xlnx/xlnx_hdcp_common.h>
@@ -844,7 +845,7 @@ void xlnx_hdcp2x_tx_process_cp_irq(struct xlnx_hdcp2x_config *xhdcp2x_tx)
 	xhdcp2x_tx->handlers.rd_handler(xhdcp2x_tx->interface_ref,
 					HDCP2X_TX_HDCPPORT_RX_STATUS_OFFSET,
 					&rx_status,
-					HDCP_2_2_HDMI_RXSTATUS_LEN);
+					HDCP_2_2_DP_RXSTATUS_LEN);
 	xhdcp2x_tx->xhdcp2x_info.dp_rx_status = rx_status;
 }
 
