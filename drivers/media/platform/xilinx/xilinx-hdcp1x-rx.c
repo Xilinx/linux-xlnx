@@ -184,7 +184,7 @@ static inline void xhdcp1x_buf_to_uint(u64 *dst, u8 *src, int length)
 		int byte;
 
 		*dst = 0;
-		for (byte = length; byte >= 0; byte--) {
+		for (byte = length - 1; byte >= 0; byte--) {
 			*dst <<= 8;
 			*dst  |= src[byte];
 		}
@@ -204,18 +204,28 @@ static inline void xhdcp1x_rx_reset_port(struct xhdcp1x_rx *hdcp1x)
 
 static inline void xhdcp1x_rx_reset_bstatus(struct xhdcp1x_rx *hdcp1x)
 {
-	u8 buf = 0;
-	u8 offset, size;
+	u8 buf[XHDCP1X_PORT_HDMI_SIZE_BSTATUS] = {0};
 
-	if (hdcp1x->protocol == XHDCP1X_HDMI) {
-		offset = XHDCP1X_PORT_HDMI_OFFSET_BSTATUS;
-		size = XHDCP1X_PORT_HDMI_SIZE_BSTATUS;
-	} else {
-		offset = XHDCP1X_PORT_OFFSET_BSTATUS;
-		size = XHDCP1X_PORT_SIZE_BSTATUS;
+	if (hdcp1x->protocol != XHDCP1X_HDMI) {
+		hdcp1x->handlers.wr_handler(hdcp1x->interface_ref,
+					    XHDCP1X_PORT_OFFSET_BSTATUS, buf,
+					    XHDCP1X_PORT_SIZE_BSTATUS);
+		return;
 	}
-	hdcp1x->handlers.wr_handler(hdcp1x->interface_ref, offset, &buf,
-				    size);
+
+	/*
+	 * The upper HDMI BStatus byte also carries the HDMI mode bit, which
+	 * describes the link rather than the HDCP state and has to survive a
+	 * reset of the HDCP status bits.
+	 */
+	hdcp1x->handlers.rd_handler(hdcp1x->interface_ref,
+				    XHDCP1X_PORT_HDMI_OFFSET_BSTATUS, buf,
+				    XHDCP1X_PORT_HDMI_SIZE_BSTATUS);
+	buf[0] = 0;
+	buf[1] &= XHDCP1X_PORT_BIT_BSTATUS_HDMI_MODE >> BITS_PER_BYTE;
+	hdcp1x->handlers.wr_handler(hdcp1x->interface_ref,
+				    XHDCP1X_PORT_HDMI_OFFSET_BSTATUS, buf,
+				    XHDCP1X_PORT_HDMI_SIZE_BSTATUS);
 }
 
 static inline void xhdcp1x_rx_reset_binfo(struct xhdcp1x_rx *hdcp1x)
@@ -780,7 +790,8 @@ static int xhdcp1x_rx_poll_for_computations(struct xhdcp1x_rx *hdcp1x)
 static void hdcp1x_rx_set_clr_bstatus(struct xhdcp1x_rx *hdcp1x, u8 mask,
 				      u8 set)
 {
-	u8 val, offset, size;
+	u8 val[XHDCP1X_PORT_HDMI_SIZE_BSTATUS] = {0};
+	u8 offset, size;
 
 	if (hdcp1x->protocol == XHDCP1X_DP) {
 		offset = XHDCP1X_PORT_OFFSET_BSTATUS;
@@ -790,13 +801,13 @@ static void hdcp1x_rx_set_clr_bstatus(struct xhdcp1x_rx *hdcp1x, u8 mask,
 		size = XHDCP1X_PORT_HDMI_SIZE_BSTATUS;
 	}
 
-	hdcp1x->handlers.rd_handler(hdcp1x->interface_ref, offset, &val, size);
+	hdcp1x->handlers.rd_handler(hdcp1x->interface_ref, offset, val, size);
 
 	if (set)
-		val |= mask;
+		val[0] |= mask;
 	else
-		val &= ~mask;
-	hdcp1x->handlers.wr_handler(hdcp1x->interface_ref, offset, &val, size);
+		val[0] &= ~mask;
+	hdcp1x->handlers.wr_handler(hdcp1x->interface_ref, offset, val, size);
 }
 
 static void xhdcp1x_rx_set_hdmimode(struct xhdcp1x_rx *hdcp1x,
