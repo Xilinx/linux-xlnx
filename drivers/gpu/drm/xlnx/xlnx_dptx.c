@@ -3561,7 +3561,7 @@ static ssize_t xlnx_hdcp_load_key(struct device *sysfs_dev, struct device_attrib
 	struct xlnx_dp *dp = (struct xlnx_dp *)dev_get_drvdata(sysfs_dev);
 	struct xlnx_hdcptx *dptxhdcp = &dp->tx_hdcp;
 
-	ret = xlnx_hdcp_tx_set_keys(dptxhdcp, (u8 *)buf);
+	ret = xlnx_hdcp_tx_set_keys(dptxhdcp, (u8 *)buf, count);
 	if (ret) {
 		dev_dbg(dptxhdcp->dev, "failed to send HDCP key from Sysfs to wrapper\n");
 		return ret;
