@@ -1670,8 +1670,38 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 		xdprxss_irq_valid_video(state, 3);
 	if (state->mst_enable && (status & XDPRX_INTR_DOWN_REQUEST_MASK))
 		xdprxss_dp_mst_handle_down_req(state->mst);
-	if (state->mst_enable && (status & XDPRX_INTR_PAYLOAD_ALLOC_MASK))
+	if (state->mst_enable && (status & XDPRX_INTR_PAYLOAD_ALLOC_MASK)) {
+		unsigned long active, stale;
+		int i;
+
 		xdprxss_dp_mst_payload_allocation(state->mst);
+
+		/*
+		 * Drop cached format/timings for streams whose VC the source has
+		 * deallocated. Deriving the stale set from the live allocation
+		 * mask clears the correct pad regardless of which stream went
+		 * away.
+		 */
+		active = xdprxss_mst_active_mask(state->mst, state->num_mst_streams);
+		stale = state->valid_streams & ~active;
+		if (stale) {
+			spin_lock(&state->lock);
+			for_each_set_bit(i, &stale, state->num_mst_streams) {
+				clear_bit(i, &state->valid_streams);
+				memset(&state->format[i], 0,
+				       sizeof(state->format[i]));
+				memset(&state->detected_timings[i], 0,
+				       sizeof(state->detected_timings[i]));
+			}
+			spin_unlock(&state->lock);
+
+			memset(&state->event, 0, sizeof(state->event));
+			state->event.type = V4L2_EVENT_SOURCE_CHANGE;
+			state->event.u.src_change.changes =
+					V4L2_EVENT_SRC_CH_RESOLUTION;
+			v4l2_subdev_notify_event(&state->subdev, &state->event);
+		}
+	}
 	if (status & XDPRX_INTR_AUDIO_MASK)
 		xdprxss_irq_audio_detected(state);
 	if (status & XDPRX_INTR_TRDONE_MASK) {
