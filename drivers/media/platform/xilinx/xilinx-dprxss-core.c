@@ -1418,6 +1418,14 @@ static void xdprxss_irq_no_video(struct xdprxss_state *state)
 	xdprxss_clr(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_VBLANK_MASK);
 	xdprxss_set(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_NOVID_MASK);
 
+	/*
+	 * INTR_MASK_1_REG (streams 2-4 valid-video) is not re-armed above, so
+	 * without this those streams never re-fire their IRQ after a no-video
+	 * event and their pads stay stuck without a detected format.
+	 */
+	if (state->mst_enable)
+		xdprxss_enable_mst_valid_video_interrupts(state);
+
 	xdprxss_dtg_disable(state);
 	xdprxss_dtg_enable(state);
 
