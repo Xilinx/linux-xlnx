@@ -77,6 +77,8 @@ struct xdprxss_mst *xdprxss_init_mst(struct device *dev,
 				     u8 num_streams);
 void xdprxss_dp_mst_handle_down_req(struct xdprxss_mst *xdpmst);
 void xdprxss_dp_mst_payload_allocation(struct xdprxss_mst *xdpmst);
+unsigned long xdprxss_mst_active_mask(const struct xdprxss_mst *xdpmst,
+				      u8 num_streams);
 void xdprxss_deinit_mst(struct xdprxss_mst *xdpmst);
 
 #endif /* __XILINX_DPRXSS_MST_H__ */
