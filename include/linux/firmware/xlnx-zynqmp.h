@@ -605,10 +605,13 @@ struct zynqmp_pm_query_data {
  * struct zynqmp_devinfo - Structure for Zynqmp device instance
  * @dev:		Device Pointer
  * @feature_conf_id:	Feature conf id
+ * @pdi_meta_header_flags: EXTRACT_METAHEADER IPI payload word 6
+ *			   (PM_GET_META_HEADER_IDCODE_BYPASS_FLAG to skip IDCODE check)
  */
 struct zynqmp_devinfo {
 	struct device *dev;
 	u32 feature_conf_id;
+	u32 pdi_meta_header_flags;
 };
 
 int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...);
