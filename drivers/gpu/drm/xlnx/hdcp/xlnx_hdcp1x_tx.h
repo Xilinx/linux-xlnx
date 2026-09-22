@@ -234,7 +234,7 @@ struct hdcp1x_tx_revoclist {
  * Repeater values to exchanged between HDCP Tx and HDCP Rx
  * @v: The array of 20 byte value of SHA1 hash, v'h0,v'h1,v'h2,v'h3,v'h4
  * read from downstream repeater.
- * @ksvlist: An array of 32 elements each of 64 bits to store the KSVs
+ * @ksvlist: An array of 128 elements each of 64 bits to store the KSVs
  * for the KSV FIFO
  * @depth: depeth of downstream topology
  * @device_count: Number of downstream devices attached to the repeater
@@ -242,7 +242,7 @@ struct hdcp1x_tx_revoclist {
  */
 struct xhdcp1x_repeater_exchange {
 	u32 v[DRM_HDCP_KSV_LEN];
-	u64 ksvlist[HDCP_2_2_MAX_DEVICE_COUNT + 1];
+	u64 ksvlist[XHDMI_HDCP1X_PORT_MAX_DEV_CNT + 1];
 	u8 depth;
 	u8 device_count;
 	u8 hdcp14_propagatetopo_errupstream;
