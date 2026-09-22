@@ -910,6 +910,7 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state, u8 stream)
 	bool use_sdp = false;
 	u32 sdp_raw_aligned;
 	u8 tmp_fmt, tmp_bpc;
+	unsigned long flags;
 	u32 sdp_bases[2];
 	u32 sdp_raw_word;
 	u32 sdp_raw = 0;
@@ -1145,7 +1146,7 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state, u8 stream)
 	dv_timings->bt.vfrontporch = (vres_total - (vact + vstart));
 	dv_timings->bt.vbackporch = vstart - vsw;
 
-	spin_lock(&state->lock);
+	spin_lock_irqsave(&state->lock, flags);
 	format->width = dv_timings->bt.width;
 	format->height = dv_timings->bt.height;
 	format->colorspace = V4L2_COLORSPACE_REC709;
@@ -1154,7 +1155,7 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state, u8 stream)
 	format->quantization = V4L2_QUANTIZATION_DEFAULT;
 	format->field = V4L2_FIELD_NONE;
 	state->frame_interval = framerate;
-	spin_unlock(&state->lock);
+	spin_unlock_irqrestore(&state->lock, flags);
 
 	dev_dbg(state->dev, "detected properties : width %d height %d\n",
 		dv_timings->bt.width, dv_timings->bt.height);
