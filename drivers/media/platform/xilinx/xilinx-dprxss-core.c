@@ -928,6 +928,7 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state, u8 stream)
 	u32 sdp_raw_aligned;
 	u8 tmp_fmt, tmp_bpc;
 	unsigned long flags;
+	unsigned long active;
 	u32 sdp_bases[2];
 	u32 sdp_raw_word;
 	u32 sdp_raw = 0;
@@ -983,12 +984,22 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state, u8 stream)
 
 	framerate = (recv_clk_freq * HZ_PER_MHZ) / (hres_total * vres_total);
 	framerate = roundup(framerate, 5);
-	xdprxss_write(state, XDPRX_LINERST_DIS_REG, 0x1);
-	/* set pixel mode as per lane count and reset the DTG */
-	xdprxss_clr(state, XDPRX_DTG_REG, XDPRX_DTG_DIS_MASK);
-	xdprxss_write(state, XDPRX_PIXEL_WIDTH_REG, pixel_width);
-	read_val = xdprxss_read(state, XDPRX_DTG_REG);
-	xdprxss_write(state, XDPRX_DTG_REG, (read_val | 0x1));
+
+	/*
+	 * XDPRX_PIXEL_WIDTH_REG and XDPRX_DTG_REG are link-global, not
+	 * per-stream. Program them from the lowest active stream only so a
+	 * secondary stream cannot stomp the shared state mid-capture. Keying
+	 * off the first active slot avoids assuming the source allocated
+	 * stream 1.
+	 */
+	active = xdprxss_mst_active_mask(state->mst, state->num_mst_streams);
+	if (stream - 1 == find_first_bit(&active, state->num_mst_streams)) {
+		xdprxss_write(state, XDPRX_LINERST_DIS_REG, 0x1);
+		xdprxss_clr(state, XDPRX_DTG_REG, XDPRX_DTG_DIS_MASK);
+		xdprxss_write(state, XDPRX_PIXEL_WIDTH_REG, pixel_width);
+		read_val = xdprxss_read(state, XDPRX_DTG_REG);
+		xdprxss_write(state, XDPRX_DTG_REG, (read_val | 0x1));
+	}
 	read_val = FIELD_GET(XDPRX_DPCD_MSA_TIMING_IGNORE_MASK,
 			     xdprxss_read(state, XDPRX_MSA_MISC1_REG +
 					  xdprxss_mst_offset(stream)));
@@ -1847,16 +1858,17 @@ static int xdprxss_getset_format(struct v4l2_subdev *sd,
 	}
 	if (!ret) {
 		set_bit(fmt->pad, &xdprxss->valid_streams);
-	} else if (!test_bit(fmt->pad, &xdprxss->valid_streams)) {
-		dev_err(xdprxss->dev, "Video not locked!\n");
-		return -EINVAL;
-	}
-
-	if (ret) {
+	} else {
 		/*
-		 * Keep serving cached format if stream is transiently unstable;
-		 * this avoids false unlock reporting during retrain.
+		 * Serve the cached format only once the valid-video IRQ has
+		 * confirmed this pad; otherwise an early read of an unstable MSA
+		 * bank would be cached as the permanent format.
 		 */
+		if (!test_bit(fmt->pad, &xdprxss->valid_streams)) {
+			dev_dbg(xdprxss->dev,
+				"stream=%u not yet locked\n", fmt->pad + 1);
+			return -EINVAL;
+		}
 		dev_dbg_ratelimited(xdprxss->dev,
 				    "using cached format for stream=%u ret=%d\n",
 				    fmt->pad + 1, ret);
@@ -1989,12 +2001,16 @@ static int xdprxss_query_dv_timings(struct v4l2_subdev *sd, unsigned int pad,
 			break;
 		usleep_range(1000, 2000);
 	}
-	if (!ret)
+	if (!ret) {
 		set_bit(pad, &state->valid_streams);
-	else if (!test_bit(pad, &state->valid_streams))
-		return -ENOLCK;
-
-	if (ret) {
+	} else {
+		/*
+		 * Serve cached timings only once the valid-video IRQ has
+		 * confirmed this pad; otherwise an early read of an unstable MSA
+		 * bank would be reported as the detected timings.
+		 */
+		if (!test_bit(pad, &state->valid_streams))
+			return -ENOLCK;
 		dev_dbg_ratelimited(state->dev,
 				    "using cached timings for stream=%u ret=%d\n",
 				    pad + 1, ret);
