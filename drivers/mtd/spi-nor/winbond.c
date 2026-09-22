@@ -194,6 +194,10 @@ static const struct spi_nor_fixups w25q02_fixups = {
 	.default_init = w25q02_default_init_fixups,
 };
 
+static const struct spi_nor_fixups w25h02jv_fixups = {
+	.default_init = w25q02_default_init_fixups,
+};
+
 static const struct flash_info winbond_nor_parts[] = {
 	{
 		.id = SNOR_ID(0xef, 0x30, 0x10),
@@ -395,7 +399,7 @@ static const struct flash_info winbond_nor_parts[] = {
 	}, {
 		.id = SNOR_ID(0xef, 0x80, 0x22),
 		.name = "w25q02nw",
-		.size = SZ_8M,
+		.size = SZ_256M,
 		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
 				SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
@@ -403,13 +407,13 @@ static const struct flash_info winbond_nor_parts[] = {
 		.fixups = &w25q02_fixups,
 	}, {
 		.id = SNOR_ID(0xef, 0x90, 0x22),
-		.name = "w25q02nw",
-		.size = SZ_8M,
+		.name = "w25h02jv",
+		.size = SZ_256M,
 		.flags = SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB | SPI_NOR_TB_SR_BIT6 |
 				SPI_NOR_4BIT_BP | SPI_NOR_BP3_SR_BIT5,
 		.no_sfdp_flags = SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ,
 		.fixup_flags = SPI_NOR_4B_OPCODES,
-		.fixups = &w25q02_fixups,
+		.fixups = &w25h02jv_fixups,
 	},
 };
 
