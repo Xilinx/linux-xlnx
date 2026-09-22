@@ -514,14 +514,14 @@ static int xlnx_sdi_audio_probe(struct platform_device *pdev)
 		of_node_put(video_node);
 	}
 
+	dev_set_drvdata(&pdev->dev, ctx);
+
 	ret = devm_snd_soc_register_component(&pdev->dev, &xlnx_sdi_component,
 					      snd_dai, 1);
 	if (ret) {
 		dev_err(&pdev->dev, "couldn't register codec DAI\n");
 		return ret;
 	}
-
-	dev_set_drvdata(&pdev->dev, ctx);
 
 	audio_reset_core(ctx->base, true);
 	audio_reset_core(ctx->base, false);
