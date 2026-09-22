@@ -82,7 +82,8 @@ int xlnx_hdcp_tx_exit(struct xlnx_hdcptx *xtxhdcp);
 int xlnx_hdcp_tx_set_callback(void *ref,
 			      enum xlnx_hdcptx_callback_type callback_type,
 			      void *callbackfunc);
-int xlnx_hdcp_tx_set_keys(struct xlnx_hdcptx *xtxhdcp, const u8 *data);
+int xlnx_hdcp_tx_set_keys(struct xlnx_hdcptx *xtxhdcp, const u8 *data,
+			  size_t size);
 
 void xlnx_hdcp1x_interrupt_handler(struct xlnx_hdcptx *xtxhdcp);
 void *xlnx_hdcp_tx_init(struct device *dev, void *protocol_ref,
