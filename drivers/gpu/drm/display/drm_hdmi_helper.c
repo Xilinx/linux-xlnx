@@ -147,9 +147,14 @@ drm_hdmi_infoframe_set_gen_hdr_metadata(struct hdmi_drm_infoframe *frame,
 			hdr_infoframe->min_display_mastering_luminance;
 		frame->max_fall = hdr_infoframe->max_fall;
 		frame->max_cll = hdr_infoframe->max_cll;
+
+		return 0;
 	}
 
-	return 0;
+	DRM_DEBUG_KMS("Unsupported HDR metadata type %u\n",
+		      gen_hdr_metadata->metadata_type);
+
+	return -EINVAL;
 }
 EXPORT_SYMBOL(drm_hdmi_infoframe_set_gen_hdr_metadata);
 

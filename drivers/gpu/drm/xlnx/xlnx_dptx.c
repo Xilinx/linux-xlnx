@@ -3489,7 +3489,9 @@ static void xlnx_dp_vsync_handler(struct xlnx_dp *dp)
 		}
 
 		if (state->gen_hdr_output_metadata) {
-			drm_hdmi_infoframe_set_gen_hdr_metadata(&frame, state);
+			if (drm_hdmi_infoframe_set_gen_hdr_metadata(&frame, state))
+				return;
+
 			xlnx_dp_gen_drmif_pkt(dp, frame);
 
 			xlnx_dp_write(dp->dp_base, XDPTX_AUDIO_INFO_DATA_REG,
