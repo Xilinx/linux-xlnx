@@ -986,6 +986,7 @@ int xlnx_hdcp1x_tx_validate_ksv_list(struct xlnx_hdcp1x_config *xhdcp1x_tx, u16 
 		u64 offset = 0;
 		const u8 *sha1_buf = sha_result;
 		int num_iterations = (SHA1_HASH_SIZE >> 2);
+		int index = 0;
 
 		if (xhdcp1x_tx->protocol != XHDCP1X_TX_DP)
 			offset = XHDMI_HDCP1X_PORT_OFFSET_VH0;
@@ -1005,12 +1006,6 @@ int xlnx_hdcp1x_tx_validate_ksv_list(struct xlnx_hdcp1x_config *xhdcp1x_tx, u16 
 			calc_calue <<= BITS_PER_BYTE;
 			calc_calue |= *sha1_buf++;
 
-			if (xhdcp1x_tx->protocol != XHDCP1X_TX_DP)
-				offset = XHDMI_HDCP1X_PORT_OFFSET_VH0;
-
-			else
-				offset = XHDCP1X_PORT_OFFSET_VH0;
-
 			ret =
 				xhdcp1x_tx->handlers.rd_handler(xhdcp1x_tx->interface_ref,
 								offset, buf,
@@ -1020,8 +1015,8 @@ int xlnx_hdcp1x_tx_validate_ksv_list(struct xlnx_hdcp1x_config *xhdcp1x_tx, u16 
 				dev_err(xhdcp1x_tx->dev, "Unable to read V");
 				return false;
 			}
-			memcpy(&xhdcp1x_tx->repeatervalues.v[offset - XHDMI_HDCP1X_PORT_OFFSET_VH0],
-			       buf, XHDCP1X_PORT_SIZE_VH0);
+			memcpy(&xhdcp1x_tx->repeatervalues.v[index], buf,
+			       XHDCP1X_PORT_SIZE_VH0);
 			read_value = xlnx_hdcp1x_buf_to_unit(buf,
 							     BITS_PER_BYTE * XHDCP1X_PORT_SIZE_VH0);
 			if (calc_calue != read_value) {
@@ -1029,6 +1024,7 @@ int xlnx_hdcp1x_tx_validate_ksv_list(struct xlnx_hdcp1x_config *xhdcp1x_tx, u16 
 				return false;
 			}
 			offset += XHDCP1X_PORT_SIZE_VH0;
+			index++;
 			num_iterations--;
 		} while (num_iterations > 0);
 	} else {
