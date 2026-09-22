@@ -190,8 +190,16 @@ static void w25q02_default_init_fixups(struct spi_nor *nor)
 	nor->params->ready = spi_nor_multi_die_sr_ready;
 }
 
+static int w25q02_post_sfdp_fixups(struct spi_nor *nor)
+{
+	nor->params->hwcaps.mask &= ~SNOR_HWCAPS_READ_1_4_4;
+
+	return 0;
+}
+
 static const struct spi_nor_fixups w25q02_fixups = {
 	.default_init = w25q02_default_init_fixups,
+	.post_sfdp = w25q02_post_sfdp_fixups,
 };
 
 static const struct spi_nor_fixups w25h02jv_fixups = {
