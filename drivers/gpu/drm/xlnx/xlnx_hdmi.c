@@ -755,7 +755,7 @@ static ssize_t xlnx_hdcp_key_store(struct device *sysfs_dev, struct device_attri
 		return PTR_ERR(xhdcp->xhdcp2x);
 	}
 
-	ret = xlnx_hdcp_tx_set_keys(xhdcp, (const u8 *)buf);
+	ret = xlnx_hdcp_tx_set_keys(xhdcp, (const u8 *)buf, count);
 	if (ret) {
 		dev_err(xhdcp->dev, "failed to send HDCP key from Sysfs to common layer");
 		return ret;

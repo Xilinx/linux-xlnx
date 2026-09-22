@@ -247,7 +247,8 @@ void xlnx_hdcp_tx_timer_exit(struct xlnx_hdcptx *xtxhdcp)
 }
 EXPORT_SYMBOL_GPL(xlnx_hdcp_tx_timer_exit);
 
-int xlnx_hdcp_tx_set_keys(struct xlnx_hdcptx *xtxhdcp, const u8 *data)
+int xlnx_hdcp_tx_set_keys(struct xlnx_hdcptx *xtxhdcp, const u8 *data,
+			  size_t size)
 {
 	int ret = 0;
 	struct xlnx_hdcp2x_config  *xhdcp2x = xtxhdcp->xhdcp2x;
@@ -255,6 +256,13 @@ int xlnx_hdcp_tx_set_keys(struct xlnx_hdcptx *xtxhdcp, const u8 *data)
 	u8 local_srm[XHDCP2X_TX_SRM_SIZE];
 	u8 local_lc128[XHDCP2X_TX_LC128_SIZE];
 	u8 local_buf[XHDCP1X_TX_ENCRYPTION_KEY_SIZE];
+
+	if (size < XHDCP1X_TX_ENCRYPTION_KEY_SIZE + XHDCP2X_TX_LC128_SIZE +
+		   XHDCP2X_TX_SRM_SIZE) {
+		dev_err(xtxhdcp->dev, "HDCP key blob too short: %zu bytes\n",
+			size);
+		return -EINVAL;
+	}
 
 	memcpy(local_buf, data, XHDCP1X_TX_ENCRYPTION_KEY_SIZE);
 	memcpy(local_lc128, data + XHDCP1X_TX_ENCRYPTION_KEY_SIZE, XHDCP2X_TX_LC128_SIZE);
