@@ -8,6 +8,8 @@
  *
  */
 #include <linux/bitfield.h>
+#include <linux/bitmap.h>
+#include <linux/bitops.h>
 #include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/firmware/xlnx-zynqmp.h>
@@ -224,7 +226,7 @@ struct vidphy_cfg {
  * @audio_enable: To indicate audio enabled or not
  * @audio_init: flag to indicate audio is initialized
  * @rx_audio_data: audio data
- * @valid_stream: To indicate valid video for all streams
+ * @valid_streams: bitmask of streams currently locked with valid video
  * @streaming: Flag for storing streaming state
  * @ltstate: Flag for storing link training state
  * @last_powered_down: Tracks whether link was last in power-down state
@@ -283,7 +285,7 @@ struct xdprxss_state {
 	bool audio_enable;
 	bool audio_init;
 	struct xlnx_dprx_audio_data *rx_audio_data;
-	bool valid_stream[XDPRX_MAX_STREAM_COUNT];
+	unsigned long valid_streams;
 	unsigned int streaming : 1;
 	unsigned int ltstate : 2;
 	unsigned int last_powered_down : 1;
@@ -427,14 +429,29 @@ to_xdprxssstate(struct v4l2_subdev *subdev)
 
 static bool xdprxss_is_stream_valid(struct xdprxss_state *state)
 {
-	int i;
+	unsigned long active = xdprxss_mst_active_mask(state->mst,
+						       state->num_mst_streams);
 
-	for (i = 0; i < state->num_mst_streams; i++) {
-		if (!state->valid_stream[i])
-			return false;
-	}
+	/* Every stream the source is sending must be locked. */
+	return bitmap_subset(&active, &state->valid_streams,
+			     state->num_mst_streams);
+}
 
-	return true;
+/**
+ * xdprxss_clear_valid_streams - Drop the locked state of every stream
+ * @state: pointer to driver state
+ *
+ * Clears the bits one at a time rather than storing zero over the whole word.
+ * The callers run in hard-IRQ context while xdprxss_getset_format() and
+ * xdprxss_query_dv_timings() set bits from process context, so a plain store
+ * could drop a concurrent set_bit().
+ */
+static void xdprxss_clear_valid_streams(struct xdprxss_state *state)
+{
+	unsigned int stream;
+
+	for (stream = 0; stream < state->num_mst_streams; stream++)
+		clear_bit(stream, &state->valid_streams);
 }
 
 static bool xdprxss_is_supported_bpc(u8 bpc)
@@ -1365,7 +1382,7 @@ static void xdprxss_training_failure(struct xdprxss_state *state)
 {
 	dev_dbg(state->dev, "Training Lost !!\n");
 
-	memset(state->valid_stream, 0, sizeof(state->valid_stream));
+	xdprxss_clear_valid_streams(state);
 
 	if (state->hdcp_enable)
 		xhdcp1x_rx_disable(state->hdcp1x);
@@ -1400,7 +1417,7 @@ static void xdprxss_irq_no_video(struct xdprxss_state *state)
 	state->event.type = V4L2_EVENT_SOURCE_CHANGE;
 	state->event.u.src_change.changes = V4L2_EVENT_SRC_CH_RESOLUTION;
 	v4l2_subdev_notify_event(&state->subdev, &state->event);
-	memset(state->valid_stream, 0, sizeof(state->valid_stream));
+	xdprxss_clear_valid_streams(state);
 }
 
 static void xdprxss_irq_valid_video(struct xdprxss_state *state, u8 stream)
@@ -1418,7 +1435,7 @@ static void xdprxss_irq_valid_video(struct xdprxss_state *state, u8 stream)
 		state->event.u.src_change.changes =
 				V4L2_EVENT_SRC_CH_RESOLUTION;
 		v4l2_subdev_notify_event(&state->subdev, &state->event);
-		state->valid_stream[stream] = true;
+		set_bit(stream, &state->valid_streams);
 	} else if (ret == -EAGAIN) {
 		/*
 		 * MSA can be transiently unavailable during stream switch/update.
@@ -1430,7 +1447,7 @@ static void xdprxss_irq_valid_video(struct xdprxss_state *state, u8 stream)
 	} else {
 		dev_err(state->dev, "Unable to get stream properties! stream=%u ret=%d\n",
 			stream + 1, ret);
-		state->valid_stream[stream] = false;
+		clear_bit(stream, &state->valid_streams);
 	}
 
 	xdprxss_disable_audio(state);
@@ -1790,7 +1807,7 @@ static int xdprxss_init_state(struct v4l2_subdev *sd,
 	for (i = 0; i < xdprxss->num_mst_streams; i++) {
 		format = v4l2_subdev_state_get_format(sd_state, i);
 
-		if (!xdprxss->valid_stream[i])
+		if (!test_bit(i, &xdprxss->valid_streams))
 			*format = xdprxss->format[i];
 	}
 
@@ -1829,8 +1846,8 @@ static int xdprxss_getset_format(struct v4l2_subdev *sd,
 		usleep_range(1000, 2000);
 	}
 	if (!ret) {
-		xdprxss->valid_stream[fmt->pad] = true;
-	} else if (!xdprxss->valid_stream[fmt->pad]) {
+		set_bit(fmt->pad, &xdprxss->valid_streams);
+	} else if (!test_bit(fmt->pad, &xdprxss->valid_streams)) {
 		dev_err(xdprxss->dev, "Video not locked!\n");
 		return -EINVAL;
 	}
@@ -1973,8 +1990,8 @@ static int xdprxss_query_dv_timings(struct v4l2_subdev *sd, unsigned int pad,
 		usleep_range(1000, 2000);
 	}
 	if (!ret)
-		state->valid_stream[pad] = true;
-	else if (!state->valid_stream[pad])
+		set_bit(pad, &state->valid_streams);
+	else if (!test_bit(pad, &state->valid_streams))
 		return -ENOLCK;
 
 	if (ret) {

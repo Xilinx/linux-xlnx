@@ -1376,6 +1376,39 @@ struct xdprxss_mst *xdprxss_init_mst(struct device *dev, void __iomem *intf_base
 }
 
 /**
+ * xdprxss_mst_active_mask() - Streams the driver should act on right now
+ * @xdpmst: MST context, or NULL when MST is disabled
+ * @num_streams: number of streams configured for the sink
+ *
+ * A VC payload ID equals the source-assigned stream number and maps to
+ * hardware stream slot (vcid - 1). Return the slots the source is currently
+ * sending as a bitmask, clamped to @num_streams. When MST is disabled report
+ * all configured slots, and during the SST/pre-allocation window fall back to
+ * slot 0 so the primary slot is always considered.
+ *
+ * Return: bitmask of stream slots to act on (bit N == slot N active).
+ */
+unsigned long xdprxss_mst_active_mask(const struct xdprxss_mst *xdpmst,
+				      u8 num_streams)
+{
+	unsigned long all = GENMASK(num_streams - 1, 0);
+	unsigned long mask = 0;
+	int i;
+
+	if (!xdpmst)
+		return all;
+
+	for (i = 0; i < XLNX_DPRX_MST_TIMESLOT_COUNT; i++) {
+		u8 vcid = xdpmst->rx_topology.payload_id_table[i];
+
+		if (vcid && vcid <= BITS_PER_LONG)
+			mask |= BIT(vcid - 1);
+	}
+
+	return (mask ? mask : BIT(0)) & all;
+}
+
+/**
  * xdprxss_deinit_mst() - Tear down MST sideband engine state
  * @xdpmst: MST context
  */
