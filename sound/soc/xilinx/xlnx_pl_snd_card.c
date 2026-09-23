@@ -95,7 +95,7 @@ static int xlnx_spdif_card_hw_params(struct snd_pcm_substream *substream,
 	/* mclk must be >=1024 * sampleing rate */
 	prv->mclk_val = 1024 * sample_rate;
 	prv->mclk_ratio = 1024;
-	return clk_set_rate(prv->mclk, prv->mclk_val);
+	return xlnx_set_mclk(substream, prv);
 }
 
 static int xlnx_sdi_card_hw_params(struct snd_pcm_substream *substream,
@@ -106,7 +106,7 @@ static int xlnx_sdi_card_hw_params(struct snd_pcm_substream *substream,
 	u32 sample_rate = params_rate(params);
 
 	prv->mclk_val = prv->mclk_ratio * sample_rate;
-	return clk_set_rate(prv->mclk, prv->mclk_val);
+	return xlnx_set_mclk(substream, prv);
 }
 
 static int xlnx_dp_card_hw_params(struct snd_pcm_substream *substream,
@@ -131,7 +131,7 @@ static int xlnx_dp_card_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	prv->mclk_val = prv->mclk_ratio * sample_rate;
-	return clk_set_rate(prv->mclk, prv->mclk_val);
+	return xlnx_set_mclk(substream, prv);
 }
 
 static int xlnx_hdmi_card_hw_params(struct snd_pcm_substream *substream,
@@ -221,7 +221,7 @@ static int xlnx_i2s_card_hw_params(struct snd_pcm_substream *substream,
 	if (ret)
 		return ret;
 
-	return clk_set_rate(prv->mclk, prv->mclk_val);
+	return xlnx_set_mclk(substream, prv);
 }
 
 static const struct snd_soc_ops xlnx_sdi_card_ops = {
