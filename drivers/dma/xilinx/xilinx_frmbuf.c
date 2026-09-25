@@ -2290,14 +2290,14 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 	if (xdev->tile_fmt && (xdev->cfg->flags & XILINX_TILE_FORMAT_PROP))
 		dev_dbg(&pdev->dev, "Tile video formats are enabled\n");
 
-	/* read supported video formats and update internal table */
-	hw_vid_fmt_cnt = of_property_count_strings(node, "xlnx,vid-formats");
-
-	err = of_property_read_string_array(node, "xlnx,vid-formats",
-					    vid_fmts, hw_vid_fmt_cnt);
-	if (err < 0) {
+	/* read supported video formats, bounded by the vid_fmts[] size */
+	hw_vid_fmt_cnt = of_property_read_string_array(node, "xlnx,vid-formats",
+						       vid_fmts,
+						       ARRAY_SIZE(vid_fmts));
+	if (hw_vid_fmt_cnt < 0) {
 		dev_err(&pdev->dev,
 			"Missing or invalid xlnx,vid-formats dts prop\n");
+		err = hw_vid_fmt_cnt;
 		goto remove_chan;
 	}
 
