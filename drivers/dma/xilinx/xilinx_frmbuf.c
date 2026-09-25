@@ -1793,7 +1793,7 @@ static irqreturn_t xilinx_frmbuf_irq_handler(int irq, void *data)
 	struct xilinx_frmbuf_chan *chan = data;
 	u32 status;
 	dma_async_tx_callback callback = NULL;
-	void *callback_param;
+	void *callback_param = NULL;
 	struct xilinx_frmbuf_tx_descriptor *desc;
 
 	status = frmbuf_read(chan, XILINX_FRMBUF_ISR_OFFSET);
@@ -1803,16 +1803,23 @@ static irqreturn_t xilinx_frmbuf_irq_handler(int irq, void *data)
 	frmbuf_write(chan, XILINX_FRMBUF_ISR_OFFSET,
 		     status & XILINX_FRMBUF_ISR_ALL_IRQ_MASK);
 
-	/* Check if callback function needs to be called early */
+	/*
+	 * Check if callback function needs to be called early. Snapshot the
+	 * staged descriptor's callback under the channel lock so it cannot be
+	 * freed by a concurrent terminate/free path, then invoke it after
+	 * dropping the lock.
+	 */
+	spin_lock(&chan->lock);
 	desc = chan->staged_desc;
 	if (desc && desc->earlycb == EARLY_CALLBACK) {
 		callback = desc->async_tx.callback;
 		callback_param = desc->async_tx.callback_param;
-		if (callback) {
-			callback(callback_param);
-			desc->async_tx.callback = NULL;
-		}
+		desc->async_tx.callback = NULL;
 	}
+	spin_unlock(&chan->lock);
+
+	if (callback)
+		callback(callback_param);
 
 	if (status & XILINX_FRMBUF_ISR_AP_DONE_IRQ) {
 		spin_lock(&chan->lock);
