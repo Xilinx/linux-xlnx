@@ -33,6 +33,7 @@
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
+#include <linux/rculist.h>
 #include <linux/slab.h>
 #include <linux/videodev2.h>
 
@@ -1073,14 +1074,19 @@ static struct xilinx_frmbuf_chan *frmbuf_find_chan(struct dma_chan *chan)
 
 static struct xilinx_frmbuf_device *frmbuf_find_dev(struct dma_chan *chan)
 {
-	struct xilinx_frmbuf_chan *xchan, *temp;
 	struct xilinx_frmbuf_device *xdev;
+	struct xilinx_frmbuf_chan *xchan;
 	bool is_frmbuf_chan = false;
 
-	list_for_each_entry_safe(xchan, temp, &frmbuf_chan_list, chan_node) {
-		if (chan == &xchan->common)
+	/* RCU walk: safe from any context against concurrent probe/remove */
+	rcu_read_lock();
+	list_for_each_entry_rcu(xchan, &frmbuf_chan_list, chan_node) {
+		if (chan == &xchan->common) {
 			is_frmbuf_chan = true;
+			break;
+		}
 	}
+	rcu_read_unlock();
 
 	if (!is_frmbuf_chan)
 		return ERR_PTR(-ENODEV);
@@ -2064,8 +2070,11 @@ static void xilinx_frmbuf_chan_remove(struct xilinx_frmbuf_chan *chan)
 	list_del(&chan->common.device_node);
 
 	mutex_lock(&frmbuf_chan_list_lock);
-	list_del(&chan->chan_node);
+	list_del_rcu(&chan->chan_node);
 	mutex_unlock(&frmbuf_chan_list_lock);
+
+	/* Wait for in-flight readers before the chan is freed */
+	synchronize_rcu();
 }
 
 /**
@@ -2134,7 +2143,7 @@ static int xilinx_frmbuf_chan_probe(struct xilinx_frmbuf_device *xdev,
 	list_add_tail(&chan->common.device_node, &xdev->common.channels);
 
 	mutex_lock(&frmbuf_chan_list_lock);
-	list_add_tail(&chan->chan_node, &frmbuf_chan_list);
+	list_add_tail_rcu(&chan->chan_node, &frmbuf_chan_list);
 	mutex_unlock(&frmbuf_chan_list_lock);
 
 	xilinx_frmbuf_chan_reset(chan);
