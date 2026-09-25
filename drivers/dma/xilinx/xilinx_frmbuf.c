@@ -1506,11 +1506,15 @@ static void xilinx_frmbuf_free_chan_resources(struct dma_chan *dchan)
 static void xilinx_frmbuf_chan_desc_cleanup(struct xilinx_frmbuf_chan *chan)
 {
 	struct xilinx_frmbuf_tx_descriptor *desc, *next;
+	LIST_HEAD(cleanup_list);
 	unsigned long flags;
 
+	/* Splice done_list to a private list so the free path can't race it */
 	spin_lock_irqsave(&chan->lock, flags);
+	list_splice_init(&chan->done_list, &cleanup_list);
+	spin_unlock_irqrestore(&chan->lock, flags);
 
-	list_for_each_entry_safe(desc, next, &chan->done_list, node) {
+	list_for_each_entry_safe(desc, next, &cleanup_list, node) {
 		dma_async_tx_callback callback;
 		void *callback_param;
 
@@ -1519,18 +1523,13 @@ static void xilinx_frmbuf_chan_desc_cleanup(struct xilinx_frmbuf_chan *chan)
 		/* Run the link descriptor callback function */
 		callback = desc->async_tx.callback;
 		callback_param = desc->async_tx.callback_param;
-		if (callback) {
-			spin_unlock_irqrestore(&chan->lock, flags);
+		if (callback)
 			callback(callback_param);
-			spin_lock_irqsave(&chan->lock, flags);
-		}
 
 		/* Run any dependencies, then free the descriptor */
 		dma_run_dependencies(&desc->async_tx);
 		kfree(desc);
 	}
-
-	spin_unlock_irqrestore(&chan->lock, flags);
 }
 
 /**
