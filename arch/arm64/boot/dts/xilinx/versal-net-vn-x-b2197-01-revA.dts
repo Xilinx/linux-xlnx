@@ -231,6 +231,10 @@
 	skip-init;
 };
 
+&its {
+	status = "okay";
+};
+
 &smmu {
 	status = "okay";
 };
