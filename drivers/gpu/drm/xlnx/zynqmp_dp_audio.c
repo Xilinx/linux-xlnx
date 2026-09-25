@@ -441,7 +441,6 @@ int zynqmp_audio_init(struct zynqmp_dpsub *dpsub)
 		 */
 		dev_err(dev, "Failed to register sound card, disabling audio support\n");
 
-		devm_kfree(dev, audio);
 		dpsub->audio = NULL;
 
 		return 0;
