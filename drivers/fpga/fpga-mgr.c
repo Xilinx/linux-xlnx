@@ -715,8 +715,8 @@ static ssize_t firmware_store(struct device *dev,
 			      const char *buf, size_t count)
 {
 	struct fpga_manager *mgr = to_fpga_manager(dev);
-	unsigned int len;
 	char image_name[NAME_MAX];
+	size_t len = count;
 	int ret;
 
 	/* struct with information about the FPGA image to program. */
@@ -725,10 +725,15 @@ static ssize_t firmware_store(struct device *dev,
 	info.header_size = mgr->mops->initial_header_size;
 
 	/* lose terminating \n */
-	strcpy(image_name, buf);
-	len = strlen(image_name);
-	if (image_name[len - 1] == '\n')
-		image_name[len - 1] = 0;
+	if (len && buf[len - 1] == '\n')
+		len--;
+
+	/* reject an empty or overlong name to avoid overflowing image_name[] */
+	if (len == 0 || len >= sizeof(image_name))
+		return -EINVAL;
+
+	memcpy(image_name, buf, len);
+	image_name[len] = '\0';
 
 	ret = fpga_mgr_firmware_load(mgr, &info, image_name);
 	if (ret)
