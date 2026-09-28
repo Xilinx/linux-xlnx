@@ -2327,7 +2327,7 @@ static int xdprxss_hdcp2x_key_write(struct xdprxss_state *xdprxss,
 {
 	int ret = 0;
 
-	if (xhdcp22_keys->size_lc128 != HDCP2X_LC128_SIZE &&
+	if (xhdcp22_keys->size_lc128 != HDCP2X_LC128_SIZE ||
 	    xhdcp22_keys->size_private != HDCP2X_PRIVATE_SIZE)
 		return -EINVAL;
 
