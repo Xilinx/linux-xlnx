@@ -450,7 +450,7 @@ static int zynqmp_clock_get_topology(u32 clk_id,
 	struct topology_resp response = { };
 
 	*num_nodes = 0;
-	for (j = 0; j <= MAX_NODES; j += ARRAY_SIZE(response.topology)) {
+	for (j = 0; j < MAX_NODES; j += ARRAY_SIZE(response.topology)) {
 		ret = zynqmp_pm_clock_get_topology(clock[clk_id].clk_id, j,
 						   &response);
 		if (ret)
