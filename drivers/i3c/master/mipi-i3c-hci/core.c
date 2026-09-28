@@ -236,7 +236,7 @@ static int i3c_hci_send_ccc_cmd(struct i3c_master_controller *m,
 	}
 	for (i = prefixed; i < nxfers; i++) {
 		if (ccc->rnw)
-			ccc->dests[i - prefixed].payload.len =
+			ccc->dests[i - prefixed].payload.actual_len =
 				RESP_DATA_LENGTH(xfer[i].response);
 		switch (RESP_STATUS(xfer[i].response)) {
 		case RESP_SUCCESS:
@@ -253,7 +253,8 @@ static int i3c_hci_send_ccc_cmd(struct i3c_master_controller *m,
 
 	if (ccc->rnw)
 		dev_dbg(&hci->master.dev, "got: %*ph",
-			ccc->dests[0].payload.len, ccc->dests[0].payload.data);
+			ccc->dests[0].payload.actual_len,
+			ccc->dests[0].payload.data);
 
 out:
 	hci_free_xfer(xfer, nxfers);

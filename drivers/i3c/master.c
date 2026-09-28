@@ -925,6 +925,7 @@ static void *i3c_ccc_cmd_dest_init(struct i3c_ccc_cmd_dest *dest, u8 addr,
 {
 	dest->addr = addr;
 	dest->payload.len = payloadlen;
+	dest->payload.actual_len = 0;
 	if (payloadlen)
 		dest->payload.data = kzalloc(payloadlen, GFP_KERNEL);
 	else
@@ -1324,7 +1325,7 @@ static int i3c_master_getmrl_locked(struct i3c_master_controller *master,
 	if (ret)
 		goto out;
 
-	switch (dest.payload.len) {
+	switch (dest.payload.actual_len) {
 	case 3:
 		info->max_ibi_len = mrl->ibi_len;
 		fallthrough;
@@ -1359,7 +1360,7 @@ static int i3c_master_getmwl_locked(struct i3c_master_controller *master,
 	if (ret)
 		goto out;
 
-	if (dest.payload.len != sizeof(*mwl)) {
+	if (dest.payload.actual_len != sizeof(*mwl)) {
 		ret = -EIO;
 		goto out;
 	}
@@ -1398,14 +1399,14 @@ static int i3c_master_getmxds_locked(struct i3c_master_controller *master,
 			goto out;
 	}
 
-	if (dest.payload.len != 2 && dest.payload.len != 5) {
+	if (dest.payload.actual_len != 2 && dest.payload.actual_len != 5) {
 		ret = -EIO;
 		goto out;
 	}
 
 	info->max_read_ds = getmaxds->maxrd;
 	info->max_write_ds = getmaxds->maxwr;
-	if (dest.payload.len == 5)
+	if (dest.payload.actual_len == 5)
 		info->max_read_turnaround = getmaxds->maxrdturn[0] |
 					    ((u32)getmaxds->maxrdturn[1] << 8) |
 					    ((u32)getmaxds->maxrdturn[2] << 16);
@@ -1434,7 +1435,7 @@ static int i3c_master_gethdrcap_locked(struct i3c_master_controller *master,
 	if (ret)
 		goto out;
 
-	if (dest.payload.len != 1) {
+	if (dest.payload.actual_len != 1) {
 		ret = -EIO;
 		goto out;
 	}
