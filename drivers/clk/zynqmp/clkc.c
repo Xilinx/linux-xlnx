@@ -469,18 +469,20 @@ static int zynqmp_clock_get_topology(u32 clk_id,
  *				   response data
  * @parents:		Clock parents
  * @response:		Clock parents data received from firmware
+ * @max_write:		Maximum number of entries that may be written to @parents
  * @nparent:		Number of parent
  *
  * Return: 0 on success else error+reason
  */
 static int __zynqmp_clock_get_parents(struct clock_parent *parents,
 				      struct parents_resp *response,
-				      u32 *nparent)
+				      u32 max_write, u32 *nparent)
 {
 	int i;
 	struct clock_parent *parent;
 
-	for (i = 0; i < ARRAY_SIZE(response->parents); i++) {
+	/* Never write past the caller-provided capacity of the parents[] array */
+	for (i = 0; i < ARRAY_SIZE(response->parents) && i < max_write; i++) {
 		if (response->parents[i] == NA_PARENT)
 			return END_OF_PARENTS;
 
@@ -512,11 +514,13 @@ static int __zynqmp_clock_get_parents(struct clock_parent *parents,
 static int zynqmp_clock_get_parents(u32 clk_id, struct clock_parent *parents,
 				    u32 *num_parents)
 {
-	int j = 0, ret;
 	struct parents_resp response = { };
+	u32 j = 0;
+	int ret;
 
 	*num_parents = 0;
-	do {
+	/* Bound the loop by the write index so parents[] is never overrun */
+	while (j < MAX_PARENT) {
 		/* Get parents from firmware */
 		ret = zynqmp_pm_clock_get_parents(clock[clk_id].clk_id, j,
 						  &response);
@@ -524,11 +528,11 @@ static int zynqmp_clock_get_parents(u32 clk_id, struct clock_parent *parents,
 			return ret;
 
 		ret = __zynqmp_clock_get_parents(&parents[j], &response,
-						 num_parents);
+						 MAX_PARENT - j, num_parents);
 		if (ret == END_OF_PARENTS)
 			return 0;
 		j += ARRAY_SIZE(response.parents);
-	} while (*num_parents <= MAX_PARENT);
+	}
 
 	return 0;
 }
