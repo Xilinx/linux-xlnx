@@ -462,8 +462,7 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 			dai->cpus->of_node = node[i];
 			card->num_links++;
 			snd_soc_card_set_drvdata(card, prv);
-			dev_dbg(card->dev, "%s registered\n",
-				card->dai_link[i].name);
+			dev_dbg(card->dev, "%s registered\n", dai->name);
 			break;
 		case HDMI_AUDIO:
 			*dai = xlnx_snd_dai[HDMI_AUDIO][i];
@@ -473,8 +472,7 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 			/* TODO: support multiple sampling rates */
 			prv->mclk_ratio = 384;
 			snd_soc_card_set_drvdata(card, prv);
-			dev_dbg(card->dev, "%s registered\n",
-				card->dai_link[i].name);
+			dev_dbg(card->dev, "%s registered\n", dai->name);
 			break;
 		case SDI_AUDIO:
 			*dai = xlnx_snd_dai[SDI_AUDIO][i];
@@ -484,8 +482,7 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 			/* TODO: support multiple sampling rates */
 			prv->mclk_ratio = 384;
 			snd_soc_card_set_drvdata(card, prv);
-			dev_dbg(card->dev, "%s registered\n",
-				card->dai_link[i].name);
+			dev_dbg(card->dev, "%s registered\n", dai->name);
 			break;
 		case SPDIF_AUDIO:
 			*dai = xlnx_snd_dai[SPDIF_AUDIO][i];
@@ -494,8 +491,7 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 			card->num_links++;
 			prv->mclk_ratio = 384;
 			snd_soc_card_set_drvdata(card, prv);
-			dev_dbg(card->dev, "%s registered\n",
-				card->dai_link[i].name);
+			dev_dbg(card->dev, "%s registered\n", dai->name);
 			break;
 		case DP_AUDIO:
 			*dai = xlnx_snd_dai[DP_AUDIO][i];
@@ -505,8 +501,7 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 			/* TODO: support multiple sampling rates */
 			prv->mclk_ratio = 512;
 			snd_soc_card_set_drvdata(card, prv);
-			dev_dbg(card->dev, "%s registered\n",
-				card->dai_link[i].name);
+			dev_dbg(card->dev, "%s registered\n", dai->name);
 			break;
 		default:
 			dev_err(card->dev, "Invalid audio interface\n");
