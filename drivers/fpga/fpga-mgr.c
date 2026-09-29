@@ -750,8 +750,19 @@ static ssize_t key_store(struct device *dev,
 			 const char *buf, size_t count)
 {
 	struct fpga_manager *mgr = to_fpga_manager(dev);
+	size_t len = count;
 
-	memcpy(mgr->key, buf, count);
+	/* lose terminating \n */
+	if (len && buf[len - 1] == '\n')
+		len--;
+
+	/* reject an empty or overlong key to avoid overflowing mgr->key[] */
+	if (len == 0 || len > ENCRYPTED_KEY_LEN)
+		return -EINVAL;
+
+	/* clear any stale bytes left over from a previous, longer key */
+	memset(mgr->key, 0, sizeof(mgr->key));
+	memcpy(mgr->key, buf, len);
 
 	return count;
 }
