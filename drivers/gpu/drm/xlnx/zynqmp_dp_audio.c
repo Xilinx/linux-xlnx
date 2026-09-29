@@ -137,10 +137,16 @@ static int dp_dai_hw_params(struct snd_pcm_substream *substream,
 	if (ret) {
 		dev_err(dpsub->dev, "can't set aud_clk to %u err:%d\n",
 			sample_rate * ZYNQMP_DISP_AUD_SMPL_RATE_TO_CLK, ret);
+		audio->current_rate = 0;
 		return ret;
 	}
 
-	clk_prepare_enable(dpsub->aud_clk);
+	ret = clk_prepare_enable(dpsub->aud_clk);
+	if (ret) {
+		dev_err(dpsub->dev, "can't enable aud_clk err:%d\n", ret);
+		audio->current_rate = 0;
+		return ret;
+	}
 
 	rate = clk_get_rate(dpsub->aud_clk);
 
@@ -149,6 +155,7 @@ static int dp_dai_hw_params(struct snd_pcm_substream *substream,
 		dev_err(dpsub->dev, "aud_clk offset is higher: %ld\n",
 			sample_rate * ZYNQMP_DISP_AUD_SMPL_RATE_TO_CLK - rate);
 		clk_disable_unprepare(dpsub->aud_clk);
+		audio->current_rate = 0;
 		return -EINVAL;
 	}
 
@@ -199,6 +206,15 @@ static int dp_dai_hw_free(struct snd_pcm_substream *substream,
 	struct zynqmp_dpsub_audio *audio = dpsub->audio;
 
 	guard(mutex)(&audio->enable_lock);
+
+	/*
+	 * ALSA calls hw_free() to roll back a failed hw_params()
+	 * (snd_pcm_hw_params() _error: path calls .hw_free unconditionally).
+	 * hw_params() already dropped everything it took and never
+	 * incremented enabled_streams, so there is nothing to tear down.
+	 */
+	if (!audio->enabled_streams)
+		return 0;
 
 	/* Nothing to do */
 	if (audio->enabled_streams > 1) {
