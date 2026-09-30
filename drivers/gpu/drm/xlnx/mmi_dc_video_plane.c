@@ -51,9 +51,13 @@
 #define MMI_DC_AV_BUF_FMT_YV24DCL_10BPC			(90)
 #define MMI_DC_AV_BUF_FMT_YV24DCL_12BPC			(92)
 #define MMI_DC_AV_BUF_FMT_YV16CIDCM_10BPC		(95)
-#define MMI_DC_AV_BUF_FMT_YV16CIDCM_12BPC		(97)
+#define MMI_DC_AV_BUF_FMT_YV16CIDCL_10BPC		(96)
+#define MMI_DC_AV_BUF_FMT_YV16CIDCM_12BPC		(99)
+#define MMI_DC_AV_BUF_FMT_YV16CIDCL_12BPC		(100)
 #define MMI_DC_AV_BUF_FMT_YV16CIDCM_420_10BPC		(107)
+#define MMI_DC_AV_BUF_FMT_YV16CIDCL_420_10BPC		(108)
 #define MMI_DC_AV_BUF_FMT_YV16CIDCM_420_12BPC		(111)
+#define MMI_DC_AV_BUF_FMT_YV16CIDCL_420_12BPC		(112)
 #define MMI_DC_AV_BUF_FMT_YDCL_ONLY_10BPC		(119)
 #define MMI_DC_AV_BUF_FMT_YDCL_ONLY_12BPC		(121)
 
@@ -190,6 +194,33 @@ static const struct mmi_dc_format video_plane_formats[] = {
 		.csc_scaling_factors	= csc_scaling_factors_101010,
 	},
 	{
+		.drm_format		= DRM_FORMAT_P212,
+		.buf_format		= MMI_DC_AV_BUF_FMT_YV16CIDCM_12BPC,
+		.format_flags		= MMI_DC_FMT_YUV |
+					  MMI_DC_FMT_HSUB,
+		.csc_matrix		= csc_sdtv_to_rgb_matrix,
+		.csc_offsets		= csc_sdtv_to_rgb_offsets,
+		.csc_scaling_factors	= csc_scaling_factors_121212,
+	},
+	{
+		.drm_format		= DRM_FORMAT_P2AL,
+		.buf_format		= MMI_DC_AV_BUF_FMT_YV16CIDCL_10BPC,
+		.format_flags		= MMI_DC_FMT_YUV |
+					  MMI_DC_FMT_HSUB,
+		.csc_matrix		= csc_sdtv_to_rgb_matrix,
+		.csc_offsets		= csc_sdtv_to_rgb_offsets,
+		.csc_scaling_factors	= csc_scaling_factors_101010,
+	},
+	{
+		.drm_format		= DRM_FORMAT_P2CL,
+		.buf_format		= MMI_DC_AV_BUF_FMT_YV16CIDCL_12BPC,
+		.format_flags		= MMI_DC_FMT_YUV |
+					  MMI_DC_FMT_HSUB,
+		.csc_matrix		= csc_sdtv_to_rgb_matrix,
+		.csc_offsets		= csc_sdtv_to_rgb_offsets,
+		.csc_scaling_factors	= csc_scaling_factors_121212,
+	},
+	{
 		.drm_format		= DRM_FORMAT_P010,
 		.buf_format		= MMI_DC_AV_BUF_FMT_YV16CIDCM_420_10BPC,
 		.format_flags		= MMI_DC_FMT_YUV |
@@ -197,6 +228,24 @@ static const struct mmi_dc_format video_plane_formats[] = {
 		.csc_matrix		= csc_sdtv_to_rgb_matrix,
 		.csc_offsets		= csc_sdtv_to_rgb_offsets,
 		.csc_scaling_factors	= csc_scaling_factors_101010,
+	},
+	{
+		.drm_format		= DRM_FORMAT_P0AL,
+		.buf_format		= MMI_DC_AV_BUF_FMT_YV16CIDCL_420_10BPC,
+		.format_flags		= MMI_DC_FMT_YUV |
+					  MMI_DC_FMT_HSUB,
+		.csc_matrix		= csc_sdtv_to_rgb_matrix,
+		.csc_offsets		= csc_sdtv_to_rgb_offsets,
+		.csc_scaling_factors	= csc_scaling_factors_101010,
+	},
+	{
+		.drm_format		= DRM_FORMAT_P0CL,
+		.buf_format		= MMI_DC_AV_BUF_FMT_YV16CIDCL_420_12BPC,
+		.format_flags		= MMI_DC_FMT_YUV |
+					  MMI_DC_FMT_HSUB,
+		.csc_matrix		= csc_sdtv_to_rgb_matrix,
+		.csc_offsets		= csc_sdtv_to_rgb_offsets,
+		.csc_scaling_factors	= csc_scaling_factors_121212,
 	},
 	{
 		.drm_format		= DRM_FORMAT_P012,
