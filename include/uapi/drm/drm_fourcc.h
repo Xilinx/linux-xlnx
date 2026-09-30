@@ -366,11 +366,54 @@ extern "C" {
 #define DRM_FORMAT_P210		fourcc_code('P', '2', '1', '0') /* 2x1 subsampled Cr:Cb plane, 10 bit per channel */
 
 /*
+ * 2 plane YCbCr MSB aligned, 12 bits per channel
+ * index 0 = Y plane, [15:0] Y:x [12:4] little endian
+ * index 1 = Cr:Cb plane, [31:0] Cr:x:Cb:x [12:4:12:4] little endian
+ */
+#define DRM_FORMAT_P212		fourcc_code('P', '2', '1', '2') /* 2x1 subsampled Cr:Cb plane, 12 bits per channel */
+
+/*
+ * 2 plane YCbCr 4:2:2 LSB aligned
+ * index 0 = Y plane,     [15:0] x:Y [6:10] little endian
+ * index 1 = Cr:Cb plane, [31:0] x:Cr:x:Cb [6:10:6:10] little endian
+ *
+ * Similar to P210, but 10-bit samples are aligned to the least-significant bits.
+ */
+#define DRM_FORMAT_P2AL		fourcc_code('P', '2', 'A', 'L') /* 2x1 subsampled Cr:Cb plane, 10 bit per channel, LSB aligned */
+
+/*
+ * 2 plane YCbCr 4:2:2 LSB aligned, 12 bits per channel
+ * index 0 = Y plane,     [15:0] x:Y [4:12] little endian
+ * index 1 = Cr:Cb plane, [31:0] x:Cr:x:Cb [4:12:4:12] little endian
+ *
+ * Similar to P210/P212, but 12-bit samples are aligned to the least-significant bits.
+ */
+#define DRM_FORMAT_P2CL		fourcc_code('P', '2', 'C', 'L') /* 2x1 subsampled Cr:Cb plane, 12 bits per channel, LSB aligned */
+
+/*
  * 2 plane YCbCr MSB aligned
  * index 0 = Y plane, [15:0] Y:x [10:6] little endian
  * index 1 = Cr:Cb plane, [31:0] Cr:x:Cb:x [10:6:10:6] little endian
  */
 #define DRM_FORMAT_P010		fourcc_code('P', '0', '1', '0') /* 2x2 subsampled Cr:Cb plane 10 bits per channel */
+
+/*
+ * 2 plane YCbCr 4:2:0 LSB aligned
+ * index 0 = Y plane,     [15:0] x:Y [6:10] little endian
+ * index 1 = Cr:Cb plane, [31:0] x:Cr:x:Cb [6:10:6:10] little endian
+ *
+ * Similar to P010, but 10-bit samples are aligned to the least-significant bits.
+ */
+#define DRM_FORMAT_P0AL		fourcc_code('P', '0', 'A', 'L') /* 2x2 subsampled Cr:Cb plane 10 bits per channel, LSB aligned */
+
+/*
+ * 2 plane YCbCr 4:2:0 LSB aligned, 12 bits per channel
+ * index 0 = Y plane,     [15:0] x:Y [4:12] little endian
+ * index 1 = Cr:Cb plane, [31:0] x:Cr:x:Cb [4:12:4:12] little endian
+ *
+ * Similar to P012, but 12-bit samples are aligned to the least-significant bits.
+ */
+#define DRM_FORMAT_P0CL		fourcc_code('P', '0', 'C', 'L') /* 2x2 subsampled Cr:Cb plane 12 bits per channel, LSB aligned */
 
 /*
  * 2 plane YCbCr MSB aligned
