@@ -84,14 +84,11 @@ properties:
     description: VPSS handle when its connected to DSI as bridge.
     maxItems: 1
 
-  simple-panel:
-    type: object
-    description: Panel node that's connected to DSI-2 TX.
-    allOf:
-      - $ref: ../panel/panel-simple.yaml#
-    required:
-      - compatible
-    unevaluatedProperties: false
+  "#address-cells":
+    const: 1
+
+  "#size-cells":
+    const: 0
 
   ports:
     type: object
@@ -135,6 +132,14 @@ properties:
 
     additionalProperties: false
 
+patternProperties:
+  "^panel@[0-9a-f]+$":
+    type: object
+    description: Panel node that's connected to DSI-2 TX.
+    allOf:
+      - $ref: ../panel/panel-simple-dsi.yaml#
+    unevaluatedProperties: false
+
 required:
   - reg
   - clocks
@@ -142,7 +147,6 @@ required:
   - xlnx,dsi-num-lanes
   - xlnx,dsi-data-type
   - interrupts
-  - simple-panel
   - ports
 
 additionalProperties: false
@@ -159,8 +163,12 @@ examples:
         xlnx,dsi-data-type = <0>;
         xlnx,vpss = <&v_proc_ss_0>;
         interrupts = <0 108 4>;
-        simple_panel: simple-panel {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        panel@0 {
             compatible = "auo,b101uan01";
+            reg = <0>;
             power-supply = <&vcc_lcd_reg>;
         };
         ports {
