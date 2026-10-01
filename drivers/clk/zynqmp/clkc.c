@@ -418,6 +418,8 @@ static int __zynqmp_clock_get_topology(struct clock_topology *topology,
 		type = FIELD_GET(CLK_TOPOLOGY_TYPE, response->topology[i]);
 		if (type == TYPE_INVALID)
 			return END_OF_TOPOLOGY_NODE;
+		if (type >= ARRAY_SIZE(clk_topology))
+			return -EINVAL;
 		topology[*nnodes].type = type;
 		topology[*nnodes].flag = FIELD_GET(CLK_TOPOLOGY_FLAGS,
 						   response->topology[i]);
@@ -459,6 +461,8 @@ static int zynqmp_clock_get_topology(u32 clk_id,
 						  num_nodes);
 		if (ret == END_OF_TOPOLOGY_NODE)
 			return 0;
+		if (ret < 0)
+			return ret;
 	}
 
 	return 0;
