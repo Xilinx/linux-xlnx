@@ -24,15 +24,18 @@
  */
 int zynqmp_pm_fpga_load(const u64 address, const u32 size, const u32 flags)
 {
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 ret_payload[PAYLOAD_ARG_CNT] = {0};
 	int ret;
 
 	ret = zynqmp_pm_invoke_fn(PM_FPGA_LOAD, ret_payload, 4, lower_32_bits(address),
 				  upper_32_bits(address), size, flags);
+	if (ret)
+		return ret;
+
 	if (ret_payload[0])
 		return -ret_payload[0];
 
-	return ret;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_load);
 
@@ -47,16 +50,19 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_load);
  */
 int zynqmp_pm_fpga_get_status(u32 *value)
 {
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 ret_payload[PAYLOAD_ARG_CNT] = {0};
 	int ret;
 
 	if (!value)
 		return -EINVAL;
 
 	ret = zynqmp_pm_invoke_fn(PM_FPGA_GET_STATUS, ret_payload, 0);
+	if (ret)
+		return ret;
+
 	*value = ret_payload[1];
 
-	return ret;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_get_status);
 
@@ -71,7 +77,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_get_status);
  */
 int zynqmp_pm_fpga_get_config_status(u32 *value)
 {
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 ret_payload[PAYLOAD_ARG_CNT] = {0};
 	int ret;
 
 	if (!value)
@@ -80,10 +86,12 @@ int zynqmp_pm_fpga_get_config_status(u32 *value)
 	ret = zynqmp_pm_invoke_fn(PM_FPGA_READ, ret_payload, 4,
 				  XILINX_ZYNQMP_PM_FPGA_CONFIG_STAT_OFFSET, 0, 0,
 				  XILINX_ZYNQMP_PM_FPGA_READ_CONFIG_REG);
+	if (ret)
+		return ret;
 
 	*value = ret_payload[1];
 
-	return ret;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_get_config_status);
 
@@ -98,16 +106,19 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_get_config_status);
  */
 int zynqmp_pm_fpga_get_version(u32 *value)
 {
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 ret_payload[PAYLOAD_ARG_CNT] = {0};
 	int ret;
 
 	if (!value)
 		return -EINVAL;
 
 	ret = zynqmp_pm_invoke_fn(PM_FPGA_GET_VERSION, ret_payload, 0);
+	if (ret)
+		return ret;
+
 	*value = ret_payload[1];
 
-	return ret;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_get_version);
 
@@ -123,17 +134,19 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_get_version);
  */
 int zynqmp_pm_fpga_get_feature_list(u32 *value)
 {
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 ret_payload[PAYLOAD_ARG_CNT] = {0};
 	int ret;
 
 	if (!value)
 		return -EINVAL;
 
 	ret = zynqmp_pm_invoke_fn(PM_FPGA_GET_FEATURE_LIST, ret_payload, 0);
+	if (ret)
+		return ret;
 
 	*value = ret_payload[1];
 
-	return ret;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_get_feature_list);
 
@@ -152,7 +165,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_get_feature_list);
 int zynqmp_pm_fpga_read(const u32 reg_numframes, const u64 phys_address,
 			u32 readback_type, u32 *value)
 {
-	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 ret_payload[PAYLOAD_ARG_CNT] = {0};
 	int ret;
 
 	if (!value)
@@ -162,8 +175,11 @@ int zynqmp_pm_fpga_read(const u32 reg_numframes, const u64 phys_address,
 				  lower_32_bits(phys_address),
 				  upper_32_bits(phys_address),
 				  readback_type);
+	if (ret)
+		return ret;
+
 	*value = ret_payload[1];
 
-	return ret;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_read);
