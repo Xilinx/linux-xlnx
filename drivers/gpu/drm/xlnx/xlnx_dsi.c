@@ -302,6 +302,12 @@ static void xlnx_dsi_set_display_mode(struct xlnx_dsi *dsi)
 		total_line_time_ns = (htotal * pixel_period_ns) / XDSI_PRECISION_MULTIPLIER;
 		hact_duration_ns = ((hdisplay * bytes_per_pixel * byte_period_ns) / lanes) /
 				   XDSI_PRECISION_MULTIPLIER;
+		if (hact_duration_ns >= total_line_time_ns) {
+			dev_err(dsi->dev,
+				"linerate %u Mbps too low for %u kHz pixel clock\n",
+				linerate_mbps, pixel_clock_khz);
+			return;
+		}
 		blanking_time_ns = total_line_time_ns - hact_duration_ns;
 		/* Use u64 to prevent overflow in multiplication */
 		temp_calc = (u64)blanking_time_ns * lanes * XDSI_PRECISION_MULTIPLIER;
