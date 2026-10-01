@@ -5536,15 +5536,16 @@ static const struct panel_desc_dsi auo_b080uan01 = {
 };
 
 static const struct drm_display_mode auo_b101uan01_mode = {
-	.clock = 154500,
+	.clock = 148350,
 	.hdisplay = 1920,
-	.hsync_start = 1920 + 185,
-	.hsync_end = 1920 + 185,
-	.htotal = 1920 + 185 + 925,
+	.hsync_start = 1920 + 40,
+	.hsync_end = 1920 + 40 + 40,
+	.htotal = 1920 + 40 + 40 + 40,
 	.vdisplay = 1200,
-	.vsync_start = 1200 + 3,
-	.vsync_end = 1200 + 3 + 5,
-	.vtotal = 1200 + 3 + 5 + 4,
+	.vsync_start = 1200 + 4,
+	.vsync_end = 1200 + 4 + 4,
+	.vtotal = 1200 + 4 + 4 + 4,
+	.flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
 };
 
 static const struct panel_desc_dsi auo_b101uan01 = {
@@ -5553,9 +5554,10 @@ static const struct panel_desc_dsi auo_b101uan01 = {
 		.num_modes = 1,
 		.bpc = 8,
 		.size = {
-			.width = 108,
-			.height = 272,
+			.width = 217,
+			.height = 136,
 		},
+		.connector_type = DRM_MODE_CONNECTOR_DSI,
 	},
 	.flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_SYNC_PULSE,
 	.format = MIPI_DSI_FMT_RGB888,
