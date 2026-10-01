@@ -520,6 +520,38 @@ xlnx_dsi_atomic_get_property(struct drm_connector *connector,
 }
 
 /**
+ * xlnx_dsi_write_long_packet - push a long command packet to the FIFO
+ * @dsi: DSI controller
+ * @msg: mipi dsi msg carrying the long packet type and payload
+ *
+ * Per PG238, write the packet header (data type and word count) to the
+ * command queue register first, then the payload four bytes at a time to
+ * the data FIFO register. The final word is assembled from only the
+ * remaining payload bytes, so no data is read past @msg->tx_buf.
+ */
+static void xlnx_dsi_write_long_packet(struct xlnx_dsi *dsi,
+				       const struct mipi_dsi_msg *msg)
+{
+	const u8 *tx_buf = msg->tx_buf;
+	size_t offset, i, len;
+	u32 data;
+
+	xlnx_dsi_writel(dsi->iomem, XDSI_CMD, msg->type | (msg->tx_len << 8));
+
+	for (offset = 0; offset < msg->tx_len; offset += 4) {
+		len = msg->tx_len - offset;
+		if (len > 4)
+			len = 4;
+
+		data = 0;
+		for (i = 0; i < len; i++)
+			data |= (u32)tx_buf[offset + i] << (i * 8);
+
+		xlnx_dsi_writel(dsi->iomem, XDSI_DFR, data);
+	}
+}
+
+/**
  * xlnx_dsi_host_transfer - transfer command to panel
  * @host: mipi dsi host structure
  * @msg: mipi dsi msg with type, length and data
@@ -534,29 +566,12 @@ static ssize_t xlnx_dsi_host_transfer(struct mipi_dsi_host *host,
 				      const struct mipi_dsi_msg *msg)
 {
 	struct xlnx_dsi *dsi = host_to_dsi(host);
-	u32 data0, data1, cmd0, val, offset;
+	u32 data0, val;
 	int status;
 	const char *tx_buf = msg->tx_buf;
 
 	switch (msg->type) {
 	case MIPI_DSI_DCS_LONG_WRITE:
-		status = readl_poll_timeout(dsi->iomem + XDSI_STR, val,
-					    (val & XDSI_STR_LPKT_MASK) ==
-					     XDSI_STR_LPKT_MASK, 1,
-					    XDSI_CMD_TIMEOUT_VAL);
-		if (status) {
-			dev_err(dsi->dev, "long cmd fifo not empty!\n");
-			return -ETIMEDOUT;
-		}
-		data0 = tx_buf[0] | (tx_buf[1] << 8) | (tx_buf[2] << 16) |
-			(tx_buf[3] << 24);
-		data1 = tx_buf[4] | (tx_buf[5] << 8);
-		cmd0 = msg->type | (MIPI_DSI_DCS_READ << 8);
-
-		xlnx_dsi_writel(dsi->iomem, XDSI_DFR, data0);
-		xlnx_dsi_writel(dsi->iomem, XDSI_DFR, data1);
-		xlnx_dsi_writel(dsi->iomem, XDSI_CMD, cmd0);
-		break;
 	case MIPI_DSI_GENERIC_LONG_WRITE:
 		status = readl_poll_timeout(dsi->iomem + XDSI_STR, val,
 					    (val & XDSI_STR_LPKT_MASK) ==
@@ -566,15 +581,7 @@ static ssize_t xlnx_dsi_host_transfer(struct mipi_dsi_host *host,
 			dev_err(dsi->dev, "long cmd fifo not empty!\n");
 			return -EBUSY;
 		}
-		cmd0 = msg->type | (msg->tx_len << 8);
-		xlnx_dsi_writel(dsi->iomem, XDSI_CMD, cmd0);
-
-		for (offset = 0; offset <= msg->tx_len; offset += 4) {
-			data0 = tx_buf[0 + offset] | tx_buf[1 + offset] << 8 |
-				tx_buf[2 + offset] << 16 |
-				tx_buf[3 + offset] << 24;
-			xlnx_dsi_writel(dsi->iomem, XDSI_DFR, data0);
-		}
+		xlnx_dsi_write_long_packet(dsi, msg);
 		break;
 	case MIPI_DSI_DCS_SHORT_WRITE_PARAM:
 		status = readl_poll_timeout(dsi->iomem + XDSI_STR, val,
