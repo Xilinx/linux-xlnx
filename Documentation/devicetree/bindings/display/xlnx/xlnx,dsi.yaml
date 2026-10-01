@@ -158,7 +158,7 @@ examples:
         reg = <0x80000000 0x10000>;
         clocks = <&misc_clk_0>, <&misc_clk_1>;
         clock-names = "dphy_clk_200M", "s_axis_aclk";
-        xlnx,dphy-linerate = <800>;
+        xlnx,dphy-linerate = <890>;
         xlnx,dsi-num-lanes = <4>;
         xlnx,dsi-data-type = <0>;
         xlnx,vpss = <&v_proc_ss_0>;
