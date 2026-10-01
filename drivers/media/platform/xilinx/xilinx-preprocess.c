@@ -32,6 +32,7 @@
 #define XPREPROCESS_IN_IMG_WIDTH_REG		0x10
 #define XPREPROCESS_IN_IMG_HEIGHT_REG		0x18
 #define XPREPROCESS_DATA_TYPE_REG		0x20
+#define XPREPROCESS_INT8_OUT_IBITS_REG		0x28
 #define XPREPROCESS_OUT_WIDTH_REG		0x40
 #define XPREPROCESS_OUT_HEIGHT_REG		0x48
 #define XPREPROCESS_PARAMS_REG			0x80
@@ -55,10 +56,12 @@
  */
 #define XPREPROCESS_PARAM_ALPHA_MAX			0x7f800000
 #define XPREPROCESS_PARAM_BETA_MAX			BIT(23)
+#define XPREPROCESS_INT8_OUT_IBITS_MAX			8
 
 /* Defaults: no offset, unit scale (beta = 1.0 in Q0.23). */
 #define XPREPROCESS_PARAM_ALPHA_DEF			0
 #define XPREPROCESS_PARAM_BETA_DEF			BIT(23)
+#define XPREPROCESS_INT8_OUT_IBITS_DEF			8
 
 #define XPREPROCESS_INT8			0
 #define XPREPROCESS_FP16			1
@@ -74,6 +77,7 @@
 #define XPREPROCESS_CTRL_REL_ALPHA_LAST		XPREPROCESS_MAX_CHANNELS
 #define XPREPROCESS_CTRL_REL_BETA_FIRST		(XPREPROCESS_MAX_CHANNELS + 1)
 #define XPREPROCESS_CTRL_REL_BETA_LAST		(2 * XPREPROCESS_MAX_CHANNELS)
+#define XPREPROCESS_CTRL_REL_INT8_OUT_IBITS	(2 * XPREPROCESS_MAX_CHANNELS + 1)
 #define XPREPROCESS_START			BIT(0)
 #define XPREPROCESS_AUTO_RESTART		BIT(7)
 #define XPREPROCESS_STREAM_ON			(XPREPROCESS_AUTO_RESTART | XPREPROCESS_START)
@@ -170,6 +174,7 @@ static const struct xilinx_preprocess_out_format_desc xilinx_preprocess_formats[
  * @data_type:		Quantization and precision: INT8, BF16, FP16, or FP32
  * @preprocess_param_alpha:	Cached per-channel alpha coefficients for HW registers
  * @preprocess_param_beta:	Cached per-channel beta coefficients for HW registers
+ * @int8_out_ibits:	Cached INT8 output integer-bit count for HW register
  * @npads:		Number of pads discovered from DT
  */
 struct xpreprocess_dev {
@@ -187,6 +192,7 @@ struct xpreprocess_dev {
 	u32 data_type;
 	u32 preprocess_param_alpha[XPREPROCESS_MAX_CHANNELS];
 	u32 preprocess_param_beta[XPREPROCESS_MAX_CHANNELS];
+	u32 int8_out_ibits;
 	u32 npads;
 };
 
@@ -210,7 +216,8 @@ static inline void xpreprocess_write(struct xpreprocess_dev *xpreprocess,
  * xpreprocess_s_ctrl - V4L2 control set callback
  * @ctrl: Control being updated
  *
- * Programs alpha/beta coefficients into the hardware parameter registers.
+ * Programs alpha/beta coefficients and INT8 output integer-bit count into
+ * the hardware registers.
  *
  * Return: 0 on success, or %-EINVAL if @ctrl->id is not a registered preprocess CID.
  */
@@ -222,23 +229,32 @@ static int xpreprocess_s_ctrl(struct v4l2_ctrl *ctrl)
 	unsigned int rel = ctrl->id - V4L2_CID_XILINX_PREPROCESS;
 	unsigned int ch;
 
-	if (rel < XPREPROCESS_CTRL_REL_ALPHA_FIRST ||
-	    rel > XPREPROCESS_CTRL_REL_BETA_LAST)
-		return -EINVAL;
-
-	if (rel <= XPREPROCESS_CTRL_REL_ALPHA_LAST) {
-		ch = rel - XPREPROCESS_CTRL_REL_ALPHA_FIRST;
-		xpreprocess->preprocess_param_alpha[ch] = ctrl->val;
-		xpreprocess_write(xpreprocess, XPREPROCESS_PARAM_ALPHA_OFF(ch),
-				  ctrl->val);
-	} else {
-		ch = rel - XPREPROCESS_CTRL_REL_BETA_FIRST;
-		xpreprocess->preprocess_param_beta[ch] = ctrl->val;
-		xpreprocess_write(xpreprocess, XPREPROCESS_PARAM_BETA_OFF(ch),
-				  ctrl->val);
+	if (rel >= XPREPROCESS_CTRL_REL_ALPHA_FIRST &&
+	    rel <= XPREPROCESS_CTRL_REL_BETA_LAST) {
+		if (rel <= XPREPROCESS_CTRL_REL_ALPHA_LAST) {
+			ch = rel - XPREPROCESS_CTRL_REL_ALPHA_FIRST;
+			xpreprocess->preprocess_param_alpha[ch] = ctrl->val;
+			xpreprocess_write(xpreprocess,
+					  XPREPROCESS_PARAM_ALPHA_OFF(ch),
+					  ctrl->val);
+		} else {
+			ch = rel - XPREPROCESS_CTRL_REL_BETA_FIRST;
+			xpreprocess->preprocess_param_beta[ch] = ctrl->val;
+			xpreprocess_write(xpreprocess,
+					  XPREPROCESS_PARAM_BETA_OFF(ch),
+					  ctrl->val);
+		}
+		return 0;
 	}
 
-	return 0;
+	if (rel == XPREPROCESS_CTRL_REL_INT8_OUT_IBITS) {
+		xpreprocess->int8_out_ibits = ctrl->val;
+		xpreprocess_write(xpreprocess, XPREPROCESS_INT8_OUT_IBITS_REG,
+				  ctrl->val);
+		return 0;
+	}
+
+	return -EINVAL;
 }
 
 /* V4L2 control operations for the preprocess block */
@@ -344,6 +360,18 @@ static const struct v4l2_ctrl_config xpreprocess_ctrls[] = {
 		.max = XPREPROCESS_PARAM_BETA_MAX,
 		.step = 1,
 		.def = XPREPROCESS_PARAM_BETA_DEF,
+		.flags = V4L2_CTRL_FLAG_SLIDER,
+	},
+	/* PREPROCESS INT8 OUT IBITS */
+	{
+		.ops = &xpreprocess_ctrl_ops,
+		.id = V4L2_CID_XILINX_PREPROCESS_INT8_OUT_IBITS,
+		.name = "preprocess_int8_out_ibits",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0,
+		.max = XPREPROCESS_INT8_OUT_IBITS_MAX,
+		.step = 1,
+		.def = XPREPROCESS_INT8_OUT_IBITS_DEF,
 		.flags = V4L2_CTRL_FLAG_SLIDER,
 	},
 };
@@ -469,6 +497,8 @@ static int xpreprocess_s_stream(struct v4l2_subdev *subdev, int enable)
 			  xpreprocess->out_height);
 	xpreprocess_write(xpreprocess, XPREPROCESS_DATA_TYPE_REG,
 			  xpreprocess->data_type);
+	xpreprocess_write(xpreprocess, XPREPROCESS_INT8_OUT_IBITS_REG,
+			  xpreprocess->int8_out_ibits);
 	for (i = 0; i < XPREPROCESS_MAX_CHANNELS; i++) {
 		xpreprocess_write(xpreprocess, XPREPROCESS_PARAM_ALPHA_OFF(i),
 				  xpreprocess->preprocess_param_alpha[i]);
@@ -907,12 +937,16 @@ static int xpreprocess_probe(struct platform_device *pdev)
 
 	/*
 	 * For each color channel we expose an alpha and beta control.
-	 * Thus, total controls = 2 * channels.
+	 * Thus, total controls = 2 * channels, plus one INT8 out ibits control.
 	 */
 	for (i = 0; i < 2 * xpreprocess->channels; i++) {
 		v4l2_ctrl_new_custom(&xpreprocess->ctrl_handler,
 				     &xpreprocess_ctrls[i], NULL);
 	}
+
+	v4l2_ctrl_new_custom(&xpreprocess->ctrl_handler,
+			     &xpreprocess_ctrls[2 * XPREPROCESS_MAX_CHANNELS],
+			     NULL);
 
 	if (xpreprocess->ctrl_handler.error) {
 		dev_err(&pdev->dev, "Failed to add V4L2 controls\n");
