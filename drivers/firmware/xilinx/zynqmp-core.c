@@ -799,6 +799,26 @@ static int zynqmp_clear_pm_state(struct device *dev)
 				 "Bulk device release is not supported by firmware: %d\n", ret);
 		}
 
+		/*
+		 * do_feature_check_call() returns the PM_REQUEST_NODE API
+		 * version, or a negative errno. Firmware reports version 3
+		 * once the PM_DEV_ALL_PERIPH node ID is implemented.
+		 */
+		ret = do_feature_check_call(PM_REQUEST_NODE);
+		if (ret < 0) {
+			dev_warn(dev, "Failed to check PM_REQUEST_NODE version: %d\n",
+				 ret);
+		} else if ((ret & FIRMWARE_VERSION_MASK) >= PM_API_VERSION_3) {
+			/* Attempt to request all nodes via firmware */
+			ret = zynqmp_pm_request_node(PM_DEV_ALL_PERIPH, 0, 0, 0);
+			if (ret)
+				dev_err(dev, "Failed to request all peripheral devices: %d\n", ret);
+		} else {
+			dev_warn(dev,
+				 "Firmware doesn't support requesting all peripheral devices at once: version %d\n",
+				 ret);
+		}
+
 		/* Check if the firmware supports the PM_ALL_NOTIFIERS node ID */
 		ret = do_feature_check_call(PM_REGISTER_NOTIFIER);
 		if ((ret & FIRMWARE_VERSION_MASK) >= PM_API_VERSION_3) {
