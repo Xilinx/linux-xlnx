@@ -1115,7 +1115,7 @@ static int xlnx_dsi_probe(struct platform_device *pdev)
 	}
 
 	rate = clk_get_rate(dsi->dphy_clk_200M);
-	if (rate < XDSI_DPHY_CLK_MIN && rate > XDSI_DPHY_CLK_MAX) {
+	if (rate < XDSI_DPHY_CLK_MIN || rate > XDSI_DPHY_CLK_MAX) {
 		dev_err(dev, "Error DPHY clock = %lu\n", rate);
 		ret = -EINVAL;
 		goto err_disable_dphy_clk;
