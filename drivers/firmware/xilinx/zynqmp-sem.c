@@ -18,7 +18,7 @@
  */
 int zynqmp_pm_xilsem_cntrl_ops(u32 cmd, u32 slrid, u32 *const response)
 {
-	u32 ret_buf[PAYLOAD_ARG_CNT];
+	u32 ret_buf[PAYLOAD_ARG_CNT] = {};
 	int ret;
 
 	ret = zynqmp_pm_invoke_fn(PM_XSEM_HEADER | cmd, ret_buf, 1, slrid);
@@ -47,7 +47,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_xilsem_cntrl_ops);
 int zynqmp_pm_xilsem_cram_errinj(u32 slrid, u32 frame, u32 qword, u32 bit, u32 row,
 				 u32 *const response)
 {
-	u32 ret_buf[PAYLOAD_ARG_CNT];
+	u32 ret_buf[PAYLOAD_ARG_CNT] = {};
 	int ret;
 
 	ret = zynqmp_pm_invoke_fn(PM_XSEM_CRAM_ERRINJ, ret_buf, 5, slrid, frame, qword, bit, row);
@@ -70,7 +70,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_xilsem_cram_errinj);
  */
 int zynqmp_pm_xilsem_cram_readecc(u32 slrid, u32 frame, u32 row, u32 *const response)
 {
-	u32 ret_buf[PAYLOAD_ARG_CNT];
+	u32 ret_buf[PAYLOAD_ARG_CNT] = {};
 	int ret;
 
 	ret = zynqmp_pm_invoke_fn(PM_XSEM_CRAM_RD_ECC, ret_buf, 3, slrid, frame, row);
@@ -92,7 +92,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_xilsem_cram_readecc);
  */
 int zynqmp_pm_xilsem_read_cfg(u32 slrid, u32 *const response)
 {
-	u32 ret_buf[PAYLOAD_ARG_CNT];
+	u32 ret_buf[PAYLOAD_ARG_CNT] = {};
 	int ret;
 
 	ret = zynqmp_pm_invoke_fn(PM_XSEM_RD_CONFIG, ret_buf, 1, slrid);
@@ -115,7 +115,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_xilsem_read_cfg);
  */
 int zynqmp_pm_xilsem_read_ssit_status(u32 slrid, u32 bufaddr, u32 *const response)
 {
-	u32 ret_buf[PAYLOAD_ARG_CNT];
+	u32 ret_buf[PAYLOAD_ARG_CNT] = {};
 	int ret;
 
 	ret = zynqmp_pm_invoke_fn(PM_XSEM_SSIT_RD_STS, ret_buf, 2, slrid, bufaddr);
@@ -136,7 +136,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_xilsem_read_ssit_status);
  */
 int zynqmp_pm_xilsem_cram_getcrc(u32 slrid, u32 rowindex, u32 *const response)
 {
-	u32 ret_buf[PAYLOAD_ARG_CNT];
+	u32 ret_buf[PAYLOAD_ARG_CNT] = {};
 	int ret;
 
 	ret = zynqmp_pm_invoke_fn(PM_XSEM_SSIT_GET_CRC, ret_buf, 2, slrid, rowindex);
@@ -155,14 +155,14 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_xilsem_cram_getcrc);
  * zynqmp_pm_xilsem_cram_ssit_totframes - PM call to perform total frames read
  * @slrid:	SLR id for which total frames read to be done
  * @row:	CFRAME row number to be used for reading ECC
- * @framecnt: Buffer address to get toral frames data
+ * @framecnt: Buffer address to get total frames data
  * @response:	Output response (Total frames header, slr id, row, status)
  *
  * Return: Returns 0 on success or error value on failure.
  */
 int zynqmp_pm_xilsem_cram_ssit_totframes(u32 slrid, u32 row, u32 framecnt, u32 *const response)
 {
-	u32 ret_buf[PAYLOAD_ARG_CNT];
+	u32 ret_buf[PAYLOAD_ARG_CNT] = {};
 	int ret;
 
 	ret = zynqmp_pm_invoke_fn(PM_XSEM_SSIT_GET_FRAMES, ret_buf, 3, slrid, row, framecnt);
