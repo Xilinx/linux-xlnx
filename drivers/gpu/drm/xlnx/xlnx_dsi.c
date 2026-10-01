@@ -277,13 +277,21 @@ static void xlnx_dsi_set_display_mode(struct xlnx_dsi *dsi)
 		u32 byte_clock_mhz = (linerate_mbps + XDSI_BYTE_CLOCK_ROUND_UP) / BITS_PER_BYTE;
 		u32 pixel_clock_mhz = (pixel_clock_khz + XDSI_KHZ_ROUND_NEAREST) /
 				      XDSI_KHZ_TO_MHZ_DIVISOR;
-		u32 byte_period_ns = (XDSI_MHZ_TO_NS_MULTIPLIER * XDSI_PRECISION_MULTIPLIER) /
-				     byte_clock_mhz;
-		u32 pixel_period_ns = (XDSI_MHZ_TO_NS_MULTIPLIER * XDSI_PRECISION_MULTIPLIER) /
-				      pixel_clock_mhz;
+		u32 byte_period_ns, pixel_period_ns;
 		u32 total_line_time_ns, hact_duration_ns, blanking_time_ns;
 		u32 blanking_wc, available_wc, vblank, bytes_per_pixel;
 		u64 temp_calc;
+
+		if (!pixel_clock_mhz) {
+			dev_err(dsi->dev, "pixel clock %u kHz too low\n",
+				pixel_clock_khz);
+			return;
+		}
+
+		byte_period_ns = (XDSI_MHZ_TO_NS_MULTIPLIER * XDSI_PRECISION_MULTIPLIER) /
+				 byte_clock_mhz;
+		pixel_period_ns = (XDSI_MHZ_TO_NS_MULTIPLIER * XDSI_PRECISION_MULTIPLIER) /
+				  pixel_clock_mhz;
 
 		switch (dsi->format) {
 		case MIPI_DSI_FMT_RGB888:
