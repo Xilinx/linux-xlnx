@@ -21,6 +21,7 @@
 #include "zynqmp-debug.h"
 
 #define PM_API_NAME_LEN			50
+#define CLK_GET_NAME_RESP_LEN		16
 
 struct pm_api_info {
 	u32 api_id;
@@ -279,10 +280,14 @@ static int process_api_request(u32 pm_id, u64 *pm_api_arg, u32 *pm_api_ret)
 			break;
 
 		switch (qdata.qid) {
-		case PM_QID_CLOCK_GET_NAME:
-			sprintf(debugfs_buf, "Clock name = %s\n",
-				(char *)pm_api_ret);
+		case PM_QID_CLOCK_GET_NAME: {
+			char name[CLK_GET_NAME_RESP_LEN + 1];
+
+			memcpy(name, pm_api_ret, CLK_GET_NAME_RESP_LEN);
+			name[CLK_GET_NAME_RESP_LEN] = '\0';
+			sprintf(debugfs_buf, "Clock name = %s\n", name);
 			break;
+		}
 		case PM_QID_CLOCK_GET_FIXEDFACTOR_PARAMS:
 			sprintf(debugfs_buf, "Multiplier = %d, Divider = %d\n",
 				pm_api_ret[1], pm_api_ret[2]);
