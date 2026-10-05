@@ -410,6 +410,7 @@ struct xlnx_hdmi_frl_config {
  * @ppc: Pixels per component
  * @vid_interface: AXI_stream or Native interface
  * @max_frl_rate: maximum frl rate supported by hardware
+ * @hdmi_mode: 0 if the FRL block is not built, 1 if it is
  * @htiming_div_fact: factor used in calculating htimings
  * @hdcp2x_enable: flag to indicate hdcp22-enable property in device tree
  * @hdcp1x_enable: flag to indicate hdcp-enable property in device tree
@@ -419,6 +420,7 @@ struct xlnx_hdmi_config {
 	enum config_ppc ppc;
 	enum vid_interface vid_interface;
 	u8 max_frl_rate;
+	u8 hdmi_mode;
 	u8 htiming_div_fact;
 	bool hdcp2x_enable;
 	bool hdcp1x_enable;
@@ -557,6 +559,16 @@ static const struct clk_bulk_data hdmitx_clks[] = {
 	{ .id = "frl_clk" },
 	{ .id = "s_axis_video_aclk" },
 };
+
+/*
+ * xlnx,hdmi-mode says whether the FRL block was built. Absent means it
+ * was, matching existing device trees. Check this before any FRL
+ * register access or FRL clock request.
+ */
+static bool xlnx_hdmi_frl_capable(struct xlnx_hdmi *hdmi)
+{
+	return hdmi->config.hdmi_mode != 0;
+}
 
 /* Parallel Interface */
 #define xlnx_hdmi_piointr_disable(hdmi) \
@@ -1732,10 +1744,12 @@ static void xlnx_hdmi_streamup_callback(struct xlnx_hdmi *hdmi)
 	union phy_configure_opts phy_cfg = {0};
 	int ret;
 
-	if (hdmi->stream.is_frl)
-		xlnx_hdmi_frl_mode_enable(hdmi);
-	else
-		xlnx_hdmi_frl_mode_disable(hdmi);
+	if (xlnx_hdmi_frl_capable(hdmi)) {
+		if (hdmi->stream.is_frl)
+			xlnx_hdmi_frl_mode_enable(hdmi);
+		else
+			xlnx_hdmi_frl_mode_disable(hdmi);
+	}
 
 	phy_cfg.hdmi.get_samplerate = 1;
 	ret = xlnx_hdmi_phy_configure(hdmi, &phy_cfg);
@@ -1894,8 +1908,10 @@ static void xlnx_hdmi_tmdsconfig(struct xlnx_hdmi *hdmi)
 		return;
 	}
 
-	xlnx_set_frl_link_clk(hdmi, 0);
-	xlnx_set_frl_vid_clk(hdmi, 0);
+	if (xlnx_hdmi_frl_capable(hdmi)) {
+		xlnx_set_frl_link_clk(hdmi, 0);
+		xlnx_set_frl_vid_clk(hdmi, 0);
+	}
 	xlnx_hdmi_set_hdmi_mode(hdmi);
 }
 
@@ -2775,15 +2791,16 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 			dev_dbg(hdmi->dev, "Bridge locked\n");
 		} else {
 			dev_dbg(hdmi->dev, "Bridge unlocked\n");
-			/* Clear interrupt and FRL */
-			xlnx_hdmi_set_frl_timer(hdmi, 0);
-			xlnx_hdmi_frl_reset_assert(hdmi);
-			xlnx_hdmi_frl_reset_deassert(hdmi);
-			xlnx_hdmi_frl_mode_disable(hdmi);
-			hdmi->stream.is_frl = 0;
-			xlnx_hdmi_ddcwrite_field(hdmi,
-						 HDMI_TX_SCDC_FIELD_FLT_UPDATE,
-						 1);
+			if (hdmi->stream.is_frl) {
+				xlnx_hdmi_set_frl_timer(hdmi, 0);
+				xlnx_hdmi_frl_reset_assert(hdmi);
+				xlnx_hdmi_frl_reset_deassert(hdmi);
+				xlnx_hdmi_frl_mode_disable(hdmi);
+				hdmi->stream.is_frl = 0;
+				xlnx_hdmi_ddcwrite_field(hdmi,
+							 HDMI_TX_SCDC_FIELD_FLT_UPDATE,
+							 1);
+			}
 			xlnx_hdmi_piointr_clear(hdmi);
 		}
 	}
@@ -2853,7 +2870,6 @@ static irqreturn_t hdmitx_irq_handler(int irq, void *dev_id)
 {
 	struct xlnx_hdmi *hdmi = (struct xlnx_hdmi *)dev_id;
 	unsigned long flags;
-	u32 frl_ctrl;
 
 	/* read status registers */
 	hdmi->intr_status = xlnx_hdmi_readl(hdmi, HDMI_TX_PIO_STA);
@@ -2861,10 +2877,13 @@ static irqreturn_t hdmitx_irq_handler(int irq, void *dev_id)
 
 	/* Sample FRL_STA whenever the FRL IE bit is set in hardware. */
 	hdmi->frl_status = 0;
-	frl_ctrl = xlnx_hdmi_readl(hdmi, HDMI_TX_FRL_CTRL);
-	if (hdmi->stream.is_frl || (frl_ctrl & HDMI_TX_FRL_CTRL_IE)) {
-		hdmi->frl_status = xlnx_hdmi_readl(hdmi, HDMI_TX_FRL_STA);
-		hdmi->frl_status &= HDMI_TX_FRL_STA_IRQ;
+	if (xlnx_hdmi_frl_capable(hdmi)) {
+		u32 frl_ctrl = xlnx_hdmi_readl(hdmi, HDMI_TX_FRL_CTRL);
+
+		if (hdmi->stream.is_frl || (frl_ctrl & HDMI_TX_FRL_CTRL_IE)) {
+			hdmi->frl_status = xlnx_hdmi_readl(hdmi, HDMI_TX_FRL_STA);
+			hdmi->frl_status &= HDMI_TX_FRL_STA_IRQ;
+		}
 	}
 
 	/* Nothing pending: return IRQ_NONE and skip the thread wakeup. */
@@ -3450,7 +3469,7 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 
 		hdmi->stream.frl_config.lanes = rate_table[max_frl_bw].lanes;
 		hdmi->stream.frl_config.linerate = rate_table[max_frl_bw].linerate;
-	} else {
+	} else if (xlnx_hdmi_frl_capable(hdmi)) {
 		xlnx_hdmi_frl_ext_vidsrc(hdmi);
 		xlnx_hdmi_frl_sleep(hdmi);
 	}
@@ -3775,8 +3794,10 @@ static int xlnx_hdmi_initialize(struct xlnx_hdmi *hdmi)
 	xlnx_hdmi_ddc_disable(hdmi);
 	xlnx_hdmi_audio_disable(hdmi);
 	xlnx_hdmi_aux_disable(hdmi);
-	xlnx_hdmi_frl_intr_disable(hdmi);
-	xlnx_hdmi_frl_clear(hdmi);
+	if (xlnx_hdmi_frl_capable(hdmi)) {
+		xlnx_hdmi_frl_intr_disable(hdmi);
+		xlnx_hdmi_frl_clear(hdmi);
+	}
 	xlnx_hdmi_piointr_clear(hdmi);
 	xlnx_hdmi_ddc_intr_clear(hdmi);
 
@@ -3814,7 +3835,8 @@ static int xlnx_hdmi_initialize(struct xlnx_hdmi *hdmi)
 	/* Update DDC Control register */
 	xlnx_hdmi_writel(hdmi, HDMI_TX_DDC_CTRL, val);
 
-	xlnx_hdmi_frl_reset(hdmi);
+	if (xlnx_hdmi_frl_capable(hdmi))
+		xlnx_hdmi_frl_reset(hdmi);
 	xlnx_hdmi_set_hdmi_mode(hdmi);
 	xlnx_hdmi_aux_enable(hdmi);
 
@@ -3843,7 +3865,7 @@ static int xlnx_hdmi_parse_of(struct xlnx_hdmi *hdmi)
 	struct xlnx_hdmi_config *config = &hdmi->config;
 	struct device_node *node = hdmi->dev->of_node;
 	int ret;
-	u32 ppc, bpc, vid, frl_rate;
+	u32 ppc, bpc, vid, frl_rate, hdmi_mode;
 
 	ret = of_property_read_u32(node, "xlnx,input-pixels-per-clock", &ppc);
 	if (ret || (ppc != HDMI_TX_PPC_4 && ppc != HDMI_TX_PPC_8)) {
@@ -3878,6 +3900,17 @@ static int xlnx_hdmi_parse_of(struct xlnx_hdmi *hdmi)
 	}
 	config->max_frl_rate = frl_rate;
 
+	ret = of_property_read_u32(node, "xlnx,hdmi-mode", &hdmi_mode);
+	if (ret) {
+		hdmi_mode = 1;
+	} else if (hdmi_mode > 1) {
+		dev_err(hdmi->dev, "unsupported hdmi mode %u\n", hdmi_mode);
+		return -EINVAL;
+	}
+	config->hdmi_mode = hdmi_mode;
+	if (!xlnx_hdmi_frl_capable(hdmi))
+		config->max_frl_rate = 0;
+
 	ret = of_count_phandle_with_args(node, "phys", "#phy-cells");
 	if (ret < 0) {
 		dev_err(hdmi->dev, "failed to count phys (%d)\n", ret);
@@ -3897,6 +3930,17 @@ static int xlnx_hdmi_parse_of(struct xlnx_hdmi *hdmi)
 	}
 
 	hdmi->num_lanes = ret;
+	if (xlnx_hdmi_frl_capable(hdmi) && hdmi->num_lanes != HDMI_MAX_LANES) {
+		dev_err(hdmi->dev, "FRL mode requires %u PHY lanes\n",
+			HDMI_MAX_LANES);
+		return -EINVAL;
+	}
+
+	if (!xlnx_hdmi_frl_capable(hdmi) && hdmi->num_lanes != HDMI_TMDS_LANES) {
+		dev_err(hdmi->dev, "TMDS mode requires %u PHY lanes\n",
+			HDMI_TMDS_LANES);
+		return -EINVAL;
+	}
 
 	if (of_device_is_compatible(node, "xlnx,v-hdmi-txss1-1.1")) {
 		config->htiming_div_fact = config->ppc;
@@ -4216,7 +4260,9 @@ static int xlnx_hdmi_probe(struct platform_device *pdev)
 	hdmi->clks[hdmi->num_clks++] = hdmitx_clks[S_AXI_CPU_ACLK];
 	hdmi->clks[hdmi->num_clks++] = hdmitx_clks[LINK_CLK];
 	hdmi->clks[hdmi->num_clks++] = hdmitx_clks[VIDEO_CLK];
-	hdmi->clks[hdmi->num_clks++] = hdmitx_clks[FRL_CLK];
+	/* A TMDS-only design has no FRL reference clock input. */
+	if (xlnx_hdmi_frl_capable(hdmi))
+		hdmi->clks[hdmi->num_clks++] = hdmitx_clks[FRL_CLK];
 	if (!hdmi->config.vid_interface)
 		hdmi->clks[hdmi->num_clks++] = hdmitx_clks[S_AXIS_VIDEO_ACLK];
 
