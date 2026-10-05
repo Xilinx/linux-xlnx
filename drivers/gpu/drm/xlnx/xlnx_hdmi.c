@@ -2777,6 +2777,21 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 			hdmi->cable_connected = 0;
 			hdmi->connector.status = connector_status_disconnected;
 			dev_dbg(hdmi->dev, "hpd: low; debounce armed\n");
+			/*
+			 * Drop the cached EDID so a bounce re-reads. get_modes
+			 * holds mode_config.mutex and reads the blob, and it
+			 * takes hdmi_mutex under that lock.
+			 */
+			if (hdmi->connector.dev) {
+				struct drm_device *drm = hdmi->connector.dev;
+
+				mutex_unlock(&hdmi->hdmi_mutex);
+				mutex_lock(&drm->mode_config.mutex);
+				drm_edid_connector_update(&hdmi->connector,
+							  NULL);
+				mutex_unlock(&drm->mode_config.mutex);
+				mutex_lock(&hdmi->hdmi_mutex);
+			}
 			/* Rising edge within the window cancels this. */
 			mod_delayed_work(system_wq, &hdmi->hpd_work,
 					 msecs_to_jiffies(HDMI_HPD_DEBOUNCE_MS));
@@ -3138,15 +3153,31 @@ static int xlnx_hdmi_connector_get_modes(struct drm_connector *connector)
 	int ret;
 	bool is_hdmi_sink;
 
+	/*
+	 * Userspace probes the connector far more often than the sink changes.
+	 * Re-reading the EDID and re-applying the stream type below disturbs a
+	 * live link, so do it only once per sink. The probe helper clears the
+	 * EDID on disconnect; HPD-low also drops the blob for a bounce.
+	 */
+	if (connector->edid_blob_ptr)
+		return drm_edid_connector_add_modes(connector);
+
 	mutex_lock(&hdmi->hdmi_mutex);
-
 	drm_edid = drm_edid_read_custom(connector, xlnx_hdmi_get_edid_block, hdmi);
-
-	/* Set HDMI FRL or TMDS Mode */
-	xlnx_hdmi_set_frl_tmds_mode(connector);
-
 	mutex_unlock(&hdmi->hdmi_mutex);
+
 	drm_edid_connector_update(connector, drm_edid);
+
+	/*
+	 * display_info is published now. Deciding earlier, after HPD cleared
+	 * it, forces is_frl off for the active stream. A failed read leaves
+	 * is_frl alone: there is no new sink info, and no modeset follows.
+	 */
+	if (drm_edid) {
+		mutex_lock(&hdmi->hdmi_mutex);
+		xlnx_hdmi_set_frl_tmds_mode(connector);
+		mutex_unlock(&hdmi->hdmi_mutex);
+	}
 
 	if (!drm_edid) {
 		dev_info(hdmi->dev, "no edid, assume <= 1024x768 works\n");
