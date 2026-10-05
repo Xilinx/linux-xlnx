@@ -199,6 +199,8 @@
 
 #define HDMI_TX_3_4_GBPS			340000000
 #define HDMI_TX_SCRAMBLER_OFFSET		0x20
+#define HDMI_TX_SCDC_SCRAMBLE_EN		BIT(0)
+#define HDMI_TX_SCDC_TMDS_BIT_CLK_RATIO		BIT(1)
 #define HDMI_TX_TIMEGRID_VAL			0x18696
 #define HDMI_TX_TOGGLE_CONF_VAL			0x630032
 #define HDMI_TX_CONNECT_CONF_VAL		0xA0064
@@ -1495,8 +1497,11 @@ static void xlnx_hdmi_set_colordepth(struct xlnx_hdmi *hdmi)
 }
 
 /**
- * xlnx_hdmi_clkratio - set clock ratio
+ * xlnx_hdmi_clkratio - program the SCDC TMDS configuration byte
  * @hdmi: pointer to HDMI TX core instance
+ *
+ * Applies Scrambling_Enable and TMDS_Bit_Clock_Ratio to the sink from the
+ * current stream state. Both are required above 3.4 Gb/s.
  *
  * Returns: 0 on success, error if ddc write fails.
  */
@@ -1515,10 +1520,17 @@ xlnx_hdmi_clkratio(struct xlnx_hdmi *hdmi)
 	/* Read TMDS configuration */
 	status = xlnx_hdmi_ddcread(hdmi, HDMI_TX_DDC_SLAVEADDR, 1,
 				   (u8 *)&ddc_buf, true);
-	ddc_buf[0] &= 0xfd;
+	if (status)
+		return status;
 
+	ddc_buf[0] &= ~(HDMI_TX_SCDC_SCRAMBLE_EN |
+			HDMI_TX_SCDC_TMDS_BIT_CLK_RATIO);
+
+	if (hdmi->stream.is_scrambled)
+		ddc_buf[0] |= HDMI_TX_SCDC_SCRAMBLE_EN;
 	if (hdmi->stream.tmds_clock_ratio)
-		ddc_buf[0] |= 0x02;
+		ddc_buf[0] |= HDMI_TX_SCDC_TMDS_BIT_CLK_RATIO;
+
 	ddc_buf[1] = ddc_buf[0];
 	ddc_buf[0] = HDMI_TX_SCRAMBLER_OFFSET;
 
@@ -1626,13 +1638,11 @@ static void xlnx_hdmi_vsync_event_handler(struct xlnx_hdmi *hdmi)
  * xlnx_hdmi_stream_start - set core parameters
  * @hdmi: pointer to HDMI TX core instance
  *
- * Returns: 0 on success, 1 if ddc transaction fails
+ * Returns: 0 on the FRL path, otherwise the value from
+ * xlnx_hdmi_clkratio().
  */
 static u32 xlnx_hdmi_stream_start(struct xlnx_hdmi *hdmi)
 {
-	u8 ddc_buf[2];
-	int status;
-
 	xlnx_hdmi_set_ppc(hdmi);
 	xlnx_hdmi_set_colorfmt(hdmi);
 	xlnx_hdmi_set_colordepth(hdmi);
@@ -1649,27 +1659,19 @@ static u32 xlnx_hdmi_stream_start(struct xlnx_hdmi *hdmi)
 		hdmi->stream.tmds_clock_ratio = false;
 	}
 
+	if (hdmi->stream.is_frl)
+		return 0;
+
 	/* set scrambler */
-	xlnx_hdmi_writel(hdmi, HDMI_TX_PIO_OUT_CLR, HDMI_TX_PIO_OUT_SCRM);
+	if (hdmi->stream.is_scrambled)
+		xlnx_hdmi_writel(hdmi, HDMI_TX_PIO_OUT_SET,
+				 HDMI_TX_PIO_OUT_SCRM);
+	else
+		xlnx_hdmi_writel(hdmi, HDMI_TX_PIO_OUT_CLR,
+				 HDMI_TX_PIO_OUT_SCRM);
 
-	ddc_buf[0] = HDMI_TX_SCRAMBLER_OFFSET;
-	status = xlnx_hdmi_ddcread(hdmi, HDMI_TX_DDC_SLAVEADDR, 1,
-				   (u8 *)&ddc_buf, false);
-	if (!status)
-		return status;
-
-	status = xlnx_hdmi_ddcwrite(hdmi, HDMI_TX_DDC_SLAVEADDR, 1,
-				    (u8 *)&ddc_buf, true);
-	if (status) {
-		ddc_buf[1] = ddc_buf[0] & HDMI_TX_DDC_CMD_MSK;
-		ddc_buf[1] |= hdmi->stream.is_scrambled;
-
-		status = xlnx_hdmi_ddcwrite(hdmi, HDMI_TX_DDC_SLAVEADDR, 2,
-					    (u8 *)&ddc_buf, true);
-	}
-	/* set clock ratio */
-	xlnx_hdmi_clkratio(hdmi);
-	return status;
+	/* Tell the sink to match, both bits live in the same SCDC byte. */
+	return xlnx_hdmi_clkratio(hdmi);
 }
 
 /**
@@ -3567,8 +3569,6 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	xlnx_hdmi_stream_start(hdmi);
 	/* get tmds clock from phy */
 	if (!hdmi->stream.is_frl) {
-		xlnx_hdmi_clkratio(hdmi);
-
 		/* Assert VID_IN bridge resets */
 		xlnx_hdmi_ext_sysrst_assert(hdmi);
 		xlnx_hdmi_ext_vrst_assert(hdmi);
