@@ -498,8 +498,7 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 		return rc;
 	}
 
-	if (val < XHDMIPHY_PLL_REFCLKSEL_GTREFCLK0 - 1 &&
-	    val > XHDMIPHY_PLL_REFCLKSEL_GTGREFCLK - 1) {
+	if (val < 0 || val > XHDMIPHY_PLL_REFCLKSEL_GTGREFCLK - 1) {
 		dev_err(priv->dev, "dt nidru-refclk-sel %d is invalid\n",
 			val);
 		return -EINVAL;
@@ -571,8 +570,7 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 		return rc;
 	}
 
-	if (val < XHDMIPHY_PLL_REFCLKSEL_GTREFCLK0 - 1 &&
-	    val > XHDMIPHY_PLL_REFCLKSEL_GTGREFCLK - 1) {
+	if (val < 0 || val > XHDMIPHY_PLL_REFCLKSEL_GTGREFCLK - 1) {
 		dev_err(priv->dev, "dt rx-refclk-sel %d is invalid\n",
 			val);
 		return -EINVAL;
@@ -586,8 +584,7 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 		return rc;
 	}
 
-	if (val < XHDMIPHY_PLL_REFCLKSEL_GTREFCLK0 - 1 &&
-	    val > XHDMIPHY_PLL_REFCLKSEL_GTGREFCLK - 1) {
+	if (val < 0 || val > XHDMIPHY_PLL_REFCLKSEL_GTGREFCLK - 1) {
 		dev_err(priv->dev, "dt tx-refclk-sel %d is invalid\n",
 			val);
 		return -EINVAL;
@@ -730,8 +727,7 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 		return rc;
 	}
 
-	if (val < XHDMIPHY_PLL_REFCLKSEL_GTREFCLK0 - 1 &&
-	    val > XHDMIPHY_PLL_REFCLKSEL_GTGREFCLK - 1) {
+	if (val < 0 || val > XHDMIPHY_PLL_REFCLKSEL_GTGREFCLK - 1) {
 		dev_err(priv->dev, "dt rx-frl-refclk-sel %d is invalid\n",
 			val);
 		return -EINVAL;
@@ -745,8 +741,7 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 		return rc;
 	}
 
-	if (val < XHDMIPHY_PLL_REFCLKSEL_GTREFCLK0 - 1 &&
-	    val > XHDMIPHY_PLL_REFCLKSEL_GTGREFCLK - 1) {
+	if (val < 0 || val > XHDMIPHY_PLL_REFCLKSEL_GTGREFCLK - 1) {
 		dev_err(priv->dev, "dt tx-frl-refclk-sel %d is invalid\n",
 			val);
 		return -EINVAL;
