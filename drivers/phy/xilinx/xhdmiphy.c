@@ -650,33 +650,46 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 	}
 	xgtphycfg->transceiver_width = val;
 
-	rc = of_property_read_u32(node, "xlnx,rx-max-gt-line-rate", &val);
-	if (rc < 0) {
-		dev_err(priv->dev, "unable to parse %s property\n",
-			"xlnx,rx-max-gt-line-rate");
-		return rc;
+	/*
+	 * The maximum GT line rate names the row of MMCM dividers an FRL link
+	 * is brought up with. A TMDS-only direction never runs FRL, so the
+	 * rate is never read back and the instance need not describe one.
+	 */
+	if (xgtphycfg->rx_protocol == XHDMIPHY_PROT_HDMI21) {
+		rc = of_property_read_u32(node, "xlnx,rx-max-gt-line-rate",
+					  &val);
+		if (rc < 0) {
+			dev_err(priv->dev, "unable to parse %s property\n",
+				"xlnx,rx-max-gt-line-rate");
+			return rc;
+		}
+
+		if (val != 3 && val != 6 && val != 8 && val != 10 &&
+		    val != 12) {
+			dev_err(priv->dev,
+				"dt rx-max-gt-line-rate %d is invalid\n", val);
+			return -EINVAL;
+		}
+		xgtphycfg->rx_maxrate = val;
 	}
 
-	if (val != 3 && val != 6 && val != 8 && val != 10 && val != 12) {
-		dev_err(priv->dev, "dt rx-max-gt-line-rate %d is invalid\n",
-			val);
-		return -EINVAL;
-	}
-	xgtphycfg->rx_maxrate = val;
+	if (xgtphycfg->tx_protocol == XHDMIPHY_PROT_HDMI21) {
+		rc = of_property_read_u32(node, "xlnx,tx-max-gt-line-rate",
+					  &val);
+		if (rc < 0) {
+			dev_err(priv->dev, "unable to parse %s property\n",
+				"xlnx,tx-max-gt-line-rate");
+			return rc;
+		}
 
-	rc = of_property_read_u32(node, "xlnx,tx-max-gt-line-rate", &val);
-	if (rc < 0) {
-		dev_err(priv->dev, "unable to parse %s property\n",
-			"xlnx,tx-max-gt-line-rate");
-		return rc;
+		if (val != 3 && val != 6 && val != 8 && val != 10 &&
+		    val != 12) {
+			dev_err(priv->dev,
+				"dt tx-max-gt-line-rate %d is invalid\n", val);
+			return -EINVAL;
+		}
+		xgtphycfg->tx_maxrate = val;
 	}
-
-	if (val != 3 && val != 6 && val != 8 && val != 10 && val != 12) {
-		dev_err(priv->dev, "dt tx-max-gt-line-rate %d is invalid\n",
-			val);
-		return -EINVAL;
-	}
-	xgtphycfg->tx_maxrate = val;
 
 	rc = of_property_read_u32(node, "xlnx,rx-clk-primitive", &val);
 	if (rc < 0) {
@@ -720,33 +733,51 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 	}
 	xgtphycfg->gt_as_tx_tmdsclk = val;
 
-	rc = of_property_read_u32(node, "xlnx,rx-frl-refclk-sel", &val);
-	if (rc < 0) {
-		dev_err(priv->dev, "unable to parse %s property\n",
-			"xlnx,rx-frl-refclk-sel");
-		return rc;
+	/*
+	 * The FRL reference clock selectors name a mux input that exists
+	 * only for HDMI 2.1. A TMDS-only direction has no such input; Vivado
+	 * still emits 99 for "not used", which is not a legal mux value, so
+	 * do not read the property. Naming the TMDS selector instead leaves
+	 * the two equal, which is how the driver recognises that FRL shares
+	 * the TMDS reference clock.
+	 */
+	if (xgtphycfg->rx_protocol == XHDMIPHY_PROT_HDMI21) {
+		rc = of_property_read_u32(node, "xlnx,rx-frl-refclk-sel",
+					  &val);
+		if (rc < 0) {
+			dev_err(priv->dev, "unable to parse %s property\n",
+				"xlnx,rx-frl-refclk-sel");
+			return rc;
+		}
+
+		if (val < 0 || val > XHDMIPHY_PLL_REFCLKSEL_GTGREFCLK - 1) {
+			dev_err(priv->dev,
+				"dt rx-frl-refclk-sel %d is invalid\n", val);
+			return -EINVAL;
+		}
+		xgtphycfg->rx_frl_refclk_sel = val;
+	} else {
+		xgtphycfg->rx_frl_refclk_sel = xgtphycfg->rx_refclk_sel;
 	}
 
-	if (val < 0 || val > XHDMIPHY_PLL_REFCLKSEL_GTGREFCLK - 1) {
-		dev_err(priv->dev, "dt rx-frl-refclk-sel %d is invalid\n",
-			val);
-		return -EINVAL;
-	}
-	xgtphycfg->rx_frl_refclk_sel = val;
+	if (xgtphycfg->tx_protocol == XHDMIPHY_PROT_HDMI21) {
+		rc = of_property_read_u32(node, "xlnx,tx-frl-refclk-sel",
+					  &val);
+		if (rc < 0) {
+			dev_err(priv->dev, "unable to parse %s property\n",
+				"xlnx,tx-frl-refclk-sel");
+			return rc;
+		}
 
-	rc = of_property_read_u32(node, "xlnx,tx-frl-refclk-sel", &val);
-	if (rc < 0) {
-		dev_err(priv->dev, "unable to parse %s property\n",
-			"xlnx,tx-frl-refclk-sel");
-		return rc;
+		if (val < 0 || val > XHDMIPHY_PLL_REFCLKSEL_GTGREFCLK - 1) {
+			dev_err(priv->dev,
+				"dt tx-frl-refclk-sel %d is invalid\n", val);
+			return -EINVAL;
+		}
+		xgtphycfg->tx_frl_refclk_sel = val;
+	} else {
+		xgtphycfg->tx_frl_refclk_sel = xgtphycfg->tx_refclk_sel;
 	}
-
-	if (val < 0 || val > XHDMIPHY_PLL_REFCLKSEL_GTGREFCLK - 1) {
-		dev_err(priv->dev, "dt tx-frl-refclk-sel %d is invalid\n",
-			val);
-		return -EINVAL;
-	}
-	xgtphycfg->tx_frl_refclk_sel = val;
 
 	priv->rxch4_gpio = devm_gpiod_get_optional(priv->dev,
 						   "rxch4-sel", GPIOD_OUT_LOW);
@@ -776,7 +807,7 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 		xgtphycfg->gt_direction = val;
 	}
 
-	return rc;
+	return 0;
 }
 
 static int xhdmiphy_clk_init(struct xhdmiphy_dev *priv)
