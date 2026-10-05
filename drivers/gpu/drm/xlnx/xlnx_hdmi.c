@@ -8,6 +8,7 @@
  */
 
 #include <drm/display/drm_dp_helper.h>
+#include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_connector.h>
 #include <drm/drm_crtc_helper.h>
@@ -32,6 +33,7 @@
 #include <linux/platform_device.h>
 #include <linux/pm.h>
 #include <linux/sysfs.h>
+#include <linux/units.h>
 #include <linux/workqueue.h>
 #include <linux/xlnx/xlnx_timer.h>
 #include <uapi/linux/media-bus-format.h>
@@ -228,6 +230,8 @@
 #define HDMI_TX_DDC_STAT_FLGS_LN23_LN3_SHIFT	4
 
 #define HDMI_TX_PIXEL_MAXRATE			2376000
+/* HDMI 2.0 caps the TMDS character rate at 600 MHz, in kHz here. */
+#define HDMI_TX_TMDS_MAXRATE			600000
 #define HDMI_TX_PIXELRATE_GBPS			((u64)1e9)
 
 #define HDMI_TX_DDC_CMD_STR_TOKEN		0x100
@@ -2099,6 +2103,13 @@ static int xlnx_hdmi_sink_max_frl(struct xlnx_hdmi *hdmi)
 	return sink_max_frl_bw;
 }
 
+/* Non-positive means TMDS, including an FRL core with rate 0. */
+static int xlnx_hdmi_max_frl_bw(struct xlnx_hdmi *hdmi)
+{
+	return min_t(int, hdmi->config.max_frl_rate,
+		     xlnx_hdmi_sink_max_frl(hdmi));
+}
+
 /**
  * xlnx_hdmi_frl_train_init: Initializes sink's SCDC for training.
  * @hdmi: Pointer to HDMI TX core instance
@@ -2108,7 +2119,7 @@ static int xlnx_hdmi_sink_max_frl(struct xlnx_hdmi *hdmi)
 static int xlnx_hdmi_frl_train_init(struct xlnx_hdmi *hdmi)
 {
 	int status = 1;
-	int source_max_frl_bw, sink_max_frl_bw, max_frl_bw;
+	int max_frl_bw;
 
 	xlnx_hdmi_clear_frl_ltp(hdmi);
 	/*
@@ -2117,9 +2128,7 @@ static int xlnx_hdmi_frl_train_init(struct xlnx_hdmi *hdmi)
 	 */
 	xlnx_hdmi_set_frl_active(hdmi, HDMI_TX_FRL_ACTIVE_MODE_GAP_ONLY);
 
-	source_max_frl_bw = hdmi->config.max_frl_rate;
-	sink_max_frl_bw = xlnx_hdmi_sink_max_frl(hdmi);
-	max_frl_bw = min(sink_max_frl_bw, source_max_frl_bw);
+	max_frl_bw = xlnx_hdmi_max_frl_bw(hdmi);
 	if (max_frl_bw <= 0)
 		return 1;
 
@@ -3075,8 +3084,37 @@ xlnx_hdmi_connector_mode_valid(struct drm_connector *connector,
 	mutex_lock(&hdmi->hdmi_mutex);
 
 	/* pixel clock too high for sink? */
-	if (clock > HDMI_TX_PIXEL_MAXRATE)
+	if (clock > HDMI_TX_PIXEL_MAXRATE) {
 		status = MODE_CLOCK_HIGH;
+		dev_dbg(hdmi->dev,
+			"%s: %d kHz over the %d kHz pixel ceiling\n",
+			mode->name, clock, HDMI_TX_PIXEL_MAXRATE);
+	}
+
+	/*
+	 * Without FRL the link runs TMDS, which the sink and the 600 MHz
+	 * character rate both bound. This is the 8 bpc rate; a deeper colour
+	 * depth is only picked at modeset time.
+	 */
+	/* Bridge output is checked later; this clock is the scaler input. */
+	if (!hdmi->bridge && xlnx_hdmi_max_frl_bw(hdmi) <= 0) {
+		const struct drm_display_info *info = &connector->display_info;
+		int max_tmds = HDMI_TX_TMDS_MAXRATE;
+
+		/* Past 340 MHz the sink has to be able to scramble. */
+		if (!info->hdmi.scdc.scrambling.supported)
+			max_tmds = HDMI_TX_3_4_GBPS / HZ_PER_KHZ;
+
+		if (info->max_tmds_clock)
+			max_tmds = min(max_tmds, info->max_tmds_clock);
+
+		if (clock > max_tmds) {
+			status = MODE_CLOCK_HIGH;
+			dev_dbg(hdmi->dev,
+				"%s: %d kHz over the %d kHz TMDS ceiling\n",
+				mode->name, clock, max_tmds);
+		}
+	}
 	mutex_unlock(&hdmi->hdmi_mutex);
 
 	return status;
@@ -3311,12 +3349,14 @@ static void xlnx_hdmi_encoder_disable(struct drm_encoder *encoder)
  * xlnx_hdmi_find_media_bus - finds drm_fourcc equivalent format
  * @hdmi: pointer to HDMI TX core instance
  * @drm_fourcc: drm fourcc code
+ * @depth: bit depth selected for this format
  *
  * Returns: equivalent media bus format
  */
 static enum
 color_formats xlnx_hdmi_find_media_bus(struct xlnx_hdmi *hdmi,
-				       u32 drm_fourcc)
+				       u32 drm_fourcc,
+				       enum color_depths *depth)
 {
 	switch (drm_fourcc) {
 	case DRM_FORMAT_XBGR8888:
@@ -3326,10 +3366,10 @@ color_formats xlnx_hdmi_find_media_bus(struct xlnx_hdmi *hdmi,
 	case DRM_FORMAT_ARGB8888:
 	case DRM_FORMAT_ABGR8888:
 	case MEDIA_BUS_FMT_RGB888_1X24:
-		hdmi->xvidc_colordepth = HDMI_TX_BPC_8;
+		*depth = HDMI_TX_BPC_8;
 		return HDMI_TX_CSF_RGB;
 	case DRM_FORMAT_XBGR2101010:
-		hdmi->xvidc_colordepth = HDMI_TX_BPC_10;
+		*depth = HDMI_TX_BPC_10;
 		return HDMI_TX_CSF_RGB;
 	case DRM_FORMAT_VUY888:
 	case DRM_FORMAT_XVUY8888:
@@ -3340,7 +3380,7 @@ color_formats xlnx_hdmi_find_media_bus(struct xlnx_hdmi *hdmi,
 	case DRM_FORMAT_T548:
 	case DRM_FORMAT_T648:
 	case MEDIA_BUS_FMT_VUY8_1X24:
-		hdmi->xvidc_colordepth = HDMI_TX_BPC_8;
+		*depth = HDMI_TX_BPC_8;
 		return HDMI_TX_CSF_YCRCB_444;
 	case DRM_FORMAT_XVUY2101010:
 	case DRM_FORMAT_Y10:
@@ -3350,7 +3390,7 @@ color_formats xlnx_hdmi_find_media_bus(struct xlnx_hdmi *hdmi,
 	case DRM_FORMAT_T64A:
 	case DRM_FORMAT_X403:
 	case MEDIA_BUS_FMT_VUY10_1X30:
-		hdmi->xvidc_colordepth = HDMI_TX_BPC_10;
+		*depth = HDMI_TX_BPC_10;
 		return HDMI_TX_CSF_YCRCB_444;
 	/* TODO: Fix using DRM and media formats in same switch case */
 	case DRM_FORMAT_T5MC:
@@ -3359,7 +3399,7 @@ color_formats xlnx_hdmi_find_media_bus(struct xlnx_hdmi *hdmi,
 	case DRM_FORMAT_T64C:
 	case DRM_FORMAT_X423:
 	case MEDIA_BUS_FMT_VUY12_1X36:
-		hdmi->xvidc_colordepth = HDMI_TX_BPC_12;
+		*depth = HDMI_TX_BPC_12;
 		return HDMI_TX_CSF_YCRCB_444;
 	case DRM_FORMAT_YUYV:
 	case DRM_FORMAT_UYVY:
@@ -3367,47 +3407,57 @@ color_formats xlnx_hdmi_find_media_bus(struct xlnx_hdmi *hdmi,
 	case DRM_FORMAT_T528:
 	case DRM_FORMAT_T628:
 	case MEDIA_BUS_FMT_UYVY8_1X16:
-		hdmi->xvidc_colordepth = HDMI_TX_BPC_8;
+		*depth = HDMI_TX_BPC_8;
 		return HDMI_TX_CSF_YCRCB_422;
 	case DRM_FORMAT_P210:
 	case DRM_FORMAT_T52A:
 	case DRM_FORMAT_T62A:
 	case DRM_FORMAT_XV20:
 	case MEDIA_BUS_FMT_UYVY10_1X20:
-		hdmi->xvidc_colordepth = HDMI_TX_BPC_10;
+		*depth = HDMI_TX_BPC_10;
 		return HDMI_TX_CSF_YCRCB_422;
 	case DRM_FORMAT_T52C:
 	case DRM_FORMAT_T62C:
 	case MEDIA_BUS_FMT_UYVY12_1X24:
-		hdmi->xvidc_colordepth = HDMI_TX_BPC_12;
+		*depth = HDMI_TX_BPC_12;
 		return HDMI_TX_CSF_YCRCB_422;
 	case DRM_FORMAT_NV12:
 	case DRM_FORMAT_T508:
 	case DRM_FORMAT_T608:
 	case MEDIA_BUS_FMT_VYYUYY8_1X24:
-		hdmi->xvidc_colordepth = HDMI_TX_BPC_8;
+		*depth = HDMI_TX_BPC_8;
 		return HDMI_TX_CSF_YCRCB_420;
 	case DRM_FORMAT_P010:
 	case DRM_FORMAT_XV15:
 	case DRM_FORMAT_T50A:
 	case DRM_FORMAT_T60A:
 	case MEDIA_BUS_FMT_VYYUYY10_4X20:
-		hdmi->xvidc_colordepth = HDMI_TX_BPC_10;
+		*depth = HDMI_TX_BPC_10;
 		return HDMI_TX_CSF_YCRCB_420;
 	case DRM_FORMAT_P012:
 	case DRM_FORMAT_T50C:
 	case DRM_FORMAT_T60C:
 	case MEDIA_BUS_FMT_UYYVYY12_4X24:
-		hdmi->xvidc_colordepth = HDMI_TX_BPC_12;
+		*depth = HDMI_TX_BPC_12;
 		return HDMI_TX_CSF_YCRCB_420;
 	default:
-		dev_err(hdmi->dev, "Unknown drm fmt: %p4cc\n", &drm_fourcc);
-		hdmi->xvidc_colordepth = HDMI_TX_BPC_8;
+		dev_dbg(hdmi->dev, "Unknown drm fmt: %p4cc\n", &drm_fourcc);
+		*depth = HDMI_TX_BPC_8;
 		return HDMI_TX_CSF_RGB;
 	}
 }
 
-static u64 xlnx_hdmi_get_tmdsclk(struct xlnx_hdmi *hdmi, struct drm_display_mode *adjusted_mode)
+/**
+ * xlnx_hdmi_get_tmdsclk - character rate the link is programmed with
+ * @adjusted_mode: mode whose clock is the pixel rate, in kHz
+ * @fmt: output colour format
+ * @depth: bits per component
+ *
+ * Return: the TMDS character rate in Hz.
+ */
+static u64 xlnx_hdmi_get_tmdsclk(const struct drm_display_mode *adjusted_mode,
+				 enum color_formats fmt,
+				 enum color_depths depth)
 {
 	u64 tmdsclk;
 
@@ -3417,11 +3467,11 @@ static u64 xlnx_hdmi_get_tmdsclk(struct xlnx_hdmi *hdmi, struct drm_display_mode
 	    (adjusted_mode->flags & DRM_MODE_FLAG_INTERLACE))
 		tmdsclk *= 2;
 
-	if (hdmi->xvidc_colorfmt == HDMI_TX_CSF_YCRCB_420)
+	if (fmt == HDMI_TX_CSF_YCRCB_420)
 		tmdsclk = tmdsclk >> 1;
 
-	if (hdmi->xvidc_colorfmt != HDMI_TX_CSF_YCRCB_422) {
-		switch (hdmi->xvidc_colordepth) {
+	if (fmt != HDMI_TX_CSF_YCRCB_422) {
+		switch (depth) {
 		case HDMI_TX_BPC_10:
 			tmdsclk = (tmdsclk * 5) >> 2;
 			break;
@@ -3437,6 +3487,43 @@ static u64 xlnx_hdmi_get_tmdsclk(struct xlnx_hdmi *hdmi, struct drm_display_mode
 	}
 
 	return tmdsclk;
+}
+
+/**
+ * xlnx_hdmi_link_mode - mode the link will carry
+ * @hdmi: HDMI TX instance
+ * @in: CRTC mode
+ * @out: storage for the bridge output
+ * @fourcc: receives the bridge output format when a bridge is present
+ *
+ * The CRTC mode when there is no bridge, otherwise the bridge output
+ * copied into @out.
+ *
+ * Return: @in, or @out. ERR_PTR(-EINVAL) when the bridge output is not
+ * a CEA mode.
+ */
+static struct drm_display_mode *
+xlnx_hdmi_link_mode(struct xlnx_hdmi *hdmi, struct drm_display_mode *in,
+		    struct drm_display_mode *out, u32 *fourcc)
+{
+	struct drm_display_mode *cea;
+
+	if (!hdmi->bridge)
+		return in;
+
+	cea = drm_mode_find_cea(hdmi->connector.dev,
+				hdmi->width_out_prop_val,
+				hdmi->height_out_prop_val,
+				drm_mode_vrefresh(in),
+				in->flags & DRM_MODE_FLAG_INTERLACE);
+	if (!cea)
+		return ERR_PTR(-EINVAL);
+
+	drm_mode_init(out, cea);
+	drm_mode_destroy(hdmi->connector.dev, cea);
+	*fourcc = hdmi->out_fmt_prop_val;
+
+	return out;
 }
 
 /**
@@ -3459,9 +3546,11 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	struct xlnx_hdmi_config *config = &hdmi->config;
 	struct drm_display_mode *mode = &crtc_state->mode;
 	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
+	struct drm_display_mode bridge_mode;
 	union phy_configure_opts phy_cfg = {0};
+	enum color_depths depth;
+	int max_frl_bw;
 	int ret;
-	int source_max_frl_bw, sink_max_frl_bw, max_frl_bw;
 	u32 drm_fourcc, pixelrate = 0;
 	u64 lnk_clk = 0, vid_clk = 0;
 
@@ -3484,9 +3573,7 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	dev_dbg(hdmi->dev, "mode->flags = %d interlace = %d\n", mode->flags,
 		!!(mode->flags & DRM_MODE_FLAG_INTERLACE));
 
-	source_max_frl_bw = hdmi->config.max_frl_rate;
-	sink_max_frl_bw = xlnx_hdmi_sink_max_frl(hdmi);
-	max_frl_bw = min(sink_max_frl_bw, source_max_frl_bw);
+	max_frl_bw = xlnx_hdmi_max_frl_bw(hdmi);
 	if (max_frl_bw <= 0) {
 		hdmi->stream.is_frl = 0;
 		dev_dbg(hdmi->dev, "Connected sink supports TMDS mode\n");
@@ -3522,24 +3609,24 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 				       hdmi->height_out_prop_val,
 				       hdmi->out_fmt_prop_val);
 		xlnx_bridge_enable(hdmi->bridge);
-
-		drm_fourcc = hdmi->out_fmt_prop_val;
-		adjusted_mode = drm_mode_find_cea(connector->dev,
-						  hdmi->width_out_prop_val,
-						  hdmi->height_out_prop_val,
-						  drm_mode_vrefresh(adjusted_mode),
-						  adjusted_mode->flags & DRM_MODE_FLAG_INTERLACE);
-		if (!adjusted_mode) {
-			dev_err(hdmi->dev, "Invalid CEA mode\n");
-			return;
-		}
 	}
 
-	hdmi->xvidc_colorfmt = xlnx_hdmi_find_media_bus(hdmi, drm_fourcc);
+	adjusted_mode = xlnx_hdmi_link_mode(hdmi, adjusted_mode, &bridge_mode,
+					    &drm_fourcc);
+	if (IS_ERR(adjusted_mode)) {
+		dev_err(hdmi->dev, "Invalid CEA mode\n");
+		return;
+	}
+
+	hdmi->xvidc_colorfmt = xlnx_hdmi_find_media_bus(hdmi, drm_fourcc,
+							&depth);
+	hdmi->xvidc_colordepth = depth;
 	dev_dbg(hdmi->dev, "xvidc_colorfmt = %d\n", hdmi->xvidc_colorfmt);
 	dev_dbg(hdmi->dev, "xvidc_colordepth = %d\n", hdmi->xvidc_colordepth);
 
-	hdmi->tmds_clk = xlnx_hdmi_get_tmdsclk(hdmi, adjusted_mode);
+	hdmi->tmds_clk = xlnx_hdmi_get_tmdsclk(adjusted_mode,
+					       hdmi->xvidc_colorfmt,
+					       hdmi->xvidc_colordepth);
 	dev_dbg(hdmi->dev, "tmds_clk = %llu\n", hdmi->tmds_clk);
 
 	if (connector->display_info.is_hdmi)
@@ -3645,11 +3732,70 @@ static const struct drm_encoder_funcs xlnx_hdmi_encoder_funcs = {
 	.destroy = drm_encoder_cleanup,
 };
 
+/* Reject a TMDS link whose character rate exceeds the sink. */
+static int
+xlnx_hdmi_encoder_atomic_check(struct drm_encoder *encoder,
+			       struct drm_crtc_state *crtc_state,
+			       struct drm_connector_state *conn_state)
+{
+	struct drm_connector *connector = conn_state->connector;
+	const struct drm_display_info *info = &connector->display_info;
+	struct xlnx_hdmi *hdmi = encoder_to_hdmi(encoder);
+	struct drm_display_mode bridge_mode;
+	struct drm_plane_state *plane_state;
+	struct drm_display_mode *link_mode;
+	enum color_depths depth;
+	enum color_formats fmt;
+	int max_tmds;
+	u64 tmds_hz;
+	u32 fourcc;
+
+	if (!crtc_state->active)
+		return 0;
+	if (xlnx_hdmi_max_frl_bw(hdmi) > 0)
+		return 0;
+	/* A connector property update does not reprogram the link. */
+	if (!drm_atomic_crtc_needs_modeset(crtc_state))
+		return 0;
+
+	plane_state = drm_atomic_get_new_plane_state(crtc_state->state,
+						     crtc_state->crtc->primary);
+	if (!plane_state || !plane_state->fb)
+		return -EINVAL;
+
+	fourcc = plane_state->fb->format->format;
+	link_mode = xlnx_hdmi_link_mode(hdmi, &crtc_state->adjusted_mode,
+					&bridge_mode, &fourcc);
+	/*
+	 * No CEA scaler output yet. mode_set reports that; the commit
+	 * still succeeds, as it did before this check existed.
+	 */
+	if (IS_ERR(link_mode))
+		return 0;
+	fmt = xlnx_hdmi_find_media_bus(hdmi, fourcc, &depth);
+	tmds_hz = xlnx_hdmi_get_tmdsclk(link_mode, fmt, depth);
+
+	max_tmds = HDMI_TX_TMDS_MAXRATE;
+	if (!info->hdmi.scdc.scrambling.supported)
+		max_tmds = HDMI_TX_3_4_GBPS / HZ_PER_KHZ;
+	if (info->max_tmds_clock)
+		max_tmds = min(max_tmds, info->max_tmds_clock);
+
+	if (tmds_hz > (u64)max_tmds * HZ_PER_KHZ) {
+		dev_dbg(hdmi->dev, "%s: %llu Hz over the %d kHz TMDS ceiling\n",
+			crtc_state->mode.name, tmds_hz, max_tmds);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static const struct
 drm_encoder_helper_funcs xlnx_hdmi_encoder_helper_funcs = {
 	.dpms = xlnx_hdmi_encoder_dpms,
 	.enable = xlnx_hdmi_encoder_enable,
 	.disable = xlnx_hdmi_encoder_disable,
+	.atomic_check = xlnx_hdmi_encoder_atomic_check,
 	.atomic_mode_set = xlnx_hdmi_encoder_atomic_mode_set,
 };
 
