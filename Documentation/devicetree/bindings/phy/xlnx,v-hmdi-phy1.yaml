@@ -64,13 +64,13 @@ properties:
     description: Max number of channels that Tx configured with.
     allOf:
       - $ref: /schemas/types.yaml#/definitions/uint32
-      - enum: [1, 2, 4]
+      - enum: [1, 2, 3, 4]
 
   xlnx,rx-no-of-channels:
     description: Max number of channels that Rx configured with.
     allOf:
       - $ref: /schemas/types.yaml#/definitions/uint32
-      - enum: [1, 2, 4]
+      - enum: [1, 2, 3, 4]
 
   xlnx,rx-protocol:
     description: Protocol type that Tx is configured with.
