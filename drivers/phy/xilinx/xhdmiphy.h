@@ -764,6 +764,9 @@ enum dir {
 	XHDMIPHY_DIR_NONE = 2
 };
 
+/* DIR_NONE is not a count of directions. */
+#define XHDMIPHY_NUM_DIRS	(XHDMIPHY_DIR_TX + 1)
+
 enum pll_type {
 	XHDMIPHY_PLL_CPLL = 1,
 	XHDMIPHY_PLL_QPLL = 2,
@@ -1058,6 +1061,9 @@ struct xhdmiphy_dev {
 	int irq;
 	struct mutex hdmiphy_mutex;	/* protecting phy operations */
 	struct xhdmiphy_lane *lanes[XHDMIPHY_MAX_LANES];
+	u8 nlanes[XHDMIPHY_NUM_DIRS];	/* lanes handed out, indexed by dir */
+	u8 count_tx;
+	u8 count_rx;
 	struct clk_config *data;
 	struct clk *axi_lite_clk;
 	struct clk *dru_clk;
