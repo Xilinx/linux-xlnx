@@ -513,7 +513,7 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 		return rc;
 	}
 
-	if (val != 1 && val != 2 && val != 4) {
+	if (val < 1 || val > 4) {
 		dev_err(priv->dev, "dt rx-no-of-channels %d is invalid\n",
 			val);
 		return -EINVAL;
@@ -527,7 +527,7 @@ static int xhdmiphy_parse_of(struct xhdmiphy_dev *priv)
 		return rc;
 	}
 
-	if (val != 1 && val != 2 && val != 4) {
+	if (val < 1 || val > 4) {
 		dev_err(priv->dev, "dt tx-no-of-channels %d is invalid\n",
 			val);
 		return -EINVAL;
