@@ -195,6 +195,7 @@
 
 #define HDMI_TX_VTC_BASE			0x10000
 #define HDMI_MAX_LANES				4
+#define HDMI_TMDS_LANES				3
 
 #define HDMI_TX_3_4_GBPS			340000000
 #define HDMI_TX_SCRAMBLER_OFFSET		0x20
@@ -466,6 +467,7 @@ struct xlnx_hdmi_stream {
  * @xvidc_colorfmt: hdmi ip internal colorformat representation
  * @xvidc_colordepth: color depth
  * @config: IP configuration structure
+ * @num_lanes: number of PHY lanes configured in hardware
  * @stream: stream properties
  * @intr_status: Flag to indicate irq status
  * @frl_status: Flag to indicate FRL interrupt status
@@ -513,6 +515,7 @@ struct xlnx_hdmi {
 	enum color_formats xvidc_colorfmt;
 	enum color_depths xvidc_colordepth;
 	struct xlnx_hdmi_config config;
+	u8 num_lanes;
 	struct xlnx_hdmi_stream stream;
 	u32 intr_status;
 	u32 frl_status;
@@ -769,7 +772,7 @@ static ssize_t xlnx_hdcp_key_store(struct device *sysfs_dev, struct device_attri
 
 	if (hdmi->config.hdcp2x_enable || hdmi->config.hdcp1x_enable) {
 		ret = xlnx_start_hdcp_engine(&hdmi->txhdcp,
-					     HDMI_MAX_LANES);
+					     hdmi->num_lanes);
 		if (ret < 0) {
 			dev_err(hdmi->dev, "Failed to Start HDCP engine\n");
 			return ret;
@@ -861,7 +864,7 @@ static int xlnx_hdmi_phy_configure(struct xlnx_hdmi *hdmi,
 {
 	int ret = 0, i;
 
-	for (i = 0; i < HDMI_MAX_LANES; i++) {
+	for (i = 0; i < hdmi->num_lanes; i++) {
 		ret = phy_configure(hdmi->phy[i], opts);
 		if (ret) {
 			dev_err(hdmi->dev, "phy_configure error %d\n", ret);
@@ -1805,7 +1808,7 @@ static void xlnx_hdmi_clear_frl_ltp(struct xlnx_hdmi *hdmi)
 {
 	u32 index;
 
-	for (index = 0; index < HDMI_MAX_LANES; index++)
+	for (index = 0; index < hdmi->num_lanes; index++)
 		xlnx_hdmi_set_frl_ltp(hdmi, index, HDMI_TX_LTP_NO_LTP);
 }
 
@@ -2263,7 +2266,7 @@ static int xlnx_hdmi_exec_frl_state_lts2(struct xlnx_hdmi *hdmi)
 
 			/* Reset GT PLL once FLT_RDY is confirmed; keeps DDC bus stable. */
 			phy_cfg.hdmi.resetgtpll = 1;
-			for (i = 0; i < HDMI_MAX_LANES; i++) {
+			for (i = 0; i < hdmi->num_lanes; i++) {
 				ret = phy_configure(hdmi->phy[i], &phy_cfg);
 				if (ret) {
 					dev_err(hdmi->dev,
@@ -2278,7 +2281,7 @@ static int xlnx_hdmi_exec_frl_state_lts2(struct xlnx_hdmi *hdmi)
 			xlnx_hdmi_frl_config(hdmi);
 
 			/* set Nyquist Clock as link training pattern */
-			for (index = 0; index < HDMI_MAX_LANES; index++) {
+			for (index = 0; index < hdmi->num_lanes; index++) {
 				xlnx_hdmi_set_frl_ltp(hdmi, index,
 						      HDMI_TX_LTP_NYQUIST_CLOCK);
 			}
@@ -2406,7 +2409,7 @@ static int xlnx_hdmi_exec_frl_state_lts3(struct xlnx_hdmi *hdmi)
 			HDMI_TX_FRLSTATE_LTS_4;
 		xlnx_hdmi_set_frl_timer(hdmi, TIMEOUT_10US);
 	} else {
-		for (ln = 0; ln < 4; ln++) {
+		for (ln = 0; ln < hdmi->num_lanes; ln++) {
 			/*
 			 * 0x1 to 0x8 means specific link training pattern is
 			 * requested. Each of the lane need to be set to output
@@ -2667,7 +2670,7 @@ static int xlnx_hdmi_frl_lnk_clk_resync(struct xlnx_hdmi *hdmi)
 
 		phy_cfg.hdmi.clkout1_obuftds = 1;
 		phy_cfg.hdmi.clkout1_obuftds_en = false;
-		for (i = 0; i < HDMI_MAX_LANES; i++) {
+		for (i = 0; i < hdmi->num_lanes; i++) {
 			int ret = phy_configure(hdmi->phy[i], &phy_cfg);
 
 			if (ret)
@@ -2677,7 +2680,7 @@ static int xlnx_hdmi_frl_lnk_clk_resync(struct xlnx_hdmi *hdmi)
 		}
 		usleep_range(1000, 1100);
 		phy_cfg.hdmi.clkout1_obuftds_en = true;
-		for (i = 0; i < HDMI_MAX_LANES; i++) {
+		for (i = 0; i < hdmi->num_lanes; i++) {
 			int ret = phy_configure(hdmi->phy[i], &phy_cfg);
 
 			if (ret)
@@ -3575,7 +3578,7 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	}
 	if (hdmi->config.hdcp2x_enable || hdmi->config.hdcp1x_enable) {
 		ret = xlnx_start_hdcp_engine(&hdmi->txhdcp,
-					     HDMI_MAX_LANES);
+					     hdmi->num_lanes);
 		if (ret < 0) {
 			dev_err(hdmi->dev, "Failed to Start HDCP engine\n");
 			return;
@@ -3735,7 +3738,7 @@ static void xlnx_hdmi_exit_phy(struct xlnx_hdmi *hdmi)
 	unsigned int i;
 	int ret;
 
-	for (i = 0; i < HDMI_MAX_LANES; i++) {
+	for (i = 0; i < hdmi->num_lanes; i++) {
 		if (!hdmi->phy[i])
 			continue;
 
@@ -3874,6 +3877,26 @@ static int xlnx_hdmi_parse_of(struct xlnx_hdmi *hdmi)
 		return -EINVAL;
 	}
 	config->max_frl_rate = frl_rate;
+
+	ret = of_count_phandle_with_args(node, "phys", "#phy-cells");
+	if (ret < 0) {
+		dev_err(hdmi->dev, "failed to count phys (%d)\n", ret);
+		return ret;
+	}
+
+	if (ret > HDMI_MAX_LANES) {
+		dev_err(hdmi->dev, "%d PHY lanes, at most %d are supported\n",
+			ret, HDMI_MAX_LANES);
+		return -EINVAL;
+	}
+
+	if (ret < HDMI_TMDS_LANES) {
+		dev_err(hdmi->dev, "%d PHY lanes, at least %d are required\n",
+			ret, HDMI_TMDS_LANES);
+		return -EINVAL;
+	}
+
+	hdmi->num_lanes = ret;
 
 	if (of_device_is_compatible(node, "xlnx,v-hdmi-txss1-1.1")) {
 		config->htiming_div_fact = config->ppc;
@@ -4208,7 +4231,7 @@ static int xlnx_hdmi_probe(struct platform_device *pdev)
 	hdmi->s_axi_cpu_clk = hdmi->clks[0].clk;
 
 	/* acquire hdmi phy lanes */
-	for (index = 0; index < HDMI_MAX_LANES; index++) {
+	for (index = 0; index < hdmi->num_lanes; index++) {
 		char phy_name[16];
 
 		snprintf(phy_name, sizeof(phy_name), "hdmi-phy%d", index);
