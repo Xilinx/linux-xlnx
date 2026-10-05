@@ -33,6 +33,7 @@ properties:
                  hdcp14 and hdcp14timer will be present when HDCP 1x
                  is selected.
                  hdcp22timer will be present when HDCP 2x is selected.
+    minItems: 1
     items:
       - const: hdmitx
       - const: hdcp14
@@ -40,27 +41,29 @@ properties:
       - const: hdcp22timer
 
   clocks:
-    description: List of clock specifiers
-    items:
-      - description: AXI Lite CPU clock
-      - description: Link clock
-      - description: Video clock
-      - description: Fixed Rate Link clock
-      - description: AXI4-Stream Video clock
+    description:
+      Clock phandles in clock-names order.
+    minItems: 3
+    maxItems: 6
 
   clock-names:
-    items:
-      - const: s_axi_cpu_aclk
-      - const: link_clk
-      - const: video_clk
-      - const: frl_clk
-      - const: s_axis_video_aclk
+    description: |
+      s_axi_cpu_aclk, link_clk and video_clk are always first.
+      frl_clk follows when the design supports FRL.
+      s_axis_audio_aclk and s_axis_video_aclk follow those, and
+      either of those two may be left out.
+    minItems: 3
+    maxItems: 6
 
   phys:
     description: This denotes phandles for phy lanes registered
-                 for HDMI protocol. HDMI always require 4 lanes
+                 for HDMI protocol. A design that supports FRL requires
+                 4 lanes, a TMDS-only design 3.
+    minItems: 3
+    maxItems: 4
 
   phy-names:
+    minItems: 3
     items:
       - const: hdmi-phy0
       - const: hdmi-phy1
@@ -92,12 +95,22 @@ properties:
       - enum: [0, 1, 2]
 
   xlnx,max-frl-rate:
-    description: Maximum FRL Rate.
-                 Possible values are 0 for TMDS mode,
-                 1 to 6 for FRL mode of operation.
+    description: Maximum FRL rate the IP is configured for.
+                 0 means the FRL rate is unused. Whether the FRL block
+                 is built is indicated by xlnx,hdmi-mode.
     allOf:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [0, 1, 2, 3, 4, 5, 6]
+
+  xlnx,hdmi-mode:
+    description: |
+      HDMI 2.1 TX IP configuration (C_HDMI_MODE).
+      0 is HDMI 2.1 TMDS-only, with no FRL block.
+      1 is HDMI 2.1 FRL plus TMDS.
+      Absent means the FRL block is present.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
 
   xlnx,include-hdcp-1-4:
     type: boolean
@@ -174,6 +187,138 @@ dependencies:
   xlnx,hdcp1x-keymgmt: [ 'xlnx,include-hdcp-1-4' ]
 
 allOf:
+  # Audio and the AXI-Stream video clock may each be left out, so each
+  # legal sequence is listed. The three leading clocks are always present.
+  - oneOf:
+      - properties:
+          clocks:
+            minItems: 3
+            maxItems: 3
+          clock-names:
+            items:
+              - const: s_axi_cpu_aclk
+              - const: link_clk
+              - const: video_clk
+      - properties:
+          clocks:
+            minItems: 4
+            maxItems: 4
+          clock-names:
+            items:
+              - const: s_axi_cpu_aclk
+              - const: link_clk
+              - const: video_clk
+              - const: s_axis_audio_aclk
+      - properties:
+          clocks:
+            minItems: 4
+            maxItems: 4
+          clock-names:
+            items:
+              - const: s_axi_cpu_aclk
+              - const: link_clk
+              - const: video_clk
+              - const: s_axis_video_aclk
+      - properties:
+          clocks:
+            minItems: 5
+            maxItems: 5
+          clock-names:
+            items:
+              - const: s_axi_cpu_aclk
+              - const: link_clk
+              - const: video_clk
+              - const: s_axis_audio_aclk
+              - const: s_axis_video_aclk
+      - properties:
+          clocks:
+            minItems: 4
+            maxItems: 4
+          clock-names:
+            items:
+              - const: s_axi_cpu_aclk
+              - const: link_clk
+              - const: video_clk
+              - const: frl_clk
+      - properties:
+          clocks:
+            minItems: 5
+            maxItems: 5
+          clock-names:
+            items:
+              - const: s_axi_cpu_aclk
+              - const: link_clk
+              - const: video_clk
+              - const: frl_clk
+              - const: s_axis_audio_aclk
+      - properties:
+          clocks:
+            minItems: 5
+            maxItems: 5
+          clock-names:
+            items:
+              - const: s_axi_cpu_aclk
+              - const: link_clk
+              - const: video_clk
+              - const: frl_clk
+              - const: s_axis_video_aclk
+      - properties:
+          clocks:
+            minItems: 6
+            maxItems: 6
+          clock-names:
+            items:
+              - const: s_axi_cpu_aclk
+              - const: link_clk
+              - const: video_clk
+              - const: frl_clk
+              - const: s_axis_audio_aclk
+              - const: s_axis_video_aclk
+
+  # Mode 0 has no FRL block, so the rate is 0. An absent mode keeps
+  # the old rule, including a rate of 0 on an FRL instance.
+  - if:
+      required:
+        - xlnx,hdmi-mode
+      properties:
+        xlnx,hdmi-mode:
+          const: 0
+    then:
+      properties:
+        xlnx,max-frl-rate:
+          const: 0
+        clocks:
+          minItems: 3
+          maxItems: 5
+        clock-names:
+          minItems: 3
+          maxItems: 5
+          not:
+            contains:
+              const: frl_clk
+        phys:
+          minItems: 3
+          maxItems: 3
+        phy-names:
+          minItems: 3
+          maxItems: 3
+    else:
+      properties:
+        clocks:
+          minItems: 4
+          maxItems: 6
+        clock-names:
+          minItems: 4
+          maxItems: 6
+          contains:
+            const: frl_clk
+        phys:
+          minItems: 4
+          maxItems: 4
+        phy-names:
+          minItems: 4
+          maxItems: 4
+
   - if:
       properties:
         xlnx,vid-interface:
@@ -225,5 +370,37 @@ examples:
     hdcp_keymngmt_blk_0: hdcp-keymngmt-blk@80030000 {
         compatible = "xlnx,hdcp-keymngmt-blk-1.0", "syscon";
         reg = <0x80030000 0x10000>;
+    };
+
+  - |
+    /* HDMI 2.1 TX, TMDS-only: no FRL block, three PHY lanes, no frl_clk. */
+    v-hdmi-txss1@80060000 {
+        compatible = "xlnx,v-hdmi-txss1-1.2";
+        reg = <0x80060000 0x20000>;
+        interrupt-names = "hdmitx";
+        interrupts = <0 91 4>;
+        clock-names = "s_axi_cpu_aclk", "link_clk", "video_clk",
+                      "s_axis_audio_aclk", "s_axis_video_aclk";
+        clocks = <&zynqmp_clk 71>, <&misc_clk_1>, <&misc_clk_3>,
+                 <&misc_clk_4>, <&misc_clk_5>;
+        xlnx,input-pixels-per-clock = <4>;
+        xlnx,max-bits-per-component = <8>;
+        xlnx,vid-interface = <0>;
+        xlnx,max-frl-rate = <0>;
+        xlnx,hdmi-mode = <0>;
+        phy-names = "hdmi-phy0", "hdmi-phy1", "hdmi-phy2";
+        phys = <&hdmiphy_lane0 0 1 1 1>, <&hdmiphy_lane1 0 1 1 1>,
+               <&hdmiphy_lane2 0 1 1 1>;
+        ports {
+            #address-cells = <1>;
+            #size-cells = <0>;
+
+            port@0 {
+                reg = <0>;
+                hdmi_encoder_tmds: endpoint {
+                    remote-endpoint = <&dmaengine_crtc_tmds>;
+                };
+            };
+        };
     };
 ...
