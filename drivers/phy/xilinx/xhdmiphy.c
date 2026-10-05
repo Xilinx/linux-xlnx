@@ -25,6 +25,7 @@ struct xhdmiphy_lane {
 	u32 share_laneclk;
 	u8 direction;
 	u8 lane;
+	bool claimed;
 	void *data;
 };
 
@@ -83,11 +84,10 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 	struct phy_configure_opts_hdmi *cfg = &opts->hdmi;
 	struct hdmiphy_callback *cb_ptr = &cfg->hdmiphycb;
 	unsigned int ret = 0, chid;
-	static int count_tx, count_rx;
 
 	if (!phy_lane->direction) {
-		count_rx++;
-		if (count_rx < phy_dev->conf.rx_channels) {
+		phy_dev->count_rx++;
+		if (phy_dev->count_rx < phy_dev->nlanes[XHDMIPHY_DIR_RX]) {
 			return 0;
 		} else if (cfg->ibufds) {
 			xhdmiphy_ibufds_en(phy_dev, XHDMIPHY_DIR_RX,
@@ -170,13 +170,13 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 					     XHDMIPHY_DIR_RX, false);
 			cfg->reset_gt = 0;
 		}
-		count_rx = 0;
+		phy_dev->count_rx = 0;
 	}
 
 	if (phy_lane->direction) {
-		count_tx++;
+		phy_dev->count_tx++;
 
-		if (count_tx < phy_dev->conf.tx_channels) {
+		if (phy_dev->count_tx < phy_dev->nlanes[XHDMIPHY_DIR_TX]) {
 			return 0;
 		} else if (cfg->ibufds) {
 			xhdmiphy_ibufds_en(phy_dev, XHDMIPHY_DIR_TX,
@@ -250,7 +250,7 @@ static int xhdmiphy_configure(struct phy *phy, union phy_configure_opts *opts)
 			xhdmiphy_clr(phy_dev, XHDMIPHY_TX_INIT_REG,
 				     XHDMIPHY_TXRX_INIT_PLLGTRESET_ALL_MASK);
 		}
-		count_tx = 0;
+		phy_dev->count_tx = 0;
 	}
 
 	return 0;
@@ -269,10 +269,16 @@ static struct phy *xhdmiphy_xlate(struct device *dev,
 	struct xhdmiphy_dev *priv = dev_get_drvdata(dev);
 	struct xhdmiphy_lane *hdmiphy_lane = NULL;
 	struct device_node *hdmiphynode = args->np;
+	u8 nlanes[XHDMIPHY_NUM_DIRS] = { };
 	int index;
 
 	if (args->args_count != 4) {
 		dev_err(dev, "Invalid number of cells in 'phy' property\n");
+		return ERR_PTR(-EINVAL);
+	}
+
+	if (args->args[3] > XHDMIPHY_DIR_TX) {
+		dev_err(dev, "Invalid PHY direction %u\n", args->args[3]);
 		return ERR_PTR(-EINVAL);
 	}
 
@@ -295,6 +301,19 @@ static struct phy *xhdmiphy_xlate(struct device *dev,
 
 	hdmiphy_lane->share_laneclk = args->args[2];
 	hdmiphy_lane->direction = args->args[3];
+	hdmiphy_lane->claimed = true;
+
+	/*
+	 * Rebuild the totals off to the side so configure never reads
+	 * a count mid-rebuild.
+	 */
+	for (index = 0; index < XHDMIPHY_MAX_LANES; index++) {
+		if (priv->lanes[index] && priv->lanes[index]->claimed)
+			nlanes[priv->lanes[index]->direction]++;
+	}
+
+	priv->nlanes[XHDMIPHY_DIR_RX] = nlanes[XHDMIPHY_DIR_RX];
+	priv->nlanes[XHDMIPHY_DIR_TX] = nlanes[XHDMIPHY_DIR_TX];
 
 	return hdmiphy_lane->phy;
 }
