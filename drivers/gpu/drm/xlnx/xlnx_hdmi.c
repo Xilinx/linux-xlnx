@@ -3730,6 +3730,9 @@ static void xlnx_hdmi_exit_phy(struct xlnx_hdmi *hdmi)
 	int ret;
 
 	for (i = 0; i < HDMI_MAX_LANES; i++) {
+		if (!hdmi->phy[i])
+			continue;
+
 		ret = phy_exit(hdmi->phy[i]);
 		if (ret)
 			dev_err(hdmi->dev, "fail to exit phy(%d) %d\n", i, ret);
@@ -4196,11 +4199,13 @@ static int xlnx_hdmi_probe(struct platform_device *pdev)
 		if (IS_ERR(hdmi->phy[index])) {
 			dev_err(hdmi->dev, "failed to get hdmi phy\n");
 			ret = PTR_ERR(hdmi->phy[index]);
-			goto err_clk_put;
+			hdmi->phy[index] = NULL;
+			goto error_phy;
 		}
 		ret = phy_init(hdmi->phy[index]);
 		if (ret) {
 			dev_err(hdmi->dev, "failed to init hdmi phy\n");
+			hdmi->phy[index] = NULL;
 			goto error_phy;
 		}
 	}
