@@ -44,7 +44,7 @@ properties:
 
   clock-names:
     items:
-      - const: axi4lite_aclk
+      - const: vid_phy_axi4lite_aclk
       - const: drpclk
       - const: tmds_clock
 
@@ -73,13 +73,23 @@ properties:
       - enum: [1, 2, 3, 4]
 
   xlnx,rx-protocol:
-    description: Protocol type that Tx is configured with.
+    description: |
+      Protocol type that Rx is configured with. Possible values are as
+      below -
+      1  - HDMI (TMDS)
+      2  - HDMI 2.1 (FRL)
+      3  - None
     $ref: /schemas/types.yaml#/definitions/uint32
     minimum: 1
     maximum: 3
 
   xlnx,tx-protocol:
-    description: Protocol type that Rx is configured with.
+    description: |
+      Protocol type that Tx is configured with. Possible values are as
+      below -
+      1  - HDMI (TMDS)
+      2  - HDMI 2.1 (FRL)
+      3  - None
     $ref: /schemas/types.yaml#/definitions/uint32
     minimum: 1
     maximum: 3
@@ -108,15 +118,11 @@ properties:
     description: Available reference clocks for Tx PLL FRL(fixed rate link)
                  clock selection multiplexer.
     $ref: /schemas/types.yaml#/definitions/uint32
-    minimum: 1
-    maximum: 7
 
   xlnx,rx-frl-refclk-sel:
     description: Available reference clocks for Rx PLL FRL(fixed rate link)
                  clock selection multiplexer.
     $ref: /schemas/types.yaml#/definitions/uint32
-    minimum: 0
-    maximum: 6
 
   xlnx,tx-pll-selection:
     description: Available reference clocks used to driver Tx datapath.
@@ -177,7 +183,7 @@ properties:
       Input number of pixel per clock that IP configured with.
     allOf:
       - $ref: /schemas/types.yaml#/definitions/uint32
-      - enum: [1, 2, 4, 8]
+      - enum: [4, 8]
 
   xlnx,use-gt-ch4-hdmi:
     description: |
@@ -188,17 +194,17 @@ properties:
 
   xlnx,rx-max-gt-line-rate:
     description: |
-      Maxmimum Rx GT linerate that IP is configured with.
-    allOf:
-      - $ref: /schemas/types.yaml#/definitions/uint32
-      - enum: [3, 6, 8, 10, 12]
+      Maximum Rx GT linerate in Gb/s that IP is configured with. It names
+      the rate an FRL link is brought up at, so it applies to protocol 2
+      only.
+    $ref: /schemas/types.yaml#/definitions/uint32
 
   xlnx,tx-max-gt-line-rate:
     description: |
-      Maxmimum Tx GT linerate that IP is configured with.
-    allOf:
-      - $ref: /schemas/types.yaml#/definitions/uint32
-      - enum: [3, 6, 8, 10, 12]
+      Maximum Tx GT linerate in Gb/s that IP is configured with. It names
+      the rate an FRL link is brought up at, so it applies to protocol 2
+      only.
+    $ref: /schemas/types.yaml#/definitions/uint32
 
   xlnx,rx-clk-primitive:
     description: |
@@ -222,8 +228,23 @@ properties:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [0, 1, 2]
 
-  "#phy-cells":
-    const: 0
+patternProperties:
+  "^vid-phy-(rx|tx)-axi4s-ch[0-3]$":
+    type: object
+    description:
+      One GT lane.
+    additionalProperties: false
+    properties:
+      "#phy-cells":
+        const: 4
+        description: |
+          Cells, in order:
+          - unused
+          - unused
+          - 1 when the lane shares its reference clock, otherwise 0
+          - 0 for an RX lane, 1 for a TX lane
+    required:
+      - "#phy-cells"
 
 required:
   - clock-names
@@ -236,34 +257,108 @@ required:
   - xlnx,rx-no-of-channels
   - xlnx,tx-refclk-sel
   - xlnx,rx-refclk-sel
-  - xlnx,tx-frl-refclk-sel
-  - xlnx,rx-frl-refclk-sel
   - xlnx,tx-pll-selection
   - xlnx,rx-pll-selection
   - xlnx,nidru-refclk-sel
   - xlnx,transceiver-width
   - xlnx,input-pixels-per-clock
   - xlnx,use-gt-ch4-hdmi
-  - xlnx,rx-max-gt-line-rate
-  - xlnx,tx-max-gt-line-rate
-  - '#phy-cells'
+
+allOf:
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: xlnx,v-hdmi-gt-controller-1.0
+    then:
+      required:
+        - xlnx,gt-direction
+
+  # Protocol 2 is HDMI 2.1. Require the FRL selector and maximum GT line
+  # rate, and check their values, only then. Protocol 1 may still carry
+  # selector 99 and rate 5; those are not FRL values and are not checked.
+  - if:
+      required:
+        - xlnx,tx-protocol
+      properties:
+        xlnx,tx-protocol:
+          const: 2
+    then:
+      properties:
+        xlnx,tx-frl-refclk-sel:
+          minimum: 0
+          maximum: 6
+        xlnx,tx-max-gt-line-rate:
+          enum: [3, 6, 8, 10, 12]
+      required:
+        - xlnx,tx-frl-refclk-sel
+        - xlnx,tx-max-gt-line-rate
+
+  - if:
+      required:
+        - xlnx,rx-protocol
+      properties:
+        xlnx,rx-protocol:
+          const: 2
+    then:
+      properties:
+        xlnx,rx-frl-refclk-sel:
+          minimum: 0
+          maximum: 6
+        xlnx,rx-max-gt-line-rate:
+          enum: [3, 6, 8, 10, 12]
+      required:
+        - xlnx,rx-frl-refclk-sel
+        - xlnx,rx-max-gt-line-rate
 
 additionalProperties: false
 
-if:
-  properties:
-    compatible:
-      contains:
-        const: xlnx,v-hdmi-gt-controller-1.0
-
-then:
-  required:
-    - xlnx,gt-direction
-
 examples:
   - |
+   v-hdmi-phy1@80030000 {
+           clock-names = "vid_phy_axi4lite_aclk", "drpclk", "tmds_clock";
+           clocks = <&zynqmp_clk 71>, <&zynqmp_clk 71>, <&idt_241 1>;
+           compatible = "xlnx,v-hdmi-phy1-1.0";
+           interrupt-parent = <&gic>;
+           interrupts = <0 89 4>;
+           reg = <0x80030000 0x10000>;
+           xlnx,transceiver-type = <5>;
+           xlnx,tx-no-of-channels = <3>;
+           xlnx,rx-no-of-channels = <3>;
+           xlnx,rx-protocol = <1>;
+           xlnx,tx-protocol = <1>;
+           xlnx,tx-refclk-sel = <2>;
+           xlnx,rx-refclk-sel = <0>;
+           xlnx,tx-pll-selection = <6>;
+           xlnx,rx-pll-selection = <0>;
+           xlnx,nidru = <1>;
+           xlnx,nidru-refclk-sel = <4>;
+           xlnx,transceiver-width = <4>;
+           xlnx,input-pixels-per-clock = <4>;
+           xlnx,use-gt-ch4-hdmi = <0>;
+           xlnx,rx-clk-primitive = <0x0>;
+           xlnx,tx-clk-primitive = <0x0>;
+           vid-phy-rx-axi4s-ch0 {
+                   #phy-cells = <4>;
+           };
+           vid-phy-rx-axi4s-ch1 {
+                   #phy-cells = <4>;
+           };
+           vid-phy-rx-axi4s-ch2 {
+                   #phy-cells = <4>;
+           };
+           vid-phy-tx-axi4s-ch0 {
+                   #phy-cells = <4>;
+           };
+           vid-phy-tx-axi4s-ch1 {
+                   #phy-cells = <4>;
+           };
+           vid-phy-tx-axi4s-ch2 {
+                   #phy-cells = <4>;
+           };
+   };
    v-hdmi-phy1@80040000 {
-           clock-names = "axi4lite_aclk", "drpclk", "tmds_clock";
+           clock-names = "vid_phy_axi4lite_aclk", "drpclk", "tmds_clock";
            clocks = <&zynqmp_clk 71>, <&zynqmp_clk 71>, <&idt_241 1>;
            compatible = "xlnx,v-hdmi-phy1-1.0";
            interrupt-parent = <&gic>;
@@ -290,10 +385,33 @@ examples:
            xlnx,tx-max-gt-line-rate = <0xc>;
            xlnx,rx-clk-primitive = <0x0>;
            xlnx,tx-clk-primitive = <0x0>;
-           #phy-cells = <0>;
+           vid-phy-rx-axi4s-ch0 {
+                   #phy-cells = <4>;
+           };
+           vid-phy-rx-axi4s-ch1 {
+                   #phy-cells = <4>;
+           };
+           vid-phy-rx-axi4s-ch2 {
+                   #phy-cells = <4>;
+           };
+           vid-phy-rx-axi4s-ch3 {
+                   #phy-cells = <4>;
+           };
+           vid-phy-tx-axi4s-ch0 {
+                   #phy-cells = <4>;
+           };
+           vid-phy-tx-axi4s-ch1 {
+                   #phy-cells = <4>;
+           };
+           vid-phy-tx-axi4s-ch2 {
+                   #phy-cells = <4>;
+           };
+           vid-phy-tx-axi4s-ch3 {
+                   #phy-cells = <4>;
+           };
    };
    v-hdmi-gt@80050000 {
-           clock-names = "axi4lite_aclk", "drpclk", "tmds_clock";
+           clock-names = "vid_phy_axi4lite_aclk", "drpclk", "tmds_clock";
            clocks = <&versal_clk 65>, <&versal_clk 65>, <&idt_241 1>;
            compatible = "xlnx,v-hdmi-gt-controller-1.0";
            interrupt-parent = <&gic>;
@@ -321,6 +439,29 @@ examples:
            xlnx,tx-max-gt-line-rate = <0xc>;
            xlnx,rx-clk-primitive = <0x0>;
            xlnx,tx-clk-primitive = <0x0>;
-           #phy-cells = <0>;
+           vid-phy-rx-axi4s-ch0 {
+                   #phy-cells = <4>;
+           };
+           vid-phy-rx-axi4s-ch1 {
+                   #phy-cells = <4>;
+           };
+           vid-phy-rx-axi4s-ch2 {
+                   #phy-cells = <4>;
+           };
+           vid-phy-rx-axi4s-ch3 {
+                   #phy-cells = <4>;
+           };
+           vid-phy-tx-axi4s-ch0 {
+                   #phy-cells = <4>;
+           };
+           vid-phy-tx-axi4s-ch1 {
+                   #phy-cells = <4>;
+           };
+           vid-phy-tx-axi4s-ch2 {
+                   #phy-cells = <4>;
+           };
+           vid-phy-tx-axi4s-ch3 {
+                   #phy-cells = <4>;
+           };
    };
 ...
