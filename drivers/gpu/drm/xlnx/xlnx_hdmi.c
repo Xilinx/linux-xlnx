@@ -453,6 +453,9 @@ struct xlnx_hdmi_stream {
  * @base: device I/O memory for register access
  * @irq: hdmi subsystem irq
  * @phy: PHY handle for hdmi lanes
+ * @s_axi_cpu_clk: AXI4-Lite CPU clock
+ * @clks: clocks claimed for the IP configuration
+ * @num_clks: number of entries in @clks
  * @hdcp1x_keymgmt_base: HDCP Key management address
  * @hdmi_mutex: mutex to lock hdmi structure
  * @irq_lock: to lock irq handler
@@ -495,6 +498,9 @@ struct xlnx_hdmi {
 	void __iomem *base;
 	int irq;
 	struct phy *phy[HDMI_MAX_LANES];
+	struct clk *s_axi_cpu_clk;
+	struct clk_bulk_data *clks;
+	unsigned int num_clks;
 	struct regmap *hdcp1x_keymgmt_base;
 	/* to lock hdmi */
 	struct mutex hdmi_mutex;
@@ -541,7 +547,7 @@ enum xlnx_hdmitx_clks {
 	S_AXIS_VIDEO_ACLK = 4,
 };
 
-static struct clk_bulk_data hdmitx_clks[] = {
+static const struct clk_bulk_data hdmitx_clks[] = {
 	{ .id = "s_axi_cpu_aclk" },
 	{ .id = "link_clk" },
 	{ .id = "video_clk" },
@@ -1782,7 +1788,7 @@ static void xlnx_hdmi_set_frl_timer(struct xlnx_hdmi *hdmi, u32 timer_val)
 	u32 clk_cycles = 0;
 	unsigned long clkrate;
 
-	clkrate = clk_get_rate(hdmitx_clks[S_AXI_CPU_ACLK].clk);
+	clkrate = clk_get_rate(hdmi->s_axi_cpu_clk);
 	if (timer_val == TIMEOUT_10US)
 		clk_cycles = div_u64(clkrate, 100000);
 	else if (timer_val > 0)
@@ -3797,7 +3803,7 @@ static int xlnx_hdmi_initialize(struct xlnx_hdmi *hdmi)
 	xlnx_hdmi_aux_enable(hdmi);
 
 	/* ddc init */
-	clkrate = clk_get_rate(hdmitx_clks[S_AXI_CPU_ACLK].clk);
+	clkrate = clk_get_rate(hdmi->s_axi_cpu_clk);
 	val = div_u64(clkrate, HDMI_TX_DDC_CLKDIV * 2);
 	val = (val << HDMI_TX_DDC_CTRL_CLK_DIV_SHIFT) &
 		HDMI_TX_DDC_CTRL_CLK_DIV;
@@ -4152,7 +4158,7 @@ static int xlnx_hdmi_probe(struct platform_device *pdev)
 	struct resource *res;
 	struct device_node *vpss_node;
 	unsigned int index;
-	int ret, num_clks = ARRAY_SIZE(hdmitx_clks);
+	int ret;
 
 	hdmi = devm_kzalloc(&pdev->dev, sizeof(*hdmi), GFP_KERNEL);
 	if (!hdmi)
@@ -4179,16 +4185,27 @@ static int xlnx_hdmi_probe(struct platform_device *pdev)
 			return -EPROBE_DEFER;
 		}
 	}
-	if (hdmi->config.vid_interface)
-		num_clks--;
+	hdmi->clks = devm_kcalloc(hdmi->dev, ARRAY_SIZE(hdmitx_clks),
+				  sizeof(*hdmi->clks), GFP_KERNEL);
+	if (!hdmi->clks)
+		return -ENOMEM;
 
-	ret = clk_bulk_get(&pdev->dev, num_clks, hdmitx_clks);
+	hdmi->clks[hdmi->num_clks++] = hdmitx_clks[S_AXI_CPU_ACLK];
+	hdmi->clks[hdmi->num_clks++] = hdmitx_clks[LINK_CLK];
+	hdmi->clks[hdmi->num_clks++] = hdmitx_clks[VIDEO_CLK];
+	hdmi->clks[hdmi->num_clks++] = hdmitx_clks[FRL_CLK];
+	if (!hdmi->config.vid_interface)
+		hdmi->clks[hdmi->num_clks++] = hdmitx_clks[S_AXIS_VIDEO_ACLK];
+
+	ret = devm_clk_bulk_get(hdmi->dev, hdmi->num_clks, hdmi->clks);
 	if (ret)
 		return ret;
 
-	ret = clk_bulk_prepare_enable(num_clks, hdmitx_clks);
+	ret = clk_bulk_prepare_enable(hdmi->num_clks, hdmi->clks);
 	if (ret)
-		goto err_clk_put;
+		return ret;
+
+	hdmi->s_axi_cpu_clk = hdmi->clks[0].clk;
 
 	/* acquire hdmi phy lanes */
 	for (index = 0; index < HDMI_MAX_LANES; index++) {
@@ -4210,18 +4227,9 @@ static int xlnx_hdmi_probe(struct platform_device *pdev)
 		}
 	}
 
-	dev_dbg(hdmi->dev, "axi_cpu_aclk = %lu Hz\n",
-		clk_get_rate(hdmitx_clks[S_AXI_CPU_ACLK].clk));
-	dev_dbg(hdmi->dev, "link clk = %lu Hz\n",
-		clk_get_rate(hdmitx_clks[LINK_CLK].clk));
-	dev_dbg(hdmi->dev, "video clk = %lu Hz\n",
-		clk_get_rate(hdmitx_clks[VIDEO_CLK].clk));
-	dev_dbg(hdmi->dev, "frl clk = %lu Hz\n",
-		clk_get_rate(hdmitx_clks[FRL_CLK].clk));
-
-	if (!hdmi->config.vid_interface)
-		dev_dbg(hdmi->dev, "video aclk rate = %lu Hz\n",
-			clk_get_rate(hdmitx_clks[S_AXIS_VIDEO_ACLK].clk));
+	for (index = 0; index < hdmi->num_clks; index++)
+		dev_dbg(hdmi->dev, "%s = %lu Hz\n", hdmi->clks[index].id,
+			clk_get_rate(hdmi->clks[index].clk));
 
 	hdmi->irq = platform_get_irq(pdev, 0);
 	if (hdmi->irq < 0) {
@@ -4282,9 +4290,7 @@ error_hdcp:
 error_phy:
 	dev_dbg(hdmi->dev, "probe failed:: error_phy:\n");
 	xlnx_hdmi_exit_phy(hdmi);
-	clk_bulk_disable_unprepare(num_clks, hdmitx_clks);
-err_clk_put:
-	clk_bulk_put(num_clks, hdmitx_clks);
+	clk_bulk_disable_unprepare(hdmi->num_clks, hdmi->clks);
 
 	return ret;
 }
@@ -4292,10 +4298,6 @@ err_clk_put:
 static void xlnx_hdmi_remove(struct platform_device *pdev)
 {
 	struct xlnx_hdmi *hdmi = platform_get_drvdata(pdev);
-	int num_clks = ARRAY_SIZE(hdmitx_clks);
-
-	if (hdmi->config.vid_interface)
-		num_clks--;
 
 	cancel_delayed_work_sync(&hdmi->hpd_work);
 
@@ -4305,8 +4307,7 @@ static void xlnx_hdmi_remove(struct platform_device *pdev)
 	xlnx_hdmi_exit_phy(hdmi);
 	sysfs_remove_group(&pdev->dev.kobj, &xlnx_hdcp_key_attr_group);
 	component_del(&pdev->dev, &xlnx_hdmi_component_ops);
-	clk_bulk_disable_unprepare(num_clks, hdmitx_clks);
-	clk_bulk_put(num_clks, hdmitx_clks);
+	clk_bulk_disable_unprepare(hdmi->num_clks, hdmi->clks);
 }
 
 static const struct of_device_id xlnx_hdmi_of_match[] = {
