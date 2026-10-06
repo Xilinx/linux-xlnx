@@ -17,12 +17,14 @@
 #include <drm/drm_framebuffer.h>
 #include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_vblank.h>
+#include <linux/clk.h>
 #include <linux/component.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/dmaengine.h>
 #include <linux/dma-mapping.h>
 #include <linux/dma/xilinx_frmbuf.h>
+#include <linux/media-bus-format.h>
 #include <linux/of.h>
 #include <linux/of_dma.h>
 #include <linux/of_reserved_mem.h>
@@ -68,6 +70,10 @@ struct xlnx_dma_chan {
  * @callback_param: parameter for passing  to DMA callback function
  * @drm: core drm object
  * @fmt: drm color format
+ * @ppc: pixels per clock produced by the source video pipeline
+ * @output_bus_format: media bus format presented on the CRTC output
+ * @vid_clk: PL video (pixel) clock, or NULL if managed elsewhere
+ * @vid_clk_enabled: this instance holds a prepare/enable reference on @vid_clk
  * @vtc_bridge: vtc_bridge structure
  * @fid: field id
  * @fid_err_prop: field id error property
@@ -86,6 +92,10 @@ struct xlnx_pl_disp {
 	void *callback_param;
 	struct drm_device *drm;
 	u32 fmt;
+	u32 ppc;
+	u32 output_bus_format;
+	struct clk *vid_clk;
+	bool vid_clk_enabled;
 	struct xlnx_bridge *vtc_bridge;
 	u32 fid;
 	struct drm_property *fid_err_prop;
@@ -106,15 +116,17 @@ static inline struct xlnx_pl_disp *crtc_to_dma(struct xlnx_crtc *xlnx_crtc)
  * xlnx_pl_disp_complete - vblank handler
  * @param: parameter to vblank handler
  *
- * This function handles the vblank interrupt, and sends an event to
- * CRTC object.
+ * The frame buffer read DMA raises a start-of-frame interrupt every frame,
+ * so drive vblank directly from the DMA completion callback and send the
+ * pending event to the CRTC object.
  */
 static void xlnx_pl_disp_complete(void *param)
 {
 	struct xlnx_pl_disp *xlnx_pl_disp = param;
-	struct drm_device *drm = xlnx_pl_disp->drm;
 	struct xlnx_dma_chan *xlnx_dma_chan = xlnx_pl_disp->chan;
 	int ret;
+
+	drm_crtc_handle_vblank(&xlnx_pl_disp->xlnx_crtc.crtc);
 
 	/* Get fid err flag and fid out val */
 	ret = xilinx_xdma_get_fid_err_flag(xlnx_dma_chan->dma_chan,
@@ -126,8 +138,6 @@ static void xlnx_pl_disp_complete(void *param)
 				      &xlnx_pl_disp->fid_out_val);
 	if (ret)
 		dev_dbg(xlnx_pl_disp->dev, "failed to get fid_out info\n");
-
-	drm_handle_vblank(drm, 0);
 }
 
 /**
@@ -421,15 +431,58 @@ static void xlnx_pl_disp_crtc_atomic_enable(struct drm_crtc *crtc,
 	struct xlnx_crtc *xlnx_crtc = to_xlnx_crtc(crtc);
 	struct xlnx_pl_disp *xlnx_pl_disp = crtc_to_dma(xlnx_crtc);
 	struct videomode vm;
+	unsigned long pixel_clk;
+	int ret;
+
+	/*
+	 * Bring up the PL video (pixel) clock for this pipeline. The source
+	 * emits @ppc pixels per clock, and the clock wizard output is a /2
+	 * ("2x") clock, so the required rate matches AVPG's handling: for
+	 * ppc > 1 divide the pixel rate by ppc/2, otherwise double it. The
+	 * clock is optional; clk_* on NULL is a no-op for boards that manage
+	 * the video clock elsewhere.
+	 */
+	pixel_clk = adjusted_mode->clock * 1000;
+	ret = clk_prepare_enable(xlnx_pl_disp->vid_clk);
+	if (ret < 0) {
+		dev_err(xlnx_pl_disp->dev,
+			"failed to enable video clock: %d\n", ret);
+		return;
+	}
+	xlnx_pl_disp->vid_clk_enabled = true;
+	if (xlnx_pl_disp->ppc > 1)
+		pixel_clk /= xlnx_pl_disp->ppc >> 1;
+	else
+		pixel_clk *= 2;
+	ret = clk_set_rate(xlnx_pl_disp->vid_clk, pixel_clk);
+	if (ret < 0) {
+		dev_err(xlnx_pl_disp->dev,
+			"failed to set video clock rate of %lu: %d\n",
+			pixel_clk, ret);
+		clk_disable_unprepare(xlnx_pl_disp->vid_clk);
+		xlnx_pl_disp->vid_clk_enabled = false;
+		return;
+	}
 
 	if (xlnx_pl_disp->vtc_bridge) {
 		/* set video timing */
 		drm_display_mode_to_videomode(adjusted_mode, &vm);
+		/*
+		 * When the source pipeline emits more than one pixel per
+		 * clock the horizontal timing domain is expressed in clock
+		 * beats (pixels / ppc), so scale the VTC timing accordingly.
+		 * For ppc == 1 this is a no-op.
+		 */
+		if (xlnx_pl_disp->ppc > 1) {
+			vm.pixelclock /= xlnx_pl_disp->ppc;
+			vm.hactive /= xlnx_pl_disp->ppc;
+			vm.hfront_porch /= xlnx_pl_disp->ppc;
+			vm.hback_porch /= xlnx_pl_disp->ppc;
+			vm.hsync_len /= xlnx_pl_disp->ppc;
+		}
 		xlnx_bridge_set_timing(xlnx_pl_disp->vtc_bridge, &vm);
 		xlnx_bridge_enable(xlnx_pl_disp->vtc_bridge);
 	}
-
-	xlnx_pl_disp_plane_enable(crtc->primary);
 
 	/* Delay of 1 vblank interval for timing gen to be stable */
 	vrefresh = (adjusted_mode->clock * 1000) /
@@ -443,11 +496,14 @@ static void xlnx_pl_disp_crtc_atomic_disable(struct drm_crtc *crtc,
 	struct xlnx_crtc *xlnx_crtc = to_xlnx_crtc(crtc);
 	struct xlnx_pl_disp *xlnx_pl_disp = crtc_to_dma(xlnx_crtc);
 
-	xlnx_pl_disp_plane_disable(crtc->primary);
 	xlnx_pl_disp_clear_event(crtc);
 	drm_crtc_vblank_off(crtc);
 	if (xlnx_pl_disp->vtc_bridge)
 		xlnx_bridge_disable(xlnx_pl_disp->vtc_bridge);
+	if (xlnx_pl_disp->vid_clk_enabled) {
+		clk_disable_unprepare(xlnx_pl_disp->vid_clk);
+		xlnx_pl_disp->vid_clk_enabled = false;
+	}
 }
 
 static int xlnx_pl_disp_crtc_atomic_check(struct drm_crtc *crtc,
@@ -456,16 +512,49 @@ static int xlnx_pl_disp_crtc_atomic_check(struct drm_crtc *crtc,
 	return drm_atomic_add_affected_planes(state, crtc);
 }
 
+/**
+ * xlnx_pl_disp_crtc_select_output_bus_format - Select the CRTC output bus format
+ * @crtc: The CRTC to query
+ * @crtc_state: The new CRTC state
+ * @in_bus_fmts: List of media bus formats the encoder can accept
+ * @num_in_bus_fmts: Number of entries in @in_bus_fmts
+ *
+ * The downstream encoder (e.g. the DP MST controller) uses this to negotiate
+ * the pixels-per-clock the CRTC feeds it. Without this callback the DRM helper
+ * falls back to the first entry in @in_bus_fmts, which is the single-pixel
+ * format, and a multi-pixel source pipeline then starves the encoder. Return
+ * the format matching the source pipeline's pixels-per-clock instead.
+ *
+ * Return: the selected media bus format, or 0 if none is supported.
+ */
+static u32
+xlnx_pl_disp_crtc_select_output_bus_format(struct drm_crtc *crtc,
+					   struct drm_crtc_state *crtc_state,
+					   const u32 *in_bus_fmts,
+					   unsigned int num_in_bus_fmts)
+{
+	struct xlnx_crtc *xlnx_crtc = to_xlnx_crtc(crtc);
+	struct xlnx_pl_disp *xlnx_pl_disp = crtc_to_dma(xlnx_crtc);
+	unsigned int i;
+
+	for (i = 0; i < num_in_bus_fmts; ++i) {
+		if (in_bus_fmts[i] == xlnx_pl_disp->output_bus_format)
+			return xlnx_pl_disp->output_bus_format;
+	}
+
+	return 0;
+}
+
 static struct drm_crtc_helper_funcs xlnx_pl_disp_crtc_helper_funcs = {
 	.atomic_enable = xlnx_pl_disp_crtc_atomic_enable,
 	.atomic_disable = xlnx_pl_disp_crtc_atomic_disable,
 	.atomic_check = xlnx_pl_disp_crtc_atomic_check,
 	.atomic_begin = xlnx_pl_disp_crtc_atomic_begin,
+	.select_output_bus_format = xlnx_pl_disp_crtc_select_output_bus_format,
 };
 
 static void xlnx_pl_disp_crtc_destroy(struct drm_crtc *crtc)
 {
-	xlnx_pl_disp_plane_disable(crtc->primary);
 	drm_crtc_cleanup(crtc);
 }
 
@@ -474,11 +563,7 @@ static int xlnx_pl_disp_crtc_enable_vblank(struct drm_crtc *crtc)
 	struct xlnx_crtc *xlnx_crtc = to_xlnx_crtc(crtc);
 	struct xlnx_pl_disp *xlnx_pl_disp = crtc_to_dma(xlnx_crtc);
 
-	/*
-	 * Use the complete callback for vblank event assuming the dma engine
-	 * starts on the next descriptor upon this event. This may not be safe
-	 * assumption for some dma engines.
-	 */
+	/* Drive vblank from the frame buffer read DMA completion callback. */
 	xlnx_pl_disp->callback = xlnx_pl_disp_complete;
 	xlnx_pl_disp->callback_param = xlnx_pl_disp;
 
@@ -505,12 +590,37 @@ static struct drm_crtc_funcs xlnx_pl_disp_crtc_funcs = {
 	.disable_vblank = xlnx_pl_disp_crtc_disable_vblank,
 };
 
+/**
+ * xlnx_pl_disp_ppc_to_bus_format - Map pixels-per-clock to an RGB888 bus format
+ * @ppc: pixels per clock (1, 2 or 4)
+ *
+ * The source pipeline emits 8bpc RGB (matching the XR24 plane format) at @ppc
+ * pixels per clock. Map that to the corresponding DP controller input media
+ * bus format so the encoder is programmed for the same pixels-per-clock.
+ *
+ * Return: the matching media bus format, or 0 if @ppc is unsupported.
+ */
+static u32 xlnx_pl_disp_ppc_to_bus_format(u32 ppc)
+{
+	switch (ppc) {
+	case 1:
+		return MEDIA_BUS_FMT_RGB888_1X24;
+	case 2:
+		return MEDIA_BUS_FMT_RGB888_0_5X48;
+	case 4:
+		return MEDIA_BUS_FMT_RGB888_0_25X96;
+	default:
+		return 0;
+	}
+}
+
 static int xlnx_pl_disp_bind(struct device *dev, struct device *master,
 			     void *data)
 {
 	struct drm_device *drm = data;
 	struct xlnx_pl_disp *xlnx_pl_disp = dev_get_drvdata(dev);
 	struct drm_mode_object *obj = &xlnx_pl_disp->plane.base;
+	struct device_node *fb_node;
 	int ret;
 	u32 *fmts = NULL;
 	unsigned int num_fmts = 0;
@@ -543,6 +653,23 @@ static int xlnx_pl_disp_bind(struct device *dev, struct device *master,
 	xlnx_pl_disp->xlnx_crtc.get_align = &xlnx_pl_disp_get_align;
 	xlnx_pl_disp->drm = drm;
 
+	/*
+	 * Determine the pixels-per-clock the source video pipeline emits by
+	 * querying the DMA (frame buffer) IP node. This drives both the VTC
+	 * timing scaling and the CRTC output bus format so the downstream
+	 * encoder is programmed for the same pixels-per-clock.
+	 */
+	xlnx_pl_disp->ppc = 1;
+	fb_node = xlnx_pl_disp->chan->dma_chan->device->dev->of_node;
+	if (fb_node)
+		of_property_read_u32(fb_node, "xlnx,pixels-per-clock",
+				     &xlnx_pl_disp->ppc);
+	xlnx_pl_disp->output_bus_format =
+		xlnx_pl_disp_ppc_to_bus_format(xlnx_pl_disp->ppc);
+	if (!xlnx_pl_disp->output_bus_format)
+		dev_warn(dev, "unsupported ppc %u, output bus format unset\n",
+			 xlnx_pl_disp->ppc);
+
 	xlnx_pl_disp->fid_err_prop = drm_property_create_bool(xlnx_pl_disp->drm,
 							      0, "fid_err");
 	xlnx_pl_disp->fid_out_prop = drm_property_create_bool(xlnx_pl_disp->drm,
@@ -550,9 +677,23 @@ static int xlnx_pl_disp_bind(struct device *dev, struct device *master,
 	drm_object_attach_property(obj, xlnx_pl_disp->fid_err_prop, 0);
 	drm_object_attach_property(obj, xlnx_pl_disp->fid_out_prop, 0);
 
+	ret = xlnx_crtc_create_stream_property(&xlnx_pl_disp->xlnx_crtc.crtc,
+					       dev->of_node);
+	if (ret) {
+		dev_err(dev, "failed to create stream property: %d\n", ret);
+		goto err_properties;
+	}
+
 	xlnx_crtc_register(xlnx_pl_disp->drm, &xlnx_pl_disp->xlnx_crtc);
 
 	return 0;
+
+err_properties:
+	drm_property_destroy(xlnx_pl_disp->drm, xlnx_pl_disp->fid_out_prop);
+	drm_property_destroy(xlnx_pl_disp->drm, xlnx_pl_disp->fid_err_prop);
+	drm_crtc_cleanup(&xlnx_pl_disp->xlnx_crtc.crtc);
+	drm_plane_cleanup(&xlnx_pl_disp->plane);
+	return ret;
 }
 
 static void xlnx_pl_disp_unbind(struct device *dev, struct device *master,
@@ -614,6 +755,18 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 		goto err_dma;
 	}
 
+	/*
+	 * Optional PL video (pixel) clock. When present the CRTC enables it and
+	 * sets its rate per mode; when absent (NULL) the clock is assumed to be
+	 * managed elsewhere and the clk_* calls become no-ops.
+	 */
+	xlnx_pl_disp->vid_clk = devm_clk_get_optional(dev, NULL);
+	if (IS_ERR(xlnx_pl_disp->vid_clk)) {
+		ret = PTR_ERR(xlnx_pl_disp->vid_clk);
+		dev_err(dev, "failed to get video clock: %d\n", ret);
+		goto err_dma;
+	}
+
 	/* VTC Bridge support */
 	vtc_node = of_parse_phandle(dev->of_node, "xlnx,bridge", 0);
 	if (vtc_node) {
@@ -647,6 +800,7 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 	xlnx_pl_disp->master = xlnx_drm_pipeline_init(pdev);
 	if (IS_ERR(xlnx_pl_disp->master)) {
 		ret = PTR_ERR(xlnx_pl_disp->master);
+		xlnx_pl_disp->master = NULL;
 		dev_err(dev, "failed to initialize the drm pipeline\n");
 		goto err_component;
 	}
@@ -671,7 +825,8 @@ static void xlnx_pl_disp_remove(struct platform_device *pdev)
 
 	if (xlnx_pl_disp->vtc_bridge)
 		of_xlnx_bridge_put(xlnx_pl_disp->vtc_bridge);
-	xlnx_drm_pipeline_exit(xlnx_pl_disp->master);
+	if (xlnx_pl_disp->master)
+		xlnx_drm_pipeline_exit(xlnx_pl_disp->master);
 	component_del(&pdev->dev, &xlnx_pl_disp_component_ops);
 
 	/* Make sure the channel is terminated before release */
