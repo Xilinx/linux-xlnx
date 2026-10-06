@@ -1338,8 +1338,10 @@ static void v4l_fill_fmtdesc(struct v4l2_fmtdesc *fmt)
 	case V4L2_PIX_FMT_Y4:		descr = "4-bit Greyscale"; break;
 	case V4L2_PIX_FMT_Y6:		descr = "6-bit Greyscale"; break;
 	case V4L2_PIX_FMT_Y10:		descr = "10-bit Greyscale"; break;
+	case V4L2_PIX_FMT_XY10:		descr = "10-bit Greyscale 2-10-10-10"; break;
 	case V4L2_PIX_FMT_Y12:		descr = "12-bit Greyscale"; break;
 	case V4L2_PIX_FMT_Y012:		descr = "12-bit Greyscale (bits 15-4)"; break;
+	case V4L2_PIX_FMT_XY12:		descr = "12-bit Greyscale 12-12-12-12"; break;
 	case V4L2_PIX_FMT_Y14:		descr = "14-bit Greyscale"; break;
 	case V4L2_PIX_FMT_Y16:		descr = "16-bit Greyscale"; break;
 	case V4L2_PIX_FMT_Y16_BE:	descr = "16-bit Greyscale BE"; break;
