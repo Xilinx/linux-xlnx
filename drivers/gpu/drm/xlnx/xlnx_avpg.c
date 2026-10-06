@@ -111,6 +111,7 @@ static const struct drm_prop_enum_list xlnx_avpg_pattern_list[] = {
  * @pixels_per_clock: pixels per clock
  * @bits_per_component: bits per color component
  * @pattern: video pattern to generate
+ * @legacy_mode: legacy (xlnx-drm) mode flag
  * @timer: vsync timer
  * @period: vsync timer period
  */
@@ -136,6 +137,7 @@ struct xlnx_avpg {
 	u32				pixels_per_clock;
 	enum xlnx_avpg_bpc		bits_per_component;
 	enum xlnx_avpg_pattern		pattern;
+	bool				legacy_mode;
 	/* Poor man's VBLANK */
 	struct hrtimer			timer;
 	ktime_t				period;
@@ -784,7 +786,13 @@ static int xlnx_avpg_bind(struct device *dev, struct device *master,
 		goto err_encoder;
 	}
 
-	xlnx_crtc_register(drm, &avpg->xlnx_crtc);
+	/*
+	 * The legacy xlnx-drm master relies on the CRTC helper list to probe
+	 * pipeline capabilities. The xlnx-pl-drm aggregate master does not use
+	 * that helper, so only register when running under the legacy master.
+	 */
+	if (avpg->legacy_mode)
+		xlnx_crtc_register(drm, &avpg->xlnx_crtc);
 
 	return 0;
 
@@ -808,7 +816,8 @@ static void xlnx_avpg_unbind(struct device *dev, struct device *master,
 {
 	struct xlnx_avpg *avpg = dev_get_drvdata(dev);
 
-	xlnx_crtc_unregister(avpg->drm, &avpg->xlnx_crtc);
+	if (avpg->legacy_mode)
+		xlnx_crtc_unregister(avpg->drm, &avpg->xlnx_crtc);
 	drm_encoder_cleanup(&avpg->encoder);
 	drm_crtc_cleanup(&avpg->xlnx_crtc.crtc);
 	drm_plane_cleanup(&avpg->plane);
@@ -975,9 +984,25 @@ static int xlnx_avpg_probe(struct platform_device *pdev)
 		}
 	}
 
+	/*
+	 * When this CRTC is a child of an "xlnx,pl-drm-1.0" aggregate node the
+	 * parent frame driver owns the DRM device and drives the component
+	 * master. In that case there is nothing to elect here: just expose the
+	 * component and let the aggregate master bind the whole pipeline once.
+	 *
+	 * Set legacy_mode before component_add() as that call may synchronously
+	 * bind a waiting legacy master, and bind/unbind must observe the same
+	 * mode to stay consistent.
+	 */
+	avpg->legacy_mode = !of_device_is_compatible(node->parent,
+						     "xlnx,pl-drm-1.0");
+
 	ret = component_add(&pdev->dev, &xlnx_avpg_component_ops);
 	if (ret)
 		goto err_bridge;
+
+	if (!avpg->legacy_mode)
+		return 0;
 
 	master = xlnx_drm_get_next_master(NULL);
 
