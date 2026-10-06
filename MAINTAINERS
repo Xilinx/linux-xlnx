@@ -1233,6 +1233,13 @@ F:	Documentation/networking/device_drivers/ethernet/pensando/ionic_rdma.rst
 F:	drivers/infiniband/hw/ionic/
 F:	include/uapi/rdma/ionic-abi.h
 
+AMD PL DRM DRIVER
+M:	Anatoliy Klymenko <anatoliy.klymenko@amd.com>
+L:	dri-devel@lists.freedesktop.org
+S:	Supported
+F:	Documentation/devicetree/bindings/display/xlnx/xlnx,pl-drm.yaml
+F:	drivers/gpu/drm/xlnx/xlnx_pl_drm.c
+
 AMD PMC DRIVER
 M:	Shyam Sundar S K <Shyam-sundar.S-k@amd.com>
 L:	platform-driver-x86@vger.kernel.org

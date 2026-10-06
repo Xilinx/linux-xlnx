@@ -144,6 +144,17 @@ config DRM_XLNX_PL_DISP
 	  choose this option if your display pipeline needs one
 	  crtc and plane object with single DMA connected.
 
+config DRM_XLNX_PL_DRM
+	tristate "Xilinx PL DRM/KMS Driver"
+	depends on DRM && OF
+	select DRM_KMS_HELPER
+	select DRM_GEM_DMA_HELPER
+	help
+	  DRM/KMS aggregate frame driver for Xilinx programmable-logic (PL)
+	  display pipelines. It combines multiple PL video processing components
+	  into a single DRM device. Choose this option if you have a complex PL
+	  display pipeline that includes multiple PL video processing IPs.
+
 config DRM_XLNX_SDI
 	tristate "Xilinx DRM SDI Subsystem Driver"
 	depends on DRM_XLNX
