@@ -195,6 +195,8 @@ zynqmp_dpsub_plane_atomic_async_update(struct drm_plane *plane,
 {
 	struct drm_plane_state *new_state = drm_atomic_get_new_plane_state(state, plane);
 
+	zynqmp_dpsub_plane_atomic_update(plane, state);
+
 	/* Update the current state with new configurations */
 	swap(plane->state->fb, new_state->fb);
 	plane->state->crtc = new_state->crtc;
@@ -206,9 +208,6 @@ zynqmp_dpsub_plane_atomic_async_update(struct drm_plane *plane,
 	plane->state->src_y = new_state->src_y;
 	plane->state->src_w = new_state->src_w;
 	plane->state->src_h = new_state->src_h;
-	plane->state->state = new_state->state;
-
-	zynqmp_dpsub_plane_atomic_update(plane, state);
 }
 
 static const struct drm_plane_helper_funcs zynqmp_dpsub_plane_helper_funcs = {
