@@ -10,12 +10,16 @@
 
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
+#include <drm/drm_bridge.h>
+#include <drm/drm_bridge_connector.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
+#include <drm/drm_encoder.h>
 #include <drm/drm_fb_dma_helper.h>
 #include <drm/drm_fourcc.h>
 #include <drm/drm_framebuffer.h>
 #include <drm/drm_gem_dma_helper.h>
+#include <drm/drm_simple_kms_helper.h>
 #include <drm/drm_vblank.h>
 #include <linux/clk.h>
 #include <linux/component.h>
@@ -24,9 +28,11 @@
 #include <linux/dmaengine.h>
 #include <linux/dma-mapping.h>
 #include <linux/dma/xilinx_frmbuf.h>
+#include <linux/gpio/consumer.h>
 #include <linux/media-bus-format.h>
 #include <linux/of.h>
 #include <linux/of_dma.h>
+#include <linux/of_graph.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/platform_device.h>
 #include <video/videomode.h>
@@ -74,12 +80,19 @@ struct xlnx_dma_chan {
  * @output_bus_format: media bus format presented on the CRTC output
  * @vid_clk: PL video (pixel) clock, or NULL if managed elsewhere
  * @vid_clk_enabled: this instance holds a prepare/enable reference on @vid_clk
+ * @gpio_en_live: live-input (stream converter) clock-enable GPIO, or NULL
+ * @gpio_en_vtc: VTC clock-enable GPIO, or NULL
  * @vtc_bridge: vtc_bridge structure
+ * @encoder: DRM encoder driving the downstream bridge chain
+ * @connector: DRM connector created from the downstream bridge chain
+ * @bridge: downstream display bridge (mmi-dc bypass bridge)
+ * @primary: this instance owns the downstream encoder/bridge/connector
  * @fid: field id
  * @fid_err_prop: field id error property
  * @fid_err_val: field id error value
  * @fid_out_prop: field id out property
  * @fid_out_val: field out value
+ * @legacy_mode: legacy (xlnx-drm) mode flag
  */
 struct xlnx_pl_disp {
 	struct device *dev;
@@ -96,12 +109,19 @@ struct xlnx_pl_disp {
 	u32 output_bus_format;
 	struct clk *vid_clk;
 	bool vid_clk_enabled;
+	struct gpio_desc *gpio_en_live;
+	struct gpio_desc *gpio_en_vtc;
 	struct xlnx_bridge *vtc_bridge;
+	struct drm_encoder encoder;
+	struct drm_connector *connector;
+	struct drm_bridge *bridge;
+	bool primary;
 	u32 fid;
 	struct drm_property *fid_err_prop;
 	u32 fid_err_val;
 	struct drm_property *fid_out_prop;
 	u32 fid_out_val;
+	bool legacy_mode;
 };
 
 /*
@@ -250,6 +270,10 @@ static void xlnx_pl_disp_plane_enable(struct drm_plane *plane)
 static void xlnx_pl_disp_plane_atomic_disable(struct drm_plane *plane,
 					      struct drm_atomic_state *state)
 {
+	struct xlnx_pl_disp *xlnx_pl_disp = plane_to_dma(plane);
+
+	/* Gate the live-input converter before the stream stops. */
+	gpiod_set_value_cansleep(xlnx_pl_disp->gpio_en_live, 0);
 	xlnx_pl_disp_plane_disable(plane);
 }
 
@@ -333,6 +357,16 @@ static void xlnx_pl_disp_plane_atomic_update(struct drm_plane *plane,
 			       xlnx_pl_disp->plane.state->fb->format->format);
 	/* apply the new fb addr and enable */
 	xlnx_pl_disp_plane_enable(plane);
+
+	/*
+	 * Release the live-input (stream converter) clock gate only now that the
+	 * frmbuf DMA has been issued and is pushing pixels. The AXI4-Stream to
+	 * Video Out converter locks onto an already-live stream; asserting this
+	 * earlier (e.g. in the CRTC enable, before the plane update kicks the
+	 * DMA) lets the converter start against an empty stream and latch into a
+	 * stalled under-run. Mirrors the ordering the AVPG source uses.
+	 */
+	gpiod_set_value_cansleep(xlnx_pl_disp->gpio_en_live, 1);
 }
 
 static int
@@ -431,7 +465,7 @@ static void xlnx_pl_disp_crtc_atomic_enable(struct drm_crtc *crtc,
 	struct xlnx_crtc *xlnx_crtc = to_xlnx_crtc(crtc);
 	struct xlnx_pl_disp *xlnx_pl_disp = crtc_to_dma(xlnx_crtc);
 	struct videomode vm;
-	unsigned long pixel_clk;
+	unsigned long pixel_clk, cur_rate;
 	int ret;
 
 	/*
@@ -454,17 +488,37 @@ static void xlnx_pl_disp_crtc_atomic_enable(struct drm_crtc *crtc,
 		pixel_clk /= xlnx_pl_disp->ppc >> 1;
 	else
 		pixel_clk *= 2;
-	ret = clk_set_rate(xlnx_pl_disp->vid_clk, pixel_clk);
-	if (ret < 0) {
-		dev_err(xlnx_pl_disp->dev,
-			"failed to set video clock rate of %lu: %d\n",
-			pixel_clk, ret);
-		clk_disable_unprepare(xlnx_pl_disp->vid_clk);
-		xlnx_pl_disp->vid_clk_enabled = false;
-		return;
+	/*
+	 * Several pipelines share a single clocking-wizard VCO. Calling
+	 * clk_set_rate() triggers a dynamic reconfiguration that re-locks the
+	 * whole wizard, momentarily dropping its "locked" output and resetting
+	 * the timing generators of the other, already-running pipelines. Only
+	 * reprogram the rate when the wizard is not already producing it, so a
+	 * second display coming up does not blank the first.
+	 *
+	 * Compare against the current *actual* rate (clk_get_rate()) with a
+	 * small tolerance rather than clk_round_rate(): on the Xilinx clocking
+	 * wizard the round/determine path and the recalc/readback path round
+	 * differently, so clk_round_rate() rarely matches clk_get_rate() to the
+	 * Hz even when the hardware is already at the requested rate, which
+	 * would defeat the guard and reconfigure the wizard on every modeset.
+	 */
+	cur_rate = clk_get_rate(xlnx_pl_disp->vid_clk);
+	if (abs((long)(cur_rate - pixel_clk)) > pixel_clk / 1000) {
+		ret = clk_set_rate(xlnx_pl_disp->vid_clk, pixel_clk);
+		if (ret < 0) {
+			dev_err(xlnx_pl_disp->dev,
+				"failed to set video clock rate of %lu: %d\n",
+				pixel_clk, ret);
+			clk_disable_unprepare(xlnx_pl_disp->vid_clk);
+			xlnx_pl_disp->vid_clk_enabled = false;
+			return;
+		}
 	}
 
 	if (xlnx_pl_disp->vtc_bridge) {
+		/* Ungate the VTC clock before programming/enabling it. */
+		gpiod_set_value_cansleep(xlnx_pl_disp->gpio_en_vtc, 1);
 		/* set video timing */
 		drm_display_mode_to_videomode(adjusted_mode, &vm);
 		/*
@@ -500,6 +554,8 @@ static void xlnx_pl_disp_crtc_atomic_disable(struct drm_crtc *crtc,
 	drm_crtc_vblank_off(crtc);
 	if (xlnx_pl_disp->vtc_bridge)
 		xlnx_bridge_disable(xlnx_pl_disp->vtc_bridge);
+	/* Gate the VTC clock after the VTC has been disabled. */
+	gpiod_set_value_cansleep(xlnx_pl_disp->gpio_en_vtc, 0);
 	if (xlnx_pl_disp->vid_clk_enabled) {
 		clk_disable_unprepare(xlnx_pl_disp->vid_clk);
 		xlnx_pl_disp->vid_clk_enabled = false;
@@ -614,6 +670,76 @@ static u32 xlnx_pl_disp_ppc_to_bus_format(u32 ppc)
 	}
 }
 
+/**
+ * xlnx_pl_disp_remote_port - Resolve the downstream port this CRTC feeds
+ * @dev: The pl-disp device
+ *
+ * The output endpoint 0 of this CRTC connects to a live-video input port of
+ * the MMI DC. Parse the remote port number so the pipeline can elect a single
+ * CRTC (the one wired to DC port 0) to own the downstream encoder/bridge chain.
+ *
+ * Return: the remote port number on success or a negative error code.
+ */
+static int xlnx_pl_disp_remote_port(struct device *dev)
+{
+	struct device_node *endpoint, *remote;
+	struct of_endpoint ep;
+	int ret;
+
+	endpoint = of_graph_get_endpoint_by_regs(dev->of_node, 0, 0);
+	if (!endpoint)
+		return -ENODEV;
+
+	remote = of_graph_get_remote_endpoint(endpoint);
+	of_node_put(endpoint);
+	if (!remote)
+		return -ENODEV;
+
+	ret = of_graph_parse_endpoint(remote, &ep);
+	of_node_put(remote);
+	if (ret < 0)
+		return ret;
+
+	return ep.port;
+}
+
+/**
+ * xlnx_pl_disp_find_bridge - Find the downstream display bridge
+ * @dev: The pl-disp device
+ *
+ * Resolve the bridge connected to output endpoint 0 (the MMI DC bypass
+ * bridge). Prefer the generic OF graph lookup through devm_drm_of_get_bridge(),
+ * which covers the standard case where the remote bridge is registered against
+ * its device node. If that lookup defers probe, retry against the exact remote
+ * port node, as some Xilinx DRM bridges register themselves against a DT port
+ * node instead.
+ *
+ * Return: A valid DRM bridge pointer on success or an ERR_PTR() on failure.
+ */
+static struct drm_bridge *xlnx_pl_disp_find_bridge(struct device *dev)
+{
+	struct device_node *endpoint, *port;
+	struct drm_bridge *bridge;
+
+	bridge = devm_drm_of_get_bridge(dev, dev->of_node, 0, 0);
+	if (!IS_ERR(bridge) || PTR_ERR(bridge) != -EPROBE_DEFER)
+		return bridge;
+
+	endpoint = of_graph_get_endpoint_by_regs(dev->of_node, 0, 0);
+	if (!endpoint)
+		return bridge;
+
+	port = of_graph_get_remote_port(endpoint);
+	of_node_put(endpoint);
+	if (!port)
+		return bridge;
+
+	bridge = of_drm_find_bridge(port);
+	of_node_put(port);
+
+	return bridge ? bridge : ERR_PTR(-EPROBE_DEFER);
+}
+
 static int xlnx_pl_disp_bind(struct device *dev, struct device *master,
 			     void *data)
 {
@@ -684,10 +810,49 @@ static int xlnx_pl_disp_bind(struct device *dev, struct device *master,
 		goto err_properties;
 	}
 
-	xlnx_crtc_register(xlnx_pl_disp->drm, &xlnx_pl_disp->xlnx_crtc);
+	if (xlnx_pl_disp->primary) {
+		struct drm_encoder *encoder = &xlnx_pl_disp->encoder;
+		struct drm_connector *connector;
+
+		encoder->possible_crtcs =
+			drm_crtc_mask(&xlnx_pl_disp->xlnx_crtc.crtc);
+		ret = drm_simple_encoder_init(drm, encoder,
+					      DRM_MODE_ENCODER_NONE);
+		if (ret) {
+			dev_err(dev, "failed to initialize encoder: %d\n", ret);
+			goto err_properties;
+		}
+
+		ret = drm_bridge_attach(encoder, xlnx_pl_disp->bridge, NULL,
+					DRM_BRIDGE_ATTACH_NO_CONNECTOR);
+		if (ret) {
+			dev_err(dev, "failed to attach bridge: %d\n", ret);
+			goto err_encoder;
+		}
+
+		connector = drm_bridge_connector_init(drm, encoder);
+		if (IS_ERR(connector)) {
+			ret = PTR_ERR(connector);
+			dev_err(dev, "failed to create connector: %d\n", ret);
+			goto err_encoder;
+		}
+
+		ret = drm_connector_attach_encoder(connector, encoder);
+		if (ret) {
+			dev_err(dev, "failed to attach connector: %d\n", ret);
+			goto err_encoder;
+		}
+
+		xlnx_pl_disp->connector = connector;
+	}
+
+	if (xlnx_pl_disp->legacy_mode)
+		xlnx_crtc_register(xlnx_pl_disp->drm, &xlnx_pl_disp->xlnx_crtc);
 
 	return 0;
 
+err_encoder:
+	drm_encoder_cleanup(&xlnx_pl_disp->encoder);
 err_properties:
 	drm_property_destroy(xlnx_pl_disp->drm, xlnx_pl_disp->fid_out_prop);
 	drm_property_destroy(xlnx_pl_disp->drm, xlnx_pl_disp->fid_err_prop);
@@ -703,7 +868,10 @@ static void xlnx_pl_disp_unbind(struct device *dev, struct device *master,
 
 	drm_property_destroy(xlnx_pl_disp->drm, xlnx_pl_disp->fid_out_prop);
 	drm_property_destroy(xlnx_pl_disp->drm, xlnx_pl_disp->fid_err_prop);
-	xlnx_crtc_unregister(xlnx_pl_disp->drm, &xlnx_pl_disp->xlnx_crtc);
+	if (xlnx_pl_disp->legacy_mode)
+		xlnx_crtc_unregister(xlnx_pl_disp->drm, &xlnx_pl_disp->xlnx_crtc);
+	if (xlnx_pl_disp->primary)
+		drm_encoder_cleanup(&xlnx_pl_disp->encoder);
 	drm_plane_cleanup(&xlnx_pl_disp->plane);
 	drm_crtc_cleanup(&xlnx_pl_disp->xlnx_crtc.crtc);
 }
@@ -767,6 +935,43 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 		goto err_dma;
 	}
 
+	/*
+	 * Optional "clk-enable" GPIOs gating the live-input stream converter
+	 * (index 0) and the VTC (index 1), mirroring the AVPG source. When
+	 * present the CRTC ungates the VTC around VTC enable and the plane
+	 * ungates the live-input converter only after the frmbuf DMA is live,
+	 * so the converter locks onto an already-running stream. Absent on
+	 * boards where the clocks are always enabled.
+	 */
+	xlnx_pl_disp->gpio_en_live = devm_gpiod_get_index_optional(dev,
+								   "clk-enable",
+								   0, GPIOD_ASIS);
+	if (IS_ERR(xlnx_pl_disp->gpio_en_live)) {
+		ret = PTR_ERR(xlnx_pl_disp->gpio_en_live);
+		dev_err(dev, "failed to get live-input enable gpio: %d\n", ret);
+		goto err_dma;
+	}
+	ret = gpiod_direction_output(xlnx_pl_disp->gpio_en_live, 0);
+	if (xlnx_pl_disp->gpio_en_live && ret < 0) {
+		dev_err(dev, "failed to set live-input gpio direction: %d\n",
+			ret);
+		goto err_dma;
+	}
+
+	xlnx_pl_disp->gpio_en_vtc = devm_gpiod_get_index_optional(dev,
+								  "clk-enable",
+								  1, GPIOD_ASIS);
+	if (IS_ERR(xlnx_pl_disp->gpio_en_vtc)) {
+		ret = PTR_ERR(xlnx_pl_disp->gpio_en_vtc);
+		dev_err(dev, "failed to get vtc enable gpio: %d\n", ret);
+		goto err_dma;
+	}
+	ret = gpiod_direction_output(xlnx_pl_disp->gpio_en_vtc, 0);
+	if (xlnx_pl_disp->gpio_en_vtc && ret < 0) {
+		dev_err(dev, "failed to set vtc gpio direction: %d\n", ret);
+		goto err_dma;
+	}
+
 	/* VTC Bridge support */
 	vtc_node = of_parse_phandle(dev->of_node, "xlnx,bridge", 0);
 	if (vtc_node) {
@@ -793,9 +998,55 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 	xlnx_pl_disp->dev = dev;
 	platform_set_drvdata(pdev, xlnx_pl_disp);
 
+	/*
+	 * When this CRTC is a child of an "xlnx,pl-drm-1.0" aggregate node the
+	 * parent frame driver owns the DRM device and drives the component
+	 * master. In that case there is nothing to elect here: just expose the
+	 * component and let the aggregate master bind the whole pipeline once.
+	 *
+	 * Set legacy_mode before component_add() as that call may synchronously
+	 * bind a waiting legacy master, and bind/unbind must observe the same
+	 * mode to stay consistent.
+	 */
+	xlnx_pl_disp->legacy_mode =
+		!of_device_is_compatible(dev->of_node->parent,
+					 "xlnx,pl-drm-1.0");
+
+	/*
+	 * Downstream bridge election only applies to the xlnx-pl aggregate
+	 * topology, where CRTCs feed the DC live-input ports and the CRTC wired
+	 * to port 0 owns the encoder/bridge chain (the DC bypass bridge into
+	 * the DisplayPort TX). Legacy PL display pipelines (e.g. SDI/HDMI)
+	 * register components rather than DRM bridges and may legitimately use
+	 * remote port 0, so skip the bridge lookup for them to keep the legacy
+	 * component path available.
+	 */
+	if (!xlnx_pl_disp->legacy_mode) {
+		ret = xlnx_pl_disp_remote_port(dev);
+		if (ret == 0) {
+			struct drm_bridge *bridge =
+				xlnx_pl_disp_find_bridge(dev);
+
+			if (IS_ERR(bridge)) {
+				ret = dev_err_probe(dev, PTR_ERR(bridge),
+						    "failed to find downstream bridge\n");
+				goto err_dma;
+			}
+			xlnx_pl_disp->bridge = bridge;
+			xlnx_pl_disp->primary = true;
+		} else if (ret < 0) {
+			dev_dbg(dev, "failed to resolve remote port: %d\n", ret);
+		}
+	}
+
 	ret = component_add(dev, &xlnx_pl_disp_component_ops);
 	if (ret)
 		goto err_dma;
+
+	if (!xlnx_pl_disp->legacy_mode) {
+		dev_info(&pdev->dev, "Xlnx PL display driver probed\n");
+		return 0;
+	}
 
 	xlnx_pl_disp->master = xlnx_drm_pipeline_init(pdev);
 	if (IS_ERR(xlnx_pl_disp->master)) {
@@ -812,6 +1063,8 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 err_component:
 	component_del(dev, &xlnx_pl_disp_component_ops);
 err_dma:
+	if (xlnx_pl_disp->vtc_bridge)
+		of_xlnx_bridge_put(xlnx_pl_disp->vtc_bridge);
 	of_reserved_mem_device_release(&pdev->dev);
 	dma_release_channel(xlnx_pl_disp->chan->dma_chan);
 
