@@ -21,6 +21,10 @@ properties:
   compatible:
     const: xlnx,pl-disp
 
+  clocks:
+    description: PL video clock
+    maxItems: 1
+
   dmas:
     maxItems: 1
 
