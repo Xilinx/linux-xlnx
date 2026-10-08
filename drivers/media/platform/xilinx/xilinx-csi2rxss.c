@@ -548,8 +548,9 @@ exit_start_stream:
 		xcsi2rxss_clr(state, XCSI_IER_OFFSET, XCSI_IER_INTR_MASK);
 		xcsi2rxss_clr(state, XCSI_GIER_OFFSET, XCSI_GIER_GIE);
 
-		/* disable core */
-		xcsi2rxss_clr(state, XCSI_CCR_OFFSET, XCSI_CCR_ENABLE);
+		/* disable core only if the PHY can be re-inited (see stop) */
+		if (state->rst_gpio)
+			xcsi2rxss_clr(state, XCSI_CCR_OFFSET, XCSI_CCR_ENABLE);
 		state->streaming = false;
 	}
 
@@ -562,8 +563,13 @@ static void xcsi2rxss_stop_stream(struct xcsi2rxss_state *state)
 	xcsi2rxss_clr(state, XCSI_IER_OFFSET, XCSI_IER_INTR_MASK);
 	xcsi2rxss_clr(state, XCSI_GIER_OFFSET, XCSI_GIER_GIE);
 
-	/* disable core */
-	xcsi2rxss_clr(state, XCSI_CCR_OFFSET, XCSI_CCR_ENABLE);
+	/*
+	 * Clear core enable only when a video-reset GPIO can re-init the PHY.
+	 * Without it, clearing enable drops the integrated D-PHY init_done and
+	 * the next soft reset hangs on CSR.RIPCD.
+	 */
+	if (state->rst_gpio)
+		xcsi2rxss_clr(state, XCSI_CCR_OFFSET, XCSI_CCR_ENABLE);
 	state->streaming = false;
 }
 
