@@ -631,13 +631,13 @@ static irqreturn_t xcsi2rxss_irq_handler(int irq, void *data)
 		xcsi2rxss_clr(state, XCSI_IER_OFFSET, XCSI_IER_INTR_MASK);
 		xcsi2rxss_clr(state, XCSI_GIER_OFFSET, XCSI_GIER_GIE);
 
-		/* disable core */
-		xcsi2rxss_clr(state, XCSI_CCR_OFFSET, XCSI_CCR_ENABLE);
-
 		/*
-		 * The IP needs to be hard reset before it can be used now.
-		 * This will be done in streamoff.
+		 * Disable the core only if the streamoff hard reset can
+		 * re-init the PHY. Without a video-reset GPIO, keep it enabled
+		 * so the per-start soft reset recovers the backpressure.
 		 */
+		if (state->rst_gpio)
+			xcsi2rxss_clr(state, XCSI_CCR_OFFSET, XCSI_CCR_ENABLE);
 
 		/*
 		 * TODO: Notify the whole pipeline with v4l2_subdev_notify() to
