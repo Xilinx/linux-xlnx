@@ -260,6 +260,8 @@ struct xlnx_sdi_props {
  * @is_hfr: Indicates HFR video streaming
  * @config_bpc: Desired bits-per-component setting (enum color_depths)
  * @stream_bpc: Active bits-per-component applied to the SDI stream
+ * @cur_clk: Pixel clock of the mode last programmed, in kHz
+ * @cur_stream_bpc: Value of @stream_bpc last programmed
  * @dynamic_bpc: Enables dynamic bits-per-component configuration
  */
 struct xlnx_sdi {
@@ -298,6 +300,8 @@ struct xlnx_sdi {
 	u8 is_hfr;
 	enum color_depths config_bpc;
 	enum color_depths stream_bpc;
+	int cur_clk;
+	enum color_depths cur_stream_bpc;
 	bool dynamic_bpc;
 };
 
@@ -1412,10 +1416,11 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	int ret;
 
 	/*
-	 * Detect a line-rate change before refreshing the cache. Only
-	 * sdi_mode, sdi_data_strm and is_frac affect the GT line rate;
-	 * other property updates can skip the si5328/QPLL1 settle and
-	 * the matching GT reset.
+	 * Detect a link change before refreshing the cache. sdi_mode,
+	 * sdi_data_strm and is_frac select the GT line rate, so a change in
+	 * any of them needs the si5328/QPLL1 settle and the matching GT
+	 * reset. Other property updates can skip both and so fit inside the
+	 * DRM vblank-wait window.
 	 */
 	rate_changed = sdi->props.sdi_mode != xstate->props.sdi_mode ||
 		       sdi->props.sdi_data_strm != xstate->props.sdi_data_strm ||
@@ -1428,6 +1433,25 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	 * properties stay user-set.
 	 */
 	xlnx_sdi_detect_stream_format(sdi, crtc_state);
+
+	/* Dynamic stream BPC detection is valid only in 12 bpc mode */
+	if (sdi->dynamic_bpc && sdi->config_bpc == SDI_TX_BPC_12)
+		sdi->stream_bpc = xlnx_sdi_find_media_bus(sdi, sdi->props.out_fmt);
+
+	/*
+	 * The pixel rate and the stream bit depth decide how the active
+	 * picture is mapped onto that line rate, so a change in either needs
+	 * the same settle and GT reset even when the three link properties
+	 * are untouched. The depth is sampled after the detection above, so
+	 * the value compared here is the one about to be programmed rather
+	 * than the one left behind by the previous mode-set.
+	 */
+	if (sdi->cur_clk != adjusted_mode->clock ||
+	    sdi->cur_stream_bpc != sdi->stream_bpc)
+		rate_changed = true;
+
+	sdi->cur_clk = adjusted_mode->clock;
+	sdi->cur_stream_bpc = sdi->stream_bpc;
 
 	/*
 	 * Force a clean disable before programming the new mode. If the
@@ -1495,10 +1519,6 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	/* HFR stream flag */
 	if (drm_mode_vrefresh(adjusted_mode) >= XSDI_HFR_MIN_FPS)
 		sdi->is_hfr = 1;
-
-	/* Dynamic stream BPC detection is valid only in 12 bpc mode */
-	if (sdi->dynamic_bpc && sdi->config_bpc == SDI_TX_BPC_12)
-		sdi->stream_bpc = xlnx_sdi_find_media_bus(sdi, sdi->props.out_fmt);
 
 	dev_dbg(sdi->dev, "stream_bpc = %d config_bpc = %d\n",
 		sdi->stream_bpc, sdi->config_bpc);
