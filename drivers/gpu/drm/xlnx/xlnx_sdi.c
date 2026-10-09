@@ -10,6 +10,8 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc_helper.h>
+#include <drm/drm_fourcc.h>
+#include <drm/drm_framebuffer.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/display/drm_dp_helper.h>
 #include <drm/display/drm_hdmi_helper.h>
@@ -131,7 +133,9 @@
 #define XST352_BYTE3_COLORIMETRY_HD	BIT(23)
 #define XST352_BYTE3_COLORIMETRY	BIT(21)
 
-#define ST352_BYTE4			0x01
+/* ST352 byte-4 bit-depth encoding (Table 3, ST 2082-10:2018) */
+#define XST352_BYTE4_BIT_DEPTH_10	0x01 /* also used for 8 bpc */
+#define XST352_BYTE4_BIT_DEPTH_12	0x02
 #define GT_TIMEOUT			50
 /* SDI modes */
 #define XSDI_MODE_HD			0
@@ -1097,7 +1101,7 @@ static void xlnx_sdi_set_display_enable(struct xlnx_sdi *sdi)
 static u32 xlnx_sdi_calc_st352_payld(struct xlnx_sdi *sdi,
 				     struct drm_display_mode *mode)
 {
-	u8 byt1, byt2;
+	u8 byt1, byt2, byt4;
 	u16 is_p;
 	int id;
 	u32 sdi_mode = sdi->props.sdi_mode;
@@ -1125,7 +1129,19 @@ static u32 xlnx_sdi_calc_st352_payld(struct xlnx_sdi *sdi,
 	/* byte 1 calculation */
 	byt1 = xlnx_sdi_modes[id].st352_byt1[sdi_mode];
 
-	return (ST352_BYTE4 << 24 | byt3 << 16 | byt2 << 8 | byt1);
+	/* byte 4 (bit-depth) calculation */
+	switch (sdi->stream_bpc) {
+	case SDI_TX_BPC_12:
+		byt4 = XST352_BYTE4_BIT_DEPTH_12;
+		break;
+	case SDI_TX_BPC_8:
+	case SDI_TX_BPC_10:
+	default:
+		byt4 = XST352_BYTE4_BIT_DEPTH_10;
+		break;
+	}
+
+	return (byt4 << 24 | byt3 << 16 | byt2 << 8 | byt1);
 }
 
 static void xlnx_sdi_setup(struct xlnx_sdi *sdi)
@@ -1197,6 +1213,7 @@ static enum color_depths xlnx_sdi_find_media_bus(struct xlnx_sdi *sdi,
 	case MEDIA_BUS_FMT_RBG121212_1X36:
 	case MEDIA_BUS_FMT_VUY12_1X36:
 	case MEDIA_BUS_FMT_UYVY12_1X24:
+	case MEDIA_BUS_FMT_UYYVYY12_4X24:
 		return SDI_TX_BPC_12;
 	default:
 		dev_dbg(sdi->dev,
@@ -1204,6 +1221,141 @@ static enum color_depths xlnx_sdi_find_media_bus(struct xlnx_sdi *sdi,
 			media_fmt);
 		return sdi->config_bpc;
 	}
+}
+
+/**
+ * xlnx_sdi_fourcc_to_bus_fmt - Map a DRM framebuffer fourcc to SDI parameters
+ * @fourcc: DRM_FORMAT_* of the active framebuffer
+ * @is_420: returns true if the format is 4:2:0 chroma subsampled
+ * @is_444: returns true if the format is 4:4:4 (incl. RGB carried as 4:4:4)
+ * @bus_fmt: returns the equivalent MEDIA_BUS_FMT_* code
+ *
+ * Derives the chroma sampling and the bit depth from the plane's fourcc rather
+ * than from the user-set format properties.
+ *
+ * Return: 0 on success, -EINVAL if the fourcc is not a recognised SDI format
+ */
+static int xlnx_sdi_fourcc_to_bus_fmt(u32 fourcc, bool *is_420,
+				      bool *is_444, u32 *bus_fmt)
+{
+	*is_420 = false;
+	*is_444 = false;
+
+	switch (fourcc) {
+	/* RGB - carried as 4:4:4 on the link, signalled separately */
+	case DRM_FORMAT_RGB888:
+	case DRM_FORMAT_BGR888:
+	case DRM_FORMAT_XRGB8888:
+	case DRM_FORMAT_XBGR8888:
+		*bus_fmt = MEDIA_BUS_FMT_RBG888_1X24;
+		return 0;
+	case DRM_FORMAT_XBGR2101010:
+		*bus_fmt = MEDIA_BUS_FMT_RBG101010_1X30;
+		return 0;
+	/*
+	 * YUV 4:4:4. The monochrome fourccs are deliberately absent: ST 352M
+	 * has no 4:0:0 sampling code, so a luma-only buffer cannot be
+	 * signalled on the link and the properties have to describe it.
+	 */
+	case DRM_FORMAT_VUY888:
+	case DRM_FORMAT_XVUY8888:
+		*is_444 = true;
+		*bus_fmt = MEDIA_BUS_FMT_VUY8_1X24;
+		return 0;
+	case DRM_FORMAT_XVUY2101010:
+	case DRM_FORMAT_X403:
+		*is_444 = true;
+		*bus_fmt = MEDIA_BUS_FMT_VUY10_1X30;
+		return 0;
+	case DRM_FORMAT_X423:
+		*is_444 = true;
+		*bus_fmt = MEDIA_BUS_FMT_VUY12_1X36;
+		return 0;
+	/* YUV 4:2:2 */
+	case DRM_FORMAT_YUYV:
+	case DRM_FORMAT_UYVY:
+	case DRM_FORMAT_NV16:
+		*bus_fmt = MEDIA_BUS_FMT_UYVY8_1X16;
+		return 0;
+	case DRM_FORMAT_XV20:
+		*bus_fmt = MEDIA_BUS_FMT_UYVY10_1X20;
+		return 0;
+	/* YUV 4:2:0 */
+	case DRM_FORMAT_NV12:
+		*is_420 = true;
+		*bus_fmt = MEDIA_BUS_FMT_VYYUYY8_1X24;
+		return 0;
+	case DRM_FORMAT_XV15:
+		*is_420 = true;
+		*bus_fmt = MEDIA_BUS_FMT_VYYUYY10_4X20;
+		return 0;
+	case DRM_FORMAT_P012:
+		*is_420 = true;
+		*bus_fmt = MEDIA_BUS_FMT_UYYVYY12_4X24;
+		return 0;
+	default:
+		return -EINVAL;
+	}
+}
+
+/**
+ * xlnx_sdi_detect_stream_format - Derive SDI format from the plane fourcc
+ * @sdi: pointer to SDI Tx structure
+ * @crtc_state: DRM crtc state for this commit
+ *
+ * Fetches the fourcc of the framebuffer on the primary plane and updates the
+ * cached SDI properties (4:2:0/4:4:4 selection and the input/output bus
+ * formats) so the chroma sampling and bit depth always match the buffer
+ * being scanned out.
+ *
+ * Only valid when the Tx is fed directly by the frame buffer. A bridge may
+ * convert the format, so there the link carries the bridge output and the
+ * in_fmt/out_fmt properties describing that conversion are left untouched.
+ */
+static void xlnx_sdi_detect_stream_format(struct xlnx_sdi *sdi,
+					  struct drm_crtc_state *crtc_state)
+{
+	struct drm_crtc *crtc = crtc_state->crtc;
+	struct drm_framebuffer *fb;
+	bool is_420, is_444;
+	u32 fourcc, bus_fmt;
+	int ret;
+
+	if (sdi->bridge)
+		return;
+
+	/*
+	 * The state has already been swapped in by the time the helpers call
+	 * this, so the primary plane carries the framebuffer about to be
+	 * scanned out. A mode-set need not have one attached yet, in which
+	 * case there is nothing to derive and the properties stand.
+	 */
+	fb = crtc->primary->state->fb;
+	if (!fb)
+		return;
+
+	fourcc = fb->format->format;
+	ret = xlnx_sdi_fourcc_to_bus_fmt(fourcc, &is_420, &is_444, &bus_fmt);
+	if (ret) {
+		dev_dbg(sdi->dev,
+			"fb fourcc 0x%x not auto-detected, using properties\n",
+			fourcc);
+		return;
+	}
+
+	sdi->props.sdi_420_out = is_420;
+	/*
+	 * ST352 byte-3 4:2:0 signaling keys off sdi_420_in, while MDL_CTRL
+	 * uses sdi_420_out. Set both from the fb so a 4:2:0 buffer is framed
+	 * and signaled consistently.
+	 */
+	sdi->props.sdi_420_in = is_420;
+	sdi->props.sdi_444_out = is_444;
+	sdi->props.in_fmt = bus_fmt;
+	sdi->props.out_fmt = bus_fmt;
+
+	dev_dbg(sdi->dev, "fb fourcc 0x%x -> bus 0x%x (420=%d 444=%d)\n",
+		fourcc, bus_fmt, is_420, is_444);
 }
 
 /**
@@ -1242,6 +1394,12 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 		       sdi->props.is_frac != xstate->props.is_frac;
 
 	sdi->props = xstate->props;
+
+	/*
+	 * Match the stream to the buffer being scanned out. The link
+	 * properties stay user-set.
+	 */
+	xlnx_sdi_detect_stream_format(sdi, crtc_state);
 
 	/*
 	 * Force a clean disable before programming the new mode. If the
