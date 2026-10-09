@@ -71,6 +71,7 @@
 #define XSDI_TX_CTRL_USE_DS2_3GA	BIT(24)
 #define XSDI_TX_CTRL_DYNAMIC_BPC_MASK	GENMASK(27, 26)
 #define XSDI_TX_CTRL_DYNAMIC_BPC_10	0x1  /* HW uses same encoding for 8-bit and 10-bit */
+#define XSDI_TX_CTRL_DYNAMIC_BPC_12	0x2
 
 /*
  * MDL_CTRL bits that depend on the current SDI mode and must be cleared
@@ -1146,7 +1147,7 @@ static u32 xlnx_sdi_calc_st352_payld(struct xlnx_sdi *sdi,
 
 static void xlnx_sdi_setup(struct xlnx_sdi *sdi)
 {
-	u32 reg;
+	u32 reg, bpc_sel;
 
 	dev_dbg(sdi->dev, "%s\n", __func__);
 
@@ -1173,11 +1174,13 @@ static void xlnx_sdi_setup(struct xlnx_sdi *sdi)
 
 	/* Dynamic BPC configuration is applicable only in 12 bpc mode */
 	if (sdi->dynamic_bpc && sdi->config_bpc == SDI_TX_BPC_12) {
-		if (sdi->stream_bpc == sdi->config_bpc)
-			reg &= ~XSDI_TX_CTRL_DYNAMIC_BPC_MASK;
+		if (sdi->stream_bpc == SDI_TX_BPC_12)
+			bpc_sel = XSDI_TX_CTRL_DYNAMIC_BPC_12;
 		else
-			reg = u32_replace_bits(reg, XSDI_TX_CTRL_DYNAMIC_BPC_10,
-					       XSDI_TX_CTRL_DYNAMIC_BPC_MASK);
+			bpc_sel = XSDI_TX_CTRL_DYNAMIC_BPC_10;
+
+		reg = u32_replace_bits(reg, bpc_sel,
+				       XSDI_TX_CTRL_DYNAMIC_BPC_MASK);
 	}
 
 	xlnx_sdi_writel(sdi->base, XSDI_TX_MDL_CTRL, reg);
