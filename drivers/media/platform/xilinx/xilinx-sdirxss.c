@@ -1421,27 +1421,34 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 	if (format->field == V4L2_FIELD_ALTERNATE)
 		format->height = format->height / 2;
 
+	/*
+	 * Select the media-bus format from the bit depth actually decoded from
+	 * the stream's ST352 byte 4 (stream_bpc), not the design's configured
+	 * depth (core->bpc). On a 12-bit dynamic-BPC design a real 10-bit
+	 * stream must be reported as a 10-bit format; keying off core->bpc
+	 * here mis-reported every 10-bit stream as 12-bit (e.g. VUY12).
+	 */
 	switch (sampling) {
 	case XST352_BYTE3_COLOR_FORMAT_420:
-		if (core->bpc == 10)
+		if (stream_bpc == 10)
 			format->code = MEDIA_BUS_FMT_VYYUYY10_4X20;
 		else
 			format->code = MEDIA_BUS_FMT_UYYVYY12_4X24;
 		break;
 	case XST352_BYTE3_COLOR_FORMAT_422:
-		if (core->bpc == 10)
+		if (stream_bpc == 10)
 			format->code = MEDIA_BUS_FMT_UYVY10_1X20;
 		else
 			format->code = MEDIA_BUS_FMT_UYVY12_1X24;
 		break;
 	case XST352_BYTE3_COLOR_FORMAT_YUV444:
-		if (core->bpc == 10)
+		if (stream_bpc == 10)
 			format->code = MEDIA_BUS_FMT_VUY10_1X30;
 		else
 			format->code = MEDIA_BUS_FMT_VUY12_1X36;
 		break;
 	case XST352_BYTE3_COLOR_FORMAT_GBR:
-		if (core->bpc == 10)
+		if (stream_bpc == 10)
 			format->code = MEDIA_BUS_FMT_RBG101010_1X30;
 		else
 			format->code = MEDIA_BUS_FMT_RBG121212_1X36;
@@ -1520,9 +1527,20 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 		}
 	}
 
-	/* Refer to Table 3 ST 2082-10:2018 */
-	if (mode == XSDIRX_MODE_12GI_OFFSET ||
-	    mode == XSDIRX_MODE_12GF_OFFSET) {
+	/*
+	 * Refer to Table 3 ST 2082-10:2018. The constant-luminance vs
+	 * non-constant-luminance distinction only applies to BT.2020/UHDTV
+	 * streams. Only refine the encoding here when the ST352 colorimetry
+	 * field already indicated BT.2020; otherwise a Rec.709 stream would
+	 * be incorrectly tagged as BT.2020 YCbCr encoding.
+	 *
+	 * Note: 'mode' holds the 3-bit RX_MODE field extracted from
+	 * MODE_DET_STAT, so it must be compared against the _MASK encodings
+	 * and not the _OFFSET enums.
+	 */
+	if ((mode == XSDIRX_MODE_12GI_MASK ||
+	     mode == XSDIRX_MODE_12GF_MASK) &&
+	    format->colorspace == V4L2_COLORSPACE_BT2020) {
 		switch (sampling) {
 		case XST352_BYTE3_COLOR_FORMAT_420:
 		case XST352_BYTE3_COLOR_FORMAT_422:
@@ -2177,12 +2195,36 @@ static int xsdirxss_enum_mbus_code(struct v4l2_subdev *sd,
 				   struct v4l2_subdev_mbus_code_enum *code)
 {
 	struct xsdirxss_state *xsdirxss = to_xsdirxssstate(sd);
+	struct xsdirxss_core *core = &xsdirxss->core;
 	u32 index = code->index;
 
-	if (code->pad || index >= 4)
+	if (code->pad)
 		return -EINVAL;
 
-	if (xsdirxss->core.bpc == 12)
+	/*
+	 * On a dynamic-BPC design the stream depth can change at runtime
+	 * (e.g. a 10-bit stream on a 12-bit design), so advertise both the
+	 * 12-bit and 10-bit media-bus format lists. Otherwise userspace
+	 * (v4l2/GStreamer) only ever sees the configured depth's formats and
+	 * cannot negotiate the other depth.
+	 */
+	if (core->dynamic_bpc) {
+		if (index >= ARRAY_SIZE(xsdirxss_12bpc_mbus_fmts) +
+			     ARRAY_SIZE(xsdirxss_10bpc_mbus_fmts))
+			return -EINVAL;
+
+		if (index < ARRAY_SIZE(xsdirxss_12bpc_mbus_fmts))
+			code->code = xsdirxss_12bpc_mbus_fmts[index];
+		else
+			code->code = xsdirxss_10bpc_mbus_fmts[index -
+					ARRAY_SIZE(xsdirxss_12bpc_mbus_fmts)];
+		return 0;
+	}
+
+	if (index >= 4)
+		return -EINVAL;
+
+	if (core->bpc == 12)
 		code->code = xsdirxss_12bpc_mbus_fmts[index];
 	else
 		code->code = xsdirxss_10bpc_mbus_fmts[index];
