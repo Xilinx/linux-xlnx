@@ -1253,21 +1253,32 @@ static int xlnx_sdi_fourcc_to_bus_fmt(u32 fourcc, bool *is_420,
 		*bus_fmt = MEDIA_BUS_FMT_RBG101010_1X30;
 		return 0;
 	/*
-	 * YUV 4:4:4. The monochrome fourccs are deliberately absent: ST 352M
-	 * has no 4:0:0 sampling code, so a luma-only buffer cannot be
-	 * signalled on the link and the properties have to describe it.
+	 * YUV 4:4:4. The tiled fourccs (T548/T648, ...) are the 32x4/64x4
+	 * tiled memory layouts of the same on-link sampling: the frmbuf DMA
+	 * de-tiles them into the same VUYx AXI-Stream, so they map to the
+	 * identical bus format here.
+	 *
+	 * The monochrome fourccs are deliberately absent: ST 352M has no
+	 * 4:0:0 sampling code, so a luma-only buffer cannot be signalled on
+	 * the link and the properties have to describe it.
 	 */
 	case DRM_FORMAT_VUY888:
 	case DRM_FORMAT_XVUY8888:
+	case DRM_FORMAT_T548:
+	case DRM_FORMAT_T648:
 		*is_444 = true;
 		*bus_fmt = MEDIA_BUS_FMT_VUY8_1X24;
 		return 0;
 	case DRM_FORMAT_XVUY2101010:
 	case DRM_FORMAT_X403:
+	case DRM_FORMAT_T54A:
+	case DRM_FORMAT_T64A:
 		*is_444 = true;
 		*bus_fmt = MEDIA_BUS_FMT_VUY10_1X30;
 		return 0;
 	case DRM_FORMAT_X423:
+	case DRM_FORMAT_T54C:
+	case DRM_FORMAT_T64C:
 		*is_444 = true;
 		*bus_fmt = MEDIA_BUS_FMT_VUY12_1X36;
 		return 0;
@@ -1275,21 +1286,35 @@ static int xlnx_sdi_fourcc_to_bus_fmt(u32 fourcc, bool *is_420,
 	case DRM_FORMAT_YUYV:
 	case DRM_FORMAT_UYVY:
 	case DRM_FORMAT_NV16:
+	case DRM_FORMAT_T528:
+	case DRM_FORMAT_T628:
 		*bus_fmt = MEDIA_BUS_FMT_UYVY8_1X16;
 		return 0;
 	case DRM_FORMAT_XV20:
+	case DRM_FORMAT_T52A:
+	case DRM_FORMAT_T62A:
 		*bus_fmt = MEDIA_BUS_FMT_UYVY10_1X20;
+		return 0;
+	case DRM_FORMAT_T52C:
+	case DRM_FORMAT_T62C:
+		*bus_fmt = MEDIA_BUS_FMT_UYVY12_1X24;
 		return 0;
 	/* YUV 4:2:0 */
 	case DRM_FORMAT_NV12:
+	case DRM_FORMAT_T508:
+	case DRM_FORMAT_T608:
 		*is_420 = true;
 		*bus_fmt = MEDIA_BUS_FMT_VYYUYY8_1X24;
 		return 0;
 	case DRM_FORMAT_XV15:
+	case DRM_FORMAT_T50A:
+	case DRM_FORMAT_T60A:
 		*is_420 = true;
 		*bus_fmt = MEDIA_BUS_FMT_VYYUYY10_4X20;
 		return 0;
 	case DRM_FORMAT_P012:
+	case DRM_FORMAT_T50C:
+	case DRM_FORMAT_T60C:
 		*is_420 = true;
 		*bus_fmt = MEDIA_BUS_FMT_UYYVYY12_4X24;
 		return 0;
