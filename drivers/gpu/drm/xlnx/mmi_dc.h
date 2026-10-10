@@ -192,7 +192,7 @@ void mmi_dc_enable(struct mmi_dc *dc, struct drm_display_mode *mode);
 void mmi_dc_disable(struct mmi_dc *dc);
 int mmi_dc_init(struct mmi_dc *dc, struct drm_device *drm);
 void mmi_dc_fini(struct mmi_dc *dc);
-void mmi_dc_reset_hw(struct mmi_dc *dc);
+int mmi_dc_reset_hw(struct mmi_dc *dc);
 void mmi_dc_set_video_timing_source(struct mmi_dc *dc,
 				    enum mmi_dc_video_timing vt_source);
 void mmi_dc_drm_handle_vblank(struct mmi_dc_drm *drm);
