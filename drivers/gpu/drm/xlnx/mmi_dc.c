@@ -273,18 +273,27 @@ static void mmi_dc_reset(struct mmi_dc *dc, bool reset)
 /**
  * mmi_dc_reset_hw - Reset DC hardware with external reset
  * @dc: MMI DC device
+ *
+ * Return 0 on success or error code on failure
  */
-void mmi_dc_reset_hw(struct mmi_dc *dc)
+int mmi_dc_reset_hw(struct mmi_dc *dc)
 {
-	reset_control_assert(dc->rst);
-	reset_control_deassert(dc->rst);
+	int ret;
+
 	mmi_dc_reset_planes(dc);
+
+	ret = reset_control_assert(dc->rst);
+	if (ret < 0)
+		return ret;
+
+	return reset_control_deassert(dc->rst);
 }
 
 void mmi_dc_set_video_timing_source(struct mmi_dc *dc,
 				    enum mmi_dc_video_timing vt_source)
 {
 	enum mmi_dc_video_timing old_vt_source;
+	int ret;
 
 	/*
 	 * external_vts_count is only ever updated from the atomic modeset path
@@ -318,7 +327,10 @@ void mmi_dc_set_video_timing_source(struct mmi_dc *dc,
 			MMI_DC_AV_BUF_AUD_VID_TIMING_SRC_INT : 0));
 	/* Reset & reconfigure hardware state */
 	if (dc->current_state) {
-		mmi_dc_reset_hw(dc);
+		ret = mmi_dc_reset_hw(dc);
+		if (ret < 0)
+			dev_warn(dc->dev,
+				 "reset failed: %d, hsync may be off\n", ret);
 		mmi_dc_reconfig_planes(dc, dc->current_state);
 	}
 }
