@@ -684,6 +684,81 @@ static void xlnx_dp_mst_commit_and_act(struct xlnx_dp *dp,
 }
 
 /**
+ * xlnx_dp_uhbr_sst_setup_framing - allocate the single 128b/132b VC (no sideband)
+ * @dp:   DisplayPort IP core structure
+ * @mode: active display mode
+ *
+ * UHBR transports video in MTP time-slots even for a single-stream sink with no
+ * MST sideband. Programs the local and sink VC payload tables for one stream
+ * and confirms the ACT. No-op for 8b/10b.
+ *
+ * Return: 0 on success (or non-UHBR no-op), negative errno on failure.
+ */
+int xlnx_dp_uhbr_sst_setup_framing(struct xlnx_dp *dp,
+				   const struct drm_display_mode *mode)
+{
+	int link_rate = drm_dp_bw_code_to_link_rate(dp->mode.bw_code);
+	fixed20_12 pbn_div;
+	int pbn, slots, s, ret;
+
+	if (!xlnx_dp_uhbr_active(dp))
+		return 0;
+
+	pbn_div = drm_dp_get_vc_payload_bw(link_rate, dp->mode.lane_cnt);
+	if (!pbn_div.full) {
+		dev_err(dp->dev, "UHBR-SST: invalid pbn_div (rate=%d lanes=%d)\n",
+			link_rate, dp->mode.lane_cnt);
+		return -EINVAL;
+	}
+
+	/* PBN for this stream, and the time-slots it needs from the MTP. */
+	pbn = drm_dp_calc_pbn_mode(mode->clock, dp->fmt.bpp << 4);
+	slots = DIV_ROUND_UP(pbn, dfixed_trunc(pbn_div));
+	if (slots > XDPTX_VC_PAYLOAD_BUFF_NSLOTS) {
+		dev_err(dp->dev,
+			"UHBR-SST: mode needs %d slots, link carries only %d\n",
+			slots, XDPTX_VC_PAYLOAD_BUFF_NSLOTS);
+		return -ENOSPC;
+	}
+
+	/* Non-MST 128b sink: tell it the upstream device is the source. */
+	ret = drm_dp_dpcd_writeb(&dp->aux, DP_MSTM_CTRL, DP_UPSTREAM_IS_SRC);
+	if (ret < 0) {
+		dev_err(dp->dev, "UHBR-SST: MSTM_CTRL write failed (%d)\n", ret);
+		return ret;
+	}
+
+	xlnx_dp_mst_set_stream_attributes(dp, 0, mode, slots, NULL, pbn, pbn_div);
+
+	/* Soft reset clears the VC buffer, so it must precede the table write. */
+	xlnx_dp_mst_soft_reset(dp, BIT(0));
+	usleep_range(1000, 2000);
+
+	for (s = 0; s < XDPTX_VC_PAYLOAD_BUFF_NSLOTS; s++)
+		xlnx_dp_mst_write(dp, XDPTX_VC_PAYLOAD_BUFF + s * 4, 0);
+	for (s = 0; s < slots; s++)
+		xlnx_dp_mst_write(dp, XDPTX_VC_PAYLOAD_BUFF + s * 4, 1);
+
+	ret = drm_dp_dpcd_write_payload(&dp->aux, 1, 0, slots);
+	if (ret < 0) {
+		dev_err(dp->dev, "UHBR-SST: payload table write failed (%d)\n", ret);
+		return ret;
+	}
+
+	usleep_range(1000, 1500);
+	xlnx_dp_mst_commit_vcp(dp);
+	usleep_range(4000, 6000);
+
+	ret = xlnx_dp_mst_wait_for_act_handled(dp);
+	if (ret) {
+		dev_err(dp->dev, "UHBR-SST: sink did not confirm ACT (%d)\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+/**
  * xlnx_dp_mst_warm_reenable - retrain an idle but already-trained link
  * @dp: DisplayPort IP core structure
  */

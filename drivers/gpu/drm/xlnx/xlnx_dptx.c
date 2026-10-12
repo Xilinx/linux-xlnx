@@ -2413,6 +2413,25 @@ static void xlnx_dp_encoder_mode_set_stream(struct xlnx_dp *dp,
 	xlnx_dp_mode_set_stream_offset(dp, mode, 0, NULL);
 }
 
+/**
+ * xlnx_dp_sst_program_stream - program SST MSA, TU, pixel clock and VTC
+ * @dp: DisplayPort IP core structure
+ * @mode: adjusted display mode
+ *
+ * Uses the current dp->mode, so call it again once training settles the link.
+ */
+static void xlnx_dp_sst_program_stream(struct xlnx_dp *dp,
+				       struct drm_display_mode *mode)
+{
+	u32 user_calc_ppc;
+
+	xlnx_dp_encoder_mode_set_stream(dp, mode);
+	xlnx_dp_encoder_mode_set_transfer_unit(dp, mode);
+	user_calc_ppc = xlnx_dp_calc_user_ppc(dp, mode->clock, dp->mode.lane_cnt);
+	clk_set_rate(dp->tx_vid_clk[0], mode->clock * 1000 / user_calc_ppc);
+	xlnx_dp_vtc_set_timing(dp, mode, dp->vtc_off[0], user_calc_ppc);
+}
+
 static void xlnx_dp_mainlink_en(struct xlnx_dp *dp, u8 enable)
 {
 	xlnx_dp_write(dp->dp_base, XDPTX_SCRAMBLER_RESET,
@@ -2725,6 +2744,30 @@ int xlnx_dp_start(struct xlnx_dp *dp)
 		      XDPTX_SOFT_RST_VIDEO_STREAM_ALL_MASK |
 		      XDPTX_SOFT_RST_HDCP_MASK);
 	xlnx_dp_write(dp->dp_base, XDPTX_SOFT_RST, 0x0);
+
+	/*
+	 * Training may have fallen back (e.g. UHBR to HBR), so reprogram the SST
+	 * stream for the trained link before the VTC/main link come up. UHBR
+	 * also re-applies its local VC allocation here.
+	 */
+	if (!dp->mst_mgr.mst_state && !dp->mst_enabling) {
+		struct drm_display_mode sst_mode;
+		bool have_mode;
+
+		mutex_lock(&dp->cur_mode_lock);
+		have_mode = dp->cur_mode.clock != 0;
+		if (have_mode)
+			sst_mode = dp->cur_mode;
+		mutex_unlock(&dp->cur_mode_lock);
+
+		if (have_mode && xlnx_dp_uhbr_active(dp)) {
+			ret = xlnx_dp_uhbr_sst_setup_framing(dp, &sst_mode);
+			if (ret < 0)
+				return ret;
+		} else if (have_mode) {
+			xlnx_dp_sst_program_stream(dp, &sst_mode);
+		}
+	}
 
 	if (dp->mst_enabling || !dp->mst_mgr.mst_state) {
 		if (dp->mst_enabling) {
@@ -3320,7 +3363,7 @@ xlnx_dp_encoder_atomic_mode_set(struct xlnx_dp *dp, struct drm_crtc *crtc,
 	struct drm_display_mode *mode = &crtc_state->mode;
 	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
 	int rate, max_rate = dp->link_config.max_rate;
-	u32 clock, drm_fourcc, user_calc_ppc;
+	u32 drm_fourcc;
 	u8 max_lanes = dp->link_config.max_lanes;
 	u8 bpc, bpp;
 
@@ -3345,14 +3388,12 @@ xlnx_dp_encoder_atomic_mode_set(struct xlnx_dp *dp, struct drm_crtc *crtc,
 		drm_mode_debug_printmodeline(mode);
 	}
 
+	/* Saved so xlnx_dp_start() can reprogram the stream for the trained link. */
+	mutex_lock(&dp->cur_mode_lock);
+	dp->cur_mode = *adjusted_mode;
+	mutex_unlock(&dp->cur_mode_lock);
 	/* The timing register should be programmed always */
-	xlnx_dp_encoder_mode_set_stream(dp, adjusted_mode);
-	xlnx_dp_encoder_mode_set_transfer_unit(dp, adjusted_mode);
-	clock = adjusted_mode->clock * 1000;
-	user_calc_ppc = xlnx_dp_calc_user_ppc(dp, adjusted_mode->clock, dp->mode.lane_cnt);
-	clk_set_rate(dp->tx_vid_clk[0], clock / user_calc_ppc);
-
-	xlnx_dp_vtc_set_timing(dp, adjusted_mode, dp->vtc_off[0], user_calc_ppc);
+	xlnx_dp_sst_program_stream(dp, adjusted_mode);
 	/* prepare a vsc packet */
 	xlnx_dp_prepare_vsc(dp);
 }
@@ -3523,7 +3564,11 @@ static void xlnx_dp_hpd_work_func(struct work_struct *work)
 		return;
 	}
 
-	/* SST sink on an MST-capable port: drop back to SST. */
+	/*
+	 * MST-capable sink takes the MST path.
+	 * A sink reporting MSTM_CAP=0 is SST-only - this includes DP2.1/UHBR monitors.
+	 * UHBR SST uses 128b/132b MTP framing but carries a single stream with no MST sideband.
+	 */
 	if (!(mstm_cap & DP_MST_CAP)) {
 		if (dp->mst_mgr.mst_state)
 			goto teardown;
@@ -3553,6 +3598,10 @@ static void xlnx_dp_hpd_work_func(struct work_struct *work)
 	/* VSC colorimetry is SST-only; keep it disabled for MST. */
 	dp->colorimetry_through_vsc = false;
 
+	drm_dp_dpcd_writeb(&dp->aux, DP_MSTM_CTRL, 0);
+	xlnx_dp_write(dp->dp_base, XDPTX_MST_CONFIG, 0x0);
+
+	dp->mst_enabling = true;
 	ret = xlnx_dp_start(dp);
 	if (ret < 0) {
 		dev_err(dp->dev, "MST: link training failed (%d)\n", ret);
@@ -3560,7 +3609,6 @@ static void xlnx_dp_hpd_work_func(struct work_struct *work)
 	}
 	dp->mst_link_trained = true;
 	dp->mst_fresh_train = true;
-	dp->mst_enabling = true;
 	dev_dbg(dp->dev, "MST: main link trained (bw=0x%x lanes=%d)\n",
 		dp->mode.bw_code, dp->mode.lane_cnt);
 
@@ -4450,6 +4498,9 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 	dp->dpms = DRM_MODE_DPMS_OFF;
 	dp->status = connector_status_disconnected;
 	dp->dev = &pdev->dev;
+	ret = devm_mutex_init(&pdev->dev, &dp->cur_mode_lock);
+	if (ret)
+		return ret;
 	ret = devm_mutex_init(&pdev->dev, &dp->conn_lock);
 	if (ret)
 		return ret;

@@ -683,6 +683,9 @@ struct xlnx_dp_mst_conn_state {
  * @drm_master: logical DRM pipeline master (set when this node owns the pipeline)
  * @mst_mgr_init: true once mst_mgr has been initialized
  * @mst_mode: true when configured for MST (num_streams > 1)
+ * @cur_mode: last committed SST mode; lets xlnx_dp_start re-apply UHBR VC framing
+ * @cur_mode_lock: protects cur_mode against concurrent atomic_mode_set() vs
+ *	HPD-driven xlnx_dp_start()
  */
 struct xlnx_dp {
 	struct device *dev;
@@ -746,6 +749,10 @@ struct xlnx_dp {
 	bool mst_enabling;
 	int mst_bringup_failures;
 	bool mst_to_sst_relink;
+	/* Last committed SST mode; lets xlnx_dp_start re-apply UHBR VC framing. */
+	struct drm_display_mode cur_mode;
+	/* Protects cur_mode against concurrent atomic_mode_set() vs HPD-driven xlnx_dp_start(). */
+	struct mutex cur_mode_lock;
 	int mst_stream_count;
 	u32 mst_active_mask;
 };
@@ -778,6 +785,8 @@ void xlnx_dp_clr(void __iomem *base, int offset, u32 clr);
 /* MST entry points implemented in xlnx_dptx_mst.c and used by xlnx_dptx.c */
 int xlnx_dp_mst_enable(struct xlnx_dp *dp);
 int xlnx_dp_mst_clear_payload_table(struct xlnx_dp *dp);
+int xlnx_dp_uhbr_sst_setup_framing(struct xlnx_dp *dp,
+				   const struct drm_display_mode *mode);
 void xlnx_dp_mst_process_esi(struct xlnx_dp *dp);
 int xlnx_dp_mst_create_encoders(struct xlnx_dp *dp);
 extern const struct drm_dp_mst_topology_cbs xlnx_dp_mst_cbs;
