@@ -2774,9 +2774,29 @@ int xlnx_dp_start(struct xlnx_dp *dp)
 
 		if (have_mode && xlnx_dp_uhbr_active(dp)) {
 			ret = xlnx_dp_uhbr_sst_setup_framing(dp, &sst_mode);
+			if (ret == -ENOSPC) {
+				dp->link_config.fallback_rate =
+					drm_dp_bw_code_to_link_rate(mode->bw_code);
+				dp->link_config.fallback_lanes = mode->lane_cnt;
+			}
 			if (ret < 0)
 				return ret;
+			dp->link_config.fallback_rate = 0;
+			dp->link_config.fallback_lanes = 0;
 		} else if (have_mode) {
+			int rate = drm_dp_bw_code_to_link_rate(mode->bw_code);
+
+			if (sst_mode.clock > XDPTX_MAX_RATE(rate, mode->lane_cnt,
+							    dp->fmt.bpp)) {
+				dev_err(dp->dev,
+					"SST: %d kHz mode exceeds the trained link (bw=0x%x x%u)\n",
+					sst_mode.clock, mode->bw_code, mode->lane_cnt);
+				dp->link_config.fallback_rate = rate;
+				dp->link_config.fallback_lanes = mode->lane_cnt;
+				return -ENOSPC;
+			}
+			dp->link_config.fallback_rate = 0;
+			dp->link_config.fallback_lanes = 0;
 			xlnx_dp_sst_program_stream(dp, &sst_mode);
 		}
 	}
@@ -2914,6 +2934,19 @@ static int xlnx_dp_txconnected(struct xlnx_dp *dp)
 /* MST bring-up attempts per HPD event before hpd_work stops re-queueing. */
 #define XDPTX_MST_BRINGUP_MAX_ATTEMPTS	3
 
+/* Retrain the SST link; request a new modeset only when the fallback cap changes. */
+static void xlnx_dp_sst_retrain(struct xlnx_dp *dp)
+{
+	int old_rate = dp->link_config.fallback_rate;
+	u8 old_lanes = dp->link_config.fallback_lanes;
+
+	xlnx_dp_stop(dp);
+	if (xlnx_dp_start(dp) == -ENOSPC &&
+	    (dp->link_config.fallback_rate != old_rate ||
+	     dp->link_config.fallback_lanes != old_lanes))
+		schedule_work(&dp->sst_modeset_retry_work);
+}
+
 static enum drm_connector_status
 xlnx_dp_bridge_detect(struct drm_bridge *bridge, struct drm_connector *connector)
 {
@@ -3044,16 +3077,16 @@ xlnx_dp_bridge_detect(struct drm_bridge *bridge, struct drm_connector *connector
 		}
 	}
 
-	if (dp->enabled) {
-		xlnx_dp_stop(dp);
-		xlnx_dp_start(dp);
-	}
+	if (dp->enabled)
+		xlnx_dp_sst_retrain(dp);
 
 	return connector_status_connected;
 disconnected:
 	dp->status = connector_status_disconnected;
-	/* New sink on replug may support a higher rate: clear the UHBR cap. */
+	/* New sink on replug may support a higher rate: clear the rate caps. */
 	dp->link_config.uhbr_rate_ceiling = 0;
+	dp->link_config.fallback_rate = 0;
+	dp->link_config.fallback_lanes = 0;
 	if (dp->enabled)
 		xlnx_dp_stop(dp);
 
@@ -3094,6 +3127,12 @@ xlnx_dp_bridge_mode_valid(struct drm_bridge *bridge,
 		return MODE_CLOCK_HIGH;
 	}
 
+	/* Offer only modes the last fallback-trained link can carry. */
+	if (dp->link_config.fallback_rate) {
+		max_rate = min(max_rate, dp->link_config.fallback_rate);
+		max_lanes = min(max_lanes, dp->link_config.fallback_lanes);
+	}
+
 	/* check with link rate and lane count */
 	rate = XDPTX_MAX_RATE(max_rate, max_lanes, bpp);
 	if (mode->clock > rate) {
@@ -3102,6 +3141,19 @@ xlnx_dp_bridge_mode_valid(struct drm_bridge *bridge,
 		drm_mode_debug_printmodeline(mode);
 
 		return MODE_CLOCK_HIGH;
+	}
+
+	/* 128b/132b SST framing needs the stream to fit the 64 MTP slots. */
+	if (drm_dp_is_uhbr_rate(max_rate)) {
+		fixed20_12 pbn_div = drm_dp_get_vc_payload_bw(max_rate, max_lanes);
+		int pbn = drm_dp_calc_pbn_mode(mode->clock, bpp << 4);
+
+		if (!pbn_div.full ||
+		    DIV_ROUND_UP(pbn, dfixed_trunc(pbn_div)) > XDPTX_VC_PAYLOAD_BUFF_NSLOTS) {
+			dev_dbg(dp->dev, "filtered the mode, %s, for MTP slot overflow\n",
+				mode->name);
+			return MODE_CLOCK_HIGH;
+		}
 	}
 
 	return MODE_OK;
@@ -3446,14 +3498,19 @@ static void xlnx_dp_bridge_enable(struct drm_bridge *bridge,
 	xlnx_dp_encoder_atomic_mode_set(dp, crtc, crtc_state, conn_state);
 
 	if (!dp->enabled) {
+		int ret;
+
 		pm_runtime_get_sync(dp->dev);
 		dp->enabled = true;
-		xlnx_dp_start(dp);
+		ret = xlnx_dp_start(dp);
 		if (dp->mst_to_sst_relink) {
 			dp->mst_to_sst_relink = false;
 			xlnx_dp_stop(dp);
-			xlnx_dp_start(dp);
+			ret = xlnx_dp_start(dp);
 		}
+		/* A fallback left too little bandwidth for this mode. */
+		if (ret == -ENOSPC)
+			schedule_work(&dp->sst_modeset_retry_work);
 	}
 }
 
@@ -3712,6 +3769,25 @@ static void xlnx_dp_bridge_put(struct drm_device *drm, void *bridge)
 	drm_bridge_put(bridge);
 }
 
+/* The re-probe caps the mode list at the trained rate, so userspace can refit. */
+static void xlnx_dp_sst_modeset_retry_work_fn(struct work_struct *work)
+{
+	struct xlnx_dp *dp = container_of(work, struct xlnx_dp,
+					  sst_modeset_retry_work);
+	struct drm_connector *connector = READ_ONCE(dp->connector);
+	struct drm_device *drm = dp->drm;
+
+	if (!drm || !connector)
+		return;
+
+	mutex_lock(&drm->mode_config.mutex);
+	drm_connector_set_link_status_property(connector,
+					       DRM_MODE_LINK_STATUS_BAD);
+	mutex_unlock(&drm->mode_config.mutex);
+
+	drm_kms_helper_connector_hotplug_event(connector);
+}
+
 static int xlnx_dp_bind(struct device *dev, struct device *master, void *data)
 {
 	struct xlnx_dp *dp = dev_get_drvdata(dev);
@@ -3744,6 +3820,7 @@ static int xlnx_dp_bind(struct device *dev, struct device *master, void *data)
 	}
 
 	INIT_WORK(&dp->mst_link_retrain_work, xlnx_dp_mst_link_retrain_work_fn);
+	INIT_WORK(&dp->sst_modeset_retry_work, xlnx_dp_sst_modeset_retry_work_fn);
 
 	ret = drm_bridge_attach(encoder, &dp->bridge, NULL,
 				DRM_BRIDGE_ATTACH_NO_CONNECTOR);
@@ -3826,6 +3903,7 @@ static void xlnx_dp_unbind(struct device *dev,
 	/* hpd_pulse_work can re-queue hpd_work, so cancel it first. */
 	cancel_delayed_work_sync(&dp->hpd_pulse_work);
 	cancel_delayed_work_sync(&dp->hpd_work);
+	cancel_work_sync(&dp->sst_modeset_retry_work);
 	if (dp->mst_mode && dp->mst_mgr_init) {
 		cancel_work_sync(&dp->mst_link_retrain_work);
 		cancel_work_sync(&dp->mst_modeset_retry_work);
@@ -4040,8 +4118,7 @@ static void xlnx_dp_hpd_pulse_work_func(struct work_struct *work)
 	return;
 
 retrain_link:
-	xlnx_dp_stop(dp);
-	xlnx_dp_start(dp);
+	xlnx_dp_sst_retrain(dp);
 }
 
 static void xlnx_dp_gen_drmif_pkt(struct xlnx_dp *dp,
