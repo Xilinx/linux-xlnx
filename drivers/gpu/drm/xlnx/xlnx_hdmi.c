@@ -2882,6 +2882,12 @@ static void xlnx_hdmi_frlintr_handler(struct xlnx_hdmi *hdmi)
 
 		/* Execute state machine */
 		xlnx_hdmi_exec_frl_state(hdmi);
+	} else {
+		/*
+		 * The hard handler masked the interrupt and only the state
+		 * machine unmasks it, so any other event leaves it masked.
+		 */
+		xlnx_hdmi_frl_intr_enable(hdmi);
 	}
 }
 
@@ -2945,6 +2951,8 @@ static irqreturn_t hdmitx_irq_thread(int irq, void *data)
 			"FRL: IRQ dropped (is_frl=0 frl_state=%u frl_status=0x%x)\n",
 			hdmi->stream.frl_config.frl_train_states,
 			hdmi->frl_status);
+		/* The hard handler masked it; unmask so FRL can train later. */
+		xlnx_hdmi_frl_intr_enable(hdmi);
 	}
 
 	mutex_unlock(&hdmi->hdmi_mutex);
