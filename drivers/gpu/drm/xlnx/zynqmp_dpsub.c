@@ -35,12 +35,22 @@
 static int __maybe_unused zynqmp_dpsub_suspend(struct device *dev)
 {
 	struct zynqmp_dpsub *dpsub = dev_get_drvdata(dev);
+	int ret;
 
 	if (!dpsub->drm)
 		return 0;
 
-	zynqmp_dp_phy_exit(dpsub->dp);
-	return drm_mode_config_helper_suspend(&dpsub->drm->dev);
+	/*
+	 * Disable the display pipeline first, so the link is shut down cleanly
+	 * while the PHY is still running, then quiesce the DP TX and the PHY.
+	 */
+	ret = drm_mode_config_helper_suspend(&dpsub->drm->dev);
+	if (ret)
+		return ret;
+
+	zynqmp_dp_suspend(dpsub->dp);
+
+	return 0;
 }
 
 static int __maybe_unused zynqmp_dpsub_resume(struct device *dev)
@@ -51,7 +61,7 @@ static int __maybe_unused zynqmp_dpsub_resume(struct device *dev)
 	if (!dpsub->drm)
 		return 0;
 
-	ret = zynqmp_dp_phy_init(dpsub->dp);
+	ret = zynqmp_dp_resume(dpsub->dp);
 	if (ret)
 		return ret;
 
