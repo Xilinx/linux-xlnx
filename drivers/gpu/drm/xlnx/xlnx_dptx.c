@@ -2037,8 +2037,9 @@ static void xlnx_dp_exit_aux(struct xlnx_dp *dp)
 static void xlnx_dp_update_misc(struct xlnx_dp *dp)
 {
 	if (!dp->colorimetry_through_vsc) {
-		xlnx_dp_write(dp->dp_base, XDPTX_MAINSTRM_MISC0_REG,
-			      dp->fmt.misc0);
+		u32 misc0 = dp->fmt.misc0;
+
+		xlnx_dp_write(dp->dp_base, XDPTX_MAINSTRM_MISC0_REG, misc0);
 		xlnx_dp_write(dp->dp_base, XDPTX_MAINSTRM_MISC1_REG, 0x0);
 	} else {
 		xlnx_dp_set(dp->dp_base, XDPTX_MAINSTRM_MISC1_REG,
@@ -2253,6 +2254,76 @@ u32 xlnx_dp_calc_user_ppc(struct xlnx_dp *dp, int clock_khz, u8 lane_cnt)
 }
 
 /**
+ * xlnx_dp_set_vfreq - program the per-stream Vfreq (pixel clock) registers
+ * @dp:   DisplayPort IP core structure
+ * @mode: display mode
+ * @off:  MSA bank byte offset (0 = stream 1, S2/S3/S4 for streams 2-4)
+ *
+ * 128b/132b sinks recover the pixel clock from these registers.
+ */
+static void xlnx_dp_set_vfreq(struct xlnx_dp *dp,
+			      const struct drm_display_mode *mode, u32 off)
+{
+	u64 pixel_hz = (u64)mode->clock * 1000;
+	u32 vfreq_low;
+
+	switch (off) {
+	case XDPTX_MST_MSA_OFFSET_S2:
+		vfreq_low = XDPTX_VFREQ_STREAM2_LOW;
+		break;
+	case XDPTX_MST_MSA_OFFSET_S3:
+		vfreq_low = XDPTX_VFREQ_STREAM3_LOW;
+		break;
+	case XDPTX_MST_MSA_OFFSET_S4:
+		vfreq_low = XDPTX_VFREQ_STREAM4_LOW;
+		break;
+	default:
+		vfreq_low = XDPTX_VFREQ_STREAM1_LOW;
+		break;
+	}
+
+	xlnx_dp_write(dp->dp_base, vfreq_low, (u32)(pixel_hz & 0x00ffffff));
+	xlnx_dp_write(dp->dp_base, vfreq_low + 4,
+		      (u32)((pixel_hz >> 24) & 0xff));
+}
+
+/**
+ * xlnx_dp_set_line_reset - program the per-stream end-of-line reset control
+ * @dp:   DisplayPort IP core structure
+ * @mode: display mode
+ * @off:  MSA bank byte offset (0 = stream 1, S2/S3/S4 for streams 2-4)
+ */
+static void xlnx_dp_set_line_reset(struct xlnx_dp *dp,
+				   const struct drm_display_mode *mode, u32 off)
+{
+	u32 hblank = mode->htotal - mode->hdisplay;
+	u32 hrb = (2 * (u32)mode->htotal + 9) / 10;
+	u32 stream_bit, lr, lr_new;
+
+	switch (off) {
+	case XDPTX_MST_MSA_OFFSET_S2:
+		stream_bit = BIT(1);
+		break;
+	case XDPTX_MST_MSA_OFFSET_S3:
+		stream_bit = BIT(2);
+		break;
+	case XDPTX_MST_MSA_OFFSET_S4:
+		stream_bit = BIT(3);
+		break;
+	default:
+		stream_bit = BIT(0);
+		break;
+	}
+
+	lr = xlnx_dp_read(dp->dp_base, XDPTX_LINE_RESET_DISABLE_REG);
+	if (hblank < hrb && (hblank == 60 || hblank == 80 || hblank == 160))
+		lr_new = lr | stream_bit;
+	else
+		lr_new = lr & ~stream_bit;
+	xlnx_dp_write(dp->dp_base, XDPTX_LINE_RESET_DISABLE_REG, lr_new);
+}
+
+/**
  * xlnx_dp_mode_set_stream_offset - Program main-stream attributes at a register offset
  * @dp: DisplayPort IP core structure
  * @mode: display mode to program
@@ -2272,11 +2343,19 @@ void xlnx_dp_mode_set_stream_offset(struct xlnx_dp *dp,
 	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_HTOTAL_REG + offset, mode->htotal);
 	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_VTOTAL_REG + offset, mode->vtotal);
 
-	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_POL_REG + offset,
-		      (!!(mode->flags & DRM_MODE_FLAG_PVSYNC) <<
-		      XDPTX_MAINSTRM_POLVSYNC_SHIFT) |
-		      (!!(mode->flags & DRM_MODE_FLAG_PHSYNC) <<
-		      XDPTX_MAINSTRM_POLHSYNC_SHIFT));
+	/* 128b/132b carries sync polarity inverted vs 8b/10b. */
+	if (xlnx_dp_uhbr_active(dp))
+		xlnx_dp_write(dp_base, XDPTX_MAINSTRM_POL_REG + offset,
+			      (!(mode->flags & DRM_MODE_FLAG_PVSYNC) <<
+			      XDPTX_MAINSTRM_POLVSYNC_SHIFT) |
+			      (!(mode->flags & DRM_MODE_FLAG_PHSYNC) <<
+			      XDPTX_MAINSTRM_POLHSYNC_SHIFT));
+	else
+		xlnx_dp_write(dp_base, XDPTX_MAINSTRM_POL_REG + offset,
+			      (!!(mode->flags & DRM_MODE_FLAG_PVSYNC) <<
+			      XDPTX_MAINSTRM_POLVSYNC_SHIFT) |
+			      (!!(mode->flags & DRM_MODE_FLAG_PHSYNC) <<
+			      XDPTX_MAINSTRM_POLHSYNC_SHIFT));
 
 	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_HSWIDTH_REG + offset,
 		      mode->hsync_end - mode->hsync_start);
@@ -2312,6 +2391,12 @@ void xlnx_dp_mode_set_stream_offset(struct xlnx_dp *dp,
 	else
 		reg = wpl + wpl % lane_cnt - lane_cnt;
 	xlnx_dp_write(dp_base, XDPTX_USER_DATACNTPERLANE_REG + offset, reg);
+
+	/* 128b/132b uses VFREQ for the pixel clock instead of M/N. */
+	if (xlnx_dp_uhbr_active(dp)) {
+		xlnx_dp_set_vfreq(dp, mode, offset);
+		xlnx_dp_set_line_reset(dp, mode, offset);
+	}
 }
 
 /**
@@ -2883,6 +2968,10 @@ xlnx_dp_bridge_detect(struct drm_bridge *bridge, struct drm_connector *connector
 	if (data & DP_VSC_SDP_EXT_FOR_COLORIMETRY_SUPPORTED)
 		dp->colorimetry_through_vsc = true;
 	else
+		dp->colorimetry_through_vsc = false;
+
+	/* DP2.1 core: SST VSC colorimetry unsupported, even at a DP1.4 (8b/10b) link rate. */
+	if (dp->config.dp21_present)
 		dp->colorimetry_through_vsc = false;
 
 	if (dp->mst_mode && dp->mst_mgr_init &&

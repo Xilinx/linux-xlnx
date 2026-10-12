@@ -240,8 +240,6 @@
 #define XDPTX_HIGH_BIT_RATE_2			540000
 #define XDPTX_HIGH_BIT_RATE_3			810000
 
-/* DP2.1 CEA dynamic-range bit in MISC0. */
-#define XDPTX_MISC0_DYNRANGE_CEA_MASK	BIT(3)
 /* DP2.1 128b/132b (UHBR) link rates, in 10 kbps units (DRM convention). */
 #define XDPTX_UHBR10_BIT_RATE		1000000
 #define XDPTX_UHBR13_5_BIT_RATE		1350000
