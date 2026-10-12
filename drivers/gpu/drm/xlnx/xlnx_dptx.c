@@ -2051,7 +2051,8 @@ int xlnx_dp_start(struct xlnx_dp *dp)
 
 	/* Enable clock spreading for both DP TX and RX device */
 	drm_dp_dpcd_readb(&dp->aux, DP_DOWNSPREAD_CTRL, &data);
-	if (dp->dpcd[DP_MAX_DOWNSPREAD] & 0x1) {
+	if (!dp->config.dp21_present &&
+	    (dp->dpcd[DP_MAX_DOWNSPREAD] & 0x1)) {
 		xlnx_dp_write(dp->dp_base, XDPTX_DOWNSPREAD_CTL_REG, 1);
 		data |=  XDPTX_DPCD_SPREAD_AMP_MASK;
 	} else {
