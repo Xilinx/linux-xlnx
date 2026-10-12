@@ -209,6 +209,7 @@
 #define XDPTX_MISC1_YONLY_MASK			BIT(7)
 
 #define XDPTX_MAX_LANES				0x4
+#define XDPTX_MAX_STREAMS			4
 #define XDPTX_MAX_FREQ				3000000
 #define XDPTX_SINK_PWR_CYCLES			3
 
@@ -464,15 +465,32 @@ struct xlnx_dp_mode {
 };
 
 /**
+ * struct xlnx_dp_stream_fmt - derived per-stream pixel format programming
+ * @misc0: MSA MISC0 value (colour format + bpc bits)
+ * @bpc: bits per component
+ * @bpp: bits per pixel (bpc * num_colors)
+ * @num_colors: number of colour components
+ * @fmt: colour-format selector
+ *
+ * Computed from a framebuffer fourcc + bpc by xlnx_dp_calc_color()/
+ * xlnx_dp_calc_bpc(). SST keeps a single instance in struct xlnx_dp (dp->fmt);
+ * MST keeps one per stream in the connector atomic state
+ * (struct xlnx_dp_mst_conn_state) so streams never stomp each other's format.
+ */
+struct xlnx_dp_stream_fmt {
+	u8 misc0;
+	u8 bpc;
+	u8 bpp;
+	u8 num_colors;
+	u8 fmt;
+};
+
+/**
  * struct xlnx_dp_config - Configuration of DisplayPort from DTS
  * @max_lanes: Maximum number of lanes
  * @max_link_rate: Maximum supported link rate
- * @misc0: Misc0 configuration
- * @bpp: Bits per pixel
- * @bpc: Bits per component
- * @num_colors: Number of color components
+ * @max_bpc: Maximum bits per component from DT (xlnx,bpc); default/ceiling
  * @ppc: Pixels per component
- * @fmt: Color format
  * @audio_enabled: flag to indicate audio is enabled in device tree
  * @versal_gt_present: flag to indicate versal-gt property in device tree
  * @versal_2ve_2vm: flag set at probe when zynqmp_pm_get_family_info()
@@ -485,12 +503,8 @@ struct xlnx_dp_mode {
 struct xlnx_dp_config {
 	u32 max_lanes;
 	u32 max_link_rate;
-	u8 misc0;
-	u8 bpp;
-	u8 bpc;
-	u8 num_colors;
+	u8 max_bpc;
 	u8 ppc;
-	u8 fmt;
 	bool audio_enabled;
 	bool versal_gt_present;
 	bool versal_2ve_2vm;
@@ -524,6 +538,7 @@ struct xlnx_dp_feature {
  * @conn_lock: keeps @connector valid for the ALSA ELD read across unbind
  * @aux: aux channel
  * @config: IP core configuration from DTS
+ * @fmt: SST stream pixel format (derived at runtime from the framebuffer)
  * @tx_link_config: source configuration
  * @tx_hdcp: HDCP configuration
  * @hdcpx_keymgmt_base: HDCP key management base address
@@ -564,6 +579,7 @@ struct xlnx_dp {
 	struct mutex conn_lock; /* serializes xlnx_dp_get_eld() with dp->connector bind/unbind */
 	struct drm_dp_aux aux;
 	struct xlnx_dp_config config;
+	struct xlnx_dp_stream_fmt fmt;
 	struct xlnx_dp_tx_link_config tx_link_config;
 	struct xlnx_hdcptx tx_hdcp;
 	struct regmap *hdcpx_keymgmt_base;
@@ -572,7 +588,7 @@ struct xlnx_dp {
 	struct xlnx_dp_mode mode;
 	struct phy *phy[XDPTX_MAX_LANES];
 	struct clk *axi_lite_clk;
-	struct clk *tx_vid_clk;
+	struct clk *tx_vid_clk[XDPTX_MAX_STREAMS];
 	struct gpio_desc *reset_gpio;
 	struct delayed_work hpd_work;
 	struct delayed_work hpd_pulse_work;
@@ -587,7 +603,7 @@ struct xlnx_dp {
 	int dpms;
 	int hdcptx_timer_irq;
 	int irq;
-	u32 vtc_off;
+	u32 vtc_off[XDPTX_MAX_STREAMS];
 	u8 dpcd[DP_RECEIVER_CAP_SIZE];
 	u8 train_set[XDPTX_MAX_LANES];
 	u8 num_lanes;
@@ -597,4 +613,20 @@ struct xlnx_dp {
 	unsigned int colorimetry_through_vsc : 1;
 };
 
+/* Shared helpers implemented in xlnx_dptx.c and used by xlnx_dptx_mst.c */
+void xlnx_dp_start(struct xlnx_dp *dp);
+void xlnx_dp_vtc_set_timing(struct xlnx_dp *dp,
+			    const struct drm_display_mode *mode,
+			    u32 vtc_off, u32 ppc);
+void xlnx_dp_mode_set_stream_offset(struct xlnx_dp *dp,
+				    const struct drm_display_mode *mode, u32 off,
+				    const struct xlnx_dp_stream_fmt *stream_fmt);
+void xlnx_dp_set_color(struct xlnx_dp *dp, u32 drm_fourcc);
+u32 xlnx_dp_set_bpc(struct xlnx_dp *dp, u8 bpc);
+void xlnx_dp_calc_color(struct xlnx_dp *dp, u32 drm_fourcc,
+			struct xlnx_dp_stream_fmt *stream_fmt);
+u32 xlnx_dp_calc_bpc(struct xlnx_dp *dp, u8 bpc,
+		     const struct drm_display_info *info,
+		     struct xlnx_dp_stream_fmt *stream_fmt);
+u8 xlnx_dp_bpc_from_fourcc(struct xlnx_dp *dp, u32 drm_fourcc);
 #endif /* __XLNX_DPTX_H__ */
