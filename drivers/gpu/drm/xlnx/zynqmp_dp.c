@@ -22,6 +22,7 @@
 #include <linux/clk.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
+#include <linux/iopoll.h>
 #include <linux/device.h>
 #include <linux/io.h>
 #include <linux/media-bus-format.h>
@@ -525,6 +526,113 @@ void zynqmp_dp_phy_exit(struct zynqmp_dp *dp)
 		if (ret)
 			dev_err(dp->dev, "failed to exit phy(%d) %d\n", i, ret);
 	}
+}
+
+/**
+ * zynqmp_dp_hw_init - Put the DP TX into its initial state and init the PHY
+ * @dp: DisplayPort IP core structure
+ *
+ * Power down the TX lanes, hold the PHY in reset, disable the transmitter and
+ * mask all interrupts, then initialize and power on the PHY lanes and enable
+ * the transmitter. This is the sequence used at probe time. It is also used on
+ * system resume, because the DP core and the PS-GTR are only reset by hardware
+ * if the full-power domain (FPD) is powered off during suspend. FPD stays on
+ * whenever another master (e.g. an RPU application) holds an FPD resource such
+ * as DDR, so resume must not rely on it.
+ *
+ * Return: 0 on success, or the error code returned from zynqmp_dp_phy_init().
+ */
+static int zynqmp_dp_hw_init(struct zynqmp_dp *dp)
+{
+	int ret;
+
+	zynqmp_dp_write(dp, ZYNQMP_DP_TX_PHY_POWER_DOWN,
+			ZYNQMP_DP_TX_PHY_POWER_DOWN_ALL);
+	zynqmp_dp_set(dp, ZYNQMP_DP_PHY_RESET, ZYNQMP_DP_PHY_RESET_ALL_RESET);
+	zynqmp_dp_write(dp, ZYNQMP_DP_FORCE_SCRAMBLER_RESET, 1);
+	zynqmp_dp_write(dp, ZYNQMP_DP_TRANSMITTER_ENABLE, 0);
+	zynqmp_dp_write(dp, ZYNQMP_DP_INT_DS, 0xffffffff);
+
+	ret = zynqmp_dp_phy_init(dp);
+	if (ret)
+		return ret;
+
+	zynqmp_dp_write(dp, ZYNQMP_DP_TRANSMITTER_ENABLE, 1);
+
+	return 0;
+}
+
+/**
+ * zynqmp_dp_suspend - Quiesce the DP TX and PHY for system suspend
+ * @dp: DisplayPort IP core structure
+ *
+ * Must be called after the display pipeline has been disabled. Put the TX and
+ * PHY back into the probe-time reset state before releasing the PHY lanes, so
+ * that the PS-GTR PLL is not left running at the trained link rate if FPD
+ * stays powered across suspend.
+ */
+void zynqmp_dp_suspend(struct zynqmp_dp *dp)
+{
+	zynqmp_dp_write(dp, ZYNQMP_DP_INT_DS, 0xffffffff);
+	zynqmp_dp_write(dp, ZYNQMP_DP_TRANSMITTER_ENABLE, 0);
+	zynqmp_dp_write(dp, ZYNQMP_DP_TX_PHY_POWER_DOWN,
+			ZYNQMP_DP_TX_PHY_POWER_DOWN_ALL);
+	zynqmp_dp_set(dp, ZYNQMP_DP_PHY_RESET, ZYNQMP_DP_PHY_RESET_ALL_RESET);
+	zynqmp_dp_phy_exit(dp);
+}
+
+static int zynqmp_dp_aux_init(struct zynqmp_dp *dp);
+
+/**
+ * zynqmp_dp_resume - Reinitialize the DP TX and PHY after system suspend
+ * @dp: DisplayPort IP core structure
+ *
+ * Reset the DP core, as an FPD power cycle would, and repeat the probe-time
+ * hardware initialization, regardless of whether FPD was power cycled.
+ * Configure the AUX channel before re-enabling the HPD interrupts, so that the
+ * HPD handling triggered by the reset can read the sink DPCD. The channel
+ * buffer underflow/overflow interrupts are only diagnostic and are left
+ * masked, as they can fire continuously while the display pipeline restarts.
+ *
+ * Return: 0 on success, or an error code.
+ */
+int zynqmp_dp_resume(struct zynqmp_dp *dp)
+{
+	u32 val;
+	int ret;
+
+	ret = zynqmp_dp_reset(dp, true);
+	if (ret)
+		return ret;
+
+	ret = zynqmp_dp_reset(dp, false);
+	if (ret)
+		return ret;
+
+	ret = zynqmp_dp_hw_init(dp);
+	if (ret)
+		return ret;
+
+	ret = zynqmp_dp_aux_init(dp);
+	if (ret)
+		return ret;
+
+	zynqmp_dp_write(dp, ZYNQMP_DP_INT_EN, ZYNQMP_DP_INT_HPD_IRQ |
+			ZYNQMP_DP_INT_HPD_EVENT);
+
+	/*
+	 * The DP core has just been released from reset. If a sink was
+	 * connected, wait for the core to see its HPD again before the display
+	 * pipeline is resumed: AUX transactions fail until then, and the link
+	 * would not be retrained.
+	 */
+	if (dp->status == connector_status_connected &&
+	    readl_poll_timeout(dp->iomem + ZYNQMP_DP_INTERRUPT_SIGNAL_STATE, val,
+			       val & ZYNQMP_DP_INTERRUPT_SIGNAL_STATE_HPD,
+			       1000, 1000 * USEC_PER_MSEC))
+		dev_warn(dp->dev, "sink HPD not detected after resume\n");
+
+	return 0;
 }
 
 /**
@@ -2484,18 +2592,9 @@ int zynqmp_dp_probe(struct zynqmp_dpsub *dpsub)
 	dp->config.misc0 &= ~ZYNQMP_DP_MAIN_STREAM_MISC0_SYNC_LOCK;
 	zynqmp_dp_set_format(dp, NULL, ZYNQMP_DPSUB_FORMAT_RGB, 8);
 
-	zynqmp_dp_write(dp, ZYNQMP_DP_TX_PHY_POWER_DOWN,
-			ZYNQMP_DP_TX_PHY_POWER_DOWN_ALL);
-	zynqmp_dp_set(dp, ZYNQMP_DP_PHY_RESET, ZYNQMP_DP_PHY_RESET_ALL_RESET);
-	zynqmp_dp_write(dp, ZYNQMP_DP_FORCE_SCRAMBLER_RESET, 1);
-	zynqmp_dp_write(dp, ZYNQMP_DP_TRANSMITTER_ENABLE, 0);
-	zynqmp_dp_write(dp, ZYNQMP_DP_INT_DS, 0xffffffff);
-
-	ret = zynqmp_dp_phy_init(dp);
+	ret = zynqmp_dp_hw_init(dp);
 	if (ret)
 		goto err_reset;
-
-	zynqmp_dp_write(dp, ZYNQMP_DP_TRANSMITTER_ENABLE, 1);
 
 	/*
 	 * Now that the hardware is initialized and won't generate spurious
