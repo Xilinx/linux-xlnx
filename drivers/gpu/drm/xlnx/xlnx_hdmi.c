@@ -2827,17 +2827,8 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 		if (data & HDMI_TX_PIO_IN_BRIDGE_LOCKED) {
 			dev_dbg(hdmi->dev, "Bridge locked\n");
 		} else {
+			/* The bridge tracks the video input, not the link. */
 			dev_dbg(hdmi->dev, "Bridge unlocked\n");
-			if (hdmi->stream.is_frl) {
-				xlnx_hdmi_set_frl_timer(hdmi, 0);
-				xlnx_hdmi_frl_reset_assert(hdmi);
-				xlnx_hdmi_frl_reset_deassert(hdmi);
-				xlnx_hdmi_frl_mode_disable(hdmi);
-				hdmi->stream.is_frl = 0;
-				xlnx_hdmi_ddcwrite_field(hdmi,
-							 HDMI_TX_SCDC_FIELD_FLT_UPDATE,
-							 1);
-			}
 			xlnx_hdmi_piointr_clear(hdmi);
 		}
 	}
