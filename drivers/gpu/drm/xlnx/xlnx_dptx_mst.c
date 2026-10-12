@@ -232,17 +232,27 @@ to_mst_conn_state(struct drm_connector_state *state)
  * xlnx_dp_mst_avg_tu_1000 - average bytes-per-TU x 1000 for one MST stream
  * @dp:        DisplayPort IP core structure
  * @clock_khz: pixel clock of the stream in kHz
- * @bpp:       bits-per-pixel of the stream
+ * @bpp:       bits-per-pixel of the stream (8b/10b path)
+ * @pbn:       payload bandwidth in PBN units (UHBR path)
+ * @pbn_div:   link bandwidth in PBN-per-slot, fixed20_12 (UHBR path)
  *
- * Computed as floor(clock x bpp x 64 / (lanes x link_rate)) x 125.
+ * For 8b/10b: floor(clock x bpp x 64 / (lanes x link_rate)) x 125.
+ * For 128b/132b (UHBR): pbn x 4096000 / pbn_div (per-MTP slot fraction).
  *
- * Return: average bytes per TU scaled by 1000, or 0 if the lane count or
- * link rate is not yet known.
+ * Return: average bytes per TU (8b/10b) or per-MTP slot fraction (128b/132b),
+ * scaled by 1000; 0 if the lane count, link rate or @pbn_div is unavailable.
  */
-static u64 xlnx_dp_mst_avg_tu_1000(struct xlnx_dp *dp, int clock_khz, u32 bpp)
+static u64 xlnx_dp_mst_avg_tu_1000(struct xlnx_dp *dp, int clock_khz, u32 bpp,
+				   int pbn, fixed20_12 pbn_div)
 {
 	u32 link_rate = drm_dp_bw_code_to_link_rate(dp->mode.bw_code);
 	u32 lanes = dp->mode.lane_cnt;
+
+	if (drm_dp_is_uhbr_rate(link_rate)) {
+		if (!pbn_div.full)
+			return 0;
+		return div64_u64((u64)pbn * 4096000ULL, pbn_div.full);
+	}
 
 	if (!lanes || !link_rate)
 		return 0;
@@ -258,6 +268,8 @@ static u64 xlnx_dp_mst_avg_tu_1000(struct xlnx_dp *dp, int clock_khz, u32 bpp)
  * @mode:       Display mode for this stream
  * @time_slots: Number of VC payload time slots allocated
  * @stream_fmt:  per-stream pixel format (from the connector atomic state)
+ * @pbn:         allocated PBN for this stream (128b/132b UHBR path)
+ * @pbn_div:     link bandwidth in PBN-per-slot, fixed20_12 (UHBR path)
  *
  * Programs the per-stream MSA timing registers, TU size, average-bytes-per-TU,
  * and the STREAM1..4 TS index registers. InitWait is forced to 0 for MST.
@@ -266,7 +278,8 @@ static void xlnx_dp_mst_set_stream_attributes(struct xlnx_dp *dp,
 					      int stream_id,
 					      const struct drm_display_mode *mode,
 					      int time_slots,
-					      const struct xlnx_dp_stream_fmt *stream_fmt)
+					      const struct xlnx_dp_stream_fmt *stream_fmt,
+					      int pbn, fixed20_12 pbn_div)
 {
 	static const u32 msa_offsets[XDPTX_MAX_STREAMS] = {
 		0,
@@ -292,7 +305,7 @@ static void xlnx_dp_mst_set_stream_attributes(struct xlnx_dp *dp,
 				stream_id, stream_fmt->misc0, stream_fmt->bpc,
 				stream_fmt->bpp);
 
-	avg_tu_1000 = xlnx_dp_mst_avg_tu_1000(dp, mode->clock, bpp);
+	avg_tu_1000 = xlnx_dp_mst_avg_tu_1000(dp, mode->clock, bpp, pbn, pbn_div);
 	ts_int  = (u32)(avg_tu_1000 / 1000);
 	ts_frac = (u32)(avg_tu_1000 % 1000);
 
@@ -444,9 +457,7 @@ static int xlnx_dp_mst_encoder_atomic_check(struct drm_encoder *encoder,
 		(primary->state ? primary->state->fb : NULL);
 	struct drm_dp_mst_topology_state *mst_state;
 	int pbn, slots, ret;
-	u64 avg_tu_1000;
-	u32 ts_int, ts_frac, tu_size;
-	int pbn_div_int;
+	bool uhbr = xlnx_dp_uhbr_active(dp);
 
 	xlnx_dp_mst_compute_fmt(dp, fb, &conn_state->connector->display_info,
 				&mst_conn_state->fmt);
@@ -459,31 +470,44 @@ static int xlnx_dp_mst_encoder_atomic_check(struct drm_encoder *encoder,
 		drm_dp_get_vc_payload_bw(drm_dp_bw_code_to_link_rate(dp->mode.bw_code),
 					 dp->mode.lane_cnt);
 
-	drm_dp_mst_update_slots(mst_state, DP_CAP_ANSI_8B10B);
+	if (uhbr)
+		drm_dp_mst_update_slots(mst_state, DP_CAP_ANSI_128B132B);
+	else
+		drm_dp_mst_update_slots(mst_state, DP_CAP_ANSI_8B10B);
 
 	pbn = drm_dp_calc_pbn_mode(crtc_state->adjusted_mode.clock,
 				   mst_conn_state->fmt.bpp << 4);
 
-	avg_tu_1000 = xlnx_dp_mst_avg_tu_1000(dp, crtc_state->adjusted_mode.clock,
-					      mst_conn_state->fmt.bpp);
-	ts_int  = (u32)(avg_tu_1000 / 1000);
-	ts_frac = (u32)(avg_tu_1000 % 1000);
-	tu_size = ts_int + (ts_frac ? 1 : 0);
+	/*
+	 * 8b/10b ties the slot count to the HW TU size; 128b/132b allocates slots
+	 * straight from the natural pbn, so skip the bump for UHBR.
+	 */
+	if (!uhbr) {
+		u64 avg_tu_1000 =
+			xlnx_dp_mst_avg_tu_1000(dp,
+						crtc_state->adjusted_mode.clock,
+						mst_conn_state->fmt.bpp,
+						pbn, mst_state->pbn_div);
+		u32 ts_int  = (u32)(avg_tu_1000 / 1000);
+		u32 ts_frac = (u32)(avg_tu_1000 % 1000);
+		u32 tu_size = ts_int + (ts_frac ? 1 : 0);
+		int pbn_div_int;
 
-	if (dp->mode.lane_cnt == 4 && tu_size % 4 != 0)
-		tu_size += 4 - tu_size % 4;
-	else if (tu_size % 2 != 0)
-		tu_size++;
+		if (dp->mode.lane_cnt == 4 && tu_size % 4 != 0)
+			tu_size += 4 - tu_size % 4;
+		else if (tu_size % 2 != 0)
+			tu_size++;
 
-	pbn_div_int = dfixed_trunc(mst_state->pbn_div);
-	if (pbn_div_int > 0) {
-		int min_pbn = (int)tu_size * pbn_div_int;
+		pbn_div_int = dfixed_trunc(mst_state->pbn_div);
+		if (pbn_div_int > 0) {
+			int min_pbn = (int)tu_size * pbn_div_int;
 
-		if (pbn < min_pbn) {
-			xlnx_dp_mst_dbg(dp,
-					"MST: atomic_check: bumping pbn %d -> %d (tu_size=%u, pbn_div=%d)\n",
-					pbn, min_pbn, tu_size, pbn_div_int);
-			pbn = min_pbn;
+			if (pbn < min_pbn) {
+				xlnx_dp_mst_dbg(dp,
+						"MST: atomic_check: bumping pbn %d -> %d (tu_size=%u, pbn_div=%d)\n",
+						pbn, min_pbn, tu_size, pbn_div_int);
+				pbn = min_pbn;
+			}
 		}
 	}
 
@@ -743,7 +767,8 @@ static void xlnx_dp_mst_encoder_atomic_enable(struct drm_encoder *encoder,
 
 	xlnx_dp_mst_set_stream_attributes(dp, mst_enc->stream_id, mode,
 					  payload->time_slots,
-					  &to_mst_conn_state(new_conn_state)->fmt);
+					  &to_mst_conn_state(new_conn_state)->fmt,
+					  payload->pbn, mst_state->pbn_div);
 
 	/* HW requires VCPI == stream_id + 1 (fixed payload-to-stream map). */
 	if (payload->vcpi != mst_enc->stream_id + 1) {
@@ -865,7 +890,8 @@ static void xlnx_dp_mst_encoder_atomic_disable(struct drm_encoder *encoder,
 	drm_dp_remove_payload_part2(mgr, new_mst_state, old_payload, new_payload);
 	new_payload->vcpi = new_vcpi;
 
-	for (slot = 1; slot < XDPTX_VC_PAYLOAD_BUFF_NSLOTS; slot++)
+	/* 128b/132b allocates from slot 0, so clear it too. */
+	for (slot = 0; slot < XDPTX_VC_PAYLOAD_BUFF_NSLOTS; slot++)
 		xlnx_dp_mst_write(dp, XDPTX_VC_PAYLOAD_BUFF + slot * 4, 0);
 
 	if (!dp->mst_active_mask) {
