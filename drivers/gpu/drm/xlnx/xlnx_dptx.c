@@ -44,6 +44,8 @@ static const struct of_device_id xlnx_dp_of_match[] = {
 		.data = (void *)&xlnx_dp_cfg_v31},
 	{ .compatible = "xlnx,v-dp-txss2-1.0",
 	  .data = (void *)&xlnx_dp_cfg_dp21},
+	{ .compatible = "xlnx,v-dp-txss2-2.0",
+	  .data = (void *)&xlnx_dp_cfg_dp21},
 	{ /* end of table */ }
 };
 
