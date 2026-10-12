@@ -315,6 +315,7 @@ static const char * const xlnx_compatible_components_list[] = {
 	"xlnx,vpss-csc",
 	"xlnx,v-dp-txss-3.0",
 	"xlnx,v-dp-txss-3.1",
+	"xlnx,v-dp-txss2-1.0",
 	"xlnx,dsi",
 	"xlnx,v-hdmi-txss1-1.1",
 	"xlnx,v-hdmi-txss1-1.2",
