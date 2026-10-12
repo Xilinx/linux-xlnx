@@ -63,16 +63,21 @@ static inline void xlnx_dp_mst_write_sec_stream(struct xlnx_dp *dp, bool on)
 }
 
 /**
- * xlnx_dp_mst_commit_vcp - assert the VC payload update (8b/10b)
+ * xlnx_dp_mst_commit_vcp - assert the VC payload update per link coding
  * @dp: DisplayPort IP core structure
  *
- * Holds MST_EN set alongside VCP_UPDATED to trigger a VC payload table update.
+ * Triggers a VC payload table update. For 128b/132b (UHBR) only VCP_UPDATED is
+ * written (the core auto-latches MST_EN); for 8b/10b MST_EN is held set too.
  */
 static inline void xlnx_dp_mst_commit_vcp(struct xlnx_dp *dp)
 {
-	xlnx_dp_mst_write(dp, XDPTX_MST_CONFIG,
-			  XDPTX_MST_CONFIG_MST_EN_MASK |
-			  XDPTX_MST_CONFIG_VCP_UPDATED_MASK);
+	if (xlnx_dp_uhbr_active(dp))
+		xlnx_dp_mst_write(dp, XDPTX_MST_CONFIG,
+				  XDPTX_MST_CONFIG_VCP_UPDATED_MASK);
+	else
+		xlnx_dp_mst_write(dp, XDPTX_MST_CONFIG,
+				  XDPTX_MST_CONFIG_MST_EN_MASK |
+				  XDPTX_MST_CONFIG_VCP_UPDATED_MASK);
 }
 
 /**
@@ -96,8 +101,10 @@ int xlnx_dp_mst_enable(struct xlnx_dp *dp)
 		return ret;
 	}
 
-	xlnx_dp_write(dp->dp_base, XDPTX_MST_CONFIG,
-		      XDPTX_MST_CONFIG_MST_EN_MASK);
+	/* 128b/132b auto-latches MST_EN in the core; writing it is invalid. */
+	if (!xlnx_dp_uhbr_active(dp))
+		xlnx_dp_write(dp->dp_base, XDPTX_MST_CONFIG,
+			      XDPTX_MST_CONFIG_MST_EN_MASK);
 
 	return 0;
 }
@@ -924,9 +931,7 @@ static void xlnx_dp_mst_encoder_atomic_disable(struct drm_encoder *encoder,
 		}
 	}
 
-	xlnx_dp_mst_write(dp, XDPTX_MST_CONFIG,
-			  XDPTX_MST_CONFIG_MST_EN_MASK |
-			  XDPTX_MST_CONFIG_VCP_UPDATED_MASK);
+	xlnx_dp_mst_commit_vcp(dp);
 
 	if (dp->mst_active_mask) {
 		ret = xlnx_dp_mst_wait_for_act_handled(dp);
