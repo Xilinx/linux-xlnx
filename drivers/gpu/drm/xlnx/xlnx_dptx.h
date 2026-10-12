@@ -213,7 +213,9 @@
  * (BIT(MAX_LANES) - 1) | FPGAPLLLOCK_MASK never converges.
  */
 #define XDPTX_PHYSTATUS_VERSAL_GT_LANE_MASK	GENMASK(5, 0)
-#define XDPTX_MAX_RATE(bw, lanecnt, bpp)	((bw) * (lanecnt) * 8 / (bpp))
+/* Max pixel clock (kHz): link payload rate (kB/s) per 8b/10b or 128b/132b coding. */
+#define XDPTX_MAX_RATE(bw, lanecnt, bpp) \
+	(drm_dp_max_dprx_data_rate((bw), (lanecnt)) * 8 / (bpp))
 
 #define XDPTX_MISC0_RGB_MASK			(0)
 #define XDPTX_MISC0_YCRCB422_MASK		(5 << 1)
@@ -237,6 +239,28 @@
 #define XDPTX_HIGH_BIT_RATE_1			270000
 #define XDPTX_HIGH_BIT_RATE_2			540000
 #define XDPTX_HIGH_BIT_RATE_3			810000
+
+/* DP2.1 CEA dynamic-range bit in MISC0. */
+#define XDPTX_MISC0_DYNRANGE_CEA_MASK	BIT(3)
+/* DP2.1 128b/132b (UHBR) link rates, in 10 kbps units (DRM convention). */
+#define XDPTX_UHBR10_BIT_RATE		1000000
+#define XDPTX_UHBR13_5_BIT_RATE		1350000
+#define XDPTX_UHBR20_BIT_RATE		2000000
+/* uhbr_rate_ceiling below UHBR10: no UHBR rate is negotiated until disconnect. */
+#define XDPTX_UHBR_CEILING_8B10B_ONLY	1
+/* Main-link channel-coding select: 8b/10b (DP1.4) vs 128b/132b (DP2.1). */
+#define XDPTX_ML_CH_CODING_SET_REG	0x6a4
+#define XDPTX_ML_CH_CODING_8B10B	0x01
+#define XDPTX_ML_CH_CODING_128B132B	0x02
+#define XDPTX_V2_0_CONFIG_REG		0x6e0
+#define XDPTX_V2_0_CONFIG_RESET_VAL	0x3ff
+/* DP2.1 per-stream video-frequency (Vfreq) registers (HIGH = LOW + 4). */
+#define XDPTX_VFREQ_STREAM1_LOW		0x6d0
+#define XDPTX_VFREQ_STREAM2_LOW		0x6e4
+#define XDPTX_VFREQ_STREAM3_LOW		0x6ec
+#define XDPTX_VFREQ_STREAM4_LOW		0x6f4
+/* DP2.1 per-stream end-of-line reset disable. */
+#define XDPTX_LINE_RESET_DISABLE_REG	0x0f0
 
 #define XDPTX_V1_2				0x12
 #define XDPTX_V1_4				0x14
@@ -450,10 +474,19 @@ struct xlnx_dp_vscpkt {
 	u8 ycbcr_colorimetry;
 };
 
-/*
+/**
  * struct xlnx_dp_link_config - Common link config between source and sink
- * @max_rate: Miaximum link rate
+ * @max_rate: Maximum link rate
  * @max_lanes: Maximum number of lanes
+ * @link_rate: Current link rate
+ * @lane_count: Current lane count
+ * @cr_done_cnt: Lane count that achieved clock recovery
+ * @cr_done_oldstate: Lane count from the previous clock-recovery pass
+ * @link_training_2x: true when the 128b/132b (UHBR) training sequence is used
+ * @channel_coding: Main-link channel coding (XDPTX_ML_CH_CODING_*)
+ * @ffe_preset: Per-lane 128b/132b TX FFE presets requested by the sink
+ * @uhbr_rate_ceiling: Highest UHBR rate to negotiate after a training failure;
+ *	0 means no cap. Reset on disconnect.
  */
 struct xlnx_dp_link_config {
 	int max_rate;
@@ -462,6 +495,10 @@ struct xlnx_dp_link_config {
 	u8 lane_count;
 	u8 cr_done_cnt;
 	u8 cr_done_oldstate;
+	bool link_training_2x;
+	u8 channel_coding;
+	u8 ffe_preset[XDPTX_MAX_LANES];
+	int uhbr_rate_ceiling;
 };
 
 /**
