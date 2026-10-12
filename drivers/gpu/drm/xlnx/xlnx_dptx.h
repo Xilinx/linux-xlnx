@@ -485,6 +485,9 @@ struct xlnx_dp_vscpkt {
  * @ffe_preset: Per-lane 128b/132b TX FFE presets requested by the sink
  * @uhbr_rate_ceiling: Highest UHBR rate to negotiate after a training failure;
  *	0 means no cap. Reset on disconnect.
+ * @fallback_rate: SST link rate a fallback trained to when the mode no longer
+ *	fit; caps mode_valid until disconnect. 0 means no cap.
+ * @fallback_lanes: lane count of that fallback-trained SST link
  */
 struct xlnx_dp_link_config {
 	int max_rate;
@@ -497,6 +500,8 @@ struct xlnx_dp_link_config {
 	u8 channel_coding;
 	u8 ffe_preset[XDPTX_MAX_LANES];
 	int uhbr_rate_ceiling;
+	int fallback_rate;
+	u8 fallback_lanes;
 };
 
 /**
@@ -650,6 +655,7 @@ struct xlnx_dp_mst_conn_state {
  * @hpd_work: hot plug detection worker
  * @hpd_pulse_work: hot plug pulse detection worker
  * @hdcp_cp_irq_work: HDCP content protection message indication worker
+ * @sst_modeset_retry_work: flags the SST link BAD when it cannot carry the mode
  * @tx_audio_data: audio data
  * @infoframe: DRM infoframe
  * @vscpkt: VSC extended packet
@@ -715,6 +721,7 @@ struct xlnx_dp {
 	struct delayed_work hpd_work;
 	struct delayed_work hpd_pulse_work;
 	struct delayed_work hdcp_cp_irq_work;
+	struct work_struct sst_modeset_retry_work;
 	struct xlnx_dptx_audio_data *tx_audio_data;
 	struct xlnx_dp_infoframe infoframe;
 	struct xlnx_dp_vscpkt vscpkt;
