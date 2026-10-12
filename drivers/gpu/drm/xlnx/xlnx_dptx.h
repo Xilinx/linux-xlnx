@@ -638,9 +638,13 @@ struct xlnx_dp_mst_conn_state {
  * @mst_link_trained: true once the MST main link has completed training
  * @mst_fresh_train: true for the first stream enable after a fresh train
  * @mst_enabling: true while (re)establishing the MST topology
+ * @mst_bringup_failures: failed MST bring-ups since the last HPD event
  * @mst_to_sst_relink: true when a torn-down MST session must relink to SST
  * @mst_stream_count: number of currently active MST streams
  * @mst_active_mask: bitmask of active MST stream IDs
+ * @drm_master: logical DRM pipeline master (set when this node owns the pipeline)
+ * @mst_mgr_init: true once mst_mgr has been initialized
+ * @mst_mode: true when configured for MST (num_streams > 1)
  */
 struct xlnx_dp {
 	struct device *dev;
@@ -683,8 +687,13 @@ struct xlnx_dp {
 	bool audio_init;
 	bool have_edid;
 	unsigned int colorimetry_through_vsc : 1;
+	/* Logical DRM pipeline master (set when this node owns the pipeline) */
+	struct platform_device *drm_master;
 	/* MST topology manager - valid when config.num_streams > 1 */
 	struct drm_dp_mst_topology_mgr mst_mgr;
+	bool mst_mgr_init;
+	/* True when configured for MST (num_streams > 1) */
+	bool mst_mode;
 	/*
 	 * Serializes the MST ESI sideband pump (xlnx_dp_mst_process_esi),
 	 * driven from both the HPD-pulse work item and the topology manager's
@@ -697,13 +706,14 @@ struct xlnx_dp {
 	bool mst_link_trained;
 	bool mst_fresh_train;
 	bool mst_enabling;
+	int mst_bringup_failures;
 	bool mst_to_sst_relink;
 	int mst_stream_count;
 	u32 mst_active_mask;
 };
 
 /* Shared helpers implemented in xlnx_dptx.c and used by xlnx_dptx_mst.c */
-void xlnx_dp_start(struct xlnx_dp *dp);
+int xlnx_dp_start(struct xlnx_dp *dp);
 void xlnx_dp_vtc_set_timing(struct xlnx_dp *dp,
 			    const struct drm_display_mode *mode,
 			    u32 vtc_off, u32 ppc);

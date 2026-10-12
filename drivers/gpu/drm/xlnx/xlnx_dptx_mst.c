@@ -562,8 +562,8 @@ static void xlnx_dp_mst_relink_if_degraded(struct xlnx_dp *dp)
 		"MST: main link EQ degraded while idle (CR locked, EQ lost) - retraining before modeset\n");
 
 	dp->mst_enabling = true;
-	xlnx_dp_start(dp);
-	xlnx_dp_mst_enable(dp);
+	if (xlnx_dp_start(dp) >= 0)
+		xlnx_dp_mst_enable(dp);
 	dp->mst_enabling = false;
 }
 
@@ -663,8 +663,8 @@ static void xlnx_dp_mst_warm_reenable(struct xlnx_dp *dp)
 	drm_dp_dpcd_writeb(&dp->aux, DP_MSTM_CTRL, 0);
 	xlnx_dp_write(dp->dp_base, XDPTX_MST_CONFIG, 0x0);
 	dp->mst_enabling = true;
-	xlnx_dp_start(dp);
-	xlnx_dp_mst_enable(dp);
+	if (xlnx_dp_start(dp) >= 0)
+		xlnx_dp_mst_enable(dp);
 	dp->mst_enabling = false;
 	usleep_range(10000, 11000);
 
