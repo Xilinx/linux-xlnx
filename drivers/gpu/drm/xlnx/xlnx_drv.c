@@ -49,7 +49,7 @@
 #define DRIVER_MAJOR	1
 #define DRIVER_MINOR	0
 
-#define MAX_CRTC	3
+#define MAX_CRTC	4
 
 static uint xlnx_fbdev_vres = 2;
 module_param_named(fbdev_vres, xlnx_fbdev_vres, uint, 0444);
