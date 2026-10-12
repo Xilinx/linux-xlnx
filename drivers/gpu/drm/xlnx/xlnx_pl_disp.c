@@ -890,6 +890,7 @@ static const struct component_ops xlnx_pl_disp_component_ops = {
 static int xlnx_pl_disp_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
+	struct device_node *tx_node;
 	struct device_node *vtc_node;
 	struct xlnx_pl_disp *xlnx_pl_disp;
 	int ret;
@@ -897,6 +898,7 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 	struct dma_chan *dma_chan;
 	struct xlnx_dma_chan *xlnx_dma_chan;
 	const struct drm_format_info *info;
+	u32 num_streams = 1;
 
 	xlnx_pl_disp = devm_kzalloc(dev, sizeof(*xlnx_pl_disp), GFP_KERNEL);
 	if (!xlnx_pl_disp)
@@ -1005,6 +1007,19 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, xlnx_pl_disp);
 
 	/*
+	 * Decide the DRM pipeline master from the connected DP TX node's
+	 * xlnx,num-streams. For a single stream (SST) this pl-disp node owns
+	 * the pipeline; for multi-stream (MST) the DP TX node is the master
+	 * because its OF-graph fans out to every per-stream pl-disp CRTC.
+	 * num-streams lives only on the TX node, reached over the OF-graph.
+	 */
+	tx_node = of_graph_get_remote_node(dev->of_node, 0, 0);
+	if (tx_node) {
+		of_property_read_u32(tx_node, "xlnx,num-streams", &num_streams);
+		of_node_put(tx_node);
+	}
+
+	/*
 	 * When this CRTC is a child of an "xlnx,pl-drm-1.0" aggregate node the
 	 * parent frame driver owns the DRM device and drives the component
 	 * master. In that case there is nothing to elect here: just expose the
@@ -1054,12 +1069,16 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 		return 0;
 	}
 
-	xlnx_pl_disp->master = xlnx_drm_pipeline_init(pdev);
-	if (IS_ERR(xlnx_pl_disp->master)) {
-		ret = PTR_ERR(xlnx_pl_disp->master);
+	if (num_streams == 1) {
+		xlnx_pl_disp->master = xlnx_drm_pipeline_init(pdev);
+		if (IS_ERR(xlnx_pl_disp->master)) {
+			ret = PTR_ERR(xlnx_pl_disp->master);
+			dev_err(dev, "failed to initialize the drm pipeline\n");
+			goto err_component;
+		}
+	} else {
+		dev_info(dev, "DP TX owns the DRM pipeline (MST)\n");
 		xlnx_pl_disp->master = NULL;
-		dev_err(dev, "failed to initialize the drm pipeline\n");
-		goto err_component;
 	}
 
 	dev_info(&pdev->dev, "Xlnx PL display driver probed\n");
