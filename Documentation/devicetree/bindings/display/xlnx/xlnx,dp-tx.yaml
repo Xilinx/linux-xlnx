@@ -20,6 +20,7 @@ properties:
     enum:
       - xlnx,v-dp-txss-3.0
       - xlnx,v-dp-txss-3.1
+      - xlnx,v-dp-txss2-1.0
 
   reg:
     maxItems: 2
@@ -122,9 +123,12 @@ properties:
       270000 - 2.7 Gb/s
       540000 - 5.4 Gb/s
       810000 - 8.1 Gb/s
+      1000000 - UHBR10 (DP2.1 128b/132b)
+      1350000 - UHBR13.5 (DP2.1 128b/132b)
+      2000000 - UHBR20 (DP2.1 128b/132b)
     allOf:
       - $ref: /schemas/types.yaml#/definitions/uint32
-      - enum: [162000, 270000, 540000, 810000]
+      - enum: [162000, 270000, 540000, 810000, 1000000, 1350000, 2000000]
 
   xlnx,bpc:
     description: |
@@ -215,7 +219,9 @@ allOf:
       properties:
         compatible:
           contains:
-            const: xlnx,v-dp-txss-3.1
+            enum:
+              - xlnx,v-dp-txss-3.1
+              - xlnx,v-dp-txss2-1.0
     then:
       required:
         - xlnx,vtc-offset
@@ -230,6 +236,19 @@ allOf:
       properties:
         xlnx,num-streams:
           const: 1
+
+  # UHBR (128b/132b) rates are only available on the DP2.1 cores.
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - xlnx,v-dp-txss-3.0
+              - xlnx,v-dp-txss-3.1
+    then:
+      properties:
+        xlnx,max-link-rate:
+          enum: [162000, 270000, 540000, 810000]
 
   # Exactly one xlnx,vtc-offset entry is required per stream.
   - if:
@@ -344,6 +363,36 @@ examples:
                    reg = <3>;
                    dp_transmitter3: endpoint {
                        remote-endpoint = <&display_controller3>;
+                   };
+               };
+           };
+       };
+
+       v-dp-txss2@b0100000 {
+           compatible = "xlnx,v-dp-txss2-1.0";
+           reg = <0x0 0xb0100000 0x0 0x40000>, <0x0 0xb4080000 0x0 0x10000>;
+           reg-names = "dp_base", "gt_quad_base";
+           clock-names = "s_axi_aclk", "tx_vid_clk";
+           clocks = <&zynqmp_clk 71>, <&si570_2>;
+           interrupt-names = "dptxss_dp_irq", "dptxss_timer_irq", "dptxss_hdcp_irq",
+                              "dptxss_hdcp22_cipher_irq";
+           interrupts = <0 93 4>, <0 110 4>, <0 112 4>, <0 113 4>;
+           xlnx,vtc-offset = <0x8000>;
+           xlnx,max-lanes = <4>;
+           xlnx,max-link-rate = <1000000>;
+           xlnx,bpc = <8>;
+           phy-names = "dp-phy0", "dp-phy1", "dp-phy2", "dp-phy3";
+           phys = <&vphy_lane4 0 1 1 0>, <&vphy_lane5 0 1 1 0>,
+                  <&vphy_lane6 0 1 1 0>, <&vphy_lane7 0 1 1 0>;
+
+           ports {
+               #address-cells = <1>;
+               #size-cells = <0>;
+
+               port@0 {
+                   reg = <0>;
+                   dp_transmitter4: endpoint {
+                       remote-endpoint = <&display_controller4>;
                    };
                };
            };
