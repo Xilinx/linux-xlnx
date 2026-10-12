@@ -374,6 +374,8 @@
 
 /* Flag to get VTC offset from device tree */
 #define XDPTX_VTC_OFFSET_CHANGE		BIT(0)
+/* IP core is a DP2.1 (128b/132b) variant, per compatible match */
+#define XDPTX_DP21_CORE			BIT(1)
 
 /*
  * CEA speaker placement
@@ -521,6 +523,7 @@ struct xlnx_dp_stream_fmt {
  * @hdcp1x_enable: flag to indicate hdcp-enable property in device tree
  * @num_streams: Number of DP TX video streams (xlnx,num-streams); the sole
  *	SST-vs-MST selector (num_streams == 1 -> SST, num_streams > 1 -> MST)
+ * @dp21_present: true on a DP2.1 (128b/132b UHBR) core, from the compatible match
  */
 struct xlnx_dp_config {
 	u32 max_lanes;
@@ -533,6 +536,8 @@ struct xlnx_dp_config {
 	bool hdcp2x_enable;
 	bool hdcp1x_enable;
 	u32 num_streams;
+	/* DP2.1 (128b/132b UHBR), parsed from DT */
+	bool dp21_present;
 };
 
 enum xlnx_dp_train_state {

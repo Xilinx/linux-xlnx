@@ -33,11 +33,17 @@ static const struct xlnx_dp_feature xlnx_dp_cfg_v30 = {
 	.flags = 0,
 };
 
+static const struct xlnx_dp_feature xlnx_dp_cfg_dp21 = {
+	.flags = XDPTX_VTC_OFFSET_CHANGE | XDPTX_DP21_CORE,
+};
+
 static const struct of_device_id xlnx_dp_of_match[] = {
 	{ .compatible = "xlnx,v-dp-txss-3.0",
 		.data = (void *)&xlnx_dp_cfg_v30},
 	{ .compatible = "xlnx,v-dp-txss-3.1",
 		.data = (void *)&xlnx_dp_cfg_v31},
+	{ .compatible = "xlnx,v-dp-txss2-1.0",
+	  .data = (void *)&xlnx_dp_cfg_dp21},
 	{ /* end of table */ }
 };
 
@@ -3819,6 +3825,12 @@ static int xlnx_dp_parse_of(struct xlnx_dp *dp)
 
 	config->versal_gt_present =
 		of_property_read_bool(node, "xlnx,versal-gt");
+
+	/*
+	 * DP2.1 (128b/132b UHBR) - dp21_present is derived from the compatible
+	 * match (XDPTX_DP21_CORE).
+	 */
+	config->dp21_present = !!(dp->cfg->flags & XDPTX_DP21_CORE);
 
 	if (config->hdcp1x_enable) {
 		dp->hdcpx_keymgmt_base = syscon_regmap_lookup_by_phandle(node,
