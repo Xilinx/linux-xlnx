@@ -28307,6 +28307,7 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/display/xlnx/xlnx,dp-tx.yaml
 F:	drivers/gpu/drm/xlnx/xlnx_dptx.c
 F:	drivers/gpu/drm/xlnx/xlnx_dptx.h
+F:	drivers/gpu/drm/xlnx/xlnx_dptx_mst.c
 
 XILINX DRM HDCP DRIVER
 M:	Katta Dhanunjanrao <katta.dhanunjanrao@amd.com>

@@ -137,12 +137,12 @@ static inline struct xlnx_dp *bridge_to_dp(struct drm_bridge *bridge)
 	return container_of(bridge, struct xlnx_dp, bridge);
 }
 
-static void xlnx_dp_write(void __iomem *base, int offset, u32 val)
+void xlnx_dp_write(void __iomem *base, int offset, u32 val)
 {
 	writel(val, base + offset);
 }
 
-static u32 xlnx_dp_read(void __iomem *base, int offset)
+u32 xlnx_dp_read(void __iomem *base, int offset)
 {
 	return readl(base + offset);
 }
