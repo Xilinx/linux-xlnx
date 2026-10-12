@@ -104,6 +104,7 @@
 /* DPTX Core enable registers */
 #define XDPTX_ENABLE_REG			0x80
 #define XDPTX_MAINSTRM_ENABLE_REG		0x84
+#define XDPTX_MAINSTRM_ENABLE_MASK		BIT(0)
 #define XDPTX_ENABLE_SEC_STREAM_REG		0x88
 #define XDPTX_SCRAMBLER_RESET			0xc0
 #define XDPTX_SCRAMBLER_RESET_MASK		BIT(0)
@@ -230,6 +231,7 @@
 #define XDPTX_MAX_STREAMS			4
 #define XDPTX_MAX_FREQ				3000000
 #define XDPTX_SINK_PWR_CYCLES			3
+#define XDPTX_ACT_POLL_MS			3000
 
 #define XDPTX_REDUCED_BIT_RATE			162000
 #define XDPTX_HIGH_BIT_RATE_1			270000
@@ -509,6 +511,7 @@ struct xlnx_dp_stream_fmt {
  * @max_link_rate: Maximum supported link rate
  * @max_bpc: Maximum bits per component from DT (xlnx,bpc); default/ceiling
  * @ppc: Pixels per component
+ * @pixel_mode: PL pixel packing from DT (xlnx,pixel-mode); MST uses it for ppc
  * @audio_enabled: flag to indicate audio is enabled in device tree
  * @versal_gt_present: flag to indicate versal-gt property in device tree
  * @versal_2ve_2vm: flag set at probe when zynqmp_pm_get_family_info()
@@ -525,6 +528,7 @@ struct xlnx_dp_config {
 	u32 max_link_rate;
 	u8 max_bpc;
 	u8 ppc;
+	u8 pixel_mode;
 	bool audio_enabled;
 	bool versal_gt_present;
 	bool versal_2ve_2vm;
@@ -603,6 +607,7 @@ struct xlnx_dp_mst_conn_state {
  * @phy: PHY handles for DP lanes
  * @axi_lite_clk: axi lite clock
  * @tx_vid_clk: tx video clock
+ * @per_stream_vid_clk: true if each MST stream drives its own pixel clock
  * @reset_gpio: reset gpio
  * @hpd_work: hot plug detection worker
  * @hpd_pulse_work: hot plug pulse detection worker
@@ -630,6 +635,12 @@ struct xlnx_dp_mst_conn_state {
  *	driven from both the HPD-pulse work item and the topology manager's
  *	poll_hpd_irq callback
  * @mst_encoders: per-stream MST encoders (fixed pool, one per HW stream/CRTC)
+ * @mst_link_trained: true once the MST main link has completed training
+ * @mst_fresh_train: true for the first stream enable after a fresh train
+ * @mst_enabling: true while (re)establishing the MST topology
+ * @mst_to_sst_relink: true when a torn-down MST session must relink to SST
+ * @mst_stream_count: number of currently active MST streams
+ * @mst_active_mask: bitmask of active MST stream IDs
  */
 struct xlnx_dp {
 	struct device *dev;
@@ -649,6 +660,7 @@ struct xlnx_dp {
 	struct phy *phy[XDPTX_MAX_LANES];
 	struct clk *axi_lite_clk;
 	struct clk *tx_vid_clk[XDPTX_MAX_STREAMS];
+	bool per_stream_vid_clk;
 	struct gpio_desc *reset_gpio;
 	struct delayed_work hpd_work;
 	struct delayed_work hpd_pulse_work;
@@ -681,6 +693,13 @@ struct xlnx_dp {
 	struct mutex esi_lock;
 	/* Per-stream MST encoders (fixed pool, one per HW stream/CRTC) */
 	struct xlnx_dp_mst_encoder *mst_encoders[XDPTX_MAX_STREAMS];
+	/* MST link / stream state */
+	bool mst_link_trained;
+	bool mst_fresh_train;
+	bool mst_enabling;
+	bool mst_to_sst_relink;
+	int mst_stream_count;
+	u32 mst_active_mask;
 };
 
 /* Shared helpers implemented in xlnx_dptx.c and used by xlnx_dptx_mst.c */
@@ -703,6 +722,8 @@ u8 xlnx_dp_bpc_from_fourcc(struct xlnx_dp *dp, u32 drm_fourcc);
 /* Low-level register accessors - implemented in xlnx_dptx.c */
 void xlnx_dp_write(void __iomem *base, int offset, u32 val);
 u32 xlnx_dp_read(void __iomem *base, int offset);
+void xlnx_dp_set(void __iomem *base, int offset, u32 set);
+void xlnx_dp_clr(void __iomem *base, int offset, u32 clr);
 
 /* MST entry points implemented in xlnx_dptx_mst.c and used by xlnx_dptx.c */
 int xlnx_dp_mst_enable(struct xlnx_dp *dp);

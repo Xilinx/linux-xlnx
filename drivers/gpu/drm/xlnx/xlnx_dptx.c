@@ -147,12 +147,12 @@ u32 xlnx_dp_read(void __iomem *base, int offset)
 	return readl(base + offset);
 }
 
-static void xlnx_dp_set(void __iomem *base, int offset, u32 set)
+void xlnx_dp_set(void __iomem *base, int offset, u32 set)
 {
 	xlnx_dp_write(base, offset, xlnx_dp_read(base, offset) | set);
 }
 
-static void xlnx_dp_clr(void __iomem *base, int offset, u32 clr)
+void xlnx_dp_clr(void __iomem *base, int offset, u32 clr)
 {
 	xlnx_dp_write(base, offset, xlnx_dp_read(base, offset) & ~clr);
 }
