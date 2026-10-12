@@ -925,6 +925,17 @@ static int xlnx_dp_negotiate_link_rate(struct xlnx_dp *dp)
 			if (link_config->uhbr_rate_ceiling)
 				cap = min(cap, link_config->uhbr_rate_ceiling);
 
+			/*
+			 * Clamp DP2.1 TX to UHBR13.5 (UHBR20 not validated).
+			 * TODO: drop the clamp once UHBR20 is validated; the
+			 * UHBR20 selection and fallback below stay for that.
+			 */
+			if ((uhbr_caps & DP_UHBR20) && cap >= XDPTX_UHBR20_BIT_RATE) {
+				dev_info_once(dp->dev,
+					      "DP2.1: UHBR20 not validated; capping TX link rate at UHBR13.5\n");
+				cap = min(cap, XDPTX_UHBR13_5_BIT_RATE);
+			}
+
 			if ((uhbr_caps & DP_UHBR20) &&
 			    cap >= XDPTX_UHBR20_BIT_RATE)
 				uhbr_rate = XDPTX_UHBR20_BIT_RATE;
