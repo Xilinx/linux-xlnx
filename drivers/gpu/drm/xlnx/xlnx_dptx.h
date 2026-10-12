@@ -767,6 +767,7 @@ u32 xlnx_dp_calc_bpc(struct xlnx_dp *dp, u8 bpc,
 		     struct xlnx_dp_stream_fmt *stream_fmt);
 u8 xlnx_dp_bpc_from_fourcc(struct xlnx_dp *dp, u32 drm_fourcc);
 u32 xlnx_dp_calc_user_ppc(struct xlnx_dp *dp, int clock_khz, u8 lane_cnt);
+bool xlnx_dp_uhbr_active(struct xlnx_dp *dp);
 
 /* Low-level register accessors - implemented in xlnx_dptx.c */
 void xlnx_dp_write(void __iomem *base, int offset, u32 val);

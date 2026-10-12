@@ -880,7 +880,7 @@ static int xlnx_dp_check_clock_recovery(struct xlnx_dp *dp, u8 lane_cnt)
 }
 
 /* xlnx_dp_uhbr_active - true when the link runs DP2.1 128b/132b (UHBR). */
-static inline bool xlnx_dp_uhbr_active(struct xlnx_dp *dp)
+bool xlnx_dp_uhbr_active(struct xlnx_dp *dp)
 {
 	return drm_dp_is_uhbr_rate(drm_dp_bw_code_to_link_rate(dp->mode.bw_code));
 }
