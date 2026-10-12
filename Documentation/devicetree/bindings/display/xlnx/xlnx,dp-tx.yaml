@@ -46,15 +46,25 @@ properties:
       - const: dptxss_hdcp22_cipher_irq
 
   clocks:
-    description: List of clock specifiers
+    description: |
+      Clock specifiers. Always the AXI-Lite clock and the stream-1 video
+      clock; optionally the per-stream video clocks for streams 2..N.
+    minItems: 2
     items:
-      - description: AXI Lite clock
-      - description: Video clock
+      - description: AXI Lite clock (s_axi_aclk)
+      - description: Stream-1 video clock
+      - description: Stream-2 video clock
+      - description: Stream-3 video clock
+      - description: Stream-4 video clock
 
   clock-names:
+    minItems: 2
     items:
       - const: s_axi_aclk
       - const: tx_vid_clk
+      - const: tx_vid_clk_stream2
+      - const: tx_vid_clk_stream3
+      - const: tx_vid_clk_stream4
 
   phys:
     description: This denotes phandles for phy lanes registered
@@ -68,10 +78,35 @@ properties:
       - const: dp-phy3
 
   xlnx,vtc-offset:
-    description: This denotes register offset address of VTC sub-core of
-                 DisplayPort Transmitter Subsystem.
+    description: |
+      Register offset address of the VTC sub-core(s) of the DisplayPort
+      Transmitter Subsystem. Each stream is driven by its own VTC generator,
+      so this must list one offset per stream, i.e. exactly xlnx,num-streams
+      entries (a single entry for SST).
+    $ref: /schemas/types.yaml#/definitions/uint32-array
+    minItems: 1
+    maxItems: 4
+
+  xlnx,num-streams:
+    description: |
+      Number of video streams the IP drives. 1 (or the property being absent)
+      selects Single-Stream Transport (SST); 2 to 4 enables Multi-Stream
+      Transport (MST) with that many streams. One xlnx,vtc-offset entry is
+      required per stream.
     allOf:
       - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [1, 2, 3, 4]
+    default: 1
+
+  xlnx,pixel-mode:
+    description: |
+      Number of pixels processed per video clock (PL pixel packing). MST pins
+      the pixels-per-clock to this value. Defaults to 4 (quad-pixel) when
+      absent.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [1, 2, 4]
+    default: 4
 
   xlnx,max-lanes:
     description: Max number of lanes that IP configured with.
@@ -131,16 +166,18 @@ properties:
     type: object
     $ref: /schemas/graph.yaml#/properties/ports
 
-    properties:
-      port@0:
+    patternProperties:
+      "^port@[0-3]$":
         type: object
         description: |
           Output / source port node, endpoint describing modules
-          connected the DisplayPort transmitter
+          connected the DisplayPort transmitter. One port per video stream
+          (port@0 for SST; port@0..port@3 for MST, per xlnx,num-streams).
 
         properties:
           reg:
-            const: 0
+            minimum: 0
+            maximum: 3
 
           endpoint:
             type: object
@@ -173,15 +210,81 @@ required:
 
 additionalProperties: false
 
-if:
-  properties:
-    compatible:
-      contains:
-        const: xlnx,v-dp-txss-3.1
+allOf:
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: xlnx,v-dp-txss-3.1
+    then:
+      required:
+        - xlnx,vtc-offset
 
-then:
-  required:
-    - xlnx,vtc-offset
+  # The v3.0 core has a single VTC and no per-stream offsets.
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: xlnx,v-dp-txss-3.0
+    then:
+      properties:
+        xlnx,num-streams:
+          const: 1
+
+  # Exactly one xlnx,vtc-offset entry is required per stream.
+  - if:
+      not:
+        required:
+          - xlnx,num-streams
+    then:
+      properties:
+        xlnx,vtc-offset:
+          minItems: 1
+          maxItems: 1
+  - if:
+      properties:
+        xlnx,num-streams:
+          const: 1
+      required:
+        - xlnx,num-streams
+    then:
+      properties:
+        xlnx,vtc-offset:
+          minItems: 1
+          maxItems: 1
+  - if:
+      properties:
+        xlnx,num-streams:
+          const: 2
+      required:
+        - xlnx,num-streams
+    then:
+      properties:
+        xlnx,vtc-offset:
+          minItems: 2
+          maxItems: 2
+  - if:
+      properties:
+        xlnx,num-streams:
+          const: 3
+      required:
+        - xlnx,num-streams
+    then:
+      properties:
+        xlnx,vtc-offset:
+          minItems: 3
+          maxItems: 3
+  - if:
+      properties:
+        xlnx,num-streams:
+          const: 4
+      required:
+        - xlnx,num-streams
+    then:
+      properties:
+        xlnx,vtc-offset:
+          minItems: 4
+          maxItems: 4
 
 examples:
   - |
@@ -193,12 +296,16 @@ examples:
            compatible = "xlnx,v-dp-txss-3.1";
            reg = <0x0 0xa0100000 0x0 0x40000>, <0x0 0xa4080000 0x0 0x10000>;
            reg-names = "dp_base", "gt_quad_base";
-           clock-names = "s_axi_aclk", "tx_vid_clk";
-           clocks = <&zynqmp_clk 71>, <&si570_1>;
+           clock-names = "s_axi_aclk", "tx_vid_clk", "tx_vid_clk_stream2",
+                         "tx_vid_clk_stream3", "tx_vid_clk_stream4";
+           clocks = <&zynqmp_clk 71>, <&si570_1>, <&si570_2>, <&si570_3>,
+                    <&si570_4>;
            interrupt-names = "dptxss_dp_irq", "dptxss_timer_irq", "dptxss_hdcp_irq",
                               "dptxss_hdcp22_cipher_irq";
            interrupts = <0 92 4>, <0 108 4>, <0 111 4>, <0 109 4>;
-           xlnx,vtc-offset = <0x8000>;
+           xlnx,num-streams = <4>;
+           xlnx,vtc-offset = <0x8000 0x9000 0xa000 0xb000>;
+           xlnx,pixel-mode = <4>;
            xlnx,max-lanes = <4>;
            xlnx,max-link-rate = <810000>;
            xlnx,bpc = <8>;
@@ -217,8 +324,26 @@ examples:
 
                port@0 {
                    reg = <0>;
-                   dp_transmitter: endpoint {
-                       remote-endpoint = <&display_controller>;
+                   dp_transmitter0: endpoint {
+                       remote-endpoint = <&display_controller0>;
+                   };
+               };
+               port@1 {
+                   reg = <1>;
+                   dp_transmitter1: endpoint {
+                       remote-endpoint = <&display_controller1>;
+                   };
+               };
+               port@2 {
+                   reg = <2>;
+                   dp_transmitter2: endpoint {
+                       remote-endpoint = <&display_controller2>;
+                   };
+               };
+               port@3 {
+                   reg = <3>;
+                   dp_transmitter3: endpoint {
+                       remote-endpoint = <&display_controller3>;
                    };
                };
            };
