@@ -775,6 +775,8 @@ static int xlnx_pl_disp_bind(struct device *dev, struct device *master,
 
 	drm_crtc_helper_add(&xlnx_pl_disp->xlnx_crtc.crtc,
 			    &xlnx_pl_disp_crtc_helper_funcs);
+	/* Lets a DP TX map this CRTC to the stream its output port is wired to. */
+	xlnx_pl_disp->xlnx_crtc.crtc.port = of_graph_get_port_by_id(dev->of_node, 0);
 	xlnx_pl_disp->xlnx_crtc.get_format = &xlnx_pl_disp_get_format;
 	xlnx_pl_disp->xlnx_crtc.get_align = &xlnx_pl_disp_get_align;
 	xlnx_pl_disp->drm = drm;
@@ -856,6 +858,8 @@ err_encoder:
 err_properties:
 	drm_property_destroy(xlnx_pl_disp->drm, xlnx_pl_disp->fid_out_prop);
 	drm_property_destroy(xlnx_pl_disp->drm, xlnx_pl_disp->fid_err_prop);
+	of_node_put(xlnx_pl_disp->xlnx_crtc.crtc.port);
+	xlnx_pl_disp->xlnx_crtc.crtc.port = NULL;
 	drm_crtc_cleanup(&xlnx_pl_disp->xlnx_crtc.crtc);
 	drm_plane_cleanup(&xlnx_pl_disp->plane);
 	return ret;
@@ -872,6 +876,8 @@ static void xlnx_pl_disp_unbind(struct device *dev, struct device *master,
 		xlnx_crtc_unregister(xlnx_pl_disp->drm, &xlnx_pl_disp->xlnx_crtc);
 	if (xlnx_pl_disp->primary)
 		drm_encoder_cleanup(&xlnx_pl_disp->encoder);
+	of_node_put(xlnx_pl_disp->xlnx_crtc.crtc.port);
+	xlnx_pl_disp->xlnx_crtc.crtc.port = NULL;
 	drm_plane_cleanup(&xlnx_pl_disp->plane);
 	drm_crtc_cleanup(&xlnx_pl_disp->xlnx_crtc.crtc);
 }
