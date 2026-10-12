@@ -24,6 +24,7 @@
 #include <linux/component.h>
 #include <linux/delay.h>
 #include <linux/hdmi.h>
+#include <linux/interrupt.h>
 #include <linux/math64.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
@@ -461,6 +462,7 @@ struct xlnx_hdmi_stream {
  * @connector: the drm connector structure
  * @base: device I/O memory for register access
  * @irq: hdmi subsystem irq
+ * @irq_off: true after unbind disabled the TX IRQ, until the next bind
  * @phy: PHY handle for hdmi lanes
  * @s_axi_cpu_clk: AXI4-Lite CPU clock
  * @clks: clocks claimed for the IP configuration
@@ -517,6 +519,7 @@ struct xlnx_hdmi {
 	struct drm_connector connector;
 	void __iomem *base;
 	int irq;
+	bool irq_off;
 	struct phy *phy[HDMI_MAX_LANES];
 	struct clk *s_axi_cpu_clk;
 	struct clk_bulk_data *clks;
@@ -4028,6 +4031,11 @@ static int xlnx_hdmi_bind(struct device *dev, struct device *master,
 	struct drm_device *drm_dev = data;
 	int ret;
 
+	if (hdmi->irq_off) {
+		enable_irq(hdmi->irq);
+		hdmi->irq_off = false;
+	}
+
 	encoder->possible_crtcs = 1;
 	/* initialize encoder */
 	drm_encoder_init(drm_dev, encoder, &xlnx_hdmi_encoder_funcs,
@@ -4062,6 +4070,18 @@ static void xlnx_hdmi_unbind(struct device *dev, struct device *master,
 		xlnx_bridge_disable(hdmi->bridge);
 
 	xlnx_hdmi_encoder_dpms(&hdmi->encoder, DRM_MODE_DPMS_OFF);
+
+	/*
+	 * The IRQ is devm against the platform device, so it stays live
+	 * through unbind. Disable it first so a late HPD cannot re-queue
+	 * the work onto a connector that is about to be cleaned up.
+	 */
+	if (!hdmi->irq_off) {
+		disable_irq(hdmi->irq);
+		hdmi->irq_off = true;
+	}
+	cancel_delayed_work_sync(&hdmi->hpd_work);
+
 	drm_encoder_cleanup(&hdmi->encoder);
 	drm_connector_cleanup(&hdmi->connector);
 }
@@ -4693,6 +4713,10 @@ static void xlnx_hdmi_remove(struct platform_device *pdev)
 {
 	struct xlnx_hdmi *hdmi = platform_get_drvdata(pdev);
 
+	if (!hdmi->irq_off) {
+		disable_irq(hdmi->irq);
+		hdmi->irq_off = true;
+	}
 	cancel_delayed_work_sync(&hdmi->hpd_work);
 
 	if (hdmi->bridge)
