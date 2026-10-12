@@ -28,6 +28,7 @@
 #include <media/hdr-ctrls.h>
 #include <uapi/linux/videodev2.h>
 
+#include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_connector.h>
 #include <drm/drm_framebuffer.h>
@@ -38,8 +39,12 @@
 #include <drm/display/drm_hdmi_helper.h>
 #include <drm/drm_edid.h>
 #include <drm/drm_fourcc.h>
+#include <drm/drm_managed.h>
 #include <drm/drm_of.h>
 #include <drm/drm_probe_helper.h>
+#include <drm/drm_bridge.h>
+#include <drm/drm_bridge_connector.h>
+#include <drm/drm_simple_kms_helper.h>
 
 #include <linux/hdmi.h>
 #include <sound/soc.h>
@@ -516,9 +521,9 @@ enum xlnx_dp_train_state {
  * struct xlnx_dp - Xilinx DisplayPort core
  * @dev: device structure
  * @encoder: the drm encoder structure
+ * @bridge: the drm bridge structure
  * @connector: the drm connector structure
- * @sync_prop: synchronous mode property
- * @bpc_prop: bpc mode property
+ * @conn_lock: keeps @connector valid for the ALSA ELD read across unbind
  * @aux: aux channel
  * @config: IP core configuration from DTS
  * @tx_link_config: source configuration
@@ -543,6 +548,7 @@ enum xlnx_dp_train_state {
  * @dp_base: Base address of DisplayPort Tx subsystem
  * @dpms: current dpms state
  * @hdcptx_timer_irq: HDCP TX timer interrupt
+ * @irq: main DisplayPort interrupt number (used to synchronize unbind())
  * @vtc_off: VTC sub-core offset address
  * @dpcd: DP configuration data from currently connected sink device
  * @train_set: set of training data
@@ -556,9 +562,9 @@ enum xlnx_dp_train_state {
 struct xlnx_dp {
 	struct device *dev;
 	struct drm_encoder encoder;
-	struct drm_connector connector;
-	struct drm_property *sync_prop;
-	struct drm_property *bpc_prop;
+	struct drm_bridge bridge;
+	struct drm_connector *connector;
+	struct mutex conn_lock; /* serializes xlnx_dp_get_eld() with dp->connector bind/unbind */
 	struct drm_dp_aux aux;
 	struct xlnx_dp_config config;
 	struct xlnx_dp_tx_link_config tx_link_config;
@@ -583,6 +589,7 @@ struct xlnx_dp {
 	void __iomem *dp_base;
 	int dpms;
 	int hdcptx_timer_irq;
+	int irq;
 	u32 vtc_off;
 	u8 dpcd[DP_RECEIVER_CAP_SIZE];
 	u8 train_set[XDPTX_MAX_LANES];
@@ -708,9 +715,9 @@ static inline struct xlnx_dp *encoder_to_dp(struct drm_encoder *encoder)
 	return container_of(encoder, struct xlnx_dp, encoder);
 }
 
-static inline struct xlnx_dp *connector_to_dp(struct drm_connector *connector)
+static inline struct xlnx_dp *bridge_to_dp(struct drm_bridge *bridge)
 {
-	return container_of(connector, struct xlnx_dp, connector);
+	return container_of(bridge, struct xlnx_dp, bridge);
 }
 
 static void xlnx_dp_write(void __iomem *base, int offset, u32 val)
@@ -2162,24 +2169,6 @@ static void xlnx_dp_update_misc(struct xlnx_dp *dp)
 	}
 }
 
-/**
- * xlnx_dp_set_sync_mode - Set the sync mode bit in the software misc state
- * @dp: DisplayPort IP core structure
- * @mode: flag if the sync mode should be on or off
- *
- * Set the bit in software misc state. To apply to hardware,
- * xlnx_dp_update_misc() should be called.
- */
-static void xlnx_dp_set_sync_mode(struct xlnx_dp *dp, bool mode)
-{
-	struct xlnx_dp_config *config = &dp->config;
-
-	if (mode)
-		config->misc0 |= XDPTX_MAINSTRM_MISC0_MASK;
-	else
-		config->misc0 &= ~XDPTX_MAINSTRM_MISC0_MASK;
-}
-
 static void xlnx_dp_vsc_pkt_handler(struct xlnx_dp *dp)
 {
 	struct xlnx_dp_vscpkt *vscpkt = &dp->vscpkt;
@@ -2256,11 +2245,11 @@ static u32 xlnx_dp_set_bpc(struct xlnx_dp *dp, u8 bpc)
 	struct xlnx_dp_config *config = &dp->config;
 	unsigned int ret = 0;
 
-	if (dp->connector.display_info.bpc &&
-	    dp->connector.display_info.bpc != bpc) {
+	if (dp->connector && dp->connector->display_info.bpc &&
+	    dp->connector->display_info.bpc != bpc) {
 		dev_err(dp->dev, "requested bpc (%u) != display info (%u)\n",
-			bpc, dp->connector.display_info.bpc);
-		bpc = dp->connector.display_info.bpc;
+			bpc, dp->connector->display_info.bpc);
+		bpc = dp->connector->display_info.bpc;
 	}
 
 	config->misc0 &= ~XDPTX_MISC0_BPC_MASK;
@@ -2683,18 +2672,22 @@ static int xlnx_dp_txconnected(struct xlnx_dp *dp)
 	return true;
 }
 
-/*
- * DRM connector functions
+/* -------------------------------------------------------------------------
+ * SST (Single-Stream Transport) bridge path
+ * -------------------------------------------------------------------------
  */
 static enum drm_connector_status
-xlnx_dp_connector_detect(struct drm_connector *connector, bool force)
+xlnx_dp_bridge_detect(struct drm_bridge *bridge, struct drm_connector *connector)
 {
-	struct xlnx_dp *dp = connector_to_dp(connector);
+	struct xlnx_dp *dp = bridge_to_dp(bridge);
 	struct xlnx_dp_link_config *link_config = &dp->link_config;
 	struct xlnx_dp_mode *mode = &dp->mode;
 	int ret;
 	u8 dpcd_ext[DP_RECEIVER_CAP_SIZE];
 	u8 max_link_rate, ext_cap_rd = 0, data;
+
+	if (!dp->drm)
+		return connector_status_disconnected;
 
 	if (!xlnx_dp_txconnected(dp)) {
 		dev_dbg(dp->dev, "Display is not connected");
@@ -2799,39 +2792,28 @@ disconnected:
 	return connector_status_disconnected;
 }
 
-static int xlnx_dp_connector_get_modes(struct drm_connector *connector)
+static const struct drm_edid *
+xlnx_dp_bridge_edid_read(struct drm_bridge *bridge,
+			 struct drm_connector *connector)
 {
-	struct xlnx_dp *dp = connector_to_dp(connector);
-	struct edid *edid;
-	int ret;
+	struct xlnx_dp *dp = bridge_to_dp(bridge);
+	const struct drm_edid *edid;
 
-	edid = drm_get_edid(connector, &dp->aux.ddc);
-	if (!edid) {
-		drm_connector_update_edid_property(connector, NULL);
-		dp->have_edid = false;
-		return 0;
-	}
+	if (!dp->drm)
+		return NULL;
 
-	drm_connector_update_edid_property(connector, edid);
-	ret = drm_add_edid_modes(connector, edid);
-	dp->have_edid = true;
-	kfree(edid);
+	edid = drm_edid_read_ddc(connector, &dp->aux.ddc);
+	dp->have_edid = !!edid;
 
-	return ret;
+	return edid;
 }
 
-static struct drm_encoder *
-xlnx_dp_connector_best_encoder(struct drm_connector *connector)
+static enum drm_mode_status
+xlnx_dp_bridge_mode_valid(struct drm_bridge *bridge,
+			  const struct drm_display_info *info,
+			  const struct drm_display_mode *mode)
 {
-	struct xlnx_dp *dp = connector_to_dp(connector);
-
-	return &dp->encoder;
-}
-
-static int xlnx_dp_connector_mode_valid(struct drm_connector *connector,
-					const struct drm_display_mode *mode)
-{
-	struct xlnx_dp *dp = connector_to_dp(connector);
+	struct xlnx_dp *dp = bridge_to_dp(bridge);
 	u8 max_lanes = dp->link_config.max_lanes;
 	u8 bpp = dp->config.bpp;
 	int max_rate = dp->link_config.max_rate;
@@ -2857,89 +2839,38 @@ static int xlnx_dp_connector_mode_valid(struct drm_connector *connector,
 	return MODE_OK;
 }
 
-static void xlnx_dp_connector_destroy(struct drm_connector *connector)
-{
-	drm_connector_unregister(connector);
-	drm_connector_cleanup(connector);
-}
-
-static int
-xlnx_dp_connector_atomic_set_property(struct drm_connector *connector,
-				      struct drm_connector_state *state,
-				      struct drm_property *property,
-				      uint64_t val)
-{
-	struct xlnx_dp *dp = connector_to_dp(connector);
-	unsigned int bpc;
-
-	if (property == dp->sync_prop) {
-		xlnx_dp_set_sync_mode(dp, val);
-	} else if (property == dp->bpc_prop) {
-		bpc = xlnx_dp_set_bpc(dp, val);
-		if (bpc) {
-			drm_object_property_set_value(&connector->base,
-						      property, bpc);
-			return -EINVAL;
-		}
-	} else {
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-static int
-xlnx_dp_connector_atomic_get_property(struct drm_connector *connector,
-				      const struct drm_connector_state *state,
-					struct drm_property *property,
-					uint64_t *val)
-{
-	struct xlnx_dp *dp = connector_to_dp(connector);
-
-	if (property == dp->sync_prop)
-		*val = (dp->config.misc0 & XDPTX_MAINSTRM_MISC0_MASK);
-	else if (property == dp->bpc_prop)
-		*val = dp->config.bpc;
-	else
-		return -EINVAL;
-
-	return 0;
-}
-
-static const struct drm_connector_funcs xlnx_dp_connector_funcs = {
-	.detect			= xlnx_dp_connector_detect,
-	.fill_modes		= drm_helper_probe_single_connector_modes,
-	.destroy		= xlnx_dp_connector_destroy,
-	.atomic_duplicate_state	= drm_atomic_helper_connector_duplicate_state,
-	.atomic_destroy_state	= drm_atomic_helper_connector_destroy_state,
-	.reset			= drm_atomic_helper_connector_reset,
-	.atomic_set_property	= xlnx_dp_connector_atomic_set_property,
-	.atomic_get_property	= xlnx_dp_connector_atomic_get_property,
-};
-
-static struct drm_connector_helper_funcs xlnx_dp_connector_helper_funcs = {
-	.get_modes	= xlnx_dp_connector_get_modes,
-	.best_encoder	= xlnx_dp_connector_best_encoder,
-	.mode_valid	= xlnx_dp_connector_mode_valid,
-};
-
 static int xlnx_dp_get_eld(struct device *dev, u8 *buf, size_t len)
 {
 	struct xlnx_dp *dp = dev_get_drvdata(dev);
+	struct drm_connector *connector;
 	size_t size;
+	int ret = 0;
 
 	if (!dp->have_edid)
 		return -EIO;
 
-	size = drm_eld_size(dp->connector.eld);
-	if (!size)
-		return -EINVAL;
+	/* Keep unbind from clearing dp->connector while we read it. */
+	mutex_lock(&dp->conn_lock);
+	connector = dp->connector;
+	if (!connector) {
+		ret = -EIO;
+		goto out;
+	}
 
-	if (len < size)
-		size = len;
-	memcpy(buf, dp->connector.eld, size);
+	mutex_lock(&connector->eld_mutex);
+	size = drm_eld_size(connector->eld);
+	if (size) {
+		if (len < size)
+			size = len;
+		memcpy(buf, connector->eld, size);
+	} else {
+		ret = -EINVAL;
+	}
+	mutex_unlock(&connector->eld_mutex);
+out:
+	mutex_unlock(&dp->conn_lock);
 
-	return 0;
+	return ret;
 }
 
 static unsigned long dp_codec_spk_mask_from_alloc(int spk_alloc)
@@ -3168,37 +3099,10 @@ static int dptx_register_aud_dev(struct device *dev)
 			&xlnx_dp_tx_dai, 1);
 }
 
-static void xlnx_dp_encoder_enable(struct drm_encoder *encoder)
-{
-	struct xlnx_dp *dp = encoder_to_dp(encoder);
-
-	pm_runtime_get_sync(dp->dev);
-
-	if (!dp->enabled) {
-		dp->enabled = true;
-		xlnx_dp_start(dp);
-	}
-}
-
-static void xlnx_dp_encoder_disable(struct drm_encoder *encoder)
-{
-	struct xlnx_dp *dp = encoder_to_dp(encoder);
-
-	if (dp->enabled) {
-		dp->enabled = false;
-		cancel_delayed_work(&dp->hpd_work);
-		cancel_delayed_work(&dp->hpd_pulse_work);
-		xlnx_dp_stop(dp);
-	}
-	pm_runtime_put_sync(dp->dev);
-}
-
 static void
-xlnx_dp_encoder_atomic_mode_set(struct drm_encoder *encoder,
-				struct drm_crtc_state *crtc_state,
-				struct drm_connector_state *connector_state)
+xlnx_dp_encoder_atomic_mode_set(struct xlnx_dp *dp, struct drm_crtc *crtc,
+				struct drm_crtc_state *crtc_state)
 {
-	struct xlnx_dp *dp = encoder_to_dp(encoder);
 	struct drm_display_mode *mode = &crtc_state->mode;
 	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
 	int rate, max_rate = dp->link_config.max_rate;
@@ -3210,7 +3114,7 @@ xlnx_dp_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	 * This assumes that there is no conversion  between framebuffer
 	 * and DP Tx
 	 */
-	drm_fourcc = encoder->crtc->primary->state->fb->format->format;
+	drm_fourcc = crtc->primary->state->fb->format->format;
 
 	xlnx_dp_set_color(dp, drm_fourcc);
 
@@ -3232,14 +3136,107 @@ xlnx_dp_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	xlnx_dp_prepare_vsc(dp);
 }
 
-static const struct drm_encoder_funcs xlnx_dp_encoder_funcs = {
-	.destroy = drm_encoder_cleanup,
-};
+/**
+ * xlnx_dp_bridge_enable - Enable the DisplayPort bridge and start the stream
+ * @bridge: DRM bridge
+ * @state: atomic state being committed
+ */
+static void xlnx_dp_bridge_enable(struct drm_bridge *bridge,
+				  struct drm_atomic_state *state)
+{
+	struct xlnx_dp *dp = bridge_to_dp(bridge);
+	struct drm_connector_state *conn_state;
+	struct drm_connector *connector;
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *crtc_state;
 
-static const struct drm_encoder_helper_funcs xlnx_dp_encoder_helper_funcs = {
-	.enable			= xlnx_dp_encoder_enable,
-	.disable		= xlnx_dp_encoder_disable,
-	.atomic_mode_set	= xlnx_dp_encoder_atomic_mode_set,
+	connector = drm_atomic_get_new_connector_for_encoder(state,
+							     bridge->encoder);
+	if (!connector) {
+		dev_err(dp->dev, "bridge_enable: no connector for encoder\n");
+		return;
+	}
+
+	conn_state = drm_atomic_get_new_connector_state(state, connector);
+	if (!conn_state || !conn_state->crtc) {
+		dev_err(dp->dev, "bridge_enable: no crtc for connector\n");
+		return;
+	}
+	crtc = conn_state->crtc;
+
+	crtc_state = drm_atomic_get_new_crtc_state(state, crtc);
+	if (!crtc_state) {
+		dev_err(dp->dev, "bridge_enable: no crtc state for crtc\n");
+		return;
+	}
+	xlnx_dp_encoder_atomic_mode_set(dp, crtc, crtc_state);
+
+	if (!dp->enabled) {
+		pm_runtime_get_sync(dp->dev);
+		dp->enabled = true;
+		xlnx_dp_start(dp);
+	}
+}
+
+/**
+ * xlnx_dp_bridge_disable - Disable the DisplayPort bridge and stop the stream
+ * @bridge: DRM bridge
+ * @state: atomic state being committed
+ */
+static void xlnx_dp_bridge_disable(struct drm_bridge *bridge,
+				   struct drm_atomic_state *state)
+{
+	struct xlnx_dp *dp = bridge_to_dp(bridge);
+
+	if (dp->enabled) {
+		dp->enabled = false;
+		/* No _sync: HPD work takes modeset locks this commit may hold. */
+		cancel_delayed_work(&dp->hpd_work);
+		cancel_delayed_work(&dp->hpd_pulse_work);
+		xlnx_dp_stop(dp);
+		pm_runtime_put_sync(dp->dev);
+	}
+}
+
+static int xlnx_dp_bridge_attach(struct drm_bridge *bridge,
+				 struct drm_encoder *encoder,
+				 enum drm_bridge_attach_flags flags)
+{
+	return 0;
+}
+
+static void xlnx_dp_bridge_hpd_enable(struct drm_bridge *bridge)
+{
+	struct xlnx_dp *dp = bridge_to_dp(bridge);
+	u32 intr_mask = xlnx_dp_read(dp->dp_base, XDPTX_INTR_MASK_REG);
+
+	xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG,
+		      intr_mask & ~(XDPTX_INTR_HPDPULSE_MASK |
+				    XDPTX_INTR_HPDEVENT_MASK));
+}
+
+static void xlnx_dp_bridge_hpd_disable(struct drm_bridge *bridge)
+{
+	struct xlnx_dp *dp = bridge_to_dp(bridge);
+	u32 intr_mask = xlnx_dp_read(dp->dp_base, XDPTX_INTR_MASK_REG);
+
+	xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG,
+		      intr_mask | XDPTX_INTR_HPDPULSE_MASK |
+		      XDPTX_INTR_HPDEVENT_MASK);
+}
+
+static const struct drm_bridge_funcs xlnx_dp_bridge_funcs = {
+	.atomic_enable		= xlnx_dp_bridge_enable,
+	.atomic_disable		= xlnx_dp_bridge_disable,
+	.mode_valid		= xlnx_dp_bridge_mode_valid,
+	.edid_read		= xlnx_dp_bridge_edid_read,
+	.detect			= xlnx_dp_bridge_detect,
+	.attach			= xlnx_dp_bridge_attach,
+	.hpd_enable		= xlnx_dp_bridge_hpd_enable,
+	.hpd_disable		= xlnx_dp_bridge_hpd_disable,
+	.atomic_duplicate_state	= drm_atomic_helper_bridge_duplicate_state,
+	.atomic_destroy_state	= drm_atomic_helper_bridge_destroy_state,
+	.atomic_reset		= drm_atomic_helper_bridge_reset,
 };
 
 static void xlnx_dp_hpd_work_func(struct work_struct *work)
@@ -3272,80 +3269,92 @@ static void xlnx_dp_hdcp_cp_irq_func(struct work_struct *work)
 	xlnx_hdcp_tx_process_cp_irq(dptxhdcp);
 }
 
-static struct drm_prop_enum_list xlnx_dp_bpc_enum[] = {
-	{ 6, "6BPC" },
-	{ 8, "8BPC" },
-	{ 10, "10BPC" },
-	{ 12, "12BPC" },
-};
+static void xlnx_dp_bridge_put(struct drm_device *drm, void *bridge)
+{
+	drm_bridge_put(bridge);
+}
 
 static int xlnx_dp_bind(struct device *dev, struct device *master, void *data)
 {
 	struct xlnx_dp *dp = dev_get_drvdata(dev);
 	struct drm_encoder *encoder = &dp->encoder;
-	struct drm_connector *connector = &dp->connector;
+	struct drm_connector *connector;
 	struct drm_device *drm = data;
 	int ret;
-
-	encoder->possible_crtcs = 1;
-	drm_encoder_init(drm, encoder, &xlnx_dp_encoder_funcs,
-			 DRM_MODE_ENCODER_TMDS, NULL);
-	drm_encoder_helper_add(encoder, &xlnx_dp_encoder_helper_funcs);
-
-	connector->polled = DRM_CONNECTOR_POLL_HPD;
-	ret = drm_connector_init(encoder->dev, connector,
-				 &xlnx_dp_connector_funcs,
-				 DRM_MODE_CONNECTOR_DisplayPort);
-	if (ret) {
-		dev_err(dp->dev, "failed to initialize the drm connector");
-		goto error_encoder;
-	}
-
-	drm_connector_helper_add(connector, &xlnx_dp_connector_helper_funcs);
-	drm_connector_register(connector);
-	drm_connector_attach_encoder(connector, encoder);
-	connector->dpms = DRM_MODE_DPMS_OFF;
 
 	dp->drm = drm;
 	dp->aux.drm_dev = drm;
 	ret = drm_dp_aux_register(&dp->aux);
 	if (ret) {
 		dev_err(dp->dev, "failed to register DP aux\n");
-		goto error_connector;
+		dp->drm = NULL;
+		return ret;
 	}
 
-	dp->sync_prop = drm_property_create_bool(drm, 0, "sync");
-	dp->bpc_prop = drm_property_create_enum(drm, 0, "bpc",
-						xlnx_dp_bpc_enum,
-						ARRAY_SIZE(xlnx_dp_bpc_enum));
-	dp->config.misc0 &= ~XDPTX_MAINSTRM_MISC0_MASK;
-	drm_object_attach_property(&connector->base, dp->sync_prop, false);
-	ret = xlnx_dp_set_bpc(dp, 8);
-	drm_object_attach_property(&connector->base, dp->bpc_prop,
-				   ret ? ret : 8);
-	xlnx_dp_update_bpp(dp);
+	encoder->possible_crtcs = 1;
+	/* dp->encoder lives in the bridge allocation; hold it past encoder release. */
+	drm_bridge_get(&dp->bridge);
+	ret = drmm_add_action_or_reset(drm, xlnx_dp_bridge_put, &dp->bridge);
+	if (!ret)
+		ret = drmm_encoder_init(drm, encoder, NULL,
+					DRM_MODE_ENCODER_TMDS, NULL);
+	if (ret) {
+		dp->drm = NULL;
+		drm_dp_aux_unregister(&dp->aux);
+		return ret;
+	}
 
+	ret = drm_bridge_attach(encoder, &dp->bridge, NULL,
+				DRM_BRIDGE_ATTACH_NO_CONNECTOR);
+	if (ret) {
+		dev_err(dp->dev, "failed to attach bridge to encoder\n");
+		goto error_aux;
+	}
+
+	connector = drm_bridge_connector_init(drm, encoder);
+	if (IS_ERR(connector)) {
+		dev_err(dp->dev, "failed to create bridge connector\n");
+		ret = PTR_ERR(connector);
+		goto error_aux;
+	}
+	mutex_lock(&dp->conn_lock);
+	WRITE_ONCE(dp->connector, connector);
+	mutex_unlock(&dp->conn_lock);
+
+	ret = drm_connector_attach_encoder(connector, encoder);
+	if (ret < 0) {
+		dev_err(dp->dev, "failed to attach connector to encoder\n");
+		goto error_aux;
+	}
+
+	drm_atomic_helper_connector_reset(connector);
+	if (!connector->state) {
+		ret = -ENOMEM;
+		goto error_aux;
+	}
+
+	xlnx_dp_set_bpc(dp, 8);
+	xlnx_dp_update_bpp(dp);
+	drm_connector_attach_max_bpc_property(connector, 8, 12);
 	drm_object_attach_property(&connector->base,
 				   connector->dev->mode_config.gen_hdr_output_metadata_property, 0);
+
 	/* This enables interrupts, so should be called after DRM init */
 	ret = xlnx_dp_init_aux(dp);
 	if (ret) {
 		dev_err(dp->dev, "failed to initialize DP aux");
-		goto error_prop;
+		goto error_aux;
 	}
-	INIT_DELAYED_WORK(&dp->hpd_work, xlnx_dp_hpd_work_func);
-	INIT_DELAYED_WORK(&dp->hpd_pulse_work, xlnx_dp_hpd_pulse_work_func);
 
 	return 0;
 
-error_prop:
-	drm_property_destroy(dp->drm, dp->bpc_prop);
-	drm_property_destroy(dp->drm, dp->sync_prop);
+error_aux:
+	/* The connector and encoder are drmm-managed; just drop our references. */
+	mutex_lock(&dp->conn_lock);
+	WRITE_ONCE(dp->connector, NULL);
+	mutex_unlock(&dp->conn_lock);
+	dp->drm = NULL;
 	drm_dp_aux_unregister(&dp->aux);
-error_connector:
-	xlnx_dp_connector_destroy(&dp->connector);
-error_encoder:
-	drm_encoder_cleanup(&dp->encoder);
 
 	return ret;
 }
@@ -3354,15 +3363,25 @@ static void xlnx_dp_unbind(struct device *dev,
 			   struct device *master, void *data)
 {
 	struct xlnx_dp *dp = dev_get_drvdata(dev);
+	struct drm_device *drm = data;
 
+	/* Mask all interrupts so the live IRQ cannot re-queue the HPD work */
+	xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG, ~0);
+	/* Wait out any threaded handler already running before dropping the connector. */
+	synchronize_irq(dp->irq);
 	cancel_delayed_work_sync(&dp->hpd_work);
 	cancel_delayed_work_sync(&dp->hpd_pulse_work);
+
+	/* The drmm connector/encoder outlive unbind; stop probes reaching the HW. */
+	mutex_lock(&drm->mode_config.mutex);
+	dp->drm = NULL;
+	mutex_lock(&dp->conn_lock);
+	WRITE_ONCE(dp->connector, NULL);
+	mutex_unlock(&dp->conn_lock);
+	mutex_unlock(&drm->mode_config.mutex);
+
 	xlnx_dp_exit_aux(dp);
 	drm_dp_aux_unregister(&dp->aux);
-	drm_property_destroy(dp->drm, dp->bpc_prop);
-	drm_property_destroy(dp->drm, dp->sync_prop);
-	xlnx_dp_connector_destroy(&dp->connector);
-	drm_encoder_cleanup(&dp->encoder);
 }
 
 static void xlnx_dp_hpd_pulse_work_func(struct work_struct *work)
@@ -3473,7 +3492,8 @@ static void xlnx_dp_gen_drmif_pkt(struct xlnx_dp *dp,
 
 static void xlnx_dp_vsync_handler(struct xlnx_dp *dp)
 {
-	struct drm_connector_state *state = dp->connector.state;
+	struct drm_connector *connector = READ_ONCE(dp->connector);
+	struct drm_connector_state *state = connector ? connector->state : NULL;
 	struct hdmi_drm_infoframe frame;
 	struct xlnx_dp_infoframe *iframe = &dp->infoframe;
 	int i;
@@ -3488,7 +3508,7 @@ static void xlnx_dp_vsync_handler(struct xlnx_dp *dp)
 				      dp->tx_audio_data->buffer[i]);
 		}
 
-		if (state->gen_hdr_output_metadata) {
+		if (state && state->gen_hdr_output_metadata) {
 			if (drm_hdmi_infoframe_set_gen_hdr_metadata(&frame, state))
 				return;
 
@@ -3906,9 +3926,10 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 	unsigned int i;
 	int irq, ret;
 
-	dp = devm_kzalloc(&pdev->dev, sizeof(*dp), GFP_KERNEL);
-	if (!dp)
-		return -ENOMEM;
+	dp = devm_drm_bridge_alloc(&pdev->dev, struct xlnx_dp, bridge,
+				   &xlnx_dp_bridge_funcs);
+	if (IS_ERR(dp))
+		return PTR_ERR(dp);
 
 	dp->tx_audio_data =
 		devm_kzalloc(&pdev->dev, sizeof(struct xlnx_dptx_audio_data),
@@ -3919,6 +3940,9 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 	dp->dpms = DRM_MODE_DPMS_OFF;
 	dp->status = connector_status_disconnected;
 	dp->dev = &pdev->dev;
+	ret = devm_mutex_init(&pdev->dev, &dp->conn_lock);
+	if (ret)
+		return ret;
 
 	match = of_match_node(xlnx_dp_of_match, pnode);
 	if (!match)
@@ -4046,6 +4070,11 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 		ret = irq;
 		goto error_clk_vid;
 	}
+	dp->irq = irq;
+	/* The handler queues the HPD works, which must exist before it can run. */
+	INIT_DELAYED_WORK(&dp->hpd_work, xlnx_dp_hpd_work_func);
+	INIT_DELAYED_WORK(&dp->hpd_pulse_work, xlnx_dp_hpd_pulse_work_func);
+	xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG, ~0);
 	ret = devm_request_threaded_irq(dp->dev, irq, NULL,
 					xlnx_dp_irq_handler, IRQF_ONESHOT,
 					dev_name(dp->dev), dp);
@@ -4076,13 +4105,21 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 		dev_info(dp->dev, "dp tx audio initialized\n");
 	}
 
+	dp->bridge.of_node = dp->dev->of_node;
+	dp->bridge.type = DRM_MODE_CONNECTOR_DisplayPort;
+	dp->bridge.ops = DRM_BRIDGE_OP_DETECT | DRM_BRIDGE_OP_HPD |
+			 DRM_BRIDGE_OP_EDID;
+	drm_bridge_add(&dp->bridge);
+
 	/*
 	 * Audio cleanup is handled automatically via devm on failure.
 	 * component_add() has no devm variant and must be undone explicitly.
 	 */
 	ret = component_add(&pdev->dev, &xlnx_dp_component_ops);
-	if (ret)
+	if (ret) {
+		drm_bridge_remove(&dp->bridge);
 		goto error_hdcp;
+	}
 
 	return 0;
 
@@ -4116,6 +4153,7 @@ static void xlnx_dp_remove(struct platform_device *pdev)
 	else
 		phy_exit(dp->phy[0]);
 	component_del(&pdev->dev, &xlnx_dp_component_ops);
+	drm_bridge_remove(&dp->bridge);
 	sysfs_remove_group(&pdev->dev.kobj, &attr_group);
 }
 
