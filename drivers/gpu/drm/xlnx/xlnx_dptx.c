@@ -157,14 +157,18 @@ static void xlnx_dp_clr(void __iomem *base, int offset, u32 clr)
 	xlnx_dp_write(base, offset, xlnx_dp_read(base, offset) & ~clr);
 }
 
-static void xlnx_dp_vtc_set_timing(struct xlnx_dp *dp,
-				   struct drm_display_mode *mode)
+void xlnx_dp_vtc_set_timing(struct xlnx_dp *dp,
+			    const struct drm_display_mode *mode, u32 vtc_off,
+			    u32 ppc)
 {
 	u32 reg;
 	u32 htotal, hactive, hsync_start, hbackporch_start;
 	u32 vtotal, vactive, vsync_start, vbackporch_start;
 	u32 hsync_len, hfront_porch, hback_porch;
 	u32 vsync_len, vfront_porch, vback_porch;
+
+	if (!ppc)
+		ppc = 1;
 
 	/*
 	 * TODO : For now driver does not support interlace mode
@@ -178,10 +182,10 @@ static void xlnx_dp_vtc_set_timing(struct xlnx_dp *dp,
 	 * pixles, hsync, hblank) timing settings can be detected and generated
 	 * only for a multiple of the pixels-per-clock configured in the system.
 	 */
-	hactive = mode->hdisplay / dp->config.ppc;
-	hfront_porch = (mode->hsync_start - mode->hdisplay) / dp->config.ppc;
-	hback_porch = (mode->htotal - mode->hsync_end) / dp->config.ppc;
-	hsync_len = (mode->hsync_end - mode->hsync_start) / dp->config.ppc;
+	hactive = mode->hdisplay / ppc;
+	hfront_porch = (mode->hsync_start - mode->hdisplay) / ppc;
+	hback_porch = (mode->htotal - mode->hsync_end) / ppc;
+	hsync_len = (mode->hsync_end - mode->hsync_start) / ppc;
 	htotal = hactive + hfront_porch + hsync_len + hback_porch;
 	hsync_start = hactive + hfront_porch;
 	hbackporch_start = hsync_start + hsync_len;
@@ -195,79 +199,113 @@ static void xlnx_dp_vtc_set_timing(struct xlnx_dp *dp,
 	vbackporch_start = vsync_start + vsync_len;
 
 	reg = htotal & XDPTX_VTC_GHSIZE_FRAME_HSIZE;
-	xlnx_dp_write(dp->dp_base, dp->vtc_off + XDPTX_VTC_GHSIZE, reg);
+	xlnx_dp_write(dp->dp_base, vtc_off + XDPTX_VTC_GHSIZE, reg);
 
 	reg = vtotal & XDPTX_VTC_GVSIZE_FRAME_VSIZE;
 	reg |= reg << XDPTX_VTC_FIELD1_VSIZE_SHIFT;
-	xlnx_dp_write(dp->dp_base, dp->vtc_off + XDPTX_VTC_GVSIZE, reg);
+	xlnx_dp_write(dp->dp_base, vtc_off + XDPTX_VTC_GVSIZE, reg);
 
 	reg = hactive & XDPTX_VTC_ACTIVE_SIZE_MASK;
 	reg |= (vactive & XDPTX_VTC_ACTIVE_SIZE_MASK) <<
 		XDPTX_VTC_FIELD1_VSIZE_SHIFT;
-	xlnx_dp_write(dp->dp_base, dp->vtc_off + XDPTX_VTC_GASIZE_F0, reg);
+	xlnx_dp_write(dp->dp_base, vtc_off + XDPTX_VTC_GASIZE_F0, reg);
 
 	reg = hsync_start & XDPTX_VTC_GHSYNC_START_MASK;
 	reg |= (hbackporch_start << XDPTX_VTC_GH1BPSTART_SHIFT) &
 		XDPTX_VTC_GHSYNC_END_MASK;
-	xlnx_dp_write(dp->dp_base, dp->vtc_off + XDPTX_VTC_GHSYNC, reg);
+	xlnx_dp_write(dp->dp_base, vtc_off + XDPTX_VTC_GHSYNC, reg);
 
 	reg = vsync_start & XDPTX_VTC_F0_VSYNC_VSTART_MASK;
 	reg |= (vbackporch_start << XDPTX_VTC_FIELD1_VSIZE_SHIFT) &
 		XDPTX_VTC_F0_VSYNC_VEND_MASK;
-	xlnx_dp_write(dp->dp_base, dp->vtc_off + XDPTX_VTC_GVSYNC, reg);
-	xlnx_dp_clr(dp->dp_base, dp->vtc_off + XDPTX_VTC_GFENC,
+	xlnx_dp_write(dp->dp_base, vtc_off + XDPTX_VTC_GVSYNC, reg);
+	xlnx_dp_clr(dp->dp_base, vtc_off + XDPTX_VTC_GFENC,
 		    XDPTX_VTC_GFENC_MASK);
 
 	/* Calculate and update Generator VBlank Hori field 0 */
 	reg = hactive & XDPTX_VTC_F0VBLANK_HSTART_MASK;
 	reg |= (hactive << XDPTX_VTC_F0VSYNC_HEND_SHIFT) &
 		XDPTX_VTC_F0VBLANK_HEND_MASK;
-	xlnx_dp_write(dp->dp_base, dp->vtc_off + XDPTX_VTC_GVBHOFF, reg);
+	xlnx_dp_write(dp->dp_base, vtc_off + XDPTX_VTC_GVBHOFF, reg);
 
 	/* Calculate and update Generator VSync Hori field 0 */
 	reg = hsync_start & XDPTX_VTC_F0VBLANK_HSTART_MASK;
 	reg |= (hsync_start << XDPTX_VTC_F0VSYNC_HEND_SHIFT) &
 		XDPTX_VTC_F0VBLANK_HEND_MASK;
-	xlnx_dp_write(dp->dp_base, dp->vtc_off + XDPTX_VTC_GVSHOFF, reg);
+	xlnx_dp_write(dp->dp_base, vtc_off + XDPTX_VTC_GVSHOFF, reg);
 
 	/* sets all polarities as active high */
-	xlnx_dp_write(dp->dp_base, dp->vtc_off + XDPTX_VTC_GPOL,
+	xlnx_dp_write(dp->dp_base, vtc_off + XDPTX_VTC_GPOL,
 		      XDPTX_VTC_GPOL_MASK);
 
 	/* configure timing source */
-	xlnx_dp_set(dp->dp_base, dp->vtc_off + XDPTX_VTC_CTL,
+	xlnx_dp_set(dp->dp_base, vtc_off + XDPTX_VTC_CTL,
 		    XDPTX_VTC_CTL_MASK);
-	xlnx_dp_set(dp->dp_base, dp->vtc_off + XDPTX_VTC_CTL,
+	xlnx_dp_set(dp->dp_base, vtc_off + XDPTX_VTC_CTL,
 		    XDPTX_VTC_CTL_RU);
 }
 
 /**
- * xlnx_dp_update_bpp - Update the current bpp config
+ * xlnx_dp_bpc_from_fourcc - derive bits-per-component from a DRM fourcc
  * @dp: DisplayPort IP core structure
+ * @drm_fourcc: framebuffer pixel format
  *
- * Update the current bpp based on the color format: bpc & num_colors.
- * Any function that changes bpc or num_colors should call this
- * to keep the bpp value in sync.
+ * Return: 8 or 10 for known formats, else the DT default (xlnx,bpc).
  */
-static void xlnx_dp_update_bpp(struct xlnx_dp *dp)
+u8 xlnx_dp_bpc_from_fourcc(struct xlnx_dp *dp, u32 drm_fourcc)
 {
-	struct xlnx_dp_config *config = &dp->config;
+	u8 dt_bpc = dp->config.max_bpc ? dp->config.max_bpc : 8;
 
-	config->bpp = dp->config.bpc * dp->config.num_colors;
+	switch (drm_fourcc) {
+	/* 8 bits-per-component formats */
+	case DRM_FORMAT_XRGB8888:
+	case DRM_FORMAT_XBGR8888:
+	case DRM_FORMAT_RGB888:
+	case DRM_FORMAT_BGR888:
+	case DRM_FORMAT_VUY888:
+	case DRM_FORMAT_XVUY8888:
+	case DRM_FORMAT_Y8:
+	case DRM_FORMAT_YUYV:
+	case DRM_FORMAT_UYVY:
+	case DRM_FORMAT_NV16:
+		return 8;
+	/* 10 bits-per-component formats */
+	case DRM_FORMAT_XBGR2101010:
+	case DRM_FORMAT_XVUY2101010:
+	case DRM_FORMAT_Y10:
+	case DRM_FORMAT_XV20:
+		return 10;
+	default:
+		dev_dbg(dp->dev,
+			"unsupported fourcc 0x%08x, defaulting bpc to DT xlnx,bpc (%u)\n",
+			drm_fourcc, dt_bpc);
+		return dt_bpc;
+	}
 }
 
 /**
- * xlnx_dp_set_color - Set the color format
- * @dp: DisplayPort IP core structure
- * @drm_fourcc: Color string, from xlnx_disp_color_enum
- *
- * This function updates misc register values based on color string.
+ * xlnx_dp_fmt_update_bpp - recompute bits-per-pixel for a stream format
+ * @stream_fmt: per-stream format state
  */
-static void xlnx_dp_set_color(struct xlnx_dp *dp, u32 drm_fourcc)
+static void xlnx_dp_fmt_update_bpp(struct xlnx_dp_stream_fmt *stream_fmt)
 {
-	struct xlnx_dp_config *config = &dp->config;
+	stream_fmt->bpp = stream_fmt->bpc * stream_fmt->num_colors;
+}
 
-	config->misc0 &= ~XDPTX_MISC0_FORMAT_MASK;
+/**
+ * xlnx_dp_calc_color - derive colour-format programming from a DRM fourcc
+ * @dp: DisplayPort IP core structure
+ * @drm_fourcc: framebuffer pixel format
+ * @stream_fmt: per-stream format state, updated in place
+ *
+ * Pure helper: only @stream_fmt is modified (misc0 format bits, num_colors,
+ * fmt, bpp), so distinct formats can be computed for different MST streams
+ * without touching shared driver state.
+ */
+void xlnx_dp_calc_color(struct xlnx_dp *dp, u32 drm_fourcc,
+			struct xlnx_dp_stream_fmt *stream_fmt)
+{
+	stream_fmt->misc0 &= ~XDPTX_MISC0_FORMAT_MASK;
 
 	switch (drm_fourcc) {
 	case DRM_FORMAT_XBGR8888:
@@ -279,9 +317,9 @@ static void xlnx_dp_set_color(struct xlnx_dp *dp, u32 drm_fourcc)
 	case DRM_FORMAT_RGB888:
 		fallthrough;
 	case DRM_FORMAT_XBGR2101010:
-		config->misc0 |= XDPTX_MISC0_RGB_MASK;
-		config->num_colors = 3;
-		config->fmt = 0x0;
+		stream_fmt->misc0 |= XDPTX_MISC0_RGB_MASK;
+		stream_fmt->num_colors = 3;
+		stream_fmt->fmt = 0x0;
 		break;
 	case DRM_FORMAT_VUY888:
 		fallthrough;
@@ -292,9 +330,9 @@ static void xlnx_dp_set_color(struct xlnx_dp *dp, u32 drm_fourcc)
 	case DRM_FORMAT_XVUY2101010:
 		fallthrough;
 	case DRM_FORMAT_Y10:
-		config->misc0 |= XDPTX_MISC0_YCRCB444_MASK;
-		config->num_colors = 3;
-		config->fmt = 0x1;
+		stream_fmt->misc0 |= XDPTX_MISC0_YCRCB444_MASK;
+		stream_fmt->num_colors = 3;
+		stream_fmt->fmt = 0x1;
 		break;
 	case DRM_FORMAT_YUYV:
 		fallthrough;
@@ -303,16 +341,29 @@ static void xlnx_dp_set_color(struct xlnx_dp *dp, u32 drm_fourcc)
 	case DRM_FORMAT_NV16:
 		fallthrough;
 	case DRM_FORMAT_XV20:
-		config->misc0 |= XDPTX_MISC0_YCRCB422_MASK;
-		config->num_colors = 2;
-		config->fmt = 0x2;
+		stream_fmt->misc0 |= XDPTX_MISC0_YCRCB422_MASK;
+		stream_fmt->num_colors = 2;
+		stream_fmt->fmt = 0x2;
 		break;
 	default:
-		dev_dbg(dp->dev, "Warning: Unknown drm_fourcc format :%d\n",
+		dev_dbg(dp->dev,
+			"unsupported fourcc 0x%08x, defaulting color format to RGB\n",
 			drm_fourcc);
-		config->misc0 |= XDPTX_MISC0_RGB_MASK;
+		stream_fmt->misc0 |= XDPTX_MISC0_RGB_MASK;
+		stream_fmt->num_colors = 3;
+		stream_fmt->fmt = 0x0;
 	}
-	xlnx_dp_update_bpp(dp);
+	xlnx_dp_fmt_update_bpp(stream_fmt);
+}
+
+/**
+ * xlnx_dp_set_color - Set the color format for the SST stream
+ * @dp: DisplayPort IP core structure
+ * @drm_fourcc: Color string, from xlnx_disp_color_enum
+ */
+void xlnx_dp_set_color(struct xlnx_dp *dp, u32 drm_fourcc)
+{
+	xlnx_dp_calc_color(dp, drm_fourcc, &dp->fmt);
 }
 
 /**
@@ -1574,11 +1625,9 @@ static void xlnx_dp_exit_aux(struct xlnx_dp *dp)
  */
 static void xlnx_dp_update_misc(struct xlnx_dp *dp)
 {
-	struct xlnx_dp_config *config = &dp->config;
-
 	if (!dp->colorimetry_through_vsc) {
 		xlnx_dp_write(dp->dp_base, XDPTX_MAINSTRM_MISC0_REG,
-			      config->misc0);
+			      dp->fmt.misc0);
 		xlnx_dp_write(dp->dp_base, XDPTX_MAINSTRM_MISC1_REG, 0x0);
 	} else {
 		xlnx_dp_set(dp->dp_base, XDPTX_MAINSTRM_MISC1_REG,
@@ -1603,15 +1652,14 @@ static void xlnx_dp_vsc_pkt_handler(struct xlnx_dp *dp)
 
 static void xlnx_dp_prepare_vsc(struct xlnx_dp *dp)
 {
-	struct xlnx_dp_config *config = &dp->config;
 	struct xlnx_dp_vscpkt *vscpkt = &dp->vscpkt;
 	int i;
 	u32 payload_data = 0, bpc;
 
 	vscpkt->header = XDPTX_VSC_SDP_PIXELENC_HEADER_MASK;
-	payload_data |= config->fmt << XDPTX_VSC_SDP_FMT_SHIFT;
+	payload_data |= dp->fmt.fmt << XDPTX_VSC_SDP_FMT_SHIFT;
 
-	switch (config->bpc) {
+	switch (dp->fmt.bpc) {
 	case 6:
 		bpc = 0x0;
 		break;
@@ -1629,7 +1677,7 @@ static void xlnx_dp_prepare_vsc(struct xlnx_dp *dp)
 		break;
 	default:
 		dev_err(dp->dev, "Not supported bpc (%u). fall back to 8bpc\n",
-			config->bpc);
+			dp->fmt.bpc);
 		bpc = 0x0;
 	}
 
@@ -1651,51 +1699,80 @@ static void xlnx_dp_prepare_vsc(struct xlnx_dp *dp)
 }
 
 /**
- * xlnx_dp_set_bpc - Set bpc value in software misc state
+ * xlnx_dp_calc_bpc - derive bpc programming into a per-stream format
+ * @dp: DisplayPort IP core structure
+ * @bpc: requested bits per component
+ * @info: display info of the sink this stream drives (NULL: sink not known yet)
+ * @stream_fmt: per-stream format state, updated in place (misc0 bpc bits, bpc,
+ *	bpp)
+ *
+ * Pure helper: caps @bpc to the DT ceiling (xlnx,bpc) then the sink limit; a
+ * sink whose EDID reports no depth is capped at 8 bpc.
+ *
+ * Return: 0 on success, or the fallback bpc value on an unsupported request.
+ */
+u32 xlnx_dp_calc_bpc(struct xlnx_dp *dp, u8 bpc,
+		     const struct drm_display_info *info,
+		     struct xlnx_dp_stream_fmt *stream_fmt)
+{
+	unsigned int ret = 0;
+
+	if (dp->config.max_bpc && bpc > dp->config.max_bpc)
+		bpc = dp->config.max_bpc;
+
+	if (info) {
+		u8 sink_bpc = info->bpc ? info->bpc : 8;
+
+		if (bpc > sink_bpc) {
+			dev_dbg(dp->dev,
+				"clamping requested bpc (%u) to sink limit (%u)\n",
+				bpc, sink_bpc);
+			bpc = sink_bpc;
+		}
+	}
+
+	stream_fmt->misc0 &= ~XDPTX_MISC0_BPC_MASK;
+	switch (bpc) {
+	case 6:
+		stream_fmt->misc0 |= XDPTX_MISC0_BPC6_MASK;
+		break;
+	case 8:
+		stream_fmt->misc0 |= XDPTX_MISC0_BPC8_MASK;
+		break;
+	case 10:
+		stream_fmt->misc0 |= XDPTX_MISC0_BPC10_MASK;
+		break;
+	case 12:
+		stream_fmt->misc0 |= XDPTX_MISC0_BPC12_MASK;
+		break;
+	case 16:
+		stream_fmt->misc0 |= XDPTX_MISC0_BPC16_MASK;
+		break;
+	default:
+		dev_err(dp->dev, "Not supported bpc (%u). fall back to 8bpc\n",
+			bpc);
+		stream_fmt->misc0 |= XDPTX_MISC0_BPC8_MASK;
+		ret = 8;
+		bpc = 8;
+	}
+	stream_fmt->bpc = bpc;
+	xlnx_dp_fmt_update_bpp(stream_fmt);
+
+	return ret;
+}
+
+/**
+ * xlnx_dp_set_bpc - Set bpc value for the SST stream
  * @dp: DisplayPort IP core structure
  * @bpc: bits per component
  *
  * Return: 0 on success, or the fallback bpc value
  */
-static u32 xlnx_dp_set_bpc(struct xlnx_dp *dp, u8 bpc)
+u32 xlnx_dp_set_bpc(struct xlnx_dp *dp, u8 bpc)
 {
-	struct xlnx_dp_config *config = &dp->config;
-	unsigned int ret = 0;
-
-	if (dp->connector && dp->connector->display_info.bpc &&
-	    dp->connector->display_info.bpc != bpc) {
-		dev_err(dp->dev, "requested bpc (%u) != display info (%u)\n",
-			bpc, dp->connector->display_info.bpc);
-		bpc = dp->connector->display_info.bpc;
-	}
-
-	config->misc0 &= ~XDPTX_MISC0_BPC_MASK;
-	switch (bpc) {
-	case 6:
-		config->misc0 |= XDPTX_MISC0_BPC6_MASK;
-		break;
-	case 8:
-		config->misc0 |= XDPTX_MISC0_BPC8_MASK;
-		break;
-	case 10:
-		config->misc0 |= XDPTX_MISC0_BPC10_MASK;
-		break;
-	case 12:
-		config->misc0 |= XDPTX_MISC0_BPC12_MASK;
-		break;
-	case 16:
-		config->misc0 |= XDPTX_MISC0_BPC16_MASK;
-		break;
-	default:
-		dev_err(dp->dev, "Not supported bpc (%u). fall back to 8bpc\n",
-			bpc);
-		config->misc0 |= XDPTX_MISC0_BPC8_MASK;
-		ret = 8;
-	}
-	config->bpc = bpc;
-	xlnx_dp_update_bpp(dp);
-
-	return ret;
+	return xlnx_dp_calc_bpc(dp, bpc,
+				dp->connector ? &dp->connector->display_info : NULL,
+				&dp->fmt);
 }
 
 /**
@@ -1710,14 +1787,13 @@ static void
 xlnx_dp_encoder_mode_set_transfer_unit(struct xlnx_dp *dp,
 				       struct drm_display_mode *mode)
 {
-	struct xlnx_dp_config *config = &dp->config;
 	u32 tu = XDPTX_DEF_TRANSFER_UNITSIZE, temp;
 	u32 bw, vid_kbytes, avg_bytes_per_tu, init_wait, min_bytes_per_tu;
 
 	/* Use the max transfer unit size (default) */
 	xlnx_dp_write(dp->dp_base, XDPTX_TRANSFER_UNITSIZE_REG, tu);
 
-	vid_kbytes = (mode->clock / 1000) * (dp->config.bpp / 8);
+	vid_kbytes = (mode->clock / 1000) * (dp->fmt.bpp / 8);
 	bw = drm_dp_bw_code_to_link_rate(dp->mode.bw_code);
 	avg_bytes_per_tu = vid_kbytes * tu / (dp->mode.lane_cnt * bw);
 	min_bytes_per_tu = avg_bytes_per_tu / 1000;
@@ -1732,7 +1808,7 @@ xlnx_dp_encoder_mode_set_transfer_unit(struct xlnx_dp *dp,
 	/* Configure the initial wait cycle based on transfer unit size */
 	if (min_bytes_per_tu <= 4)
 		init_wait = tu;
-	else if ((config->misc0 & XDPTX_MISC0_YCRCB422_MASK) ==
+	else if ((dp->fmt.misc0 & XDPTX_MISC0_YCRCB422_MASK) ==
 		XDPTX_MISC0_YCRCB422_MASK)
 		init_wait = init_wait / 2;
 
@@ -1740,41 +1816,50 @@ xlnx_dp_encoder_mode_set_transfer_unit(struct xlnx_dp *dp,
 }
 
 /**
- * xlnx_dp_encoder_mode_set_stream - Configure the main stream
+ * xlnx_dp_mode_set_stream_offset - Program main-stream attributes at a register offset
  * @dp: DisplayPort IP core structure
- * @mode: requested display mode
- *
- * Configure the main stream based on the requested mode @mode. Calculation is
- * based on IP core specification.
+ * @mode: display mode to program
+ * @offset: per-stream register offset (0 for the primary/SST stream)
+ * @stream_fmt: per-stream pixel format (misc0/bpp); NULL selects the SST
+ *	stream format (dp->fmt). MST passes each stream's own format.
  */
-static void xlnx_dp_encoder_mode_set_stream(struct xlnx_dp *dp,
-					    struct drm_display_mode *mode)
+void xlnx_dp_mode_set_stream_offset(struct xlnx_dp *dp,
+				    const struct drm_display_mode *mode, u32 offset,
+				    const struct xlnx_dp_stream_fmt *stream_fmt)
 {
 	void __iomem *dp_base = dp->dp_base;
 	u32 reg, wpl, ppc;
 	u8 lane_cnt = dp->mode.lane_cnt;
+	u8 bpp = stream_fmt ? stream_fmt->bpp : dp->fmt.bpp;
 
-	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_HTOTAL_REG, mode->htotal);
-	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_VTOTAL_REG, mode->vtotal);
+	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_HTOTAL_REG + offset, mode->htotal);
+	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_VTOTAL_REG + offset, mode->vtotal);
 
-	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_POL_REG,
+	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_POL_REG + offset,
 		      (!!(mode->flags & DRM_MODE_FLAG_PVSYNC) <<
 		      XDPTX_MAINSTRM_POLVSYNC_SHIFT) |
 		      (!!(mode->flags & DRM_MODE_FLAG_PHSYNC) <<
 		      XDPTX_MAINSTRM_POLHSYNC_SHIFT));
 
-	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_HSWIDTH_REG,
+	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_HSWIDTH_REG + offset,
 		      mode->hsync_end - mode->hsync_start);
-	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_VSWIDTH_REG,
+	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_VSWIDTH_REG + offset,
 		      mode->vsync_end - mode->vsync_start);
-	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_HRES_REG, mode->hdisplay);
-	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_VRES_REG, mode->vdisplay);
+	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_HRES_REG + offset, mode->hdisplay);
+	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_VRES_REG + offset, mode->vdisplay);
 
-	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_HSTART_REG,
+	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_HSTART_REG + offset,
 		      mode->htotal - mode->hsync_start);
-	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_VSTART_REG,
+	xlnx_dp_write(dp_base, XDPTX_MAINSTRM_VSTART_REG + offset,
 		      mode->vtotal - mode->vsync_start);
-	xlnx_dp_update_misc(dp);
+
+	if (stream_fmt) {
+		xlnx_dp_write(dp_base, XDPTX_MAINSTRM_MISC0_REG + offset,
+			      stream_fmt->misc0);
+		xlnx_dp_write(dp_base, XDPTX_MAINSTRM_MISC1_REG + offset, 0x0);
+	} else {
+		xlnx_dp_update_misc(dp);
+	}
 
 	if (mode->clock > 530000)
 		ppc = 4;
@@ -1783,23 +1868,30 @@ static void xlnx_dp_encoder_mode_set_stream(struct xlnx_dp *dp,
 	else
 		ppc = 1;
 
-	xlnx_dp_write(dp_base, XDPTX_USER_PIXELWIDTH_REG, ppc);
+	xlnx_dp_write(dp_base, XDPTX_USER_PIXELWIDTH_REG + offset, ppc);
 	dp->config.ppc = ppc;
 
-	xlnx_dp_write(dp_base, XDPTX_M_VID_REG, mode->clock);
+	xlnx_dp_write(dp_base, XDPTX_M_VID_REG + offset, mode->clock);
 	reg = drm_dp_bw_code_to_link_rate(dp->mode.bw_code);
-	xlnx_dp_write(dp_base, XDPTX_N_VID_REG, reg);
+	xlnx_dp_write(dp_base, XDPTX_N_VID_REG + offset, reg);
 
-	/* In synchronous mode, set the dividers */
-	if (dp->config.misc0 & XDPTX_MAINSTRM_MISC0_MASK) {
-		reg = drm_dp_bw_code_to_link_rate(dp->mode.bw_code);
-		xlnx_dp_write(dp_base, XDPTX_N_VID_REG, reg);
-		xlnx_dp_write(dp_base, XDPTX_M_VID_REG, mode->clock);
-	}
-
-	wpl = (mode->hdisplay * dp->config.bpp + 15) / 16;
+	wpl = (mode->hdisplay * bpp + 15) / 16;
 	reg = wpl + wpl % lane_cnt - lane_cnt;
-	xlnx_dp_write(dp_base, XDPTX_USER_DATACNTPERLANE_REG, reg);
+	xlnx_dp_write(dp_base, XDPTX_USER_DATACNTPERLANE_REG + offset, reg);
+}
+
+/**
+ * xlnx_dp_encoder_mode_set_stream - Configure the SST main stream
+ * @dp: DisplayPort IP core structure
+ * @mode: requested display mode
+ *
+ * SST is the primary stream at register offset 0; program it through the
+ * shared MSA path.
+ */
+static void xlnx_dp_encoder_mode_set_stream(struct xlnx_dp *dp,
+					    struct drm_display_mode *mode)
+{
+	xlnx_dp_mode_set_stream_offset(dp, mode, 0, NULL);
 }
 
 static void xlnx_dp_mainlink_en(struct xlnx_dp *dp, u8 enable)
@@ -1848,7 +1940,7 @@ static int xlnx_dp_power_cycle(struct xlnx_dp *dp)
  * This function trains the DisplayPort link based on the sink capabilities and
  * enables the main link.
  */
-static void xlnx_dp_start(struct xlnx_dp *dp)
+void xlnx_dp_start(struct xlnx_dp *dp)
 {
 	struct xlnx_dp_mode *mode = &dp->mode;
 	struct xlnx_hdcptx *dptxhdcp = &dp->tx_hdcp;
@@ -1975,7 +2067,7 @@ static void xlnx_dp_start(struct xlnx_dp *dp)
 	xlnx_dp_write(dp->dp_base, XDPTX_SOFT_RST, 0x0);
 
 	/* Enable VTC and MainStream */
-	xlnx_dp_set(dp->dp_base, dp->vtc_off + XDPTX_VTC_CTL,
+	xlnx_dp_set(dp->dp_base, dp->vtc_off[0] + XDPTX_VTC_CTL,
 		    XDPTX_VTC_CTL_GE);
 	xlnx_dp_mainlink_en(dp, 0x1);
 
@@ -2065,7 +2157,7 @@ static void xlnx_dp_stop(struct xlnx_dp *dp)
 		xlnx_dp_tx_pe_vs_adjust_handler(dp, &dp->phy_opts.dp);
 
 	/* Disable VTC */
-	xlnx_dp_clr(dp->dp_base, dp->vtc_off + XDPTX_VTC_CTL,
+	xlnx_dp_clr(dp->dp_base, dp->vtc_off[0] + XDPTX_VTC_CTL,
 		    XDPTX_VTC_CTL_GE);
 	/* Reset HDCP Engine. */
 	if (dp->config.hdcp2x_enable || dp->config.hdcp1x_enable)
@@ -2232,7 +2324,7 @@ xlnx_dp_bridge_mode_valid(struct drm_bridge *bridge,
 {
 	struct xlnx_dp *dp = bridge_to_dp(bridge);
 	u8 max_lanes = dp->link_config.max_lanes;
-	u8 bpp = dp->config.bpp;
+	u8 bpp = dp->fmt.bpp;
 	int max_rate = dp->link_config.max_rate;
 	int rate;
 
@@ -2518,14 +2610,15 @@ static int dptx_register_aud_dev(struct device *dev)
 
 static void
 xlnx_dp_encoder_atomic_mode_set(struct xlnx_dp *dp, struct drm_crtc *crtc,
-				struct drm_crtc_state *crtc_state)
+				struct drm_crtc_state *crtc_state,
+				struct drm_connector_state *conn_state)
 {
 	struct drm_display_mode *mode = &crtc_state->mode;
 	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
 	int rate, max_rate = dp->link_config.max_rate;
 	u32 clock, drm_fourcc;
 	u8 max_lanes = dp->link_config.max_lanes;
-	u8 bpp = dp->config.bpp;
+	u8 bpc, bpp;
 
 	/*
 	 * This assumes that there is no conversion  between framebuffer
@@ -2533,7 +2626,13 @@ xlnx_dp_encoder_atomic_mode_set(struct xlnx_dp *dp, struct drm_crtc *crtc,
 	 */
 	drm_fourcc = crtc->primary->state->fb->format->format;
 
+	bpc = xlnx_dp_bpc_from_fourcc(dp, drm_fourcc);
+	if (conn_state->max_requested_bpc && bpc > conn_state->max_requested_bpc)
+		bpc = conn_state->max_requested_bpc;
+
 	xlnx_dp_set_color(dp, drm_fourcc);
+	xlnx_dp_set_bpc(dp, bpc);
+	bpp = dp->fmt.bpp;
 
 	rate = XDPTX_MAX_RATE(max_rate, max_lanes, bpp);
 	if (mode->clock > rate) {
@@ -2546,9 +2645,10 @@ xlnx_dp_encoder_atomic_mode_set(struct xlnx_dp *dp, struct drm_crtc *crtc,
 	xlnx_dp_encoder_mode_set_stream(dp, adjusted_mode);
 	xlnx_dp_encoder_mode_set_transfer_unit(dp, adjusted_mode);
 	clock = adjusted_mode->clock * 1000;
-	clk_set_rate(dp->tx_vid_clk, clock / dp->config.ppc);
+	clk_set_rate(dp->tx_vid_clk[0], clock / dp->config.ppc);
 
-	xlnx_dp_vtc_set_timing(dp, adjusted_mode);
+	xlnx_dp_vtc_set_timing(dp, adjusted_mode, dp->vtc_off[0],
+			       dp->config.ppc);
 	/* prepare a vsc packet */
 	xlnx_dp_prepare_vsc(dp);
 }
@@ -2586,7 +2686,7 @@ static void xlnx_dp_bridge_enable(struct drm_bridge *bridge,
 		dev_err(dp->dev, "bridge_enable: no crtc state for crtc\n");
 		return;
 	}
-	xlnx_dp_encoder_atomic_mode_set(dp, crtc, crtc_state);
+	xlnx_dp_encoder_atomic_mode_set(dp, crtc, crtc_state, conn_state);
 
 	if (!dp->enabled) {
 		pm_runtime_get_sync(dp->dev);
@@ -2751,7 +2851,6 @@ static int xlnx_dp_bind(struct device *dev, struct device *master, void *data)
 	}
 
 	xlnx_dp_set_bpc(dp, 8);
-	xlnx_dp_update_bpp(dp);
 	drm_connector_attach_max_bpc_property(connector, 8, 12);
 	drm_object_attach_property(&connector->base,
 				   connector->dev->mode_config.gen_hdr_output_metadata_property, 0);
@@ -3246,13 +3345,13 @@ static int xlnx_dp_parse_of(struct xlnx_dp *dp)
 
 	if (dp->cfg->flags & XDPTX_VTC_OFFSET_CHANGE) {
 		ret = of_property_read_u32(node, "xlnx,vtc-offset",
-					   &dp->vtc_off);
+					   &dp->vtc_off[0]);
 		if (ret < 0) {
 			dev_err(dp->dev, "No vct offset in DT\n");
 			return ret;
 		}
 	} else {
-		dp->vtc_off = XDPTX_VTC_BASE;
+		dp->vtc_off[0] = XDPTX_VTC_BASE;
 	}
 
 	config->hdcp1x_enable = of_property_read_bool(node, "xlnx,hdcp-enable");
@@ -3294,24 +3393,25 @@ static int xlnx_dp_parse_of(struct xlnx_dp *dp)
 
 	switch (bpc) {
 	case 6:
-		config->misc0 |= XDPTX_MISC0_BPC6_MASK;
+		dp->fmt.misc0 |= XDPTX_MISC0_BPC6_MASK;
 		break;
 	case 8:
-		config->misc0 |= XDPTX_MISC0_BPC8_MASK;
+		dp->fmt.misc0 |= XDPTX_MISC0_BPC8_MASK;
 		break;
 	case 10:
-		config->misc0 |= XDPTX_MISC0_BPC10_MASK;
+		dp->fmt.misc0 |= XDPTX_MISC0_BPC10_MASK;
 		break;
 	case 12:
-		config->misc0 |= XDPTX_MISC0_BPC12_MASK;
+		dp->fmt.misc0 |= XDPTX_MISC0_BPC12_MASK;
 		break;
 	case 16:
-		config->misc0 |= XDPTX_MISC0_BPC16_MASK;
+		dp->fmt.misc0 |= XDPTX_MISC0_BPC16_MASK;
 		break;
 	default:
 		dev_err(dp->dev, "Not supported color depth in DT\n");
 		return -EINVAL;
 	}
+	config->max_bpc = bpc;
 
 	config->audio_enabled =
 		of_property_read_bool(node, "xlnx,audio-enable");
@@ -3427,9 +3527,9 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 		goto error_phy;
 	}
 
-	dp->tx_vid_clk = devm_clk_get(&pdev->dev, "tx_vid_clk");
-	if (IS_ERR(dp->tx_vid_clk)) {
-		ret = dev_err_probe(dp->dev, PTR_ERR(dp->tx_vid_clk),
+	dp->tx_vid_clk[0] = devm_clk_get(&pdev->dev, "tx_vid_clk");
+	if (IS_ERR(dp->tx_vid_clk[0])) {
+		ret = dev_err_probe(dp->dev, PTR_ERR(dp->tx_vid_clk[0]),
 				    "failed to get tx_vid_clk\n");
 		goto error_phy;
 	}
@@ -3472,7 +3572,7 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 		goto error_phy;
 	}
 
-	ret = clk_prepare_enable(dp->tx_vid_clk);
+	ret = clk_prepare_enable(dp->tx_vid_clk[0]);
 	if (ret) {
 		dev_err(dp->dev, "failed to enable tx_vid_clk (%d)\n", ret);
 		goto error_clk_axi;
@@ -3546,7 +3646,7 @@ error_hdcp:
 error_sysfs:
 	sysfs_remove_group(&dp->dev->kobj, &attr_group);
 error_clk_vid:
-	clk_disable_unprepare(dp->tx_vid_clk);
+	clk_disable_unprepare(dp->tx_vid_clk[0]);
 error_clk_axi:
 	clk_disable_unprepare(dp->axi_lite_clk);
 error_phy:
@@ -3572,6 +3672,8 @@ static void xlnx_dp_remove(struct platform_device *pdev)
 	component_del(&pdev->dev, &xlnx_dp_component_ops);
 	drm_bridge_remove(&dp->bridge);
 	sysfs_remove_group(&pdev->dev.kobj, &attr_group);
+	clk_disable_unprepare(dp->tx_vid_clk[0]);
+	clk_disable_unprepare(dp->axi_lite_clk);
 }
 
 MODULE_DEVICE_TABLE(of, xlnx_dp_of_match);
