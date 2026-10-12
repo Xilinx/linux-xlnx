@@ -485,6 +485,10 @@ struct xlnx_hdmi_stream {
  * @wait_event: Wait event
  * @bridge: bridge structure
  * @height_out: configurable bridge output height parameter
+ * @encoder_enabled: true while userspace has the encoder enabled, under
+ *		     @hdmi_mutex
+ * @link_busy: true while xlnx_hdmi_link_up() is in progress, under
+ *	       @hdmi_mutex
  * @saved_adjusted_mode: copy of the committed &drm_crtc_state.adjusted_mode,
  *			 consumed by the link bring-up
  * @saved_fourcc: framebuffer format of the committed primary plane
@@ -540,6 +544,8 @@ struct xlnx_hdmi {
 	struct drm_property *height_out;
 	u32 height_out_prop_val;
 	struct drm_property *width_out;
+	bool encoder_enabled;
+	bool link_busy;
 	struct drm_display_mode saved_adjusted_mode;
 	u32 saved_fourcc;
 	int saved_max_frl_bw;
@@ -2000,6 +2006,9 @@ static void xlnx_hdmi_connect_callback(struct xlnx_hdmi *hdmi)
 /* HPD low debounce window before the sink is declared gone. */
 #define HDMI_HPD_DEBOUNCE_MS	1000
 
+/* Settling time after HPD rises, before the sink is driven again. */
+#define HDMI_HPD_STABLE_MS	100
+
 /**
  * xlnx_hdmi_frl_teardown_locked - quiesce FRL; caller holds hdmi_mutex
  * @hdmi: pointer to HDMI TX core instance
@@ -2018,28 +2027,6 @@ static void xlnx_hdmi_frl_teardown_locked(struct xlnx_hdmi *hdmi)
 	xlnx_hdmi_frl_ext_vidsrc(hdmi);
 	xlnx_hdmi_frl_sleep(hdmi);
 	hdmi->stream.is_frl = false;
-}
-
-static void xlnx_hdmi_hpd_work_func(struct work_struct *work)
-{
-	struct xlnx_hdmi *hdmi = container_of(to_delayed_work(work),
-					      struct xlnx_hdmi, hpd_work);
-
-	mutex_lock(&hdmi->hdmi_mutex);
-
-	if (hdmi->cable_connected) {
-		mutex_unlock(&hdmi->hdmi_mutex);
-		return;
-	}
-
-	/* Keep the configuration; stop only what needs the sink. */
-	xlnx_hdmi_ddc_disable(hdmi);
-	xlnx_hdmi_connect_callback(hdmi);
-	xlnx_hdmi_frl_teardown_locked(hdmi);
-	mutex_unlock(&hdmi->hdmi_mutex);
-
-	if (hdmi->connector.dev)
-		drm_sysfs_hotplug_event(hdmi->connector.dev);
 }
 
 /**
@@ -2794,22 +2781,16 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 	/* HPD event has occurred */
 	if (event & HDMI_TX_PIO_IN_HPD_CONNECT) {
 		if (data & HDMI_TX_PIO_IN_HPD_CONNECT) {
-			bool was_bounce;
-
 			hdmi->cable_connected = 1;
 			hdmi->connector.status = connector_status_connected;
-			/* Bounce: cancel pending teardown, preserve link state. */
-			was_bounce = cancel_delayed_work(&hdmi->hpd_work);
-			if (was_bounce) {
-				dev_dbg(hdmi->dev, "hpd: high (bounce)\n");
-			} else {
-				dev_dbg(hdmi->dev, "hpd: high (cold plug)\n");
-				xlnx_hdmi_connect_callback(hdmi);
-			}
-			if (hdmi->connector.dev)
-				drm_sysfs_hotplug_event(hdmi->connector.dev);
-			else
-				dev_dbg(hdmi->dev, "Not sending HOTPLUG.\n");
+
+			dev_dbg(hdmi->dev, "hpd: high\n");
+			/*
+			 * Rescheduling supersedes a pending debounce, so
+			 * a bounce never reaches the disconnected path.
+			 */
+			mod_delayed_work(system_long_wq, &hdmi->hpd_work,
+					 msecs_to_jiffies(HDMI_HPD_STABLE_MS));
 		} else {
 			hdmi->cable_connected = 0;
 			hdmi->connector.status = connector_status_disconnected;
@@ -2829,8 +2810,8 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 				mutex_unlock(&drm->mode_config.mutex);
 				mutex_lock(&hdmi->hdmi_mutex);
 			}
-			/* Rising edge within the window cancels this. */
-			mod_delayed_work(system_wq, &hdmi->hpd_work,
+			/* A rising edge before expiry reschedules this. */
+			mod_delayed_work(system_long_wq, &hdmi->hpd_work,
 					 msecs_to_jiffies(HDMI_HPD_DEBOUNCE_MS));
 		}
 	}
@@ -3313,9 +3294,20 @@ static void xlnx_hdmi_link_enable(struct xlnx_hdmi *hdmi)
 	xlnx_hdmi_ext_sysrst_deassert(hdmi);
 }
 
+/**
+ * xlnx_hdmi_encoder_enable - start video for the mode userspace committed
+ * @encoder: DRM encoder being enabled
+ *
+ * Also records that a mode is committed, so the HPD work may replay it after
+ * a cable unplug. xlnx_hdmi_encoder_disable() clears that again.
+ */
 static void xlnx_hdmi_encoder_enable(struct drm_encoder *encoder)
 {
 	struct xlnx_hdmi *hdmi = encoder_to_hdmi(encoder);
+
+	mutex_lock(&hdmi->hdmi_mutex);
+	hdmi->encoder_enabled = true;
+	mutex_unlock(&hdmi->hdmi_mutex);
 
 	xlnx_hdmi_encoder_dpms(encoder, DRM_MODE_DPMS_ON);
 	xlnx_hdmi_link_enable(hdmi);
@@ -3345,8 +3337,25 @@ static void xlnx_hdmi_encoder_disable(struct drm_encoder *encoder)
 {
 	struct xlnx_hdmi *hdmi = encoder_to_hdmi(encoder);
 	struct xlnx_hdmi_config *config = &hdmi->config;
+	bool cancelled, connected;
 
-	cancel_delayed_work_sync(&hdmi->hpd_work);
+	mutex_lock(&hdmi->hdmi_mutex);
+	hdmi->encoder_enabled = false;
+	hdmi->link_busy = false;
+	mutex_unlock(&hdmi->hdmi_mutex);
+
+	/*
+	 * Wait for a restore that already passed encoder_enabled. Drop a
+	 * pending HPD event rather than running it: that path would
+	 * reprogram the PHY after the encoder is marked down. Report the
+	 * event here if the work was still queued.
+	 */
+	cancelled = cancel_delayed_work_sync(&hdmi->hpd_work);
+	mutex_lock(&hdmi->hdmi_mutex);
+	connected = hdmi->cable_connected;
+	mutex_unlock(&hdmi->hdmi_mutex);
+	if (cancelled && connected && hdmi->connector.dev)
+		drm_sysfs_hotplug_event(hdmi->connector.dev);
 
 	if (hdmi->bridge)
 		xlnx_bridge_disable(hdmi->bridge);
@@ -3724,6 +3733,82 @@ static void xlnx_hdmi_link_up(struct xlnx_hdmi *hdmi,
 }
 
 /**
+ * xlnx_hdmi_hpd_work_func - act on a settled HPD level
+ * @work: the HPD delayed work
+ *
+ * Scheduled from both HPD edges. With the cable back and a mode committed,
+ * replays that mode, since the sink lost its SCDC state while HPD was low.
+ * With the cable back and no mode committed, runs the TMDS connect path.
+ * With the cable gone for the whole debounce window, stops DDC and FRL but
+ * keeps the committed configuration for the next replay.
+ *
+ * Reports the event to DRM in every case.
+ */
+static void xlnx_hdmi_hpd_work_func(struct work_struct *work)
+{
+	struct xlnx_hdmi *hdmi = container_of(to_delayed_work(work),
+					      struct xlnx_hdmi, hpd_work);
+	struct drm_display_mode mode;
+	int max_frl_bw = 0;
+	bool is_hdmi = false;
+	bool restore = false;
+	u32 fourcc = 0;
+
+	mutex_lock(&hdmi->hdmi_mutex);
+
+	if (hdmi->cable_connected) {
+		if (hdmi->link_busy) {
+			/*
+			 * A mode set is already bringing the link up; do
+			 * not reprogram the PHY from this work.
+			 */
+		} else if (hdmi->encoder_enabled) {
+			restore = true;
+			hdmi->link_busy = true;
+			drm_mode_copy(&mode, &hdmi->saved_adjusted_mode);
+			fourcc = hdmi->saved_fourcc;
+			max_frl_bw = hdmi->saved_max_frl_bw;
+			is_hdmi = hdmi->saved_is_hdmi;
+		} else {
+			xlnx_hdmi_connect_callback(hdmi);
+		}
+	} else {
+		/* Keep the configuration; stop only what needs the sink. */
+		xlnx_hdmi_ddc_disable(hdmi);
+		xlnx_hdmi_connect_callback(hdmi);
+		xlnx_hdmi_frl_teardown_locked(hdmi);
+	}
+
+	mutex_unlock(&hdmi->hdmi_mutex);
+
+	/*
+	 * An HPD low resets the sink's SCDC registers (HDMI 2.1 section
+	 * 10.4.1), so the link has to be negotiated again even though the
+	 * transmitter kept its configuration.
+	 */
+	if (restore) {
+		mutex_lock(&hdmi->hdmi_mutex);
+		if (!hdmi->encoder_enabled) {
+			hdmi->link_busy = false;
+			restore = false;
+		}
+		mutex_unlock(&hdmi->hdmi_mutex);
+	}
+
+	if (restore) {
+		xlnx_hdmi_frl_teardown(hdmi);
+		xlnx_hdmi_link_up(hdmi, &mode, fourcc, max_frl_bw, is_hdmi);
+		xlnx_hdmi_link_enable(hdmi);
+		mutex_lock(&hdmi->hdmi_mutex);
+		hdmi->link_busy = false;
+		mutex_unlock(&hdmi->hdmi_mutex);
+	}
+
+	if (hdmi->connector.dev)
+		drm_sysfs_hotplug_event(hdmi->connector.dev);
+}
+
+/**
  * xlnx_hdmi_encoder_atomic_mode_set - cache the mode and bring the link up
  * @encoder: pointer to Xilinx DRM encoder
  * @crtc_state: DRM crtc state
@@ -3742,13 +3827,28 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	struct drm_display_mode adjusted_mode;
 	int max_frl_bw;
 	bool is_hdmi;
+	bool connected;
 	u32 fourcc;
+
+	mutex_lock(&hdmi->hdmi_mutex);
+	connected = hdmi->cable_connected;
+	mutex_unlock(&hdmi->hdmi_mutex);
+	/*
+	 * Drain a pending disconnect so FRL is quiesced. Drop a pending
+	 * restore: this bring-up replaces it.
+	 */
+	if (!connected)
+		flush_delayed_work(&hdmi->hpd_work);
+	else
+		cancel_delayed_work_sync(&hdmi->hpd_work);
 
 	mutex_lock(&hdmi->hdmi_mutex);
 	drm_mode_copy(&hdmi->saved_adjusted_mode, &crtc_state->adjusted_mode);
 	hdmi->saved_fourcc = encoder->crtc->primary->state->fb->format->format;
 	hdmi->saved_max_frl_bw = xlnx_hdmi_max_frl_bw(hdmi);
 	hdmi->saved_is_hdmi = connector_state->connector->display_info.is_hdmi;
+	hdmi->encoder_enabled = true;
+	hdmi->link_busy = true;
 	drm_mode_copy(&adjusted_mode, &hdmi->saved_adjusted_mode);
 	fourcc = hdmi->saved_fourcc;
 	max_frl_bw = hdmi->saved_max_frl_bw;
@@ -3778,6 +3878,10 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	 * thread takes it on that event.
 	 */
 	xlnx_hdmi_link_up(hdmi, &adjusted_mode, fourcc, max_frl_bw, is_hdmi);
+
+	mutex_lock(&hdmi->hdmi_mutex);
+	hdmi->link_busy = false;
+	mutex_unlock(&hdmi->hdmi_mutex);
 }
 
 static const struct drm_encoder_funcs xlnx_hdmi_encoder_funcs = {
