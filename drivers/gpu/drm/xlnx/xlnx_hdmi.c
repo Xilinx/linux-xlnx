@@ -466,7 +466,8 @@ struct xlnx_hdmi_stream {
  * @clks: clocks claimed for the IP configuration
  * @num_clks: number of entries in @clks
  * @hdcp1x_keymgmt_base: HDCP Key management address
- * @hdmi_mutex: mutex to lock hdmi structure
+ * @hdmi_mutex: mutex to lock hdmi structure. Serializes writes to the
+ *		saved_* snapshots against the IRQ thread
  * @irq_lock: to lock irq handler
  * @cable_connected: flag to indicate cable state
  * @hdmi_stream_up: flag to inidcate video stream state
@@ -484,7 +485,12 @@ struct xlnx_hdmi_stream {
  * @wait_event: Wait event
  * @bridge: bridge structure
  * @height_out: configurable bridge output height parameter
- * @saved_adjusted_mode: Copy of @drm_crtc_state.adjusted_mode
+ * @saved_adjusted_mode: copy of the committed &drm_crtc_state.adjusted_mode,
+ *			 consumed by the link bring-up
+ * @saved_fourcc: framebuffer format of the committed primary plane
+ * @saved_max_frl_bw: snapshot of the sink and HW FRL rate at mode set,
+ *		      non-positive for TMDS
+ * @saved_is_hdmi: snapshot of display_info.is_hdmi at mode set
  * @height_out_prop_val: configurable bridge output height parameter value
  * @width_out: configurable bridge output width parameter
  * @width_out_prop_val: configurable bridge output width parameter value
@@ -535,6 +541,9 @@ struct xlnx_hdmi {
 	u32 height_out_prop_val;
 	struct drm_property *width_out;
 	struct drm_display_mode saved_adjusted_mode;
+	u32 saved_fourcc;
+	int saved_max_frl_bw;
+	bool saved_is_hdmi;
 	u32 width_out_prop_val;
 	struct drm_property *in_fmt;
 	u32 in_fmt_prop_val;
@@ -2128,7 +2137,9 @@ static int xlnx_hdmi_frl_train_init(struct xlnx_hdmi *hdmi)
 	 */
 	xlnx_hdmi_set_frl_active(hdmi, HDMI_TX_FRL_ACTIVE_MODE_GAP_ONLY);
 
-	max_frl_bw = xlnx_hdmi_max_frl_bw(hdmi);
+	/* Training lowers config.max_frl_rate when the sink asks for less. */
+	max_frl_bw = min_t(int, hdmi->config.max_frl_rate,
+			   hdmi->saved_max_frl_bw);
 	if (max_frl_bw <= 0)
 		return 1;
 
@@ -3528,53 +3539,30 @@ xlnx_hdmi_link_mode(struct xlnx_hdmi *hdmi, struct drm_display_mode *in,
 }
 
 /**
- * xlnx_hdmi_encoder_atomic_mode_set - drive the HDMI timing parameters
+ * xlnx_hdmi_link_up - bring the HDMI link up for a given mode
+ * @hdmi: pointer to HDMI TX core instance
+ * @adjusted_mode: timing to transmit
+ * @drm_fourcc: pixel format feeding the transmitter
+ * @max_frl_bw: FRL rate snapshot from mode set, non-positive for TMDS
+ * @is_hdmi: HDMI vs DVI snapshot from mode set
  *
- * @encoder: pointer to Xilinx DRM encoder
- * @crtc_state: DRM crtc state
- * @connector_state: DRM connector state
- *
- * This function derives the HDMI IP timing parameters from the timing
- * values given to timing module.
+ * Programs the PHY and the transmitter for FRL or TMDS and waits for the
+ * stream to come up. Takes the timing, format, FRL rate and sink type as
+ * arguments rather than from the atomic state, so it can also run outside a
+ * mode set. Infoframes still use the connector, including display_info.
  */
-static void
-xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
-				  struct drm_crtc_state *crtc_state,
-				  struct drm_connector_state *connector_state)
+static void xlnx_hdmi_link_up(struct xlnx_hdmi *hdmi,
+			      struct drm_display_mode *adjusted_mode,
+			      u32 drm_fourcc, int max_frl_bw, bool is_hdmi)
 {
-	struct xlnx_hdmi *hdmi = encoder_to_hdmi(encoder);
-	struct drm_connector *connector = &hdmi->connector;
 	struct xlnx_hdmi_config *config = &hdmi->config;
-	struct drm_display_mode *mode = &crtc_state->mode;
-	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
-	struct drm_display_mode bridge_mode;
 	union phy_configure_opts phy_cfg = {0};
-	enum color_depths depth;
-	int max_frl_bw;
-	int ret;
-	u32 drm_fourcc, pixelrate = 0;
+	struct drm_display_mode bridge_mode;
 	u64 lnk_clk = 0, vid_clk = 0;
+	enum color_depths depth;
+	u32 pixelrate = 0;
+	int ret;
 
-	drm_mode_copy(&hdmi->saved_adjusted_mode, &crtc_state->adjusted_mode);
-	dev_dbg(hdmi->dev, "mode->clock = %d\n", mode->clock * 1000);
-	dev_dbg(hdmi->dev, "mode->crtc_clock = %d\n", mode->crtc_clock * 1000);
-	dev_dbg(hdmi->dev, "mode->pvsync = %d\n",
-		!!(mode->flags & DRM_MODE_FLAG_PVSYNC));
-	dev_dbg(hdmi->dev, "mode->phsync = %d\n",
-		!!(mode->flags & DRM_MODE_FLAG_PHSYNC));
-	dev_dbg(hdmi->dev, "mode->hsync_end = %d\n", mode->hsync_end);
-	dev_dbg(hdmi->dev, "mode->hsync_start = %d\n", mode->hsync_start);
-	dev_dbg(hdmi->dev, "mode->vsync_end = %d\n", mode->vsync_end);
-	dev_dbg(hdmi->dev, "mode->vsync_start = %d\n", mode->vsync_start);
-	dev_dbg(hdmi->dev, "mode->hdisplay = %d\n", mode->hdisplay);
-	dev_dbg(hdmi->dev, "mode->vdisplay = %d\n", mode->vdisplay);
-	dev_dbg(hdmi->dev, "mode->htotal = %d\n", mode->htotal);
-	dev_dbg(hdmi->dev, "mode->vtotal = %d\n", mode->vtotal);
-	dev_dbg(hdmi->dev, "mode->vrefresh = %d\n", drm_mode_vrefresh(mode));
-	dev_dbg(hdmi->dev, "mode->flags = %d interlace = %d\n", mode->flags,
-		!!(mode->flags & DRM_MODE_FLAG_INTERLACE));
-
-	max_frl_bw = xlnx_hdmi_max_frl_bw(hdmi);
 	if (max_frl_bw <= 0) {
 		hdmi->stream.is_frl = 0;
 		dev_dbg(hdmi->dev, "Connected sink supports TMDS mode\n");
@@ -3594,8 +3582,6 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 		xlnx_hdmi_frl_ext_vidsrc(hdmi);
 		xlnx_hdmi_frl_sleep(hdmi);
 	}
-
-	drm_fourcc = encoder->crtc->primary->state->fb->format->format;
 
 	if (hdmi->bridge) {
 		/*
@@ -3630,7 +3616,7 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 					       hdmi->xvidc_colordepth);
 	dev_dbg(hdmi->dev, "tmds_clk = %llu\n", hdmi->tmds_clk);
 
-	if (connector->display_info.is_hdmi)
+	if (is_hdmi)
 		xlnx_hdmi_send_infoframes(hdmi);
 
 	if (hdmi->stream.is_frl) {
@@ -3727,6 +3713,63 @@ xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 					 HDMI_TX_FRL_ACTIVE_MODE_FULL_STREAM);
 	else
 		xlnx_hdmi_ext_sysrst_assert(hdmi);
+}
+
+/**
+ * xlnx_hdmi_encoder_atomic_mode_set - cache the mode and bring the link up
+ * @encoder: pointer to Xilinx DRM encoder
+ * @crtc_state: DRM crtc state
+ * @connector_state: DRM connector state
+ *
+ * Caches the adjusted mode, pixel format, FRL rate and sink type under
+ * hdmi_mutex, then brings the link up from a local copy of that cache.
+ */
+static void
+xlnx_hdmi_encoder_atomic_mode_set(struct drm_encoder *encoder,
+				  struct drm_crtc_state *crtc_state,
+				  struct drm_connector_state *connector_state)
+{
+	struct drm_display_mode *mode = &crtc_state->mode;
+	struct xlnx_hdmi *hdmi = encoder_to_hdmi(encoder);
+	struct drm_display_mode adjusted_mode;
+	int max_frl_bw;
+	bool is_hdmi;
+	u32 fourcc;
+
+	mutex_lock(&hdmi->hdmi_mutex);
+	drm_mode_copy(&hdmi->saved_adjusted_mode, &crtc_state->adjusted_mode);
+	hdmi->saved_fourcc = encoder->crtc->primary->state->fb->format->format;
+	hdmi->saved_max_frl_bw = xlnx_hdmi_max_frl_bw(hdmi);
+	hdmi->saved_is_hdmi = connector_state->connector->display_info.is_hdmi;
+	drm_mode_copy(&adjusted_mode, &hdmi->saved_adjusted_mode);
+	fourcc = hdmi->saved_fourcc;
+	max_frl_bw = hdmi->saved_max_frl_bw;
+	is_hdmi = hdmi->saved_is_hdmi;
+	mutex_unlock(&hdmi->hdmi_mutex);
+
+	dev_dbg(hdmi->dev, "mode->clock = %d\n", mode->clock * 1000);
+	dev_dbg(hdmi->dev, "mode->crtc_clock = %d\n", mode->crtc_clock * 1000);
+	dev_dbg(hdmi->dev, "mode->pvsync = %d\n",
+		!!(mode->flags & DRM_MODE_FLAG_PVSYNC));
+	dev_dbg(hdmi->dev, "mode->phsync = %d\n",
+		!!(mode->flags & DRM_MODE_FLAG_PHSYNC));
+	dev_dbg(hdmi->dev, "mode->hsync_end = %d\n", mode->hsync_end);
+	dev_dbg(hdmi->dev, "mode->hsync_start = %d\n", mode->hsync_start);
+	dev_dbg(hdmi->dev, "mode->vsync_end = %d\n", mode->vsync_end);
+	dev_dbg(hdmi->dev, "mode->vsync_start = %d\n", mode->vsync_start);
+	dev_dbg(hdmi->dev, "mode->hdisplay = %d\n", mode->hdisplay);
+	dev_dbg(hdmi->dev, "mode->vdisplay = %d\n", mode->vdisplay);
+	dev_dbg(hdmi->dev, "mode->htotal = %d\n", mode->htotal);
+	dev_dbg(hdmi->dev, "mode->vtotal = %d\n", mode->vtotal);
+	dev_dbg(hdmi->dev, "mode->vrefresh = %d\n", drm_mode_vrefresh(mode));
+	dev_dbg(hdmi->dev, "mode->flags = %d interlace = %d\n", mode->flags,
+		!!(mode->flags & DRM_MODE_FLAG_INTERLACE));
+
+	/*
+	 * link_up waits for stream-up. Do not hold hdmi_mutex: the IRQ
+	 * thread takes it on that event.
+	 */
+	xlnx_hdmi_link_up(hdmi, &adjusted_mode, fourcc, max_frl_bw, is_hdmi);
 }
 
 static const struct drm_encoder_funcs xlnx_hdmi_encoder_funcs = {
