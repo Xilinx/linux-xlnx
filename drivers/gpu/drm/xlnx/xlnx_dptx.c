@@ -131,6 +131,7 @@ static const struct dp_codec_cea_spk_alloc dp_codec_channel_alloc[] = {
 };
 
 static void xlnx_dp_hpd_pulse_work_func(struct work_struct *work);
+static void xlnx_dp_mst_link_retrain_work_fn(struct work_struct *work);
 static int xlnx_dp_txconnected(struct xlnx_dp *dp);
 
 static inline struct xlnx_dp *encoder_to_dp(struct drm_encoder *encoder)
@@ -3620,6 +3621,8 @@ static void xlnx_dp_hpd_work_func(struct work_struct *work)
 	}
 	dp->mst_link_trained = true;
 	dp->mst_fresh_train = true;
+	dp->mst_link_lost = false;
+	dp->mst_retrain_attempts = 0;
 	dev_dbg(dp->dev, "MST: main link trained (bw=0x%x lanes=%d)\n",
 		dp->mode.bw_code, dp->mode.lane_cnt);
 
@@ -3740,6 +3743,8 @@ static int xlnx_dp_bind(struct device *dev, struct device *master, void *data)
 		return ret;
 	}
 
+	INIT_WORK(&dp->mst_link_retrain_work, xlnx_dp_mst_link_retrain_work_fn);
+
 	ret = drm_bridge_attach(encoder, &dp->bridge, NULL,
 				DRM_BRIDGE_ATTACH_NO_CONNECTOR);
 	if (ret) {
@@ -3822,6 +3827,8 @@ static void xlnx_dp_unbind(struct device *dev,
 	cancel_delayed_work_sync(&dp->hpd_pulse_work);
 	cancel_delayed_work_sync(&dp->hpd_work);
 	if (dp->mst_mode && dp->mst_mgr_init) {
+		cancel_work_sync(&dp->mst_link_retrain_work);
+		cancel_work_sync(&dp->mst_modeset_retry_work);
 		drm_dp_mst_topology_mgr_set_mst(&dp->mst_mgr, false);
 		dp->mst_link_trained = false;
 		dp->mst_stream_count = 0;
@@ -3841,6 +3848,115 @@ static void xlnx_dp_unbind(struct device *dev,
 
 	xlnx_dp_exit_aux(dp);
 	drm_dp_aux_unregister(&dp->aux);
+}
+
+#define XDPTX_MST_RETRAIN_MAX_ATTEMPTS	3
+
+/*
+ * Retrains a lost MST link without userspace: a full modeset of every CRTC on
+ * an active MST stream re-runs link training and re-allocates the payloads.
+ */
+static void xlnx_dp_mst_link_retrain_work_fn(struct work_struct *work)
+{
+	struct xlnx_dp *dp = container_of(work, struct xlnx_dp,
+					  mst_link_retrain_work);
+	struct drm_device *drm = dp->drm;
+	struct drm_modeset_acquire_ctx ctx;
+	struct drm_atomic_state *state;
+	struct drm_crtc *crtc;
+	u32 enc_mask = 0;
+	int i, ret;
+
+	if (!drm || !dp->mst_link_trained)
+		return;
+
+	for (i = 0; i < dp->config.num_streams; i++)
+		if (dp->mst_encoders[i])
+			enc_mask |= drm_encoder_mask(&dp->mst_encoders[i]->encoder);
+
+	state = drm_atomic_state_alloc(drm);
+	if (!state) {
+		ret = -ENOMEM;
+		goto fallback;
+	}
+
+	drm_modeset_acquire_init(&ctx, 0);
+	state->acquire_ctx = &ctx;
+retry:
+	drm_for_each_crtc(crtc, drm) {
+		struct drm_crtc_state *crtc_state;
+
+		ret = drm_modeset_lock(&crtc->mutex, &ctx);
+		if (ret)
+			goto out;
+		if (!crtc->state->active || !(crtc->state->encoder_mask & enc_mask))
+			continue;
+
+		crtc_state = drm_atomic_get_crtc_state(state, crtc);
+		if (IS_ERR(crtc_state)) {
+			ret = PTR_ERR(crtc_state);
+			goto out;
+		}
+		/* check_modeset() pulls in the affected connectors and planes. */
+		crtc_state->connectors_changed = true;
+	}
+	ret = drm_atomic_commit(state);
+out:
+	if (ret == -EDEADLK) {
+		drm_atomic_state_clear(state);
+		drm_modeset_backoff(&ctx);
+		goto retry;
+	}
+	drm_atomic_state_put(state);
+	drm_modeset_drop_locks(&ctx);
+	drm_modeset_acquire_fini(&ctx);
+	if (!ret)
+		return;
+fallback:
+	dev_err(dp->dev, "MST: in-kernel link recovery failed (%d), requesting re-modeset\n",
+		ret);
+	schedule_work(&dp->mst_modeset_retry_work);
+}
+
+/* Recovers a live MST link that dropped while streaming. */
+static void xlnx_dp_mst_check_link(struct xlnx_dp *dp)
+{
+	u8 link_status[DP_LINK_STATUS_SIZE];
+	u8 lanes = dp->mode.lane_cnt;
+	bool ok;
+
+	/* After a replug the counted streams belong to the torn-down topology. */
+	if (!dp->mst_active_mask || dp->mst_enabling || dp->mst_link_lost ||
+	    dp->mst_fresh_train)
+		return;
+
+	if (drm_dp_dpcd_read_link_status(&dp->aux, link_status) < 0)
+		return;
+
+	if (xlnx_dp_uhbr_active(dp))
+		ok = drm_dp_128b132b_lane_channel_eq_done(link_status, lanes) &&
+		     drm_dp_128b132b_lane_symbol_locked(link_status, lanes) &&
+		     drm_dp_128b132b_eq_interlane_align_done(link_status);
+	else
+		ok = drm_dp_clock_recovery_ok(link_status, lanes) &&
+		     drm_dp_channel_eq_ok(link_status, lanes);
+	if (ok) {
+		dp->mst_retrain_attempts = 0;
+		return;
+	}
+
+	dp->mst_link_lost = true;
+	if (dp->mst_retrain_attempts >= XDPTX_MST_RETRAIN_MAX_ATTEMPTS) {
+		dev_err(dp->dev, "MST: link lost again after %d retrains, requesting re-modeset\n",
+			dp->mst_retrain_attempts);
+		schedule_work(&dp->mst_modeset_retry_work);
+		return;
+	}
+
+	dp->mst_retrain_attempts++;
+	dev_err(dp->dev, "MST: link lost while streaming, retraining (attempt %d)\n",
+		dp->mst_retrain_attempts);
+	schedule_work(&dp->mst_link_retrain_work);
 }
 
 static void xlnx_dp_hpd_pulse_work_func(struct work_struct *work)
@@ -3872,8 +3988,10 @@ static void xlnx_dp_hpd_pulse_work_func(struct work_struct *work)
 	if (dp->mst_mgr.mst_state || dp->mst_enabling) {
 		if (!xlnx_dp_txconnected(dp))
 			return;
-		if (dp->mst_mgr.mst_state)
+		if (dp->mst_mgr.mst_state) {
 			xlnx_dp_mst_process_esi(dp);
+			xlnx_dp_mst_check_link(dp);
+		}
 		return;
 	}
 

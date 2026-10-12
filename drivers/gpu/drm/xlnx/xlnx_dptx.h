@@ -673,10 +673,15 @@ struct xlnx_dp_mst_conn_state {
  *	driven from both the HPD-pulse work item and the topology manager's
  *	poll_hpd_irq callback
  * @mst_encoders: per-stream MST encoders (fixed pool, one per HW stream/CRTC)
+ * @mst_modeset_retry_work: flags MST links BAD when a retrain invalidates a
+ *	committed slot allocation
+ * @mst_link_retrain_work: recovers a lost MST link with an internal modeset
+ * @mst_retrain_attempts: in-kernel recoveries since the link was last good
  * @mst_link_trained: true once the MST main link has completed training
  * @mst_fresh_train: true for the first stream enable after a fresh train
  * @mst_enabling: true while (re)establishing the MST topology
  * @mst_bringup_failures: failed MST bring-ups since the last HPD event
+ * @mst_link_lost: true once a live MST link dropped; the next enable retrains
  * @mst_to_sst_relink: true when a torn-down MST session must relink to SST
  * @mst_stream_count: number of currently active MST streams
  * @mst_active_mask: bitmask of active MST stream IDs
@@ -743,11 +748,15 @@ struct xlnx_dp {
 	struct mutex esi_lock;
 	/* Per-stream MST encoders (fixed pool, one per HW stream/CRTC) */
 	struct xlnx_dp_mst_encoder *mst_encoders[XDPTX_MAX_STREAMS];
+	struct work_struct mst_modeset_retry_work;
+	struct work_struct mst_link_retrain_work;
+	int mst_retrain_attempts;
 	/* MST link / stream state */
 	bool mst_link_trained;
 	bool mst_fresh_train;
 	bool mst_enabling;
 	int mst_bringup_failures;
+	bool mst_link_lost;
 	bool mst_to_sst_relink;
 	/* Last committed SST mode; lets xlnx_dp_start re-apply UHBR VC framing. */
 	struct drm_display_mode cur_mode;

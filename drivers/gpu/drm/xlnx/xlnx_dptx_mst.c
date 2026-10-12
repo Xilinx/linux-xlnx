@@ -786,6 +786,7 @@ static void xlnx_dp_mst_encoder_atomic_enable(struct drm_encoder *encoder,
 	struct drm_dp_mst_atomic_payload *payload;
 	struct xlnx_dp_mst_connector *mst_conn = NULL;
 	const struct drm_display_mode *mode = NULL;
+	fixed20_12 pbn_div;
 	int i, ret, slot;
 
 	for_each_new_connector_in_state(state, connector, new_conn_state, i) {
@@ -824,8 +825,9 @@ static void xlnx_dp_mst_encoder_atomic_enable(struct drm_encoder *encoder,
 		return;
 	}
 
-	if (dp->mst_stream_count == 0) {
-		if (dp->mst_fresh_train) {
+	/* After a link loss, retrain even while other streams are still counted. */
+	if (dp->mst_stream_count == 0 || dp->mst_link_lost) {
+		if (dp->mst_fresh_train && !dp->mst_link_lost) {
 			xlnx_dp_mst_relink_if_degraded(dp);
 			dp->mst_fresh_train = false;
 		} else {
@@ -835,6 +837,18 @@ static void xlnx_dp_mst_encoder_atomic_enable(struct drm_encoder *encoder,
 			xlnx_dp_write(dp->dp_base, XDPTX_MAINSTRM_ENABLE_REG,
 				      XDPTX_MAINSTRM_ENABLE_MASK);
 		}
+		dp->mst_link_lost = false;
+	}
+
+	/* A retrain may have moved the link off what atomic_check sized slots for. */
+	pbn_div = drm_dp_get_vc_payload_bw(drm_dp_bw_code_to_link_rate(dp->mode.bw_code),
+					   dp->mode.lane_cnt);
+	if (pbn_div.full != mst_state->pbn_div.full) {
+		dev_err(dp->dev,
+			"MST: link is now bw=0x%x x%u; stream %d needs a new modeset\n",
+			dp->mode.bw_code, dp->mode.lane_cnt, mst_enc->stream_id);
+		schedule_work(&dp->mst_modeset_retry_work);
+		return;
 	}
 
 	xlnx_dp_mst_set_stream_attributes(dp, mst_enc->stream_id, mode,
@@ -1213,6 +1227,37 @@ static const struct drm_connector_funcs xlnx_dp_mst_connector_funcs = {
 };
 
 /**
+ * xlnx_dp_mst_modeset_retry_work_fn - mark MST links BAD so userspace re-modesets
+ * @work: work item embedded in struct xlnx_dp
+ */
+static void xlnx_dp_mst_modeset_retry_work_fn(struct work_struct *work)
+{
+	struct xlnx_dp *dp = container_of(work, struct xlnx_dp,
+					  mst_modeset_retry_work);
+	struct drm_connector_list_iter iter;
+	struct drm_connector *connector;
+	struct drm_device *drm = dp->drm;
+
+	if (!drm)
+		return;
+
+	/* Userspace now owns recovery; the next link loss gets fresh retrains. */
+	dp->mst_retrain_attempts = 0;
+
+	mutex_lock(&drm->mode_config.mutex);
+	drm_connector_list_iter_begin(drm, &iter);
+	drm_for_each_connector_iter(connector, &iter) {
+		if (connector->funcs == &xlnx_dp_mst_connector_funcs)
+			drm_connector_set_link_status_property(connector,
+							       DRM_MODE_LINK_STATUS_BAD);
+	}
+	drm_connector_list_iter_end(&iter);
+	mutex_unlock(&drm->mode_config.mutex);
+
+	drm_kms_helper_hotplug_event(drm);
+}
+
+/**
  * xlnx_dp_mst_connector_atomic_check - release VC time slots on disable
  * @connector: MST connector being checked
  * @state:     global atomic state
@@ -1473,6 +1518,8 @@ int xlnx_dp_mst_create_encoders(struct xlnx_dp *dp)
 
 		xlnx_dp_mst_dbg(dp, "MST: encoder %d created\n", i);
 	}
+
+	INIT_WORK(&dp->mst_modeset_retry_work, xlnx_dp_mst_modeset_retry_work_fn);
 
 	return 0;
 }
