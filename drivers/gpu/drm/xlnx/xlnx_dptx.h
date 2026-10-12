@@ -50,8 +50,11 @@
 
 #include <linux/hdmi.h>
 
+#include <linux/iopoll.h>
 #include <linux/mfd/syscon.h>
+#include <drm/display/drm_dp_mst_helper.h>
 #include "hdcp/xlnx_hdcp_tx.h"
+#include "xlnx_drv.h"
 
 #define XDPTX_HDCP			0
 #define XDPTX_HDCP2X_OFFSET		0x4000
@@ -105,6 +108,21 @@
 #define XDPTX_SCRAMBLER_RESET			0xc0
 #define XDPTX_SCRAMBLER_RESET_MASK		BIT(0)
 #define XDPTX_MST_CONFIG			0xd0
+#define XDPTX_MST_CONFIG_MST_EN_MASK		BIT(0)
+#define XDPTX_MST_CONFIG_VCP_UPDATED_MASK	BIT(1)
+
+/* MST: VC payload buffer (64 slots x 4 bytes = 0x800..0x8FC) */
+#define XDPTX_VC_PAYLOAD_BUFF			0x800
+#define XDPTX_VC_PAYLOAD_BUFF_NSLOTS		64
+
+/* MST: per-stream average timeslot registers - (TsInt << 16) | TsFrac */
+#define XDPTX_STREAM1_TS_REG			0x1d0
+#define XDPTX_STREAM_TS_STRIDE			4
+
+/* MST: MSA register bank byte offsets for streams 2-4 relative to stream 1 (0x180) */
+#define XDPTX_MST_MSA_OFFSET_S2			0x380u
+#define XDPTX_MST_MSA_OFFSET_S3			0x3d0u
+#define XDPTX_MST_MSA_OFFSET_S4			0x420u
 
 /* AUX channel interface registers */
 #define XDPTX_AUXCMD_REG			0x100
@@ -499,6 +517,8 @@ struct xlnx_dp_stream_fmt {
  *	a small settling delay before each line-rate change.
  * @hdcp2x_enable: flag to indicate hdcp22-enable property in device tree
  * @hdcp1x_enable: flag to indicate hdcp-enable property in device tree
+ * @num_streams: Number of DP TX video streams (xlnx,num-streams); the sole
+ *	SST-vs-MST selector (num_streams == 1 -> SST, num_streams > 1 -> MST)
  */
 struct xlnx_dp_config {
 	u32 max_lanes;
@@ -510,6 +530,7 @@ struct xlnx_dp_config {
 	bool versal_2ve_2vm;
 	bool hdcp2x_enable;
 	bool hdcp1x_enable;
+	u32 num_streams;
 };
 
 enum xlnx_dp_train_state {
@@ -527,6 +548,40 @@ enum xlnx_dp_train_state {
  */
 struct xlnx_dp_feature {
 	u32 flags;
+};
+
+/**
+ * struct xlnx_dp_mst_encoder - per-stream MST encoder
+ * @encoder: DRM encoder
+ * @dp: back-pointer to the main DP structure
+ * @stream_id: zero-based stream index (0..XDPTX_MAX_STREAMS-1)
+ */
+struct xlnx_dp_mst_encoder {
+	struct drm_encoder encoder;
+	struct xlnx_dp *dp;
+	int stream_id;
+};
+
+/**
+ * struct xlnx_dp_mst_connector - MST virtual connector
+ * @connector: DRM connector
+ * @dp: back-pointer to the main DP structure
+ * @port: MST port this connector represents
+ */
+struct xlnx_dp_mst_connector {
+	struct drm_connector connector;
+	struct xlnx_dp *dp;
+	struct drm_dp_mst_port *port;
+};
+
+/**
+ * struct xlnx_dp_mst_conn_state - MST connector atomic state
+ * @base: base DRM connector state
+ * @fmt: per-stream pixel format
+ */
+struct xlnx_dp_mst_conn_state {
+	struct drm_connector_state base;
+	struct xlnx_dp_stream_fmt fmt;
 };
 
 /**
@@ -570,6 +625,11 @@ struct xlnx_dp_feature {
  * @audio_init: flag to indicate audio is initialized
  * @have_edid: flag to indicate if edid is available
  * @colorimetry_through_vsc: colorimetry information through vsc packets
+ * @mst_mgr: MST topology manager - valid when config.num_streams > 1
+ * @esi_lock: serializes the MST ESI sideband (xlnx_dp_mst_process_esi),
+ *	driven from both the HPD-pulse work item and the topology manager's
+ *	poll_hpd_irq callback
+ * @mst_encoders: per-stream MST encoders (fixed pool, one per HW stream/CRTC)
  */
 struct xlnx_dp {
 	struct device *dev;
@@ -611,6 +671,16 @@ struct xlnx_dp {
 	bool audio_init;
 	bool have_edid;
 	unsigned int colorimetry_through_vsc : 1;
+	/* MST topology manager - valid when config.num_streams > 1 */
+	struct drm_dp_mst_topology_mgr mst_mgr;
+	/*
+	 * Serializes the MST ESI sideband pump (xlnx_dp_mst_process_esi),
+	 * driven from both the HPD-pulse work item and the topology manager's
+	 * poll_hpd_irq callback.
+	 */
+	struct mutex esi_lock;
+	/* Per-stream MST encoders (fixed pool, one per HW stream/CRTC) */
+	struct xlnx_dp_mst_encoder *mst_encoders[XDPTX_MAX_STREAMS];
 };
 
 /* Shared helpers implemented in xlnx_dptx.c and used by xlnx_dptx_mst.c */
@@ -629,4 +699,15 @@ u32 xlnx_dp_calc_bpc(struct xlnx_dp *dp, u8 bpc,
 		     const struct drm_display_info *info,
 		     struct xlnx_dp_stream_fmt *stream_fmt);
 u8 xlnx_dp_bpc_from_fourcc(struct xlnx_dp *dp, u32 drm_fourcc);
+
+/* Low-level register accessors - implemented in xlnx_dptx.c */
+void xlnx_dp_write(void __iomem *base, int offset, u32 val);
+u32 xlnx_dp_read(void __iomem *base, int offset);
+
+/* MST entry points implemented in xlnx_dptx_mst.c and used by xlnx_dptx.c */
+int xlnx_dp_mst_enable(struct xlnx_dp *dp);
+int xlnx_dp_mst_clear_payload_table(struct xlnx_dp *dp);
+void xlnx_dp_mst_process_esi(struct xlnx_dp *dp);
+int xlnx_dp_mst_create_encoders(struct xlnx_dp *dp);
+extern const struct drm_dp_mst_topology_cbs xlnx_dp_mst_cbs;
 #endif /* __XLNX_DPTX_H__ */
