@@ -1898,7 +1898,11 @@ void xlnx_dp_mode_set_stream_offset(struct xlnx_dp *dp,
 	xlnx_dp_write(dp_base, XDPTX_N_VID_REG + offset, reg);
 
 	wpl = (mode->hdisplay * bpp + 15) / 16;
-	reg = wpl + wpl % lane_cnt - lane_cnt;
+	/* MST frames over the design's configured lane width, not the trained lane count. */
+	if (dp->mst_mode)
+		reg = wpl + wpl % dp->config.max_lanes - dp->config.max_lanes;
+	else
+		reg = wpl + wpl % lane_cnt - lane_cnt;
 	xlnx_dp_write(dp_base, XDPTX_USER_DATACNTPERLANE_REG + offset, reg);
 }
 
