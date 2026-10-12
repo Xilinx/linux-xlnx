@@ -53,16 +53,6 @@ static inline void xlnx_dp_mst_set(struct xlnx_dp *dp, u32 offset, u32 set)
 }
 
 /**
- * xlnx_dp_mst_write_sec_stream - program ENABLE_SEC_STREAM (8b/10b)
- * @dp: DisplayPort IP core structure
- * @on: whether the secondary stream should be enabled for this write
- */
-static inline void xlnx_dp_mst_write_sec_stream(struct xlnx_dp *dp, bool on)
-{
-	xlnx_dp_mst_write(dp, XDPTX_ENABLE_SEC_STREAM_REG, on ? 0x1 : 0x0);
-}
-
-/**
  * xlnx_dp_mst_commit_vcp - assert the VC payload update per link coding
  * @dp: DisplayPort IP core structure
  *
