@@ -277,14 +277,14 @@ static void xlnx_dp_mst_set_stream_attributes(struct xlnx_dp *dp,
 	u32 off;
 	u64 avg_tu_1000;
 	u32 ts_int, ts_frac;
-	u32 bpp, ppc;
+	u32 bpp, user_calc_ppc;
 
 	if (stream_id < 0 || stream_id >= XDPTX_MAX_STREAMS)
 		return;
 
 	off = msa_offsets[stream_id];
 	bpp = stream_fmt ? stream_fmt->bpp : dp->fmt.bpp;
-	ppc = dp->config.pixel_mode ? dp->config.pixel_mode : 1;
+	user_calc_ppc = xlnx_dp_calc_user_ppc(dp, mode->clock, dp->mode.lane_cnt);
 
 	if (stream_fmt)
 		xlnx_dp_mst_dbg(dp,
@@ -310,7 +310,7 @@ static void xlnx_dp_mst_set_stream_attributes(struct xlnx_dp *dp,
 				   dp->tx_vid_clk[stream_id] :
 				   dp->tx_vid_clk[0];
 		unsigned long pixel_hz = (unsigned long)mode->clock * 1000;
-		unsigned long vid_clk_hz = pixel_hz / ppc;
+		unsigned long vid_clk_hz = pixel_hz / user_calc_ppc;
 
 		if (vclk) {
 			int cret = clk_set_rate(vclk, vid_clk_hz);
@@ -324,7 +324,7 @@ static void xlnx_dp_mst_set_stream_attributes(struct xlnx_dp *dp,
 				xlnx_dp_mst_dbg(dp,
 						"MST: stream%d tx_vid_clk set to %lu Hz (pixel=%lu ppc=%u measured=%lu)\n",
 						stream_id, vid_clk_hz, pixel_hz,
-						ppc, clk_get_rate(vclk));
+						user_calc_ppc, clk_get_rate(vclk));
 			}
 		}
 	}
@@ -345,7 +345,7 @@ static void xlnx_dp_mst_set_stream_attributes(struct xlnx_dp *dp,
 			  XDPTX_STREAM1_TS_REG + stream_id * XDPTX_STREAM_TS_STRIDE,
 			  (ts_int << 16) | ts_frac);
 
-	xlnx_dp_vtc_set_timing(dp, mode, dp->vtc_off[stream_id], ppc);
+	xlnx_dp_vtc_set_timing(dp, mode, dp->vtc_off[stream_id], user_calc_ppc);
 
 	xlnx_dp_mst_set(dp, dp->vtc_off[stream_id] + XDPTX_VTC_CTL,
 			XDPTX_VTC_CTL_GE);

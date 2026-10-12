@@ -510,7 +510,6 @@ struct xlnx_dp_stream_fmt {
  * @max_lanes: Maximum number of lanes
  * @max_link_rate: Maximum supported link rate
  * @max_bpc: Maximum bits per component from DT (xlnx,bpc); default/ceiling
- * @ppc: Pixels per component
  * @pixel_mode: PL pixel packing from DT (xlnx,pixel-mode); MST uses it for ppc
  * @audio_enabled: flag to indicate audio is enabled in device tree
  * @versal_gt_present: flag to indicate versal-gt property in device tree
@@ -527,7 +526,6 @@ struct xlnx_dp_config {
 	u32 max_lanes;
 	u32 max_link_rate;
 	u8 max_bpc;
-	u8 ppc;
 	u8 pixel_mode;
 	bool audio_enabled;
 	bool versal_gt_present;
@@ -728,6 +726,7 @@ u32 xlnx_dp_calc_bpc(struct xlnx_dp *dp, u8 bpc,
 		     const struct drm_display_info *info,
 		     struct xlnx_dp_stream_fmt *stream_fmt);
 u8 xlnx_dp_bpc_from_fourcc(struct xlnx_dp *dp, u32 drm_fourcc);
+u32 xlnx_dp_calc_user_ppc(struct xlnx_dp *dp, int clock_khz, u8 lane_cnt);
 
 /* Low-level register accessors - implemented in xlnx_dptx.c */
 void xlnx_dp_write(void __iomem *base, int offset, u32 val);
