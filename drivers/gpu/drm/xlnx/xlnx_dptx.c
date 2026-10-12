@@ -1029,12 +1029,15 @@ static int xlnx_dp_post_training(struct xlnx_dp *dp)
 		}
 
 		/*
-		 * Post Link Training ; An upstream device with a DPTX sets
-		 * this bit to 1 to grant the POST_LT_ADJ_REQ sequence by the
-		 * downstream DPRX if the downstream DPRX supports
-		 * POST_LT_ADJ_REQ
+		 * Post Link Training: bit5 (0x20) of LANE_COUNT_SET grants the
+		 * POST_LT_ADJ_REQ sequence to the downstream DPRX.  Never grant
+		 * it: granting obliges the source to run a post-LT adjust loop
+		 * (poll ADJUST_REQUEST_POST_LT and re-drive VS/PE until the sink
+		 * clears it), which this driver does not implement, so a
+		 * granted-but-unserviced request leaves the sink main stream
+		 * un-synced (RX_PORT0 never locks, MSA stays empty -> no signal).
 		 */
-		data |= 0x20;
+		data &= ~0x20;
 		ret = drm_dp_dpcd_writeb(&dp->aux, DP_LANE_COUNT_SET, data);
 		if (ret < 0) {
 			dev_dbg(dp->dev, "DPCD write first try fails");
