@@ -1889,12 +1889,6 @@ static void xlnx_hdmi_reset(struct xlnx_hdmi *hdmi)
 	xlnx_hdmi_int_vrst_deassert(hdmi);
 }
 
-static void xlnx_hdmi_streamdown_callback(struct xlnx_hdmi *hdmi)
-{
-	xlnx_hdmi_reset(hdmi);
-	xlnx_hdmi_ddc_disable(hdmi);
-}
-
 static void xlnx_hdmi_tmdsconfig(struct xlnx_hdmi *hdmi)
 {
 	union phy_configure_opts phy_cfg = {0};
@@ -2003,8 +1997,28 @@ static void xlnx_hdmi_connect_callback(struct xlnx_hdmi *hdmi)
 	}
 }
 
-/* HPD low debounce window before triggering streamdown. */
+/* HPD low debounce window before the sink is declared gone. */
 #define HDMI_HPD_DEBOUNCE_MS	1000
+
+/**
+ * xlnx_hdmi_frl_teardown_locked - quiesce FRL; caller holds hdmi_mutex
+ * @hdmi: pointer to HDMI TX core instance
+ */
+static void xlnx_hdmi_frl_teardown_locked(struct xlnx_hdmi *hdmi)
+{
+	lockdep_assert_held(&hdmi->hdmi_mutex);
+
+	if (!hdmi->stream.is_frl)
+		return;
+
+	xlnx_hdmi_set_frl_timer(hdmi, 0);
+	xlnx_hdmi_frl_reset_assert(hdmi);
+	xlnx_hdmi_frl_reset_deassert(hdmi);
+	xlnx_hdmi_frl_mode_disable(hdmi);
+	xlnx_hdmi_frl_ext_vidsrc(hdmi);
+	xlnx_hdmi_frl_sleep(hdmi);
+	hdmi->stream.is_frl = false;
+}
 
 static void xlnx_hdmi_hpd_work_func(struct work_struct *work)
 {
@@ -2018,9 +2032,10 @@ static void xlnx_hdmi_hpd_work_func(struct work_struct *work)
 		return;
 	}
 
-	xlnx_hdmi_streamdown_callback(hdmi);
+	/* Keep the configuration; stop only what needs the sink. */
+	xlnx_hdmi_ddc_disable(hdmi);
 	xlnx_hdmi_connect_callback(hdmi);
-
+	xlnx_hdmi_frl_teardown_locked(hdmi);
 	mutex_unlock(&hdmi->hdmi_mutex);
 
 	if (hdmi->connector.dev)
@@ -3322,18 +3337,7 @@ static void xlnx_hdmi_encoder_enable(struct drm_encoder *encoder)
 static void xlnx_hdmi_frl_teardown(struct xlnx_hdmi *hdmi)
 {
 	mutex_lock(&hdmi->hdmi_mutex);
-	if (!hdmi->stream.is_frl) {
-		mutex_unlock(&hdmi->hdmi_mutex);
-		return;
-	}
-
-	xlnx_hdmi_set_frl_timer(hdmi, 0);
-	xlnx_hdmi_frl_reset_assert(hdmi);
-	xlnx_hdmi_frl_reset_deassert(hdmi);
-	xlnx_hdmi_frl_mode_disable(hdmi);
-	xlnx_hdmi_frl_ext_vidsrc(hdmi);
-	xlnx_hdmi_frl_sleep(hdmi);
-	hdmi->stream.is_frl = false;
+	xlnx_hdmi_frl_teardown_locked(hdmi);
 	mutex_unlock(&hdmi->hdmi_mutex);
 }
 
