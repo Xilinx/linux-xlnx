@@ -1948,6 +1948,8 @@ static int xlnx_dp_power_cycle(struct xlnx_dp *dp)
 	return 0;
 }
 
+#define XDPTX_LT_MAX_ATTEMPTS 3
+
 /**
  * xlnx_dp_start - start the DisplayPort core
  * @dp: DisplayPort IP core structure
@@ -1963,6 +1965,7 @@ int xlnx_dp_start(struct xlnx_dp *dp)
 	struct xlnx_hdcptx *dptxhdcp = &dp->tx_hdcp;
 	int link_rate = dp->link_config.link_rate;
 	int ret = 0;
+	int attempt;
 	u32 val, intr_mask;
 	u8 data;
 	bool enhanced;
@@ -2056,26 +2059,75 @@ int xlnx_dp_start(struct xlnx_dp *dp)
 		dev_err(dp->dev, "failed to set ANSI 8B/10B encoding\n");
 		return ret;
 	}
-	/* Reset PHY */
-	xlnx_dp_phy_reset(dp, XDPTX_PHYCONFIG_RESET_MASK);
+	for (attempt = 0; ; attempt++) {
+		/* Restart each attempt from the negotiated maximum link params. */
+		mode->bw_code = drm_dp_link_rate_to_bw_code(link_rate);
+		mode->lane_cnt = dp->link_config.lane_count;
+		dp->link_config.cr_done_oldstate = dp->link_config.max_lanes;
 
-	/* Wait for PHY ready */
-	ret = xlnx_dp_phy_ready(dp);
-	if (ret < 0)
-		return ret;
+		if (attempt > 0) {
+			ret = xlnx_dp_set_linkrate(dp, mode->bw_code);
+			if (ret < 0) {
+				dev_err(dp->dev, "failed to set link rate\n");
+				xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG,
+					      intr_mask);
+				return ret;
+			}
 
-	memset(dp->train_set, 0, XDPTX_MAX_LANES);
+			ret = xlnx_dp_set_lanecount(dp, mode->lane_cnt);
+			if (ret < 0) {
+				dev_err(dp->dev, "failed to set lane count\n");
+				xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG,
+					      intr_mask);
+				return ret;
+			}
+		}
 
-	ret = xlnx_dp_run_training(dp);
-	if (ret < 0) {
-		dev_err(dp->dev, "DP Link Training Failed\n");
-		return ret;
-	}
+		/* Reset PHY */
+		xlnx_dp_phy_reset(dp, XDPTX_PHYCONFIG_RESET_MASK);
 
-	ret = xlnx_dp_post_training(dp);
-	if (ret < 0) {
-		dev_err(dp->dev, "failed post trining settings\n");
-		return ret;
+		/* Wait for PHY ready */
+		ret = xlnx_dp_phy_ready(dp);
+		if (ret < 0) {
+			if (attempt + 1 >= XDPTX_LT_MAX_ATTEMPTS) {
+				dev_err(dp->dev,
+					"DP PHY not ready after %d attempts\n",
+					attempt + 1);
+				xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG,
+					      intr_mask);
+				return ret;
+			}
+			dev_warn(dp->dev,
+				 "DP PHY not ready on attempt %d, retrying\n",
+				attempt + 1);
+			continue;
+		}
+
+		memset(dp->train_set, 0, XDPTX_MAX_LANES);
+
+		ret = xlnx_dp_run_training(dp);
+
+		/* Confirm the link actually held lock (post-train re-read). */
+		if (ret >= 0)
+			ret = xlnx_dp_post_training(dp);
+		if (ret >= 0)
+			break;
+		if (attempt + 1 >= XDPTX_LT_MAX_ATTEMPTS) {
+			dev_err(dp->dev,
+				"DP Link Training Failed after %d attempts\n",
+				attempt + 1);
+			xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG,
+				      intr_mask);
+			return ret;
+		}
+
+		dev_warn(dp->dev,
+			 "DP link training attempt %d failed, retraining\n",
+			 attempt + 1);
+
+		/* Re-disable the main link and let the sink settle before retrain. */
+		xlnx_dp_mainlink_en(dp, 0x0);
+		usleep_range(4000, 6000);
 	}
 
 	/* Enable HDP interrupts after link training */
