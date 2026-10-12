@@ -1819,6 +1819,32 @@ xlnx_dp_encoder_mode_set_transfer_unit(struct xlnx_dp *dp,
 }
 
 /**
+ * xlnx_dp_calc_user_ppc - USER_PIXELWIDTH value for a mode
+ * @dp: DisplayPort IP core structure
+ * @clock_khz: pixel clock of the mode in kHz
+ * @lane_cnt: negotiated lane count
+ *
+ * Pixels-per-clock gated by the pixel clock and lane count, capped by
+ * xlnx,pixel-mode (the fixed PL packing).
+ *
+ * Return: user-calculated pixels per clock (1, 2 or 4).
+ */
+u32 xlnx_dp_calc_user_ppc(struct xlnx_dp *dp, int clock_khz, u8 lane_cnt)
+{
+	u32 max_ppc = dp->config.pixel_mode ? dp->config.pixel_mode : 1;
+	u32 user_calc_ppc = 1;
+
+	if (clock_khz > 1188000 && lane_cnt == 4)
+		user_calc_ppc = 8;
+	else if (clock_khz > 540000 && lane_cnt == 4)
+		user_calc_ppc = 4;
+	else if (clock_khz > 270000 && lane_cnt > 1)
+		user_calc_ppc = 2;
+
+	return min(user_calc_ppc, max_ppc);
+}
+
+/**
  * xlnx_dp_mode_set_stream_offset - Program main-stream attributes at a register offset
  * @dp: DisplayPort IP core structure
  * @mode: display mode to program
@@ -1831,7 +1857,7 @@ void xlnx_dp_mode_set_stream_offset(struct xlnx_dp *dp,
 				    const struct xlnx_dp_stream_fmt *stream_fmt)
 {
 	void __iomem *dp_base = dp->dp_base;
-	u32 reg, wpl, ppc;
+	u32 reg, wpl, user_calc_ppc;
 	u8 lane_cnt = dp->mode.lane_cnt;
 	u8 bpp = stream_fmt ? stream_fmt->bpp : dp->fmt.bpp;
 
@@ -1864,23 +1890,8 @@ void xlnx_dp_mode_set_stream_offset(struct xlnx_dp *dp,
 		xlnx_dp_update_misc(dp);
 	}
 
-	/*
-	 * SST derives pixels-per-clock from the pixel clock; MST uses the
-	 * DT-configured pixel packing (xlnx,pixel-mode), which is identical for
-	 * every stream.
-	 */
-	if (dp->mst_mgr.mst_state) {
-		ppc = dp->config.pixel_mode ? dp->config.pixel_mode : 1;
-	} else {
-		if (mode->clock > 530000)
-			ppc = 4;
-		else if (mode->clock > 270000)
-			ppc = 2;
-		else
-			ppc = 1;
-		dp->config.ppc = ppc;
-	}
-	xlnx_dp_write(dp_base, XDPTX_USER_PIXELWIDTH_REG + offset, ppc);
+	user_calc_ppc = xlnx_dp_calc_user_ppc(dp, mode->clock, lane_cnt);
+	xlnx_dp_write(dp_base, XDPTX_USER_PIXELWIDTH_REG + offset, user_calc_ppc);
 
 	xlnx_dp_write(dp_base, XDPTX_M_VID_REG + offset, mode->clock);
 	reg = drm_dp_bw_code_to_link_rate(dp->mode.bw_code);
@@ -2728,7 +2739,7 @@ xlnx_dp_encoder_atomic_mode_set(struct xlnx_dp *dp, struct drm_crtc *crtc,
 	struct drm_display_mode *mode = &crtc_state->mode;
 	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
 	int rate, max_rate = dp->link_config.max_rate;
-	u32 clock, drm_fourcc;
+	u32 clock, drm_fourcc, user_calc_ppc;
 	u8 max_lanes = dp->link_config.max_lanes;
 	u8 bpc, bpp;
 
@@ -2757,10 +2768,10 @@ xlnx_dp_encoder_atomic_mode_set(struct xlnx_dp *dp, struct drm_crtc *crtc,
 	xlnx_dp_encoder_mode_set_stream(dp, adjusted_mode);
 	xlnx_dp_encoder_mode_set_transfer_unit(dp, adjusted_mode);
 	clock = adjusted_mode->clock * 1000;
-	clk_set_rate(dp->tx_vid_clk[0], clock / dp->config.ppc);
+	user_calc_ppc = xlnx_dp_calc_user_ppc(dp, adjusted_mode->clock, dp->mode.lane_cnt);
+	clk_set_rate(dp->tx_vid_clk[0], clock / user_calc_ppc);
 
-	xlnx_dp_vtc_set_timing(dp, adjusted_mode, dp->vtc_off[0],
-			       dp->config.ppc);
+	xlnx_dp_vtc_set_timing(dp, adjusted_mode, dp->vtc_off[0], user_calc_ppc);
 	/* prepare a vsc packet */
 	xlnx_dp_prepare_vsc(dp);
 }
@@ -3729,7 +3740,7 @@ static int xlnx_dp_parse_of(struct xlnx_dp *dp)
 		dp->vtc_off[0] = XDPTX_VTC_BASE;
 	}
 
-	/* PL pixel packing; MST pins ppc to this. Default quad-pixel. */
+	/* PL pixel packing, fixed by the design; caps USER_PIXELWIDTH. Default 4. */
 	if (of_property_read_u32(node, "xlnx,pixel-mode", &pixel_mode))
 		pixel_mode = 4;
 	if (pixel_mode != 1 && pixel_mode != 2 && pixel_mode != 4) {
