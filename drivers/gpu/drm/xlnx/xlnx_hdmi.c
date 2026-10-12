@@ -2030,7 +2030,7 @@ static void xlnx_hdmi_frl_teardown_locked(struct xlnx_hdmi *hdmi)
 }
 
 /**
- * xlnx_hdmi_hpd_sync_from_hw - sync cable/connector state to PIO HPD level
+ * xlnx_hdmi_hpd_sync_from_hw - sync the cable state to the PIO HPD level
  * @hdmi: pointer to HDMI TX core instance
  *
  * HPD is edge-triggered, so after a driver reload with the sink already
@@ -2042,17 +2042,11 @@ static void xlnx_hdmi_frl_teardown_locked(struct xlnx_hdmi *hdmi)
 static void xlnx_hdmi_hpd_sync_from_hw(struct xlnx_hdmi *hdmi)
 {
 	u32 data;
-	bool hpd;
 
 	lockdep_assert_held(&hdmi->hdmi_mutex);
 
 	data = xlnx_hdmi_readl(hdmi, HDMI_TX_PIO_IN);
-	hpd = !!(data & HDMI_TX_PIO_IN_HPD_CONNECT);
-
-	hdmi->cable_connected = hpd;
-	if (hdmi->connector.dev)
-		hdmi->connector.status = hpd ? connector_status_connected
-					   : connector_status_disconnected;
+	hdmi->cable_connected = !!(data & HDMI_TX_PIO_IN_HPD_CONNECT);
 }
 
 static void xlnx_hdmi_frl_config(struct xlnx_hdmi *hdmi)
@@ -2782,7 +2776,6 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 	if (event & HDMI_TX_PIO_IN_HPD_CONNECT) {
 		if (data & HDMI_TX_PIO_IN_HPD_CONNECT) {
 			hdmi->cable_connected = 1;
-			hdmi->connector.status = connector_status_connected;
 
 			dev_dbg(hdmi->dev, "hpd: high\n");
 			/*
@@ -2793,7 +2786,6 @@ static void xlnx_hdmi_piointr_handler(struct xlnx_hdmi *hdmi)
 					 msecs_to_jiffies(HDMI_HPD_STABLE_MS));
 		} else {
 			hdmi->cable_connected = 0;
-			hdmi->connector.status = connector_status_disconnected;
 			dev_dbg(hdmi->dev, "hpd: low; debounce armed\n");
 			/*
 			 * Drop the cached EDID so a bounce re-reads. get_modes
@@ -3355,7 +3347,7 @@ static void xlnx_hdmi_encoder_disable(struct drm_encoder *encoder)
 	connected = hdmi->cable_connected;
 	mutex_unlock(&hdmi->hdmi_mutex);
 	if (cancelled && connected && hdmi->connector.dev)
-		drm_sysfs_hotplug_event(hdmi->connector.dev);
+		drm_connector_helper_hpd_irq_event(&hdmi->connector);
 
 	if (hdmi->bridge)
 		xlnx_bridge_disable(hdmi->bridge);
@@ -3742,7 +3734,7 @@ static void xlnx_hdmi_link_up(struct xlnx_hdmi *hdmi,
  * With the cable gone for the whole debounce window, stops DDC and FRL but
  * keeps the committed configuration for the next replay.
  *
- * Reports the event to DRM in every case.
+ * Reports a DRM hotplug event when the connector status changed.
  */
 static void xlnx_hdmi_hpd_work_func(struct work_struct *work)
 {
@@ -3805,7 +3797,7 @@ static void xlnx_hdmi_hpd_work_func(struct work_struct *work)
 	}
 
 	if (hdmi->connector.dev)
-		drm_sysfs_hotplug_event(hdmi->connector.dev);
+		drm_connector_helper_hpd_irq_event(&hdmi->connector);
 }
 
 /**
@@ -4056,7 +4048,7 @@ static int xlnx_hdmi_bind(struct device *dev, struct device *master,
 		xlnx_hdmi_connect_callback(hdmi);
 	mutex_unlock(&hdmi->hdmi_mutex);
 	if (hdmi->connector.dev)
-		drm_sysfs_hotplug_event(hdmi->connector.dev);
+		drm_connector_helper_hpd_irq_event(&hdmi->connector);
 
 	return 0;
 }
