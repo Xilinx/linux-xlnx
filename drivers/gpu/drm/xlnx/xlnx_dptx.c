@@ -879,12 +879,139 @@ static int xlnx_dp_check_clock_recovery(struct xlnx_dp *dp, u8 lane_cnt)
 	return 0;
 }
 
+/* xlnx_dp_uhbr_active - true when the link runs DP2.1 128b/132b (UHBR). */
+static inline bool xlnx_dp_uhbr_active(struct xlnx_dp *dp)
+{
+	return drm_dp_is_uhbr_rate(drm_dp_bw_code_to_link_rate(dp->mode.bw_code));
+}
+
+/*
+ * xlnx_dp_negotiate_link_rate - pick the best common link rate (DP1.4 or DP2.1)
+ * @dp: DisplayPort IP core structure
+ *
+ * Returns the chosen maximum link rate in DRM units (10 kbps).  When DP2.1 is
+ * enabled and the sink advertises 128b/132b, selects the highest sink UHBR rate
+ * the platform can source (config.max_link_rate) and marks link_training_2x;
+ * otherwise returns the legacy HBR rate, leaving the 8b/10b path unchanged.
+ */
+static int xlnx_dp_negotiate_link_rate(struct xlnx_dp *dp)
+{
+	struct xlnx_dp_link_config *link_config = &dp->link_config;
+	int hbr_rate = min_t(int, drm_dp_max_link_rate(dp->dpcd),
+			     dp->config.max_link_rate);
+	int uhbr_rate = 0;
+	u8 uhbr_caps = 0;
+
+	/* DP_MAX_LINK_RATE may hold a UHBR code; the 8b/10b fallback must not. */
+	hbr_rate = min(hbr_rate, XDPTX_HIGH_BIT_RATE_3);
+
+	link_config->link_training_2x = false;
+	link_config->channel_coding = XDPTX_ML_CH_CODING_8B10B;
+
+	/* The Versal GTCTL line-rate field cannot express UHBR rates. */
+	if (dp->config.dp21_present && !dp->config.versal_gt_present &&
+	    drm_dp_128b132b_supported(dp->dpcd)) {
+		if (drm_dp_dpcd_readb(&dp->aux,
+				      DP_128B132B_SUPPORTED_LINK_RATES,
+				      &uhbr_caps) == 1) {
+			/*
+			 * Pick the highest sink-advertised UHBR rate the
+			 * platform can actually source (config.max_link_rate).
+			 * Without this clamp a sink advertising UHBR20 would be
+			 * selected even on a GT/vphy that tops out at UHBR10.
+			 */
+			int cap = dp->config.max_link_rate;
+
+			if (link_config->uhbr_rate_ceiling)
+				cap = min(cap, link_config->uhbr_rate_ceiling);
+
+			if ((uhbr_caps & DP_UHBR20) &&
+			    cap >= XDPTX_UHBR20_BIT_RATE)
+				uhbr_rate = XDPTX_UHBR20_BIT_RATE;
+			else if ((uhbr_caps & DP_UHBR13_5) &&
+				 cap >= XDPTX_UHBR13_5_BIT_RATE)
+				uhbr_rate = XDPTX_UHBR13_5_BIT_RATE;
+			else if ((uhbr_caps & DP_UHBR10) &&
+				 cap >= XDPTX_UHBR10_BIT_RATE)
+				uhbr_rate = XDPTX_UHBR10_BIT_RATE;
+		}
+	}
+
+	if (uhbr_rate) {
+		link_config->link_training_2x = true;
+		link_config->channel_coding = XDPTX_ML_CH_CODING_128B132B;
+		dev_dbg(dp->dev, "DP2.1 UHBR negotiated: rate=%d (caps 0x%02x)\n",
+			uhbr_rate, uhbr_caps);
+		return uhbr_rate;
+	}
+
+	return hbr_rate;
+}
+
+/*
+ * xlnx_dp_lower_uhbr_rate - next-lower sink-supported UHBR rate below @cur
+ * @dp:  DisplayPort IP core structure
+ * @cur: current link rate in DRM units (10 kbps)
+ *
+ * Returns the next lower UHBR rate the sink advertises (and the platform can
+ * source), or 0 when @cur is already the lowest UHBR rate (the caller then
+ * falls back to 8b/10b).
+ */
+static int xlnx_dp_lower_uhbr_rate(struct xlnx_dp *dp, int cur)
+{
+	u8 uhbr_caps = 0;
+
+	if (drm_dp_dpcd_readb(&dp->aux, DP_128B132B_SUPPORTED_LINK_RATES,
+			      &uhbr_caps) != 1)
+		return 0;
+
+	if (cur > XDPTX_UHBR13_5_BIT_RATE &&
+	    (uhbr_caps & DP_UHBR13_5) &&
+	    dp->config.max_link_rate >= XDPTX_UHBR13_5_BIT_RATE)
+		return XDPTX_UHBR13_5_BIT_RATE;
+
+	if (cur > XDPTX_UHBR10_BIT_RATE &&
+	    (uhbr_caps & DP_UHBR10) &&
+	    dp->config.max_link_rate >= XDPTX_UHBR10_BIT_RATE)
+		return XDPTX_UHBR10_BIT_RATE;
+
+	return 0;
+}
+
+/*
+ * xlnx_dp_set_channel_coding - select the main-link channel coding
+ * @dp: DisplayPort IP core structure
+ * @coding: XDPTX_ML_CH_CODING_8B10B or XDPTX_ML_CH_CODING_128B132B
+ *
+ * DP2.1-only core programming: on a DP2.1 core (config.dp21_present) arm
+ * V2_0_CONFIG and write the core ML channel-coding register; the DPCD
+ * DP_MAIN_LINK_CHANNEL_CODING_SET write is done for every core.
+ */
+static int xlnx_dp_set_channel_coding(struct xlnx_dp *dp, u8 coding)
+{
+	u8 dpcd_val = (coding == XDPTX_ML_CH_CODING_128B132B) ?
+		      DP_SET_ANSI_128B132B : DP_SET_ANSI_8B10B;
+
+	dp->link_config.channel_coding = coding;
+
+	if (dp->config.dp21_present) {
+		xlnx_dp_write(dp->dp_base, XDPTX_V2_0_CONFIG_REG,
+			      XDPTX_V2_0_CONFIG_RESET_VAL);
+		xlnx_dp_write(dp->dp_base, XDPTX_ML_CH_CODING_SET_REG, coding);
+	}
+
+	return drm_dp_dpcd_writeb(&dp->aux, DP_MAIN_LINK_CHANNEL_CODING_SET, dpcd_val);
+}
+
 static int xlnx_dp_set_linkrate(struct xlnx_dp *dp, u8 bw_code)
 {
 	struct phy_configure_opts_dp *phy_cfg = &dp->phy_opts.dp;
 	int ret;
 	u32 lrate_val = 0, val;
 	u8 lane_count = dp->mode.lane_cnt;
+	bool is_uhbr = (bw_code == DP_LINK_BW_10 ||
+			bw_code == DP_LINK_BW_13_5 ||
+			bw_code == DP_LINK_BW_20);
 
 	if (!xlnx_dp_txconnected(dp)) {
 		dev_dbg(dp->dev, "display is not connected");
@@ -914,10 +1041,38 @@ static int xlnx_dp_set_linkrate(struct xlnx_dp *dp, u8 bw_code)
 		if (dp->config.versal_gt_present)
 			lrate_val = XDPTX_GTCTL_LINE_RATE_810G;
 		break;
+	/*
+	 * DP2.1 128b/132b (UHBR) rates.  Codes DP_LINK_BW_10 (0x01) /
+	 * DP_LINK_BW_20 (0x02) / DP_LINK_BW_13_5 (0x04) do not collide with the
+	 * 8b/10b codes above.  Driven through the generic DP PHY; the 2-bit
+	 * Versal GTCTL line-rate field cannot express UHBR, so lrate_val is
+	 * left unused for these.
+	 */
+	case DP_LINK_BW_10:
+		phy_cfg->link_rate = XDPTX_UHBR10_BIT_RATE / 100;
+		break;
+	case DP_LINK_BW_13_5:
+		phy_cfg->link_rate = XDPTX_UHBR13_5_BIT_RATE / 100;
+		break;
+	case DP_LINK_BW_20:
+		phy_cfg->link_rate = XDPTX_UHBR20_BIT_RATE / 100;
+		break;
 	default:
 		phy_cfg->link_rate = XDPTX_HIGH_BIT_RATE_3 / 100;
 		if (dp->config.versal_gt_present)
 			lrate_val = XDPTX_GTCTL_LINE_RATE_810G;
+	}
+
+	/*
+	 * Select the main-link channel coding to match the rate: UHBR needs
+	 * 128b/132b, everything else 8b/10b.  On a UHBR -> HBR downshift
+	 * (training fallback) this flips the coding back to 8b/10b automatically.
+	 */
+	ret = xlnx_dp_set_channel_coding(dp, is_uhbr ? XDPTX_ML_CH_CODING_128B132B :
+						     XDPTX_ML_CH_CODING_8B10B);
+	if (ret < 0) {
+		dev_err(dp->dev, "failed to set channel coding\n");
+		return ret;
 	}
 
 	/*
@@ -947,7 +1102,7 @@ static int xlnx_dp_set_linkrate(struct xlnx_dp *dp, u8 bw_code)
 	if (!dp->config.versal_gt_present)
 		phy_configure(dp->phy[0], &dp->phy_opts);
 
-	if (dp->config.versal_gt_present) {
+	if (dp->config.versal_gt_present && !is_uhbr) {
 		val = xlnx_dp_read(dp->dp_base, XDPTX_GTCTL_REG);
 		val &= ~XDPTX_GTCTL_LINE_RATE_MASK;
 		val |= FIELD_PREP(XDPTX_GTCTL_LINE_RATE_MASK, lrate_val);
@@ -982,6 +1137,15 @@ static int xlnx_dp_set_lanecount(struct xlnx_dp *dp, u8 lane_cnt)
 	return 0;
 }
 
+/* 128b/132b reports lock in its own EQ/symbol/align bits, not the 8b/10b ones. */
+static bool xlnx_dp_uhbr_link_ok(const u8 link_status[DP_LINK_STATUS_SIZE],
+				 int lanes)
+{
+	return drm_dp_128b132b_lane_channel_eq_done(link_status, lanes) &&
+	       drm_dp_128b132b_lane_symbol_locked(link_status, lanes) &&
+	       drm_dp_128b132b_eq_interlane_align_done(link_status);
+}
+
 /**
  * xlnx_dp_check_link_status - This function checks if the receiver has
  * achieved and maintained clock recovery, channel equalization, symbol lock, and
@@ -1009,9 +1173,13 @@ static int xlnx_dp_check_link_status(struct xlnx_dp *dp)
 		if (ret < 0)
 			return ret;
 
-		if (drm_dp_clock_recovery_ok(link_status, dp->mode.lane_cnt) ||
-		    drm_dp_channel_eq_ok(link_status, dp->mode.lane_cnt))
+		if (xlnx_dp_uhbr_active(dp)) {
+			if (xlnx_dp_uhbr_link_ok(link_status, dp->mode.lane_cnt))
+				return 0;
+		} else if (drm_dp_clock_recovery_ok(link_status, dp->mode.lane_cnt) ||
+			   drm_dp_channel_eq_ok(link_status, dp->mode.lane_cnt)) {
 			return 0;
+		}
 	}
 
 	return -EINVAL;
@@ -1188,6 +1356,16 @@ static int xlnx_dp_adjust_linkrate(struct xlnx_dp *dp)
 	u8 bw_code;
 
 	switch (dp->mode.bw_code) {
+	case DP_LINK_BW_10:
+	case DP_LINK_BW_13_5:
+	case DP_LINK_BW_20:
+		/*
+		 * Stale UHBR bw_code left over from a UHBR -> 8b/10b
+		 * fallback; this state machine is 8b/10b-only, so drop
+		 * straight to HBR3 instead of hitting the default case.
+		 */
+		bw_code = DP_LINK_BW_8_1;
+		break;
 	case DP_LINK_BW_8_1:
 		bw_code = DP_LINK_BW_5_4;
 		break;
@@ -1369,11 +1547,235 @@ static int xlnx_dp_link_train_ce(struct xlnx_dp *dp)
  * Return: 0 if the training process succeeded.
  * error value on training failure.
  */
+/**
+ * xlnx_dp_set_train_pattern_2x - Set a 128b/132b training pattern
+ * @dp: DisplayPort IP core structure
+ * @pattern: 128b/132b training pattern to program
+ *
+ * Return: 0 on success, negative error code otherwise.
+ */
+static int xlnx_dp_set_train_pattern_2x(struct xlnx_dp *dp, u32 pattern)
+{
+	u32 ip_pattern, scramble_dis;
+
+	switch (pattern) {
+	case DP_TRAINING_PATTERN_1:
+		ip_pattern = 1;
+		scramble_dis = 1;
+		break;
+	case DP_TRAINING_PATTERN_2:
+		ip_pattern = 2;
+		scramble_dis = 0;
+		break;
+	case DP_TRAINING_PATTERN_2_CDS:
+		/* CDS uses the TPS2 core pattern; DPCD still carries code 3. */
+		ip_pattern = 2;
+		scramble_dis = 0;
+		break;
+	case DP_TRAINING_PATTERN_DISABLE:
+	default:
+		ip_pattern = 0;
+		scramble_dis = 0;
+		break;
+	}
+
+	xlnx_dp_write(dp->dp_base, XDPTX_TRNGPAT_SET_REG, ip_pattern);
+	xlnx_dp_write(dp->dp_base, XDPTX_SCRAMBLING_DIS_REG, scramble_dis);
+
+	return drm_dp_dpcd_writeb(&dp->aux, DP_TRAINING_PATTERN_SET, pattern);
+}
+
+/**
+ * xlnx_dp_2x_set_ffe - Program the requested 128b/132b TX FFE presets
+ * @dp: DisplayPort IP core structure
+ * @link_status: DPCD link-status snapshot from the sink
+ *
+ * Return: 0 on success, negative error code otherwise.
+ */
+static int xlnx_dp_2x_set_ffe(struct xlnx_dp *dp,
+			      const u8 link_status[DP_LINK_STATUS_SIZE])
+{
+	struct phy_configure_opts_dp *phy_cfg = &dp->phy_opts.dp;
+	u8 lane_cnt = dp->mode.lane_cnt;
+	u8 set[XDPTX_MAX_LANES] = { 0 };
+	int i, ret;
+
+	for (i = 0; i < lane_cnt; i++) {
+		u8 preset = drm_dp_get_adjust_tx_ffe_preset(link_status, i);
+
+		dp->link_config.ffe_preset[i] = preset;
+		set[i] = preset & DP_TX_FFE_PRESET_VALUE_MASK;
+	}
+
+	ret = drm_dp_dpcd_write(&dp->aux, DP_TRAINING_LANE0_SET, set, lane_cnt);
+	if (ret != lane_cnt)
+		return ret < 0 ? ret : -EIO;
+
+	/*
+	 * Program the GT with the lane-0 preset.  The Xilinx vphy applies one
+	 * FFE setting across all four GT channels, so the lane-0 preset is
+	 * carried in pre[0]; the UHBR link_rate already in phy_opts routes the
+	 * vphy handler to its FFE mapping.  The Versal GTCTL path has no UHBR
+	 * FFE control, so program the GT only on the generic-PHY (non-Versal)
+	 * datapath; Versal keeps DPCD-only.
+	 */
+	if (!dp->config.versal_gt_present) {
+		phy_cfg->lanes = lane_cnt;
+		phy_cfg->pre[0] = dp->link_config.ffe_preset[0];
+		phy_cfg->set_voltages = 1;
+		phy_configure(dp->phy[0], &dp->phy_opts);
+	}
+
+	return 0;
+}
+
+#define XDPTX_2X_EQ_MAX_TRIES		20
+#define XDPTX_2X_EQ_TIMEOUT_MS		450
+#define XDPTX_2X_CDS_TIMEOUT_MS		20
+
+/**
+ * xlnx_dp_run_training_2x - Run the DP2.1 128b/132b link training sequence
+ * @dp: DisplayPort IP core structure
+ *
+ * Return: 0 on success, negative error code otherwise.
+ */
+static int xlnx_dp_run_training_2x(struct xlnx_dp *dp)
+{
+	u8 lane_cnt = dp->mode.lane_cnt;
+	u8 link_status[DP_LINK_STATUS_SIZE];
+	/* 128b/132b uses its own AUX_RD_INTERVAL at DPCD 0x2216, not the 8b/10b one. */
+	int i, ret, aux_rd_interval;
+	unsigned long deadline;
+	bool timeout;
+
+	ret = xlnx_dp_set_train_pattern_2x(dp, DP_TRAINING_PATTERN_1);
+	if (ret < 0)
+		goto fail;
+
+	/* Read the sink's initial FFE preset request and program the GT. */
+	ret = drm_dp_dpcd_read_link_status(&dp->aux, link_status);
+	if (ret < 0)
+		goto fail;
+
+	ret = xlnx_dp_2x_set_ffe(dp, link_status);
+	if (ret < 0)
+		goto fail;
+
+	/* Switch to TPS2 for the actual channel-EQ convergence. */
+	ret = xlnx_dp_set_train_pattern_2x(dp, DP_TRAINING_PATTERN_2);
+	if (ret < 0)
+		goto fail;
+
+	deadline = jiffies + msecs_to_jiffies(XDPTX_2X_EQ_TIMEOUT_MS);
+	for (i = 0; i < XDPTX_2X_EQ_MAX_TRIES; i++) {
+		/* Sampled before the read so one last try follows the deadline. */
+		timeout = time_after(jiffies, deadline);
+		aux_rd_interval = drm_dp_128b132b_read_aux_rd_interval(&dp->aux);
+		usleep_range(aux_rd_interval, aux_rd_interval + 100);
+
+		ret = drm_dp_dpcd_read_link_status(&dp->aux, link_status);
+		if (ret < 0)
+			goto fail;
+
+		if (drm_dp_128b132b_link_training_failed(link_status)) {
+			dev_dbg(dp->dev, "128b/132b sink signalled EQ failure\n");
+			goto fail;
+		}
+
+		if (drm_dp_128b132b_lane_channel_eq_done(link_status, lane_cnt))
+			break;
+
+		if (timeout) {
+			dev_dbg(dp->dev, "128b/132b EQ phase timed out\n");
+			goto fail;
+		}
+
+		ret = xlnx_dp_2x_set_ffe(dp, link_status);
+		if (ret < 0)
+			goto fail;
+	}
+	if (i == XDPTX_2X_EQ_MAX_TRIES) {
+		dev_dbg(dp->dev, "128b/132b EQ phase ran out of tries\n");
+		goto fail;
+	}
+
+	/* FFE presets must stay fixed once every lane reports EQ done. */
+	for (;;) {
+		timeout = time_after(jiffies, deadline);
+		aux_rd_interval = drm_dp_128b132b_read_aux_rd_interval(&dp->aux);
+		usleep_range(aux_rd_interval, aux_rd_interval + 100);
+
+		ret = drm_dp_dpcd_read_link_status(&dp->aux, link_status);
+		if (ret < 0)
+			goto fail;
+
+		if (drm_dp_128b132b_link_training_failed(link_status)) {
+			dev_dbg(dp->dev, "128b/132b sink signalled EQ failure\n");
+			goto fail;
+		}
+
+		if (drm_dp_128b132b_eq_interlane_align_done(link_status))
+			break;
+
+		if (timeout) {
+			dev_dbg(dp->dev, "128b/132b interlane alignment timed out\n");
+			goto fail;
+		}
+	}
+
+	/* CDS phase (TPS2_CDS). */
+	ret = xlnx_dp_set_train_pattern_2x(dp, DP_TRAINING_PATTERN_2_CDS);
+	if (ret < 0)
+		goto fail;
+
+	deadline = jiffies + msecs_to_jiffies(XDPTX_2X_CDS_TIMEOUT_MS);
+	for (;;) {
+		timeout = time_after(jiffies, deadline);
+		aux_rd_interval = drm_dp_128b132b_read_aux_rd_interval(&dp->aux);
+		usleep_range(aux_rd_interval, aux_rd_interval + 100);
+
+		ret = drm_dp_dpcd_read_link_status(&dp->aux, link_status);
+		if (ret < 0)
+			goto fail;
+
+		if (drm_dp_128b132b_link_training_failed(link_status)) {
+			dev_dbg(dp->dev, "128b/132b sink signalled CDS failure\n");
+			goto fail;
+		}
+
+		if (drm_dp_128b132b_lane_symbol_locked(link_status, lane_cnt) &&
+		    drm_dp_128b132b_cds_interlane_align_done(link_status))
+			break;
+
+		if (timeout) {
+			dev_dbg(dp->dev, "128b/132b CDS phase timed out\n");
+			goto fail;
+		}
+	}
+
+	ret = xlnx_dp_set_train_pattern_2x(dp, DP_TRAINING_PATTERN_DISABLE);
+	if (ret < 0)
+		goto fail;
+
+	dev_dbg(dp->dev, "DP2.1 128b/132b training succeeded (lanes=%d)\n",
+		lane_cnt);
+
+	return 0;
+fail:
+	dev_err(dp->dev, "DP2.1 128b/132b link training failed\n");
+	xlnx_dp_set_train_pattern_2x(dp, DP_TRAINING_PATTERN_DISABLE);
+
+	return -EIO;
+}
+
 static int xlnx_dp_run_training(struct xlnx_dp *dp)
 {
 	struct xlnx_dp_link_config *config = &dp->link_config;
 	enum xlnx_dp_train_state state = XLNX_DP_TRAIN_CR;
 	int ret;
+
+	if (config->link_training_2x)
+		return xlnx_dp_run_training_2x(dp);
 
 	while (1) {
 		switch (state) {
@@ -2072,13 +2474,14 @@ int xlnx_dp_start(struct xlnx_dp *dp)
 	ret = drm_dp_dpcd_writeb(&dp->aux, DP_LANE_COUNT_SET, data);
 	if (ret < 0) {
 		dev_err(dp->dev, "failed to set lane count\n");
+		xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG, intr_mask);
 		return ret;
 	}
-	/* set channel encoding */
-	ret = drm_dp_dpcd_writeb(&dp->aux, DP_MAIN_LINK_CHANNEL_CODING_SET,
-				 DP_SET_ANSI_8B10B);
+	/* Set the main-link channel encoding to match the negotiated link. */
+	ret = xlnx_dp_set_channel_coding(dp, dp->link_config.channel_coding);
 	if (ret < 0) {
-		dev_err(dp->dev, "failed to set ANSI 8B/10B encoding\n");
+		dev_err(dp->dev, "failed to set channel coding\n");
+		xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG, intr_mask);
 		return ret;
 	}
 	for (attempt = 0; ; attempt++) {
@@ -2128,9 +2531,84 @@ int xlnx_dp_start(struct xlnx_dp *dp)
 		memset(dp->train_set, 0, XDPTX_MAX_LANES);
 
 		ret = xlnx_dp_run_training(dp);
+		if (ret < 0 && dp->link_config.link_training_2x) {
+			/*
+			 * DP2.1 rate step-down: on UHBR training failure, retry
+			 * the next lower sink-supported UHBR rate (20G -> 13.5G
+			 * -> 10G) before dropping to 8b/10b. A board that only
+			 * fails at the top UHBR rate then trains at a lower UHBR
+			 * rate instead of collapsing straight to HBR3.
+			 */
+			while (ret < 0) {
+				int lower_uhbr = xlnx_dp_lower_uhbr_rate(dp,
+						dp->link_config.link_rate);
 
-		/* Confirm the link actually held lock (post-train re-read). */
-		if (ret >= 0)
+				if (lower_uhbr) {
+					dev_warn(dp->dev,
+						 "UHBR training failed at %d, stepping down to UHBR %d\n",
+						 dp->link_config.link_rate,
+						 lower_uhbr);
+					dp->link_config.link_rate = lower_uhbr;
+					link_rate = lower_uhbr;
+					mode->bw_code =
+					    drm_dp_link_rate_to_bw_code(lower_uhbr);
+					/*
+					 * Cap future negotiations at this rate so
+					 * the known-bad higher rate is not retried
+					 * on every HPD (reset on disconnect).
+					 */
+					dp->link_config.uhbr_rate_ceiling =
+						lower_uhbr;
+				} else {
+					int hbr_rate = min_t(int,
+						drm_dp_max_link_rate(dp->dpcd),
+						dp->config.max_link_rate);
+
+					/* A UHBR max_link_rate must not leak into 8b/10b. */
+					hbr_rate = min_t(int, hbr_rate,
+							 XDPTX_HIGH_BIT_RATE_3);
+					dev_warn(dp->dev,
+						 "UHBR rates exhausted, falling back to 8b/10b HBR\n");
+					dp->link_config.link_training_2x = false;
+					dp->link_config.max_rate = hbr_rate;
+					dp->link_config.link_rate = hbr_rate;
+					link_rate = hbr_rate;
+					mode->bw_code =
+					    drm_dp_link_rate_to_bw_code(hbr_rate);
+					dp->link_config.uhbr_rate_ceiling =
+						XDPTX_UHBR_CEILING_8B10B_ONLY;
+				}
+
+				mode->lane_cnt = dp->link_config.max_lanes;
+				dp->link_config.cr_done_oldstate =
+					dp->link_config.max_lanes;
+
+				ret = xlnx_dp_set_linkrate(dp, mode->bw_code);
+				if (ret >= 0)
+					ret = xlnx_dp_set_lanecount(dp,
+								    mode->lane_cnt);
+				if (ret >= 0) {
+					xlnx_dp_phy_reset(dp,
+							  XDPTX_PHYCONFIG_RESET_MASK);
+					ret = xlnx_dp_phy_ready(dp);
+				}
+				if (ret >= 0)
+					ret = xlnx_dp_run_training(dp);
+
+				/*
+				 * Once switched to 8b/10b, stop the UHBR ladder;
+				 * the outer attempt loop handles further retries.
+				 */
+				if (!dp->link_config.link_training_2x)
+					break;
+			}
+		}
+
+		/*
+		 * Confirm the link actually held lock (post-train re-read). The
+		 * 128b/132b training already verified lock and cleared the pattern.
+		 */
+		if (ret >= 0 && !dp->link_config.link_training_2x)
 			ret = xlnx_dp_post_training(dp);
 		if (ret >= 0)
 			break;
@@ -2345,7 +2823,10 @@ xlnx_dp_bridge_detect(struct drm_bridge *bridge, struct drm_connector *connector
 	if (dp->dpcd[DP_MAX_LINK_RATE] != DP_LINK_BW_8_1 &&
 	    dp->dpcd[DP_MAX_LINK_RATE] != DP_LINK_BW_5_4 &&
 	    dp->dpcd[DP_MAX_LINK_RATE] != DP_LINK_BW_2_7 &&
-	    dp->dpcd[DP_MAX_LINK_RATE] != DP_LINK_BW_1_62) {
+	    dp->dpcd[DP_MAX_LINK_RATE] != DP_LINK_BW_1_62 &&
+	    dp->dpcd[DP_MAX_LINK_RATE] != DP_LINK_BW_10 &&
+	    dp->dpcd[DP_MAX_LINK_RATE] != DP_LINK_BW_13_5 &&
+	    dp->dpcd[DP_MAX_LINK_RATE] != DP_LINK_BW_20) {
 		dp->dpcd[DP_MAX_LINK_RATE] = DP_LINK_BW_8_1;
 	}
 
@@ -2382,12 +2863,10 @@ xlnx_dp_bridge_detect(struct drm_bridge *bridge, struct drm_connector *connector
 			dev_dbg(dp->dev, "DPCD read fails");
 	}
 
-	link_config->max_rate = min_t(int,
-				      drm_dp_max_link_rate(dp->dpcd),
-				      dp->config.max_link_rate);
 	link_config->max_lanes = min_t(u8,
 				       drm_dp_max_lane_count(dp->dpcd),
 				       dp->config.max_lanes);
+	link_config->max_rate = xlnx_dp_negotiate_link_rate(dp);
 	link_config->link_rate = link_config->max_rate;
 	link_config->lane_count = link_config->max_lanes;
 	mode->lane_cnt = link_config->max_lanes;
@@ -2429,6 +2908,8 @@ xlnx_dp_bridge_detect(struct drm_bridge *bridge, struct drm_connector *connector
 	return connector_status_connected;
 disconnected:
 	dp->status = connector_status_disconnected;
+	/* New sink on replug may support a higher rate: clear the UHBR cap. */
+	dp->link_config.uhbr_rate_ceiling = 0;
 	if (dp->enabled)
 		xlnx_dp_stop(dp);
 
@@ -3269,7 +3750,10 @@ static void xlnx_dp_hpd_pulse_work_func(struct work_struct *work)
 	if (bw_set != DP_LINK_BW_8_1 &&
 	    bw_set != DP_LINK_BW_5_4 &&
 	    bw_set != DP_LINK_BW_2_7 &&
-	    bw_set != DP_LINK_BW_1_62)
+	    bw_set != DP_LINK_BW_1_62 &&
+	    bw_set != DP_LINK_BW_10 &&
+	    bw_set != DP_LINK_BW_13_5 &&
+	    bw_set != DP_LINK_BW_20)
 		goto retrain_link;
 
 	lane_set &= DP_LANE_COUNT_MASK;
@@ -3277,7 +3761,10 @@ static void xlnx_dp_hpd_pulse_work_func(struct work_struct *work)
 		goto retrain_link;
 
 	/* Verify the link status */
-	ret = drm_dp_channel_eq_ok(link_status, lane_set);
+	if (xlnx_dp_uhbr_active(dp))
+		ret = xlnx_dp_uhbr_link_ok(link_status, lane_set);
+	else
+		ret = drm_dp_channel_eq_ok(link_status, lane_set);
 	if (!ret)
 		goto retrain_link;
 
@@ -3786,7 +4273,10 @@ static int xlnx_dp_parse_of(struct xlnx_dp *dp)
 	if (config->max_link_rate != XDPTX_REDUCED_BIT_RATE &&
 	    config->max_link_rate != XDPTX_HIGH_BIT_RATE_1 &&
 	    config->max_link_rate != XDPTX_HIGH_BIT_RATE_2 &&
-	    config->max_link_rate != XDPTX_HIGH_BIT_RATE_3) {
+		config->max_link_rate != XDPTX_HIGH_BIT_RATE_3 &&
+		config->max_link_rate != XDPTX_UHBR10_BIT_RATE &&
+		config->max_link_rate != XDPTX_UHBR13_5_BIT_RATE &&
+		config->max_link_rate != XDPTX_UHBR20_BIT_RATE) {
 		dev_err(dp->dev, "Invalid link rate in DT\n");
 		return -EINVAL;
 	}
