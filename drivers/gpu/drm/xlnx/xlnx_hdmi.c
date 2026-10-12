@@ -4665,7 +4665,7 @@ static int xlnx_hdmi_probe(struct platform_device *pdev)
 	/* Request the interrupt */
 	ret = devm_request_threaded_irq(hdmi->dev, hdmi->irq,
 					hdmitx_irq_handler, hdmitx_irq_thread,
-					IRQF_TRIGGER_HIGH,
+					IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
 					"xilinx-hdmitxss", hdmi/* dev_id */);
 	if (ret) {
 		dev_err(hdmi->dev, "unable to request IRQ %d\n", hdmi->irq);
