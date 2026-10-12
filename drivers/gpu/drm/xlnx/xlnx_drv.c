@@ -119,6 +119,31 @@ static const struct drm_mode_config_funcs xlnx_mode_config_funcs = {
 	.atomic_commit		= drm_atomic_helper_commit,
 };
 
+/*
+ * The PL display pipelines drive vblank from the DMA completion callback, so no
+ * vblank arrives while the HDMI link/PHY is being (re)trained on a modeset or
+ * hotplug. That retraining can exceed the 100 ms budget of
+ * drm_atomic_helper_wait_for_vblanks(), producing a spurious "vblank wait timed
+ * out" warning even though the pipeline recovers. Wait on flip-done instead,
+ * which tolerates the longer bring-up without warning.
+ */
+static void xlnx_atomic_commit_tail(struct drm_atomic_state *state)
+{
+	struct drm_device *dev = state->dev;
+
+	drm_atomic_helper_commit_modeset_disables(dev, state);
+	drm_atomic_helper_commit_planes(dev, state, 0);
+	drm_atomic_helper_commit_modeset_enables(dev, state);
+	drm_atomic_helper_fake_vblank(state);
+	drm_atomic_helper_commit_hw_done(state);
+	drm_atomic_helper_wait_for_flip_done(dev, state);
+	drm_atomic_helper_cleanup_planes(dev, state);
+}
+
+static const struct drm_mode_config_helper_funcs xlnx_mode_config_helpers = {
+	.atomic_commit_tail = xlnx_atomic_commit_tail,
+};
+
 static void xlnx_mode_config_init(struct drm_device *drm)
 {
 	struct xlnx_drm *xlnx_drm = drm->dev_private;
@@ -215,6 +240,7 @@ static int xlnx_bind(struct device *dev)
 
 	drm_mode_config_init(drm);
 	drm->mode_config.funcs = &xlnx_mode_config_funcs;
+	drm->mode_config.helper_private = &xlnx_mode_config_helpers;
 
 	ret = drm_vblank_init(drm, MAX_CRTC);
 	if (ret) {
