@@ -995,7 +995,7 @@ static int xlnx_dp_check_link_status(struct xlnx_dp *dp)
 
 	if (!xlnx_dp_txconnected(dp)) {
 		dev_dbg(dp->dev, "display is not connected");
-		return connector_status_disconnected;
+		return -ENOTCONN;
 	}
 
 	for (retry = 0; retry < 5; retry++) {
