@@ -28306,6 +28306,7 @@ R:	Vishal Sagar <vishal.sagar@amd.com>
 S:	Maintained
 F:	Documentation/devicetree/bindings/display/xlnx/xlnx,dp-tx.yaml
 F:	drivers/gpu/drm/xlnx/xlnx_dptx.c
+F:	drivers/gpu/drm/xlnx/xlnx_dptx.h
 
 XILINX DRM HDCP DRIVER
 M:	Katta Dhanunjanrao <katta.dhanunjanrao@amd.com>
