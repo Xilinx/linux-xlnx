@@ -1796,9 +1796,9 @@ xlnx_dp_encoder_mode_set_transfer_unit(struct xlnx_dp *dp,
 	/* Use the max transfer unit size (default) */
 	xlnx_dp_write(dp->dp_base, XDPTX_TRANSFER_UNITSIZE_REG, tu);
 
-	vid_kbytes = (mode->clock / 1000) * (dp->fmt.bpp / 8);
+	vid_kbytes = mode->clock * (dp->fmt.bpp / 8);
 	bw = drm_dp_bw_code_to_link_rate(dp->mode.bw_code);
-	avg_bytes_per_tu = vid_kbytes * tu / (dp->mode.lane_cnt * bw);
+	avg_bytes_per_tu = vid_kbytes * tu / (dp->mode.lane_cnt * (bw / 1000));
 	min_bytes_per_tu = avg_bytes_per_tu / 1000;
 	xlnx_dp_write(dp->dp_base, XDPTX_MINBYTES_PERTU_REG,
 		      min_bytes_per_tu);
@@ -1864,15 +1864,23 @@ void xlnx_dp_mode_set_stream_offset(struct xlnx_dp *dp,
 		xlnx_dp_update_misc(dp);
 	}
 
-	if (mode->clock > 530000)
-		ppc = 4;
-	else if (mode->clock > 270000)
-		ppc = 2;
-	else
-		ppc = 1;
-
+	/*
+	 * SST derives pixels-per-clock from the pixel clock; MST uses the
+	 * DT-configured pixel packing (xlnx,pixel-mode), which is identical for
+	 * every stream.
+	 */
+	if (dp->mst_mgr.mst_state) {
+		ppc = dp->config.pixel_mode ? dp->config.pixel_mode : 1;
+	} else {
+		if (mode->clock > 530000)
+			ppc = 4;
+		else if (mode->clock > 270000)
+			ppc = 2;
+		else
+			ppc = 1;
+		dp->config.ppc = ppc;
+	}
 	xlnx_dp_write(dp_base, XDPTX_USER_PIXELWIDTH_REG + offset, ppc);
-	dp->config.ppc = ppc;
 
 	xlnx_dp_write(dp_base, XDPTX_M_VID_REG + offset, mode->clock);
 	reg = drm_dp_bw_code_to_link_rate(dp->mode.bw_code);
@@ -1907,11 +1915,15 @@ static void xlnx_dp_mainlink_en(struct xlnx_dp *dp, u8 enable)
 static int xlnx_dp_power_cycle(struct xlnx_dp *dp)
 {
 	int ret = 0, i;
-	u8 value;
+	u8 value = 0;
 
 	/* sink Power cycle */
 	for (i = 0; i < XDPTX_SINK_PWR_CYCLES; i++) {
 		ret = drm_dp_dpcd_readb(&dp->aux, DP_SET_POWER, &value);
+		if (ret < 0) {
+			usleep_range(3000, 4000);
+			continue;
+		}
 
 		value &= ~DP_SET_POWER_MASK;
 		value |= DP_SET_POWER_D3;
@@ -1942,8 +1954,10 @@ static int xlnx_dp_power_cycle(struct xlnx_dp *dp)
  *
  * This function trains the DisplayPort link based on the sink capabilities and
  * enables the main link.
+ *
+ * Return: 0 on success, negative errno if the link could not be brought up.
  */
-void xlnx_dp_start(struct xlnx_dp *dp)
+int xlnx_dp_start(struct xlnx_dp *dp)
 {
 	struct xlnx_dp_mode *mode = &dp->mode;
 	struct xlnx_hdcptx *dptxhdcp = &dp->tx_hdcp;
@@ -1960,7 +1974,7 @@ void xlnx_dp_start(struct xlnx_dp *dp)
 	xlnx_dp_init_aux(dp);
 	if (dp->status != connector_status_connected) {
 		dev_info(dp->dev, "Display not connected\n");
-		return;
+		return -ENODEV;
 	}
 
 	xlnx_dp_power_cycle(dp);
@@ -1975,22 +1989,31 @@ void xlnx_dp_start(struct xlnx_dp *dp)
 	ret = xlnx_dp_set_linkrate(dp, mode->bw_code);
 	if (ret < 0) {
 		dev_err(dp->dev, "failed to set link rate\n");
-		return;
+		return ret;
 	}
 
 	ret = xlnx_dp_set_lanecount(dp, mode->lane_cnt);
 	if (ret < 0) {
 		dev_err(dp->dev, "failed to set lane count\n");
-		return;
+		return ret;
 	}
 
-	/* Disable MST mode in both the RX and TX */
-	ret = drm_dp_dpcd_writeb(&dp->aux, DP_MSTM_CTRL, 0);
-	if (ret < 0) {
-		dev_dbg(dp->dev, "DPCD write failed");
-		return;
+	/* Disable MST mode only when there is no active MST session. */
+	if (!dp->mst_mgr.mst_state && !dp->mst_enabling) {
+		int s;
+
+		ret = drm_dp_dpcd_writeb(&dp->aux, DP_MSTM_CTRL, 0);
+		if (ret < 0) {
+			dev_dbg(dp->dev, "DPCD write failed");
+			return ret;
+		}
+		xlnx_dp_write(dp->dp_base, XDPTX_MST_CONFIG, 0x0);
+
+		for (s = 0; s < dp->config.num_streams; s++)
+			xlnx_dp_write(dp->dp_base,
+				      XDPTX_STREAM1_TS_REG +
+				      s * XDPTX_STREAM_TS_STRIDE, 0);
 	}
-	xlnx_dp_write(dp->dp_base, XDPTX_MST_CONFIG, 0x0);
 
 	/* Disable main link during training. */
 	val = xlnx_dp_read(dp->dp_base, XDPTX_MAINSTRM_ENABLE_REG);
@@ -2024,14 +2047,14 @@ void xlnx_dp_start(struct xlnx_dp *dp)
 	ret = drm_dp_dpcd_writeb(&dp->aux, DP_LANE_COUNT_SET, data);
 	if (ret < 0) {
 		dev_err(dp->dev, "failed to set lane count\n");
-		return;
+		return ret;
 	}
 	/* set channel encoding */
 	ret = drm_dp_dpcd_writeb(&dp->aux, DP_MAIN_LINK_CHANNEL_CODING_SET,
 				 DP_SET_ANSI_8B10B);
 	if (ret < 0) {
 		dev_err(dp->dev, "failed to set ANSI 8B/10B encoding\n");
-		return;
+		return ret;
 	}
 	/* Reset PHY */
 	xlnx_dp_phy_reset(dp, XDPTX_PHYCONFIG_RESET_MASK);
@@ -2039,25 +2062,22 @@ void xlnx_dp_start(struct xlnx_dp *dp)
 	/* Wait for PHY ready */
 	ret = xlnx_dp_phy_ready(dp);
 	if (ret < 0)
-		return;
+		return ret;
 
 	memset(dp->train_set, 0, XDPTX_MAX_LANES);
 
 	ret = xlnx_dp_run_training(dp);
 	if (ret < 0) {
 		dev_err(dp->dev, "DP Link Training Failed\n");
-		return;
+		return ret;
 	}
 
 	ret = xlnx_dp_post_training(dp);
 	if (ret < 0) {
 		dev_err(dp->dev, "failed post trining settings\n");
-		return;
+		return ret;
 	}
 
-	/* re-enable main link after training if required */
-	if (val)
-		xlnx_dp_mainlink_en(dp, 0x1);
 	/* Enable HDP interrupts after link training */
 	xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG, intr_mask);
 
@@ -2069,15 +2089,20 @@ void xlnx_dp_start(struct xlnx_dp *dp)
 		      XDPTX_SOFT_RST_HDCP_MASK);
 	xlnx_dp_write(dp->dp_base, XDPTX_SOFT_RST, 0x0);
 
-	/* Enable VTC and MainStream */
-	xlnx_dp_set(dp->dp_base, dp->vtc_off[0] + XDPTX_VTC_CTL,
-		    XDPTX_VTC_CTL_GE);
-	xlnx_dp_mainlink_en(dp, 0x1);
+	if (dp->mst_enabling || !dp->mst_mgr.mst_state) {
+		if (dp->mst_enabling) {
+			xlnx_dp_mainlink_en(dp, 0x1);
+		} else {
+			xlnx_dp_set(dp->dp_base, dp->vtc_off[0] + XDPTX_VTC_CTL,
+				    XDPTX_VTC_CTL_GE);
+			xlnx_dp_mainlink_en(dp, 0x1);
+		}
+	}
 
 	ret = xlnx_dp_check_link_status(dp);
 	if (ret < 0) {
 		dev_err(dp->dev, "Link is DOWN after main link enabled!\n");
-		return;
+		return ret;
 	}
 	if (dp->config.hdcp2x_enable || dp->config.hdcp1x_enable) {
 		if (dp->config.hdcp2x_enable) {
@@ -2092,11 +2117,11 @@ void xlnx_dp_start(struct xlnx_dp *dp)
 		ret = xlnx_start_hdcp_engine(dptxhdcp, mode->lane_cnt);
 		if (ret < 0) {
 			dev_err(dp->dev, "Failed to Start HDCP\n");
-			return;
+			return ret;
 		}
 	}
 
-	if (dp->colorimetry_through_vsc) {
+	if (dp->colorimetry_through_vsc && !dp->mst_mgr.mst_state) {
 		/* program the VSC extended packet */
 		xlnx_dp_vsc_pkt_handler(dp);
 		/* This ensures that VSC pkt is sent every frame */
@@ -2105,8 +2130,14 @@ void xlnx_dp_start(struct xlnx_dp *dp)
 	}
 	/* enable audio */
 	xlnx_dp_set(dp->dp_base, XDPTX_AUDIO_CTRL_REG, 0x1);
-	/* Enabling TX interrupts */
-	xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG, 0);
+	/* EXTPKT_TXD is only serviced for SST VSC colorimetry; mask it otherwise. */
+	if (dp->colorimetry_through_vsc && !dp->mst_mgr.mst_state)
+		xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG, 0);
+	else
+		xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG,
+			      XDPTX_INTR_EXTPKT_TXD_MASK);
+
+	return 0;
 }
 
 /**
@@ -2188,6 +2219,9 @@ static int xlnx_dp_txconnected(struct xlnx_dp *dp)
  * SST (Single-Stream Transport) bridge path
  * -------------------------------------------------------------------------
  */
+/* MST bring-up attempts per HPD event before hpd_work stops re-queueing. */
+#define XDPTX_MST_BRINGUP_MAX_ATTEMPTS	3
+
 static enum drm_connector_status
 xlnx_dp_bridge_detect(struct drm_bridge *bridge, struct drm_connector *connector)
 {
@@ -2205,6 +2239,14 @@ xlnx_dp_bridge_detect(struct drm_bridge *bridge, struct drm_connector *connector
 		dev_dbg(dp->dev, "Display is not connected");
 		goto disconnected;
 	}
+
+	/*
+	 * While an MST topology is live the per-stream MST connectors carry the
+	 * displays; report the SST bridge connector as disconnected so userspace
+	 * does not try to light it.
+	 */
+	if (dp->mst_mgr_init && dp->mst_mgr.mst_state)
+		return connector_status_disconnected;
 
 	/* Reading the Ext capability for compliance */
 	ret = drm_dp_dpcd_read(&dp->aux, DP_DP13_DPCD_REV, dpcd_ext,
@@ -2289,6 +2331,21 @@ xlnx_dp_bridge_detect(struct drm_bridge *bridge, struct drm_connector *connector
 		dp->colorimetry_through_vsc = true;
 	else
 		dp->colorimetry_through_vsc = false;
+
+	if (dp->mst_mode && dp->mst_mgr_init &&
+	    !dp->mst_enabling) {
+		u8 mstm_cap = 0;
+
+		drm_dp_dpcd_readb(&dp->aux, DP_MSTM_CAP, &mstm_cap);
+		if (mstm_cap & DP_MST_CAP) {
+			if (dp->mst_bringup_failures < XDPTX_MST_BRINGUP_MAX_ATTEMPTS) {
+				dev_dbg(dp->dev,
+					"detect: MST sink, scheduling MST bring-up\n");
+				schedule_delayed_work(&dp->hpd_work, 0);
+			}
+			return connector_status_disconnected;
+		}
+	}
 
 	if (dp->enabled) {
 		xlnx_dp_stop(dp);
@@ -2695,6 +2752,11 @@ static void xlnx_dp_bridge_enable(struct drm_bridge *bridge,
 		pm_runtime_get_sync(dp->dev);
 		dp->enabled = true;
 		xlnx_dp_start(dp);
+		if (dp->mst_to_sst_relink) {
+			dp->mst_to_sst_relink = false;
+			xlnx_dp_stop(dp);
+			xlnx_dp_start(dp);
+		}
 	}
 }
 
@@ -2722,6 +2784,36 @@ static int xlnx_dp_bridge_attach(struct drm_bridge *bridge,
 				 struct drm_encoder *encoder,
 				 enum drm_bridge_attach_flags flags)
 {
+	struct xlnx_dp *dp = bridge_to_dp(bridge);
+	int ret;
+
+	if (dp->mst_mode && !dp->mst_mgr_init) {
+		ret = xlnx_dp_mst_create_encoders(dp);
+		if (ret) {
+			dev_err(dp->dev, "MST: encoder creation failed (%d)\n",
+				ret);
+			return ret;
+		}
+
+		mutex_init(&dp->esi_lock);
+
+		ret = drm_dp_mst_topology_mgr_init(&dp->mst_mgr, dp->drm,
+						   &dp->aux, 16,
+						   dp->config.num_streams, 0);
+		if (ret) {
+			dev_err(dp->dev, "MST: topology mgr init failed (%d)\n",
+				ret);
+			mutex_destroy(&dp->esi_lock);
+			/* The encoders are DRM-managed; just drop our references. */
+			memset(dp->mst_encoders, 0, sizeof(dp->mst_encoders));
+			return ret;
+		}
+
+		dp->mst_mgr.cbs = &xlnx_dp_mst_cbs;
+		dp->mst_mgr_init = true;
+		dev_dbg(dp->dev, "MST: topology manager initialised\n");
+	}
+
 	return 0;
 }
 
@@ -2761,12 +2853,111 @@ static const struct drm_bridge_funcs xlnx_dp_bridge_funcs = {
 
 static void xlnx_dp_hpd_work_func(struct work_struct *work)
 {
-	struct xlnx_dp *dp;
+	struct xlnx_dp *dp = container_of(work, struct xlnx_dp, hpd_work.work);
+	u8 mstm_cap = 0, mstm_ctrl = 0;
+	int ret, s;
 
-	dp = container_of(work, struct xlnx_dp, hpd_work.work);
+	if (dp->drm) {
+		enum drm_connector_status status;
 
-	if (dp->drm)
-		drm_helper_hpd_irq_event(dp->drm);
+		status = xlnx_dp_bridge_detect(&dp->bridge, dp->connector);
+		drm_bridge_hpd_notify(&dp->bridge, status);
+	}
+
+	if (!dp->mst_mode || !dp->mst_mgr_init)
+		return;
+
+	/* Sink gone: tear down any active topology. */
+	if (!xlnx_dp_txconnected(dp)) {
+		if (dp->mst_mgr.mst_state)
+			goto teardown;
+		return;
+	}
+
+	if (drm_dp_dpcd_readb(&dp->aux, DP_MSTM_CAP, &mstm_cap) != 1) {
+		dev_dbg(dp->dev, "MST: CAP read failed, keeping current state\n");
+		return;
+	}
+
+	/* SST sink on an MST-capable port: drop back to SST. */
+	if (!(mstm_cap & DP_MST_CAP)) {
+		if (dp->mst_mgr.mst_state)
+			goto teardown;
+		return;
+	}
+
+	/* Bring-up retry budget spent: wait for the next HPD event. */
+	if (dp->mst_bringup_failures >= XDPTX_MST_BRINGUP_MAX_ATTEMPTS)
+		return;
+
+	/* MST-capable sink already live: keep the existing topology. */
+	if (dp->mst_mgr.mst_state) {
+		drm_dp_dpcd_readb(&dp->aux, DP_MSTM_CTRL, &mstm_ctrl);
+		if (mstm_ctrl & DP_MST_EN) {
+			dev_dbg(dp->dev,
+				"MST: HPD on live session, keeping topology\n");
+			return;
+		}
+		/* Stale session on re-plug: rebuild from scratch. */
+		drm_dp_mst_topology_mgr_set_mst(&dp->mst_mgr, false);
+		dp->mst_link_trained = false;
+		for (s = 0; s < dp->config.num_streams; s++)
+			xlnx_dp_clr(dp->dp_base, dp->vtc_off[s] + XDPTX_VTC_CTL,
+				    XDPTX_VTC_CTL_GE);
+	}
+
+	/* VSC colorimetry is SST-only; keep it disabled for MST. */
+	dp->colorimetry_through_vsc = false;
+
+	ret = xlnx_dp_start(dp);
+	if (ret < 0) {
+		dev_err(dp->dev, "MST: link training failed (%d)\n", ret);
+		goto fail;
+	}
+	dp->mst_link_trained = true;
+	dp->mst_fresh_train = true;
+	dp->mst_enabling = true;
+	dev_dbg(dp->dev, "MST: main link trained (bw=0x%x lanes=%d)\n",
+		dp->mode.bw_code, dp->mode.lane_cnt);
+
+	ret = xlnx_dp_mst_enable(dp);
+	if (ret < 0) {
+		dev_err(dp->dev, "MST: enable failed (%d)\n", ret);
+		goto fail;
+	}
+
+	ret = xlnx_dp_mst_clear_payload_table(dp);
+	if (ret < 0)
+		goto fail;
+
+	dp->status = connector_status_connected;
+
+	ret = drm_dp_mst_topology_mgr_set_mst(&dp->mst_mgr, true);
+	if (ret) {
+		dev_err(dp->dev, "MST: set_mst(true) failed (%d)\n", ret);
+		goto fail;
+	}
+	dev_dbg(dp->dev, "MST: topology discovery started\n");
+	dp->mst_bringup_failures = 0;
+	dp->mst_enabling = false;
+	return;
+
+fail:
+	dp->mst_enabling = false;
+	if (++dp->mst_bringup_failures == XDPTX_MST_BRINGUP_MAX_ATTEMPTS)
+		dev_err(dp->dev, "MST: bring-up failed %d times, waiting for HPD\n",
+			XDPTX_MST_BRINGUP_MAX_ATTEMPTS);
+	return;
+
+teardown:
+	/* Stream count/mask stay with the commit path; disables drain them. */
+	drm_dp_mst_topology_mgr_set_mst(&dp->mst_mgr, false);
+	dp->mst_link_trained = false;
+	for (s = 0; s < dp->config.num_streams; s++)
+		xlnx_dp_clr(dp->dp_base, dp->vtc_off[s] + XDPTX_VTC_CTL,
+			    XDPTX_VTC_CTL_GE);
+	dp->mst_to_sst_relink = true;
+	dev_dbg(dp->dev, "MST: topology torn down\n");
 }
 
 /**
@@ -2789,6 +2980,27 @@ static void xlnx_dp_hdcp_cp_irq_func(struct work_struct *work)
 	xlnx_hdcp_tx_process_cp_irq(dptxhdcp);
 }
 
+/*
+ * xlnx_dp_atomic_commit_tail - MST-aware atomic commit tail
+ *
+ * Waits for in-flight MST payload updates to retire before the standard commit
+ * tail, so a new modeset does not race a concurrent stream's VC payload update.
+ */
+static void xlnx_dp_atomic_commit_tail(struct drm_atomic_state *state)
+{
+	drm_dp_mst_atomic_wait_for_dependencies(state);
+	drm_atomic_helper_commit_tail(state);
+}
+
+/*
+ * Registered from xlnx_dp_bind() so the DP-MST commit helpers stay confined
+ * to the MST-capable component.
+ */
+static const struct drm_mode_config_helper_funcs xlnx_dp_mode_config_helper_funcs = {
+	.atomic_commit_setup	= drm_dp_mst_atomic_setup_commit,
+	.atomic_commit_tail	= xlnx_dp_atomic_commit_tail,
+};
+
 static void xlnx_dp_bridge_put(struct drm_device *drm, void *bridge)
 {
 	drm_bridge_put(bridge);
@@ -2803,6 +3015,7 @@ static int xlnx_dp_bind(struct device *dev, struct device *master, void *data)
 	int ret;
 
 	dp->drm = drm;
+	drm->mode_config.helper_private = &xlnx_dp_mode_config_helper_funcs;
 	dp->aux.drm_dev = drm;
 	ret = drm_dp_aux_register(&dp->aux);
 	if (ret) {
@@ -2865,9 +3078,23 @@ static int xlnx_dp_bind(struct device *dev, struct device *master, void *data)
 		goto error_aux;
 	}
 
+	if (dp->mst_mode && dp->mst_mgr_init &&
+	    xlnx_dp_txconnected(dp)) {
+		dev_dbg(dp->dev,
+			"MST: sink already connected at bind, scheduling hpd_work\n");
+		schedule_delayed_work(&dp->hpd_work, 0);
+	}
+
 	return 0;
 
 error_aux:
+	/* No unbind follows a failed bind: undo what bridge attach set up. */
+	if (dp->mst_mgr_init) {
+		drm_dp_mst_topology_mgr_destroy(&dp->mst_mgr);
+		mutex_destroy(&dp->esi_lock);
+		memset(dp->mst_encoders, 0, sizeof(dp->mst_encoders));
+		dp->mst_mgr_init = false;
+	}
 	/* The connector and encoder are drmm-managed; just drop our references. */
 	mutex_lock(&dp->conn_lock);
 	WRITE_ONCE(dp->connector, NULL);
@@ -2888,8 +3115,18 @@ static void xlnx_dp_unbind(struct device *dev,
 	xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG, ~0);
 	/* Wait out any threaded handler already running before dropping the connector. */
 	synchronize_irq(dp->irq);
-	cancel_delayed_work_sync(&dp->hpd_work);
+	/* hpd_pulse_work can re-queue hpd_work, so cancel it first. */
 	cancel_delayed_work_sync(&dp->hpd_pulse_work);
+	cancel_delayed_work_sync(&dp->hpd_work);
+	if (dp->mst_mode && dp->mst_mgr_init) {
+		drm_dp_mst_topology_mgr_set_mst(&dp->mst_mgr, false);
+		dp->mst_link_trained = false;
+		dp->mst_stream_count = 0;
+		dp->mst_active_mask = 0;
+		drm_dp_mst_topology_mgr_destroy(&dp->mst_mgr);
+		mutex_destroy(&dp->esi_lock);
+		dp->mst_mgr_init = false;
+	}
 
 	/* The drmm connector/encoder outlive unbind; stop probes reaching the HW. */
 	mutex_lock(&drm->mode_config.mutex);
@@ -2911,6 +3148,31 @@ static void xlnx_dp_hpd_pulse_work_func(struct work_struct *work)
 	u8 bw_set, lane_set;
 
 	dp = container_of(work, struct xlnx_dp, hpd_pulse_work.work);
+
+	/*
+	 * On an MST-capable port that is not yet in MST, an HPD pulse from an
+	 * MST sink is the trigger to bring up the topology; hand off to
+	 * hpd_work and stop here.
+	 */
+	if (dp->mst_mode && dp->mst_mgr_init &&
+	    !dp->mst_mgr.mst_state && !dp->mst_enabling &&
+	    xlnx_dp_txconnected(dp)) {
+		u8 mstm_cap = 0;
+
+		drm_dp_dpcd_readb(&dp->aux, DP_MSTM_CAP, &mstm_cap);
+		if (mstm_cap & DP_MST_CAP) {
+			schedule_delayed_work(&dp->hpd_work, 0);
+			return;
+		}
+	}
+
+	if (dp->mst_mgr.mst_state || dp->mst_enabling) {
+		if (!xlnx_dp_txconnected(dp))
+			return;
+		if (dp->mst_mgr.mst_state)
+			xlnx_dp_mst_process_esi(dp);
+		return;
+	}
 
 	if (!dp->enabled)
 		return;
@@ -3056,6 +3318,7 @@ static irqreturn_t xlnx_dp_irq_handler(int irq, void *data)
 
 	if (!intrstatus)
 		return IRQ_NONE;
+
 	if (intrstatus & XDPTX_INTR_HPDEVENT_MASK) {
 		dev_dbg_ratelimited(dp->dev, "hpdevent detected\n");
 	} else if (intrstatus & XDPTX_INTR_HPDPULSE_MASK &&
@@ -3064,24 +3327,50 @@ static irqreturn_t xlnx_dp_irq_handler(int irq, void *data)
 		 * Some monitors give HPD pulse repeatedly which cause
 		 * HPD pulse function to be executed huge number of times.
 		 * Hence HPD pulse interrupt is disabled if pulse duration
-		 * is longer than 500 microseconds.
+		 * is longer than 500 microseconds. In MST the HPD pulse
+		 * carries the sideband/ESI events the modeset waits on, so
+		 * never mask it while an MST session is active.
 		 */
-		hpdduration = xlnx_dp_read(dp->dp_base, XDPTX_HPD_DURATION_REG);
-		if (hpdduration >= 500)
-			xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG, 0x10);
+		if (!dp->mst_mgr.mst_state) {
+			hpdduration = xlnx_dp_read(dp->dp_base,
+						   XDPTX_HPD_DURATION_REG);
+			if (hpdduration >= 500)
+				xlnx_dp_write(dp->dp_base,
+					      XDPTX_INTR_MASK_REG, 0x10);
+		}
 	}
 
-	if (intrstatus & XDPTX_INTR_CHBUFUNDFW_MASK)
-		dev_dbg_ratelimited(dp->dev, "underflow interrupt\n");
-	if (intrstatus & XDPTX_INTR_CHBUFOVFW_MASK)
-		dev_dbg_ratelimited(dp->dev, "overflow interrupt\n");
+	if (intrstatus &
+	    (XDPTX_INTR_CHBUFUNDFW_MASK | XDPTX_INTR_CHBUFOVFW_MASK)) {
+		u32 m = xlnx_dp_read(dp->dp_base, XDPTX_INTR_MASK_REG);
 
-	if (intrstatus & XDPTX_INTR_HPDEVENT_MASK)
+		m |= (XDPTX_INTR_CHBUFUNDFW_MASK | XDPTX_INTR_CHBUFOVFW_MASK);
+		xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG, m);
+		dev_warn_ratelimited(dp->dev,
+				     "CHBUF over/underflow - masking FIFO interrupts to stop storm (status=0x%x)\n",
+				     intrstatus);
+	}
+
+	if (intrstatus & XDPTX_INTR_HPDEVENT_MASK) {
+		/* A new HPD event re-arms MST bring-up. */
+		dp->mst_bringup_failures = 0;
 		schedule_delayed_work(&dp->hpd_work, 0);
+	}
 	if (intrstatus & XDPTX_INTR_HPDPULSE_MASK)
 		schedule_delayed_work(&dp->hpd_pulse_work, 0);
-	if (intrstatus & XDPTX_INTR_EXTPKT_TXD_MASK)
-		xlnx_dp_vsc_pkt_handler(dp);
+	if (intrstatus & XDPTX_INTR_EXTPKT_TXD_MASK) {
+		bool vsc_active = dp->colorimetry_through_vsc &&
+				  !dp->mst_mgr.mst_state;
+
+		if (vsc_active) {
+			xlnx_dp_vsc_pkt_handler(dp);
+		} else {
+			u32 m = xlnx_dp_read(dp->dp_base, XDPTX_INTR_MASK_REG);
+
+			m |= XDPTX_INTR_EXTPKT_TXD_MASK;
+			xlnx_dp_write(dp->dp_base, XDPTX_INTR_MASK_REG, m);
+		}
+	}
 	if (intrstatus & XDPTX_INTR_VBLANK_MASK)
 		xlnx_dp_vsync_handler(dp);
 
@@ -3344,18 +3633,60 @@ static int xlnx_dp_parse_of(struct xlnx_dp *dp)
 	struct xlnx_dp_config *config = &dp->config;
 	struct device_node *node = dp->dev->of_node;
 	u32 bpc;
+	u32 pixel_mode;
 	int ret;
 
+	/*
+	 * xlnx,num-streams selects SST vs MST: 1 (or property absent) means
+	 * SST; 2..XDPTX_MAX_STREAMS enables MST with exactly that many streams.
+	 */
+	ret = of_property_read_u32(node, "xlnx,num-streams",
+				   &config->num_streams);
+	if (ret < 0) {
+		config->num_streams = 1;
+	} else if (config->num_streams < 1 ||
+		   config->num_streams > XDPTX_MAX_STREAMS) {
+		dev_err(dp->dev, "xlnx,num-streams %u out of range (1..%d)\n",
+			config->num_streams, XDPTX_MAX_STREAMS);
+		return -EINVAL;
+	}
+
+	/* Configured for MST when more than one stream is present. */
+	dp->mst_mode = config->num_streams > 1;
+
+	/*
+	 * Each stream drives its own VTC generator, so the DT must list one
+	 * vtc-offset per stream.  Require exactly num_streams entries so that
+	 * vtc_off[0..num_streams-1] are fully populated and no stream is left
+	 * pointing at offset 0 (which would collide with stream 0 / the base).
+	 */
 	if (dp->cfg->flags & XDPTX_VTC_OFFSET_CHANGE) {
-		ret = of_property_read_u32(node, "xlnx,vtc-offset",
-					   &dp->vtc_off[0]);
+		ret = of_property_read_u32_array(node, "xlnx,vtc-offset",
+						 dp->vtc_off,
+						 config->num_streams);
 		if (ret < 0) {
-			dev_err(dp->dev, "No vct offset in DT\n");
+			dev_err(dp->dev,
+				"xlnx,vtc-offset must list %u entries (xlnx,num-streams)\n",
+				config->num_streams);
 			return ret;
 		}
+	} else if (config->num_streams > 1) {
+		dev_err(dp->dev, "MST requires per-stream VTC offsets (xlnx,vtc-offset)\n");
+		return -EINVAL;
 	} else {
 		dp->vtc_off[0] = XDPTX_VTC_BASE;
 	}
+
+	/* PL pixel packing; MST pins ppc to this. Default quad-pixel. */
+	if (of_property_read_u32(node, "xlnx,pixel-mode", &pixel_mode))
+		pixel_mode = 4;
+	if (pixel_mode != 1 && pixel_mode != 2 && pixel_mode != 4) {
+		dev_err(dp->dev,
+			"invalid xlnx,pixel-mode %u (must be 1, 2 or 4)\n",
+			pixel_mode);
+		return -EINVAL;
+	}
+	config->pixel_mode = pixel_mode;
 
 	config->hdcp1x_enable = of_property_read_bool(node, "xlnx,hdcp-enable");
 	config->hdcp2x_enable =
@@ -3530,11 +3861,32 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 		goto error_phy;
 	}
 
+	/*
+	 * Video (pixel) clocks. Stream 1 always uses "tx_vid_clk" (the SST /
+	 * legacy name). MST bitstreams may expose one Clocking Wizard output per
+	 * additional stream ("tx_vid_clk_stream2".."tx_vid_clk_stream4"); when
+	 * present, per_stream_vid_clk is set so each stream runs at its own pixel
+	 * rate, otherwise all streams share tx_vid_clk[0].
+	 */
 	dp->tx_vid_clk[0] = devm_clk_get(&pdev->dev, "tx_vid_clk");
 	if (IS_ERR(dp->tx_vid_clk[0])) {
 		ret = dev_err_probe(dp->dev, PTR_ERR(dp->tx_vid_clk[0]),
 				    "failed to get tx_vid_clk\n");
 		goto error_phy;
+	}
+	for (i = 1; i < dp->config.num_streams; i++) {
+		char clk_name[24];
+
+		snprintf(clk_name, sizeof(clk_name), "tx_vid_clk_stream%u",
+			 i + 1);
+		dp->tx_vid_clk[i] = devm_clk_get_optional(&pdev->dev, clk_name);
+		if (IS_ERR(dp->tx_vid_clk[i])) {
+			ret = dev_err_probe(dp->dev, PTR_ERR(dp->tx_vid_clk[i]),
+					    "failed to get %s\n", clk_name);
+			goto error_phy;
+		}
+		if (dp->tx_vid_clk[i])
+			dp->per_stream_vid_clk = true;
 	}
 
 	platform_set_drvdata(pdev, dp);
@@ -3575,10 +3927,19 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 		goto error_phy;
 	}
 
-	ret = clk_prepare_enable(dp->tx_vid_clk[0]);
-	if (ret) {
-		dev_err(dp->dev, "failed to enable tx_vid_clk (%d)\n", ret);
-		goto error_clk_axi;
+	for (i = 0; i < dp->config.num_streams; i++) {
+		if (!dp->tx_vid_clk[i])
+			continue;
+		ret = clk_prepare_enable(dp->tx_vid_clk[i]);
+		if (ret) {
+			dev_err(dp->dev,
+				"failed to enable tx_vid_clk[%u] (%d)\n",
+				i, ret);
+			while (i-- > 0)
+				if (dp->tx_vid_clk[i])
+					clk_disable_unprepare(dp->tx_vid_clk[i]);
+			goto error_clk_axi;
+		}
 	}
 
 	dp->aux.name = "Xlnx DP AUX";
@@ -3641,6 +4002,24 @@ static int xlnx_dp_probe(struct platform_device *pdev)
 		goto error_hdcp;
 	}
 
+	/*
+	 * For MST (num_streams > 1) the DP TX node owns the DRM pipeline:
+	 * its OF-graph fans out to every per-stream pl-disp CRTC, so create
+	 * the logical master here. For SST (num_streams == 1) the single
+	 * pl-disp node is the master instead.
+	 */
+	if (dp->mst_mode) {
+		dp->drm_master = xlnx_drm_pipeline_init(pdev);
+		if (IS_ERR(dp->drm_master)) {
+			ret = PTR_ERR(dp->drm_master);
+			dp->drm_master = NULL;
+			dev_err(&pdev->dev, "failed to init DRM pipeline\n");
+			component_del(&pdev->dev, &xlnx_dp_component_ops);
+			drm_bridge_remove(&dp->bridge);
+			goto error_hdcp;
+		}
+	}
+
 	return 0;
 
 error_hdcp:
@@ -3649,7 +4028,9 @@ error_hdcp:
 error_sysfs:
 	sysfs_remove_group(&dp->dev->kobj, &attr_group);
 error_clk_vid:
-	clk_disable_unprepare(dp->tx_vid_clk[0]);
+	for (i = 0; i < dp->config.num_streams; i++)
+		if (dp->tx_vid_clk[i])
+			clk_disable_unprepare(dp->tx_vid_clk[i]);
 error_clk_axi:
 	clk_disable_unprepare(dp->axi_lite_clk);
 error_phy:
@@ -3664,6 +4045,7 @@ error_phy:
 static void xlnx_dp_remove(struct platform_device *pdev)
 {
 	struct xlnx_dp *dp = platform_get_drvdata(pdev);
+	unsigned int i;
 
 	xlnx_dp_write(dp->dp_base, XDPTX_ENABLE_REG, 0);
 	if (dp->config.hdcp2x_enable || dp->config.hdcp1x_enable)
@@ -3672,10 +4054,14 @@ static void xlnx_dp_remove(struct platform_device *pdev)
 		xlnx_dp_exit_phy(dp);
 	else
 		phy_exit(dp->phy[0]);
+	if (dp->drm_master)
+		xlnx_drm_pipeline_exit(dp->drm_master);
 	component_del(&pdev->dev, &xlnx_dp_component_ops);
 	drm_bridge_remove(&dp->bridge);
 	sysfs_remove_group(&pdev->dev.kobj, &attr_group);
-	clk_disable_unprepare(dp->tx_vid_clk[0]);
+	for (i = 0; i < dp->config.num_streams; i++)
+		if (dp->tx_vid_clk[i])
+			clk_disable_unprepare(dp->tx_vid_clk[i]);
 	clk_disable_unprepare(dp->axi_lite_clk);
 }
 
