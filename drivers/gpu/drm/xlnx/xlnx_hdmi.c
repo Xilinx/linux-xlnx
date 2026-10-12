@@ -3286,12 +3286,17 @@ static void xlnx_hdmi_encoder_dpms(struct drm_encoder *encoder, int dpms)
 	mutex_unlock(&hdmi->hdmi_mutex);
 }
 
-static void xlnx_hdmi_encoder_enable(struct drm_encoder *encoder)
+/**
+ * xlnx_hdmi_link_enable - start the video bridge once the link is up
+ * @hdmi: pointer to HDMI TX core instance
+ *
+ * Enable the timing controller when the video/link clocks are ready and
+ * the native VTC is in use, then release the VID_IN bridge reset.
+ */
+static void xlnx_hdmi_link_enable(struct xlnx_hdmi *hdmi)
 {
-	struct xlnx_hdmi *hdmi = encoder_to_hdmi(encoder);
 	struct xlnx_hdmi_config *config = &hdmi->config;
 
-	xlnx_hdmi_encoder_dpms(encoder, DRM_MODE_DPMS_ON);
 	if (xlnx_hdmi_is_lnk_vid_rdy(hdmi)) {
 		if (!config->vid_interface)
 			xlnx_hdmi_vtc_enable(hdmi);
@@ -3300,6 +3305,14 @@ static void xlnx_hdmi_encoder_enable(struct drm_encoder *encoder)
 	}
 
 	xlnx_hdmi_ext_sysrst_deassert(hdmi);
+}
+
+static void xlnx_hdmi_encoder_enable(struct drm_encoder *encoder)
+{
+	struct xlnx_hdmi *hdmi = encoder_to_hdmi(encoder);
+
+	xlnx_hdmi_encoder_dpms(encoder, DRM_MODE_DPMS_ON);
+	xlnx_hdmi_link_enable(hdmi);
 }
 
 /**
