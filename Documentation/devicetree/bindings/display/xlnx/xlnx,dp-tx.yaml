@@ -89,6 +89,18 @@ properties:
     minItems: 1
     maxItems: 4
 
+  xlnx,video-interface:
+    description: |
+      Video interface of the DisplayPort Transmitter Subsystem.
+      0 - AXI4-Stream: the VTC sub-core is internal to the subsystem and is
+          programmed by this driver (xlnx,vtc-offset required).
+      1 - Native video: the VTC is an external IP driven by the display
+          pipeline (xlnx,bridge); xlnx,vtc-offset is not used.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
+    default: 0
+
   xlnx,num-streams:
     description: |
       Number of video streams the IP drives. 1 (or the property being absent)
@@ -224,6 +236,8 @@ allOf:
               - xlnx,v-dp-txss-3.1
               - xlnx,v-dp-txss2-1.0
               - xlnx,v-dp-txss2-2.0
+        xlnx,video-interface:
+          const: 0
     then:
       required:
         - xlnx,vtc-offset
@@ -395,6 +409,37 @@ examples:
                    reg = <0>;
                    dp_transmitter4: endpoint {
                        remote-endpoint = <&display_controller4>;
+                   };
+               };
+           };
+       };
+
+       /* Native video: external VTC, so no xlnx,vtc-offset. */
+       v-dp-txss1@a0000000 {
+           compatible = "xlnx,v-dp-txss-3.1";
+           reg = <0x0 0xa0000000 0x0 0x40000>, <0x0 0xa4000000 0x0 0x10000>;
+           reg-names = "dp_base", "gt_quad_base";
+           clock-names = "s_axi_aclk", "tx_vid_clk";
+           clocks = <&zynqmp_clk 71>, <&clk_wiz_0>;
+           interrupt-names = "dptxss_dp_irq", "dptxss_timer_irq", "dptxss_hdcp_irq",
+                              "dptxss_hdcp22_cipher_irq";
+           interrupts = <0 89 4>, <0 90 4>, <0 91 4>, <0 94 4>;
+           xlnx,video-interface = <1>;
+           xlnx,max-lanes = <4>;
+           xlnx,max-link-rate = <810000>;
+           xlnx,bpc = <8>;
+           phy-names = "dp-phy0", "dp-phy1", "dp-phy2", "dp-phy3";
+           phys = <&vphy_lane0 0 1 1 0>, <&vphy_lane1 0 1 1 0>,
+                  <&vphy_lane2 0 1 1 0>, <&vphy_lane3 0 1 1 0>;
+
+           ports {
+               #address-cells = <1>;
+               #size-cells = <0>;
+
+               port@0 {
+                   reg = <0>;
+                   dp_transmitter5: endpoint {
+                       remote-endpoint = <&display_controller5>;
                    };
                };
            };
