@@ -2443,7 +2443,8 @@ static void xlnx_dp_sst_program_stream(struct xlnx_dp *dp,
 	xlnx_dp_encoder_mode_set_transfer_unit(dp, mode);
 	user_calc_ppc = xlnx_dp_calc_user_ppc(dp, mode->clock, dp->mode.lane_cnt);
 	clk_set_rate(dp->tx_vid_clk[0], mode->clock * 1000 / user_calc_ppc);
-	xlnx_dp_vtc_set_timing(dp, mode, dp->vtc_off[0], user_calc_ppc);
+	if (dp->config.video_interface == 0)
+		xlnx_dp_vtc_set_timing(dp, mode, dp->vtc_off[0], user_calc_ppc);
 }
 
 static void xlnx_dp_mainlink_en(struct xlnx_dp *dp, u8 enable)
@@ -2807,8 +2808,9 @@ int xlnx_dp_start(struct xlnx_dp *dp)
 		if (dp->mst_enabling) {
 			xlnx_dp_mainlink_en(dp, 0x1);
 		} else {
-			xlnx_dp_set(dp->dp_base, dp->vtc_off[0] + XDPTX_VTC_CTL,
-				    XDPTX_VTC_CTL_GE);
+			if (dp->config.video_interface == 0)
+				xlnx_dp_set(dp->dp_base, dp->vtc_off[0] + XDPTX_VTC_CTL,
+					    XDPTX_VTC_CTL_GE);
 			xlnx_dp_mainlink_en(dp, 0x1);
 		}
 	}
@@ -2905,8 +2907,9 @@ static void xlnx_dp_stop(struct xlnx_dp *dp)
 		xlnx_dp_tx_pe_vs_adjust_handler(dp, &dp->phy_opts.dp);
 
 	/* Disable VTC */
-	xlnx_dp_clr(dp->dp_base, dp->vtc_off[0] + XDPTX_VTC_CTL,
-		    XDPTX_VTC_CTL_GE);
+	if (dp->config.video_interface == 0)
+		xlnx_dp_clr(dp->dp_base, dp->vtc_off[0] + XDPTX_VTC_CTL,
+			    XDPTX_VTC_CTL_GE);
 	/* Reset HDCP Engine. */
 	if (dp->config.hdcp2x_enable || dp->config.hdcp1x_enable)
 		xlnx_dp_hdcp_reset(dp);
@@ -3536,6 +3539,31 @@ static void xlnx_dp_bridge_disable(struct drm_bridge *bridge,
 	}
 }
 
+/**
+ * xlnx_dp_bridge_mode_set - set tx_vid_clk before the CRTC is enabled
+ * @bridge: DRM bridge
+ * @mode: requested display mode
+ * @adjusted_mode: adjusted display mode
+ *
+ * Native video: the external VTC (xlnx_pl_disp) derives its ppc from this
+ * clock in CRTC atomic_enable, which runs before bridge atomic_enable.
+ */
+static void xlnx_dp_bridge_mode_set(struct drm_bridge *bridge,
+				    const struct drm_display_mode *mode,
+				    const struct drm_display_mode *adjusted_mode)
+{
+	struct xlnx_dp *dp = bridge_to_dp(bridge);
+	u32 user_calc_ppc;
+
+	if (dp->config.video_interface == 0)
+		return;
+
+	user_calc_ppc = xlnx_dp_calc_user_ppc(dp, adjusted_mode->clock,
+					      dp->mode.lane_cnt);
+	clk_set_rate(dp->tx_vid_clk[0],
+		     adjusted_mode->clock * 1000 / user_calc_ppc);
+}
+
 static int xlnx_dp_bridge_attach(struct drm_bridge *bridge,
 				 struct drm_encoder *encoder,
 				 enum drm_bridge_attach_flags flags)
@@ -3596,6 +3624,7 @@ static void xlnx_dp_bridge_hpd_disable(struct drm_bridge *bridge)
 static const struct drm_bridge_funcs xlnx_dp_bridge_funcs = {
 	.atomic_enable		= xlnx_dp_bridge_enable,
 	.atomic_disable		= xlnx_dp_bridge_disable,
+	.mode_set		= xlnx_dp_bridge_mode_set,
 	.mode_valid		= xlnx_dp_bridge_mode_valid,
 	.edid_read		= xlnx_dp_bridge_edid_read,
 	.detect			= xlnx_dp_bridge_detect,
@@ -4566,21 +4595,29 @@ static int xlnx_dp_parse_of(struct xlnx_dp *dp)
 	 * vtc_off[0..num_streams-1] are fully populated and no stream is left
 	 * pointing at offset 0 (which would collide with stream 0 / the base).
 	 */
-	if (dp->cfg->flags & XDPTX_VTC_OFFSET_CHANGE) {
-		ret = of_property_read_u32_array(node, "xlnx,vtc-offset",
-						 dp->vtc_off,
-						 config->num_streams);
-		if (ret < 0) {
-			dev_err(dp->dev,
-				"xlnx,vtc-offset must list %u entries (xlnx,num-streams)\n",
-				config->num_streams);
-			return ret;
+	if (of_property_read_u32(node, "xlnx,video-interface",
+				 &config->video_interface))
+		config->video_interface = 0;
+
+	if (config->video_interface == 0) {
+		if (dp->cfg->flags & XDPTX_VTC_OFFSET_CHANGE) {
+			ret = of_property_read_u32_array(node, "xlnx,vtc-offset",
+							 dp->vtc_off,
+							 config->num_streams);
+			if (ret < 0) {
+				dev_err(dp->dev,
+					"xlnx,vtc-offset must list %u entries (xlnx,num-streams)\n",
+					config->num_streams);
+				return ret;
+			}
+		} else {
+			if (config->num_streams > 1) {
+				dev_err(dp->dev,
+					"MST requires per-stream VTC offsets (xlnx,vtc-offset)\n");
+				return -EINVAL;
+			}
+			dp->vtc_off[0] = XDPTX_VTC_BASE;
 		}
-	} else if (config->num_streams > 1) {
-		dev_err(dp->dev, "MST requires per-stream VTC offsets (xlnx,vtc-offset)\n");
-		return -EINVAL;
-	} else {
-		dp->vtc_off[0] = XDPTX_VTC_BASE;
 	}
 
 	/* PL pixel packing, fixed by the design; caps USER_PIXELWIDTH. Default 4. */
