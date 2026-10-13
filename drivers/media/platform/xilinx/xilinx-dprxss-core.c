@@ -2764,7 +2764,7 @@ static void xlnx_dp_powerchange_work_func(struct work_struct *work)
 
 /*
  * Look up the provider behind phandle @name. When @prvdev is non-NULL the
- * provider device is returned in it.
+ * provider device is returned in it and pinned with a device link.
  */
 static int xlnx_find_device(struct platform_device *pdev, const char *name,
 			    void **prvdata, struct device **prvdev)
@@ -2796,7 +2796,16 @@ static int xlnx_find_device(struct platform_device *pdev, const char *name,
 			 name);
 		ret = -EPROBE_DEFER;
 	} else if (prvdev) {
-		*prvdev = &iface_pdev->dev;
+		/* The link holds its own ref, so the lookup ref can be dropped. */
+		if (device_link_add(&pdev->dev, &iface_pdev->dev,
+				    DL_FLAG_AUTOREMOVE_CONSUMER)) {
+			*prvdev = &iface_pdev->dev;
+		} else {
+			dev_err(&pdev->dev, "failed to link %s provider\n",
+				name);
+			*prvdata = NULL;
+			ret = -ENODEV;
+		}
 	}
 	put_device(&iface_pdev->dev);
 
