@@ -86,6 +86,8 @@ struct xlnx_dma_chan {
  * @encoder: DRM encoder driving the downstream bridge chain
  * @connector: DRM connector created from the downstream bridge chain
  * @bridge: downstream display bridge (mmi-dc bypass bridge)
+ * @vtc_vid_clk: VTC bridge's video clock
+ * @dp_native: native-video VTC path selected by xlnx,dp-native in DT
  * @primary: this instance owns the downstream encoder/bridge/connector
  * @fid: field id
  * @fid_err_prop: field id error property
@@ -112,6 +114,8 @@ struct xlnx_pl_disp {
 	struct gpio_desc *gpio_en_live;
 	struct gpio_desc *gpio_en_vtc;
 	struct xlnx_bridge *vtc_bridge;
+	struct clk *vtc_vid_clk;
+	bool dp_native;
 	struct drm_encoder encoder;
 	struct drm_connector *connector;
 	struct drm_bridge *bridge;
@@ -466,6 +470,7 @@ static void xlnx_pl_disp_crtc_atomic_enable(struct drm_crtc *crtc,
 	struct xlnx_pl_disp *xlnx_pl_disp = crtc_to_dma(xlnx_crtc);
 	struct videomode vm;
 	unsigned long pixel_clk, cur_rate;
+	u32 user_calc_ppc = 1;
 	int ret;
 
 	/*
@@ -516,7 +521,7 @@ static void xlnx_pl_disp_crtc_atomic_enable(struct drm_crtc *crtc,
 		}
 	}
 
-	if (xlnx_pl_disp->vtc_bridge) {
+	if (xlnx_pl_disp->vtc_bridge && !xlnx_pl_disp->dp_native) {
 		/* Ungate the VTC clock before programming/enabling it. */
 		gpiod_set_value_cansleep(xlnx_pl_disp->gpio_en_vtc, 1);
 		/* set video timing */
@@ -533,6 +538,44 @@ static void xlnx_pl_disp_crtc_atomic_enable(struct drm_crtc *crtc,
 			vm.hfront_porch /= xlnx_pl_disp->ppc;
 			vm.hback_porch /= xlnx_pl_disp->ppc;
 			vm.hsync_len /= xlnx_pl_disp->ppc;
+		}
+		xlnx_bridge_set_timing(xlnx_pl_disp->vtc_bridge, &vm);
+		xlnx_bridge_enable(xlnx_pl_disp->vtc_bridge);
+	} else if (xlnx_pl_disp->vtc_bridge && xlnx_pl_disp->dp_native) {
+	/* PL DP does not use actual PPC of design. It uses USERPIXELWIDTH
+	 * of DPTX as PPC for VTC timing calculations. This custom implementation
+	 * is due to minimum frequency constraints in Clock Wizard.
+	 *
+	 * In Native mode also, DPTX configures video clock based on DPTX
+	 * USERPIXELWIDTH. In pl-disp.c, USERPIXELWIDTH register value of DPTX is
+	 * indirectly derived from video clock set by DPTX. This derived value is
+	 * used as PPC.
+	 */
+		drm_display_mode_to_videomode(adjusted_mode, &vm);
+		if (xlnx_pl_disp->vtc_vid_clk) {
+			unsigned long vid_rate =
+				clk_get_rate(xlnx_pl_disp->vtc_vid_clk);
+
+			if (vid_rate)
+				user_calc_ppc = DIV_ROUND_CLOSEST(vm.pixelclock,
+								  vid_rate);
+			if (user_calc_ppc < 1)
+				user_calc_ppc = 1;
+			if (xlnx_pl_disp->ppc &&
+			    user_calc_ppc > xlnx_pl_disp->ppc)
+				user_calc_ppc = xlnx_pl_disp->ppc;
+		}
+
+		dev_info(xlnx_pl_disp->dev,
+			 "driving external VTC bridge: user_calc_ppc=%u (max=%u) hactive=%u pixelclock=%lu\n",
+			 user_calc_ppc, xlnx_pl_disp->ppc, vm.hactive,
+			 vm.pixelclock);
+		if (user_calc_ppc > 1) {
+			vm.hactive /= user_calc_ppc;
+			vm.hfront_porch /= user_calc_ppc;
+			vm.hsync_len /= user_calc_ppc;
+			vm.hback_porch /= user_calc_ppc;
+			vm.pixelclock /= user_calc_ppc;
 		}
 		xlnx_bridge_set_timing(xlnx_pl_disp->vtc_bridge, &vm);
 		xlnx_bridge_enable(xlnx_pl_disp->vtc_bridge);
@@ -899,6 +942,7 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 	struct xlnx_dma_chan *xlnx_dma_chan;
 	const struct drm_format_info *info;
 	u32 num_streams = 1;
+	u32 dp_native;
 
 	xlnx_pl_disp = devm_kzalloc(dev, sizeof(*xlnx_pl_disp), GFP_KERNEL);
 	if (!xlnx_pl_disp)
@@ -981,6 +1025,10 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 	}
 
 	/* VTC Bridge support */
+	dp_native = 0;
+	of_property_read_u32(dev->of_node, "xlnx,dp-native", &dp_native);
+	xlnx_pl_disp->dp_native = dp_native ? true : false;
+
 	vtc_node = of_parse_phandle(dev->of_node, "xlnx,bridge", 0);
 	if (vtc_node) {
 		xlnx_pl_disp->vtc_bridge = of_xlnx_bridge_get(vtc_node);
@@ -988,6 +1036,12 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 			dev_info(dev, "Didn't get vtc bridge instance\n");
 			ret = -EPROBE_DEFER;
 			goto err_dma;
+		}
+
+		xlnx_pl_disp->vtc_vid_clk = of_clk_get_by_name(vtc_node, "clk");
+		if (IS_ERR(xlnx_pl_disp->vtc_vid_clk)) {
+			dev_info(dev, "no vtc video clk; using DT vtc_ppc as-is\n");
+			xlnx_pl_disp->vtc_vid_clk = NULL;
 		}
 	} else {
 		dev_info(dev, "vtc bridge property not present\n");
@@ -1101,6 +1155,8 @@ static void xlnx_pl_disp_remove(struct platform_device *pdev)
 	struct xlnx_pl_disp *xlnx_pl_disp = platform_get_drvdata(pdev);
 	struct xlnx_dma_chan *xlnx_dma_chan = xlnx_pl_disp->chan;
 
+	if (xlnx_pl_disp->vtc_vid_clk)
+		clk_put(xlnx_pl_disp->vtc_vid_clk);
 	if (xlnx_pl_disp->vtc_bridge)
 		of_xlnx_bridge_put(xlnx_pl_disp->vtc_bridge);
 	if (xlnx_pl_disp->master)
