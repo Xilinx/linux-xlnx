@@ -44,6 +44,19 @@ properties:
       Phandle to a VTC instance when it is connected as a bridge.
     $ref: /schemas/types.yaml#/definitions/phandle
 
+  xlnx,dp-native:
+    description:
+      Selects the VTC programming path when xlnx,bridge is present. 0 (or
+      the property being absent) drives the VTC directly, gated by the
+      clk-enable GPIOs. 1 selects the native-video path, where the VTC
+      timing is scaled by pixels-per-clock derived from the VTC bridge's
+      own video clock (e.g. driven by a DisplayPort TX in native video
+      mode).
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
+    default: 0
+
   xlnx,vformat:
     description: Pixel format encoded as a four-character code.
     $ref: /schemas/types.yaml#/definitions/string
