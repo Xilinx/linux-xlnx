@@ -564,6 +564,10 @@ struct xlnx_dp_stream_fmt {
  * @num_streams: Number of DP TX video streams (xlnx,num-streams); the sole
  *	SST-vs-MST selector (num_streams == 1 -> SST, num_streams > 1 -> MST)
  * @dp21_present: true on a DP2.1 (128b/132b UHBR) core, from the compatible match
+ * @video_interface: video-interface type from DT (xlnx,video-interface).
+ *	0 = AXI4-Stream (VTC is mapped internal to the DP TX subsystem and
+ *	programmed by this driver); 1 = Native video (VTC is an external IP
+ *	driven by xlnx_pl_disp via xlnx,bridge).
  */
 struct xlnx_dp_config {
 	u32 max_lanes;
@@ -578,6 +582,7 @@ struct xlnx_dp_config {
 	u32 num_streams;
 	/* DP2.1 (128b/132b UHBR), parsed from DT */
 	bool dp21_present;
+	u32 video_interface;
 };
 
 enum xlnx_dp_train_state {
