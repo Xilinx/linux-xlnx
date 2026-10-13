@@ -978,11 +978,18 @@ int spi_nor_write_sr(struct spi_nor *nor, const u8 *sr, size_t len)
  */
 static int spi_nor_write_sr1_and_check(struct spi_nor *nor, u8 sr1)
 {
+	size_t len = 1;
 	int ret;
 
 	nor->bouncebuf[0] = sr1;
 
-	ret = spi_nor_write_sr(nor, nor->bouncebuf, 1);
+	/* 8D-8D-8D transfers 16-bit words; the flash uses the first byte */
+	if (nor->reg_proto == SNOR_PROTO_8_8_8_DTR) {
+		nor->bouncebuf[1] = sr1;
+		len = 2;
+	}
+
+	ret = spi_nor_write_sr(nor, nor->bouncebuf, len);
 	if (ret)
 		return ret;
 
