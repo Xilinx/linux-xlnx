@@ -56,6 +56,31 @@
 #define AMD_CPM6_PS_MISC_IR_STATUS		0x340
 #define AMD_CPM6_PS_IR_MERGED			BIT(21)
 
+/*
+ * CPM6 legacy-INTx register (LEGACY_PCI_DRS_PTM), same "intr" region.
+ *
+ * MISC_EVENT[29] is only an AGGREGATE of this register, and it is LEVEL
+ * driven from the unmasked legacy-INTx bits rather than edge latched. Two
+ * consequences, both measured on hardware:
+ *
+ *   - MASK resets to 0xFF (all masked), so bit 29 can never assert until
+ *     something writes ENABLE here. Nothing did, so an EP asserting INTA
+ *     latched in STATUS and went no further.
+ *
+ *   - Writing MISC_EVENT_STATUS bit 29 does NOT clear it while a legacy-INTx
+ *     bit is still set -- it re-asserts immediately. The legacy-INTx register
+ *     must be cleared FIRST, then MISC_EVENT, then MERGED, then PS_MISC.
+ *     Clearing MISC_EVENT alone pinned the line at ~600k irq/s and ended in
+ *     "nobody cared".
+ */
+#define AMD_CPM6_LEGACY_INTX_STATUS		0x900
+#define AMD_CPM6_LEGACY_INTX_ENABLE		0x908
+#define AMD_CPM6_LEGACY_INTX_DISABLE		0x90C
+
+/* bit (x*2)+1 = INTx asserted, bit (x*2) = deasserted (not used). */
+#define AMD_CPM6_LEGACY_INTX_ASSERT(x)		BIT((x) * 2 + 1)
+#define AMD_CPM6_LEGACY_INTX_ALL		GENMASK(7, 0)
+
 /* MDB5 interrupt register definitions. */
 #define AMD_MDB_PCIE_INTR_CMPL_TIMEOUT		15
 #define AMD_MDB_PCIE_INTR_INTX			16
@@ -78,7 +103,7 @@
 	)
 
 /* CPM6 hwirq mapping (hwirq == MISC_EVENT status bit). */
-#define AMD_CPM6_PCIE_INTR_INTX			22
+#define AMD_CPM6_PCIE_INTR_INTX			29
 
 enum amd_mdb_pcie_version {
 	MDB5,
@@ -110,7 +135,6 @@ struct amd_mdb_pcie_variant {
  * @mdb_domain: MDB IRQ domain pointer
  * @perst_gpio: GPIO descriptor for PERST# signal handling
  * @intx_irq: INTx IRQ interrupt number
- * @intx_refmask: CPM6 mask of unmasked INTx lines; gates the shared aggregate
  */
 struct amd_mdb_pcie {
 	struct dw_pcie			pci;
@@ -121,7 +145,6 @@ struct amd_mdb_pcie {
 	struct irq_domain		*mdb_domain;
 	struct gpio_desc		*perst_gpio;
 	int				intx_irq;
-	u32				intx_refmask;
 };
 
 static u32 amd_mdb_pcie_merged_host_mask(struct amd_mdb_pcie *pcie)
@@ -157,20 +180,19 @@ static void amd_mdb_intx_irq_mask(struct irq_data *data)
 	struct dw_pcie *pci = &pcie->pci;
 	struct dw_pcie_rp *port = &pci->pp;
 	unsigned long flags;
-	u32 val;
 
 	raw_spin_lock_irqsave(&port->lock, flags);
 	if (pcie->variant->version == MDB5) {
-		val = FIELD_PREP(AMD_MDB_TLP_PCIE_INTX_MASK,
-				 AMD_MDB_PCIE_INTR_INTX_ASSERT(data->hwirq));
-	} else {
-		/* CPM6 shares one INTx enable; drop it on the last mask. */
-		pcie->intx_refmask &= ~BIT(data->hwirq);
-		val = pcie->intx_refmask ? 0 : pcie->variant->intx_mask;
-	}
-	/* Writing '1' disables the interrupt; writing '0' has no effect. */
-	if (val)
+		u32 val = FIELD_PREP(AMD_MDB_TLP_PCIE_INTX_MASK,
+				     AMD_MDB_PCIE_INTR_INTX_ASSERT(data->hwirq));
+
+		/* Writing '1' disables the interrupt; writing '0' has no effect. */
 		writel_relaxed(val, pcie->intr_base + pcie->variant->misc_disable_reg);
+	} else {
+		/* CPM6 masks the individual INTx line in the legacy-INTx register. */
+		writel_relaxed(AMD_CPM6_LEGACY_INTX_ASSERT(data->hwirq),
+			       pcie->intr_base + AMD_CPM6_LEGACY_INTX_DISABLE);
+	}
 	raw_spin_unlock_irqrestore(&port->lock, flags);
 }
 
@@ -180,20 +202,19 @@ static void amd_mdb_intx_irq_unmask(struct irq_data *data)
 	struct dw_pcie *pci = &pcie->pci;
 	struct dw_pcie_rp *port = &pci->pp;
 	unsigned long flags;
-	u32 val;
 
 	raw_spin_lock_irqsave(&port->lock, flags);
 	if (pcie->variant->version == MDB5) {
-		val = FIELD_PREP(AMD_MDB_TLP_PCIE_INTX_MASK,
-				 AMD_MDB_PCIE_INTR_INTX_ASSERT(data->hwirq));
-	} else {
-		/* CPM6 shares one INTx enable; raise it on the first unmask. */
-		val = pcie->intx_refmask ? 0 : pcie->variant->intx_mask;
-		pcie->intx_refmask |= BIT(data->hwirq);
-	}
-	/* Writing '1' enables the interrupt; writing '0' has no effect. */
-	if (val)
+		u32 val = FIELD_PREP(AMD_MDB_TLP_PCIE_INTX_MASK,
+				     AMD_MDB_PCIE_INTR_INTX_ASSERT(data->hwirq));
+
+		/* Writing '1' enables the interrupt; writing '0' has no effect. */
 		writel_relaxed(val, pcie->intr_base + pcie->variant->misc_enable_reg);
+	} else {
+		/* CPM6 unmasks the individual INTx line in the legacy-INTx register. */
+		writel_relaxed(AMD_CPM6_LEGACY_INTX_ASSERT(data->hwirq),
+			       pcie->intr_base + AMD_CPM6_LEGACY_INTX_ENABLE);
+	}
 	raw_spin_unlock_irqrestore(&port->lock, flags);
 }
 
@@ -242,11 +263,34 @@ static irqreturn_t dw_pcie_rp_intx(int irq, void *args)
 				generic_handle_domain_irq(pcie->intx_domain, i);
 		}
 	} else {
-		/* CPM6 exposes only an aggregate INTx indication */
+		u32 legacy_intx;
+
+		/*
+		 * MISC_EVENT[29] is only the aggregate; the legacy-INTx register
+		 * holds the per-line status.
+		 */
 		if (!(val & pcie->variant->intx_mask))
 			return IRQ_NONE;
+
+		legacy_intx = readl_relaxed(pcie->intr_base +
+					    AMD_CPM6_LEGACY_INTX_STATUS);
+
 		for (i = 0; i < PCI_NUM_INTX; i++)
-			generic_handle_domain_irq(pcie->intx_domain, i);
+			if (legacy_intx & AMD_CPM6_LEGACY_INTX_ASSERT(i))
+				generic_handle_domain_irq(pcie->intx_domain, i);
+
+		/*
+		 * Clear the legacy-INTx register FIRST. MISC_EVENT[29] is level
+		 * driven from it, so writing misc_status_reg while a legacy-INTx
+		 * bit is still set leaves bit 29 asserted and the line re-fires
+		 * immediately. Order must be legacy-INTx -> MISC_EVENT -> MERGED
+		 * -> PS_MISC.
+		 */
+		writel_relaxed(legacy_intx, pcie->intr_base +
+					    AMD_CPM6_LEGACY_INTX_STATUS);
+		writel_relaxed(pcie->variant->intx_mask,
+			       pcie->intr_base + pcie->variant->misc_status_reg);
+		amd_mdb_pcie_clear_aggregators(pcie);
 	}
 
 	return IRQ_HANDLED;
@@ -273,6 +317,14 @@ static void amd_mdb_event_irq_mask(struct irq_data *d)
 	struct dw_pcie_rp *port = &pci->pp;
 	unsigned long flags;
 
+	/*
+	 * On CPM6 the INTx aggregate (intx_hwirq) is enabled once in init_port
+	 * and gated per-line in the legacy-INTx register by the INTx irqchip, so
+	 * the event chip must not touch it here.
+	 */
+	if (pcie->variant->version != MDB5 && d->hwirq == pcie->variant->intx_hwirq)
+		return;
+
 	raw_spin_lock_irqsave(&port->lock, flags);
 	writel_relaxed(BIT(d->hwirq),
 		       pcie->intr_base + pcie->variant->misc_disable_reg);
@@ -285,6 +337,14 @@ static void amd_mdb_event_irq_unmask(struct irq_data *d)
 	struct dw_pcie *pci = &pcie->pci;
 	struct dw_pcie_rp *port = &pci->pp;
 	unsigned long flags;
+
+	/*
+	 * On CPM6 the INTx aggregate (intx_hwirq) is enabled once in init_port
+	 * and gated per-line in the legacy-INTx register by the INTx irqchip, so
+	 * the event chip must not touch it here.
+	 */
+	if (pcie->variant->version != MDB5 && d->hwirq == pcie->variant->intx_hwirq)
+		return;
 
 	raw_spin_lock_irqsave(&port->lock, flags);
 	writel_relaxed(BIT(d->hwirq),
@@ -419,17 +479,34 @@ static void amd_mdb_pcie_init_port(struct amd_mdb_pcie *pcie)
 	      misc_mask_all;
 	writel_relaxed(val, pcie->intr_base + pcie->variant->misc_status_reg);
 
-	/* Enable all TLP interrupts. */
-	writel_relaxed(misc_mask_all,
-		       pcie->intr_base + pcie->variant->misc_enable_reg);
+	if (pcie->variant->version == MDB5) {
+		/* Enable all TLP interrupts. */
+		writel_relaxed(misc_mask_all,
+			       pcie->intr_base + pcie->variant->misc_enable_reg);
+		return;
+	}
 
 	/*
-	 * On CPM6 unmask this host's MISC_EVENT input in the shared MERGED
-	 * aggregator so it reaches the GIC.
+	 * CPM6: the MISC_EVENT[29] aggregate is only the level-OR of the
+	 * legacy-INTx register. Mask every INTx line and clear stale status
+	 * here; the INTx irqchip unmasks individual lines on demand
+	 * (amd_mdb_intx_irq_unmask), so the aggregate stays quiet until an
+	 * endpoint actually needs INTx.
 	 */
-	if (pcie->variant->version != MDB5)
-		writel_relaxed(amd_mdb_pcie_merged_host_mask(pcie),
-			       pcie->slcr + AMD_CPM6_MERGED_ENABLE);
+	writel_relaxed(AMD_CPM6_LEGACY_INTX_ALL,
+		       pcie->intr_base + AMD_CPM6_LEGACY_INTX_DISABLE);
+	writel_relaxed(AMD_CPM6_LEGACY_INTX_ALL,
+		       pcie->intr_base + AMD_CPM6_LEGACY_INTX_STATUS);
+
+	/*
+	 * Enable the aggregate and this host's MERGED input permanently. With
+	 * the legacy-INTx register masked above, neither can assert until a line
+	 * is unmasked, so the whole path is armed the moment that happens.
+	 */
+	writel_relaxed(misc_mask_all,
+		       pcie->intr_base + pcie->variant->misc_enable_reg);
+	writel_relaxed(amd_mdb_pcie_merged_host_mask(pcie),
+		       pcie->slcr + AMD_CPM6_MERGED_ENABLE);
 }
 
 /**
