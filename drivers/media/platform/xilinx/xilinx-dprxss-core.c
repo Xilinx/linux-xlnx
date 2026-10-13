@@ -136,36 +136,38 @@ struct xlnx_dprx_audio_data {
 
 /**
  * struct retimer_cfg - Retimer configuration structure
- * @client: I2C client handle for the retimer device instance
  * @retimer_access_laneset: Callback to configure retimer lane settings for
- *			    the given I2C client instance
+ *			    the retimer provider device
  * @retimer_rst_cr_path: Callback to reset the retimer clock recovery path
- *			 for the given I2C client instance
- * @retimer_rst_dp_path: Callback to reset the retimer DP path for the given
- *			 I2C client instance
+ *			 for the retimer provider device
+ * @retimer_rst_dp_path: Callback to reset the retimer DP path for the
+ *			 retimer provider device
  * @retimer_prbs_mode: Callback to enable or disable PRBS mode on the retimer
- *		       for the given I2C client instance
+ *		       for the retimer provider device
+ *
+ * The provider's drvdata must start with these callbacks in this order. Each
+ * callback gets the provider's struct device and recovers its own instance
+ * handle (e.g. the mcdp6000 i2c_client) from the fields that follow them in
+ * dev_get_drvdata(dev).
  */
 struct retimer_cfg {
-	struct i2c_client *client;
-	void (*retimer_access_laneset)(struct i2c_client *client);
-	void (*retimer_rst_cr_path)(struct i2c_client *client);
-	void (*retimer_rst_dp_path)(struct i2c_client *client);
-	void (*retimer_prbs_mode)(struct i2c_client *client, u8 enable);
+	void (*retimer_access_laneset)(struct device *dev);
+	void (*retimer_rst_cr_path)(struct device *dev);
+	void (*retimer_rst_dp_path)(struct device *dev);
+	void (*retimer_prbs_mode)(struct device *dev, u8 enable);
 };
-
-/* Forward declaration as xvphy_dev definition is in an out-of-tree module */
-struct xvphy_dev;
 
 /**
  * struct vidphy_cfg - Video PHY configuration structure
  * @vidphy_prbs_mode: Callback to enable or disable PRBS mode on the video PHY
- *                    for the given xvphy_dev instance
- * @vphydev: Video PHY device instance for prbs callbacks
+ *                    for the video PHY provider device
+ *
+ * The provider's drvdata must start with this callback. It gets the provider's
+ * struct device and recovers its own xvphy_dev from the field that follows it
+ * in dev_get_drvdata(dev).
  */
 struct vidphy_cfg {
-	void (*vidphy_prbs_mode)(struct xvphy_dev *vphydev, u8 enable);
-	struct xvphy_dev *vphydev;
+	void (*vidphy_prbs_mode)(struct device *dev, u8 enable);
 };
 
 /**
@@ -186,7 +188,6 @@ struct vidphy_cfg {
  * @dp_base: Base address of DP Rx Subsystem
  * @edid_base: Bare Address of EDID block
  * @hdcp1x_keymgmt_base: regmap of HDCP1X Key Management block
- * @prvdata: Pointer to device private data
  * @mst: Pointer to mst data
  * @hdcp1x: Pointer to hdcp1x data
  * @hdcp2x: Pointer to hdcp2x data
@@ -194,7 +195,11 @@ struct vidphy_cfg {
  * @hdcp2x_lc128: Pointer to hdcp2x lc128 key
  * @hdcp2x_private: Pointer to hdcp2x Private key
  * @retimer_prvdata: Pointer to retimer private data structure
+ * @retimer_dev: struct device of the retimer provider, passed to the retimer
+ *	callbacks so the provider recovers the correct instance
  * @vidphy_prvdata: Pointer to video phy private data structure
+ * @vidphy_dev: struct device of the video phy provider, passed to the vidphy
+ *	callback so the provider recovers the correct instance
  * @tp1_work: training pattern 1 worker
  * @unplug_work: Unplug worker
  * @powerchange_work: Delayed work for DP power state change handling
@@ -250,7 +255,6 @@ struct xdprxss_state {
 	void *tmr_config;
 	void __iomem *dp_base;
 	void __iomem *edid_base;
-	void *prvdata;
 	struct xdprxss_mst *mst;
 	void *hdcp1x;
 	void *hdcp2x;
@@ -258,7 +262,9 @@ struct xdprxss_state {
 	u8 *hdcp2x_lc128;
 	u8 *hdcp2x_private;
 	struct retimer_cfg *retimer_prvdata;
+	struct device *retimer_dev;
 	struct vidphy_cfg *vidphy_prvdata;
+	struct device *vidphy_dev;
 	struct delayed_work tp1_work;
 	struct delayed_work unplug_work;
 	struct delayed_work powerchange_work;
@@ -1298,8 +1304,8 @@ static void xdprxss_irq_unplug(struct xdprxss_state *state)
 
 	if (state->retimer_prvdata) {
 		rtmr_cfg = state->retimer_prvdata;
-		if (rtmr_cfg->client && rtmr_cfg->retimer_rst_dp_path)
-			rtmr_cfg->retimer_rst_dp_path(rtmr_cfg->client);
+		if (rtmr_cfg->retimer_rst_dp_path)
+			rtmr_cfg->retimer_rst_dp_path(state->retimer_dev);
 	}
 
 	/*
@@ -1355,10 +1361,10 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 
 	if (state->retimer_prvdata) {
 		rtmr_cfg = state->retimer_prvdata;
-		if (rtmr_cfg->client && rtmr_cfg->retimer_rst_cr_path)
-			rtmr_cfg->retimer_rst_cr_path(rtmr_cfg->client);
-		if (rtmr_cfg->client && rtmr_cfg->retimer_access_laneset)
-			rtmr_cfg->retimer_access_laneset(rtmr_cfg->client);
+		if (rtmr_cfg->retimer_rst_cr_path)
+			rtmr_cfg->retimer_rst_cr_path(state->retimer_dev);
+		if (rtmr_cfg->retimer_access_laneset)
+			rtmr_cfg->retimer_access_laneset(state->retimer_dev);
 	}
 
 	if (!state->versal_gt_present) {
@@ -1564,8 +1570,8 @@ static void xdprxss_irq_access_laneset(struct xdprxss_state *state)
 
 		if (state->ce_req_val != read_val && state->retimer_prvdata) {
 			rtmr_cfg = state->retimer_prvdata;
-			if (rtmr_cfg->client && rtmr_cfg->retimer_access_laneset)
-				rtmr_cfg->retimer_access_laneset(rtmr_cfg->client);
+			if (rtmr_cfg->retimer_access_laneset)
+				rtmr_cfg->retimer_access_laneset(state->retimer_dev);
 		}
 
 		/* Update the value to be used in next round */
@@ -1595,27 +1601,27 @@ static void xdprxss_irq_access_linkqual(struct xdprxss_state *state)
 		/* enable PRBS mode in video phy */
 		if (state->vidphy_prvdata) {
 			vphy_cfg = state->vidphy_prvdata;
-			if (vphy_cfg->vphydev && vphy_cfg->vidphy_prbs_mode)
-				vphy_cfg->vidphy_prbs_mode(vphy_cfg->vphydev, 1);
+			if (vphy_cfg->vidphy_prbs_mode)
+				vphy_cfg->vidphy_prbs_mode(state->vidphy_dev, 1);
 		}
 		/* enable PRBS mode in retimer */
 		if (state->retimer_prvdata) {
 			rtmr_cfg = state->retimer_prvdata;
-			if (rtmr_cfg->client && rtmr_cfg->retimer_prbs_mode)
-				rtmr_cfg->retimer_prbs_mode(rtmr_cfg->client, 1);
+			if (rtmr_cfg->retimer_prbs_mode)
+				rtmr_cfg->retimer_prbs_mode(state->retimer_dev, 1);
 		}
 	} else {
 		/* disable PRBS mode in video phy */
 		if (state->vidphy_prvdata) {
 			vphy_cfg = state->vidphy_prvdata;
-			if (vphy_cfg->vphydev && vphy_cfg->vidphy_prbs_mode)
-				vphy_cfg->vidphy_prbs_mode(vphy_cfg->vphydev, 0);
+			if (vphy_cfg->vidphy_prbs_mode)
+				vphy_cfg->vidphy_prbs_mode(state->vidphy_dev, 0);
 		}
 		/* disable PRBS mode in retimer */
 		if (state->retimer_prvdata) {
 			rtmr_cfg = state->retimer_prvdata;
-			if (rtmr_cfg->client && rtmr_cfg->retimer_prbs_mode)
-				rtmr_cfg->retimer_prbs_mode(rtmr_cfg->client, 0);
+			if (rtmr_cfg->retimer_prbs_mode)
+				rtmr_cfg->retimer_prbs_mode(state->retimer_dev, 0);
 		}
 	}
 }
@@ -2756,23 +2762,22 @@ static void xlnx_dp_powerchange_work_func(struct work_struct *work)
 	}
 }
 
-static int xlnx_find_device(struct platform_device *pdev,
-			    struct xdprxss_state *xdprxss, const char *name)
+/*
+ * Look up the provider behind phandle @name. When @prvdev is non-NULL the
+ * provider device is returned in it.
+ */
+static int xlnx_find_device(struct platform_device *pdev, const char *name,
+			    void **prvdata, struct device **prvdev)
 {
-	struct device_node *pnode = pdev->dev.of_node;
 	struct device_node *fnode;
 	struct platform_device *iface_pdev;
+	int ret = 0;
 
-	/*
-	 * Reset prvdata at the start of each lookup so the caller never sees
-	 * a stale value from a previous call. The original implementation
-	 * left prvdata untouched when the phandle was absent, which leaked
-	 * one lookup's pointer into another (vidphy_prvdata vs
-	 * retimer_prvdata).
-	 */
-	xdprxss->prvdata = NULL;
+	*prvdata = NULL;
+	if (prvdev)
+		*prvdev = NULL;
 
-	fnode = of_parse_phandle(pnode, name, 0);
+	fnode = of_parse_phandle(pdev->dev.of_node, name, 0);
 	if (!fnode) {
 		dev_dbg(&pdev->dev, "platform node %s not found (optional)\n",
 			name);
@@ -2780,30 +2785,22 @@ static int xlnx_find_device(struct platform_device *pdev,
 	}
 
 	iface_pdev = of_find_device_by_node(fnode);
-	if (!iface_pdev) {
-		of_node_put(fnode);
+	of_node_put(fnode);
+	if (!iface_pdev)
 		return -ENODEV;
-	}
 
-	xdprxss->prvdata = dev_get_drvdata(&iface_pdev->dev);
-	/*
-	 * of_find_device_by_node() incremented the platform_device's
-	 * device refcount; we only need the drvdata pointer beyond this
-	 * point, so drop the reference here so it is balanced on every
-	 * exit path (including -EPROBE_DEFER, where the probe will be
-	 * retried and a new reference taken).
-	 */
-	put_device(&iface_pdev->dev);
-	if (!xdprxss->prvdata) {
+	*prvdata = dev_get_drvdata(&iface_pdev->dev);
+	if (!*prvdata) {
 		dev_info(&pdev->dev,
 			 "platform device(%s) not found -EPROBE_DEFER\n",
 			 name);
-		of_node_put(fnode);
-		return -EPROBE_DEFER;
+		ret = -EPROBE_DEFER;
+	} else if (prvdev) {
+		*prvdev = &iface_pdev->dev;
 	}
-	of_node_put(fnode);
+	put_device(&iface_pdev->dev);
 
-	return 0;
+	return ret;
 }
 
 static int dprx_hdcp2x_dpcd_rd_handler(void *ref, u32 offset, u8 *buff, u32 buff_size)
@@ -3175,6 +3172,7 @@ static int xdprxss_probe(struct platform_device *pdev)
 	int ret, irq;
 	unsigned int i = 0, j;
 	struct xlnx_dprx_audio_data *adata;
+	void *prvdata;
 
 	xdprxss = devm_kzalloc(dev, sizeof(*xdprxss), GFP_KERNEL);
 	if (!xdprxss)
@@ -3203,16 +3201,18 @@ static int xdprxss_probe(struct platform_device *pdev)
 	    family == PM_VERSAL2_FAMILY_CODE)
 		xdprxss->versal_2ve_2vm = true;
 
-	ret = xlnx_find_device(pdev, xdprxss, "xlnx,dp-retimer");
+	ret = xlnx_find_device(pdev, "xlnx,dp-retimer", &prvdata,
+			       &xdprxss->retimer_dev);
 	if (ret)
 		return ret;
-	xdprxss->retimer_prvdata = xdprxss->prvdata;
+	xdprxss->retimer_prvdata = prvdata;
 
 	if (!xdprxss->versal_gt_present) {
-		ret = xlnx_find_device(pdev, xdprxss, "xlnx,vidphy");
+		ret = xlnx_find_device(pdev, "xlnx,vidphy", &prvdata,
+				       &xdprxss->vidphy_dev);
 		if (ret)
 			return ret;
-		xdprxss->vidphy_prvdata = xdprxss->prvdata;
+		xdprxss->vidphy_prvdata = prvdata;
 	}
 
 	xdprxss->rx_audio_data =
@@ -3299,7 +3299,7 @@ static int xdprxss_probe(struct platform_device *pdev)
 			goto error_phy;
 		}
 
-		ret = xlnx_find_device(pdev, xdprxss, "xlnx,xilinx-vfmc");
+		ret = xlnx_find_device(pdev, "xlnx,xilinx-vfmc", &prvdata, NULL);
 		if (ret)
 			return ret;
 
