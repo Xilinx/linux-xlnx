@@ -1064,6 +1064,19 @@ __xvip_dma_try_format(struct xvip_dma *dma,
 		}
 	}
 
+	/*
+	 * num_planes is never assigned anywhere else in this driver, so it keeps
+	 * whatever the caller passed in and is reported back as zero for a fresh
+	 * node. That breaks the multiplanar contract: applications size their
+	 * plane arrays from it, and v4l2-ctl walks plane_fmt[] up to num_planes,
+	 * so bytesperline and sizeimage are invisible from user space.
+	 *
+	 * Buffer allocation happens to survive because xvip_dma_queue_setup uses
+	 * fmtinfo->buffers rather than this field. Report the same number here.
+	 */
+	if (V4L2_TYPE_IS_MULTIPLANAR(dma->format.type))
+		format->fmt.pix_mp.num_planes = info->buffers;
+
 	if (fmtinfo)
 		*fmtinfo = info;
 }
