@@ -2981,7 +2981,8 @@ xlnx_dp_bridge_detect(struct drm_bridge *bridge, struct drm_connector *connector
 	/* Reading the Ext capability for compliance */
 	ret = drm_dp_dpcd_read(&dp->aux, DP_DP13_DPCD_REV, dpcd_ext,
 			       sizeof(dpcd_ext));
-	if ((dp->dpcd[6] & 0x1) == 0x1) {
+	if (ret == sizeof(dpcd_ext) &&
+	    (dpcd_ext[DP_DOWNSTREAMPORT_PRESENT] & DP_DWN_STRM_PORT_PRESENT)) {
 		ret = drm_dp_dpcd_read(&dp->aux, DP_DOWNSTREAM_PORT_0,
 				       dpcd_ext, sizeof(dpcd_ext));
 	}
