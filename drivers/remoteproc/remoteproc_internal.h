@@ -149,6 +149,17 @@ static inline int rproc_mem_entry_iounmap(struct rproc *rproc,
 	return 0;
 }
 
+#define rproc_elf_load_rsc_table_optional(rproc, fw, dev_func, fmt, ...)	\
+	({									\
+		int ret = rproc_elf_load_rsc_table(rproc, fw);			\
+		if (ret == -EINVAL) {						\
+			dev_func(&rproc->dev, fmt, ##__VA_ARGS__);		\
+			return 0;						\
+		} else {							\
+			return ret;						\
+		}								\
+	})
+
 static inline int rproc_prepare_device(struct rproc *rproc)
 {
 	if (rproc->ops->prepare)
