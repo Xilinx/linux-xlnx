@@ -28,6 +28,7 @@
 #include "mmi_dp_reg.h"
 
 #define MMI_DPTX_MAX_AUX_MSG_LEN	(16)
+#define MMI_DPTX_MAX_AUX_DEFERS		(8)
 
 /**
  * mmi_dp_tx_first_bit_set - Find first (least significant) bit set
@@ -272,13 +273,13 @@ static int mmi_dp_aux_xfer_one(struct dptx *dptx, u8 request, u32 addr,
 /*
  * mmi_dp_aux_transfer() - DP AUX transfer back-end for the DRM core.
  *
- * DRM-compliant AUX implementation: reports the sink reply through
- * @msg->reply and returns the number of payload bytes transferred (or a
- * negative errno), leaving the DRM core to drive the DEFER/NACK retry logic.
+ * Reports the sink reply through @msg->reply and returns the number of payload
+ * bytes transferred (or a negative errno).
  *
  * A single AUX transaction carries at most 16 bytes, so larger native DPCD
- * accesses are split into chunks here (I2C-over-AUX messages already arrive
- * pre-chunked from the DRM I2C helper).
+ * accesses are split into chunks here. A native DEFER on a chunk is retried
+ * locally so that the DRM core does not restart the whole message from the
+ * first chunk (I2C DEFER handling is left to the DRM I2C helper).
  */
 static ssize_t mmi_dp_aux_transfer(struct drm_dp_aux *aux,
 				   struct drm_dp_aux_msg *msg)
@@ -307,12 +308,16 @@ static ssize_t mmi_dp_aux_transfer(struct drm_dp_aux *aux,
 				     MMI_DPTX_MAX_AUX_MSG_LEN);
 		/* Native accesses address consecutive DPCD registers. */
 		u32 addr = native ? msg->address + done : msg->address;
+		unsigned int defers = 0;
 
-		ret = mmi_dp_aux_xfer_one(dptx, msg->request, addr,
-					  msg->buffer + done, chunk,
-					  &msg->reply);
-		if (ret < 0)
-			return ret;
+		do {
+			ret = mmi_dp_aux_xfer_one(dptx, msg->request, addr,
+						  msg->buffer + done, chunk,
+						  &msg->reply);
+			if (ret < 0)
+				return ret;
+		} while (native && msg->reply == DP_AUX_NATIVE_REPLY_DEFER &&
+			 ++defers < MMI_DPTX_MAX_AUX_DEFERS);
 
 		/*
 		 * The sink did not ACK this chunk. Report what we have; the
