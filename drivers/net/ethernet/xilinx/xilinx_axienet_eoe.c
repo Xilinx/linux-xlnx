@@ -343,6 +343,14 @@ int axienet_eoe_recv_gro(struct net_device *ndev, int budget,
 				q->rx_offset, tail_p);
 	}
 
+	/* Clear IOC/DELAY latched while the IRQ was masked.
+	 * Skipped on budget exhaustion.
+	 */
+	if (numbdfree < budget)
+		axienet_dma_out32(q, XMCDMA_CHAN_SR_OFFSET(q->chan_id) +
+				  q->rx_offset,
+				  XMCDMA_IRQ_IOC_MASK | XMCDMA_IRQ_DELAY_MASK);
+
 	return numbdfree;
 }
 
