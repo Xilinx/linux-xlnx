@@ -5086,6 +5086,17 @@ static const struct macb_usrio_config macb_default_usrio = {
 	.refclk = MACB_BIT(CLKEN),
 };
 
+static void macb_init_rx_watermark(struct macb *bp, const struct macb_config *macb_config)
+{
+	u16 rx_pbuf_addr_width;
+	u32 total_words;
+
+	rx_pbuf_addr_width = GEM_BFEXT(RX_PBUF_ADDR, gem_readl(bp, DCFG2));
+	total_words = 1U << rx_pbuf_addr_width;
+	bp->rx_watermark_high = (total_words * macb_config->rx_watermark_high_percent) / 100;
+	bp->rx_watermark_low = (total_words * macb_config->rx_watermark_low_percent) / 100;
+}
+
 #if defined(CONFIG_OF)
 /* 1518 rounded up */
 #define AT91ETHER_MAX_RBUFF_SZ	0x600
@@ -5634,17 +5645,6 @@ err_out_phy_exit:
 		phy_exit(bp->sgmii_phy);
 
 	return ret;
-}
-
-static void macb_init_rx_watermark(struct macb *bp, const struct macb_config *macb_config)
-{
-	u16 rx_pbuf_addr_width;
-	u32 total_words;
-
-	rx_pbuf_addr_width = GEM_BFEXT(RX_PBUF_ADDR, gem_readl(bp, DCFG2));
-	total_words = 1U << rx_pbuf_addr_width;
-	bp->rx_watermark_high = (total_words * macb_config->rx_watermark_high_percent) / 100;
-	bp->rx_watermark_low = (total_words * macb_config->rx_watermark_low_percent) / 100;
 }
 
 static const struct macb_usrio_config sama7g5_usrio = {
