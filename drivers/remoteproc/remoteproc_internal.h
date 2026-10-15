@@ -14,7 +14,9 @@
 
 #include <linux/irqreturn.h>
 #include <linux/firmware.h>
+#ifdef CONFIG_HAS_IOMEM
 #include <linux/io.h>
+#endif
 
 struct rproc;
 
@@ -123,6 +125,7 @@ rproc_find_carveout_by_name(struct rproc *rproc, const char *name, ...);
 void rproc_add_rvdev(struct rproc *rproc, struct rproc_vdev *rvdev);
 void rproc_remove_rvdev(struct rproc_vdev *rvdev);
 
+#ifdef CONFIG_HAS_IOMEM
 static inline int rproc_mem_entry_ioremap_wc(struct rproc *rproc,
 					     struct rproc_mem_entry *mem)
 {
@@ -148,6 +151,19 @@ static inline int rproc_mem_entry_iounmap(struct rproc *rproc,
 
 	return 0;
 }
+#else
+static inline int rproc_mem_entry_ioremap_wc(struct rproc *rproc,
+					     struct rproc_mem_entry *mem)
+{
+	return -EOPNOTSUPP;
+}
+
+static inline int rproc_mem_entry_iounmap(struct rproc *rproc,
+					  struct rproc_mem_entry *mem)
+{
+	return 0;
+}
+#endif
 
 #define rproc_elf_load_rsc_table_optional(rproc, fw, dev_func, fmt, ...)	\
 	({									\
