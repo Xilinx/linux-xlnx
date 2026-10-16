@@ -1,0 +1,119 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/misc/xlnx,sdi-fmc.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx SDI FMC mezzanine
+
+maintainers:
+  - Katta Dhanunjanrao <katta.dhanunjanrao@amd.com>
+
+description: |
+  The Fidus/Zetta SDI FMC mezzanine conditions the physical SDI signal for the
+  SMPTE UHD-SDI Tx and Rx subsystems on boards such as the VEK385.
+
+  Per SDI channel it carries a MACOM reclocker, a cable driver and an
+  equalizer, all on one SPI bus, plus a DS10CP15A clock crosspoint on I2C.  A
+  GPIO selects which of the four physical channels is routed onto the SPI bus,
+  and a second GPIO raises an "init-done" strobe when configuration completes.
+
+  The parts are children of their respective controllers rather than of this
+  node, because that is where they sit on the buses.  This node describes how
+  they are wired together as one mezzanine and is what an SDI endpoint points
+  at with its "xlnx,fmc" phandle.  One configuration pass programs the
+  equalizer (Rx path), the cable driver (Tx path) and the reclocker (both), so
+  a single node serves both directions.
+
+properties:
+  compatible:
+    const: xlnx,sdi-fmc
+
+  xlnx,xbar:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description: The DS10CP15A clock crosspoint on the I2C bus.
+
+  xlnx,rclkr:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description: The MACOM reclocker on the SPI bus, used by both directions.
+
+  xlnx,drvr:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description: The MACOM cable driver on the SPI bus, used by the Tx path.
+
+  xlnx,rcvr:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description: The MACOM equalizer on the SPI bus, used by the Rx path.
+
+  channel-gpios:
+    description:
+      The channel-select mux, least significant bit first, selecting which of
+      the four physical SDI channels is presented on the SPI bus during
+      configuration.
+    minItems: 1
+    maxItems: 2
+
+  init-done-gpios:
+    description:
+      Strobe raised once every channel has been configured.
+    maxItems: 1
+
+required:
+  - compatible
+  - xlnx,xbar
+  - xlnx,rclkr
+  - xlnx,drvr
+  - xlnx,rcvr
+
+additionalProperties: false
+
+examples:
+  - |
+    fmc_gpio: gpio-controller {
+        gpio-controller;
+        #gpio-cells = <2>;
+    };
+
+    i2c {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        xbar: clock-crosspoint@50 {
+            compatible = "ti,ds10cp154";
+            reg = <0x50>;
+        };
+    };
+
+    spi {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        rclkr: reclocker@0 {
+            compatible = "macom,m23145";
+            reg = <0>;
+            spi-max-frequency = <9300000>;
+        };
+
+        drvr: cable-driver@1 {
+            compatible = "macom,m23428";
+            reg = <1>;
+            spi-max-frequency = <9300000>;
+        };
+
+        rcvr: equalizer@2 {
+            compatible = "macom,m23554";
+            reg = <2>;
+            spi-max-frequency = <9300000>;
+        };
+    };
+
+    sdi_fmc: sdi-fmc {
+        compatible = "xlnx,sdi-fmc";
+        xlnx,xbar = <&xbar>;
+        xlnx,rclkr = <&rclkr>;
+        xlnx,drvr = <&drvr>;
+        xlnx,rcvr = <&rcvr>;
+        channel-gpios = <&fmc_gpio 0 0>, <&fmc_gpio 1 0>;
+        init-done-gpios = <&fmc_gpio 7 0>;
+    };
+...
