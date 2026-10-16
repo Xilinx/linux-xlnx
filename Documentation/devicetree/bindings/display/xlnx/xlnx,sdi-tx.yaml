@@ -70,6 +70,14 @@ properties:
     description: This is required only when VPSS is connected to SDI as bridge.
     $ref: /schemas/types.yaml#/definitions/phandle
 
+  xlnx,fmc:
+    description:
+      The SDI FMC mezzanine that conditions the physical SDI signal, on boards
+      that have one fitted.  The mezzanine is shared with the SDI Rx subsystem
+      and must be configured before the Tx GT is brought up, so the Tx driver
+      defers until its driver has done so.  See misc/xlnx,sdi-fmc.yaml.
+    $ref: /schemas/types.yaml#/definitions/phandle
+
   ports:
     type: object
     properties:
