@@ -101,6 +101,9 @@
 #define xdprxss_enable_hdcp2x_interrupts(state) \
 	xdprxss_set(state, XDPRX_INTR_MASK_2_REG, \
 			XDPRX_INTR_HDCP2X_MASK_ALL)
+#define xdprxss_disable_hdcp2x_interrupts(state) \
+	xdprxss_clr(state, XDPRX_INTR_MASK_2_REG, \
+			XDPRX_INTR_HDCP2X_MASK_ALL)
 #define XDP_RX_HPD_INTERRUPT_ASSERT_MASK 0x01
 /* Per-stream register bank stride: each stream has its own 0x40-byte register window. */
 #define XDPRX_MST_STREAM_REG_STRIDE	0x40
@@ -236,6 +239,9 @@ struct vidphy_cfg {
  * @ltstate: Flag for storing link training state
  * @last_powered_down: Tracks whether link was last in power-down state
  * @hdcp2x_timer_irq: HDCP2X timer IRQ variable
+ * @irq: subsystem interrupt, silenced before teardown cancels the workers
+ * @hdcp1x_irq: HDCP1x interrupt, silenced alongside @irq
+ * @going_away: set once teardown starts, to stop the handler queueing work
  * This structure contains the device driver related parameters
  */
 struct xdprxss_state {
@@ -296,6 +302,9 @@ struct xdprxss_state {
 	unsigned int ltstate : 2;
 	unsigned int last_powered_down : 1;
 	int hdcp2x_timer_irq;
+	int irq;
+	int hdcp1x_irq;
+	bool going_away;
 };
 
 union hdcp1x_key_table {
@@ -1668,6 +1677,15 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 
 	if (!status && !status1 && !status2)
 		return IRQ_NONE;
+
+	/*
+	 * The cause registers clear on read, so the reads above have already
+	 * acknowledged everything and the line is quiet. Return here rather
+	 * than queue a worker: the state the workers run against is being
+	 * taken apart, and nothing is left to cancel one queued now.
+	 */
+	if (state->going_away)
+		return IRQ_HANDLED;
 
 	if (status1 & XDPRX_INTR_ACCESS_LANE_SET_MASK)
 		schedule_work(&state->lane_set_work);
@@ -3209,6 +3227,40 @@ static int dprx_register_hdcp1x_dev(struct xdprxss_state *xdprxss)
 	return 0;
 }
 
+/**
+ * xdprxss_silence_interrupts - stop the IP asserting either interrupt
+ * @xdprxss: pointer to driver state
+ *
+ * Masks every interrupt cause at the IP and marks the state as going away,
+ * then waits for a handler that is already running to return. After this no
+ * handler queues a worker.
+ *
+ * Both subsystem interrupts are requested with IRQF_SHARED, so the line
+ * itself must be left alone: disable_irq() would mask it for every other
+ * device that shares it. Masking the causes silences this IP only.
+ *
+ * A worker that was already running can unmask causes again as it finishes,
+ * so a caller that cancels the workers has to call this once more after it.
+ */
+static void xdprxss_silence_interrupts(struct xdprxss_state *xdprxss)
+{
+	/*
+	 * Set before the masking, so that a handler running in between
+	 * acknowledges its causes and returns without queueing anything. The
+	 * synchronize_irq() below then rules out a handler that read the flag
+	 * before it was set, and from there nothing new reaches the workqueue.
+	 */
+	xdprxss->going_away = true;
+
+	xdprxss_disable_allintr(xdprxss);
+	xdprxss_disable_allintr_1(xdprxss);
+	xdprxss_disable_hdcp2x_interrupts(xdprxss);
+
+	synchronize_irq(xdprxss->irq);
+	if (xdprxss->hdcp1x_irq > 0)
+		synchronize_irq(xdprxss->hdcp1x_irq);
+}
+
 static int xdprxss_probe(struct platform_device *pdev)
 {
 	struct v4l2_subdev *subdev;
@@ -3473,13 +3525,14 @@ static int xdprxss_probe(struct platform_device *pdev)
 			ret);
 		goto error;
 	}
+	xdprxss->irq = irq;
 
 	platform_set_drvdata(pdev, xdprxss);
 
 	ret = v4l2_async_register_subdev(subdev);
 	if (ret < 0) {
 		dev_err(dev, "failed to register subdev\n");
-		goto error;
+		goto error_irq;
 	}
 
 	if (xdprxss->audio_enable) {
@@ -3487,7 +3540,7 @@ static int xdprxss_probe(struct platform_device *pdev)
 		if (ret < 0) {
 			xdprxss->audio_init = false;
 			dev_err(xdprxss->dev, "dp rx audio init failed\n");
-			goto error;
+			goto error_irq;
 		} else {
 			xdprxss->audio_init = true;
 			init_waitqueue_head(&adata->audio_update_q);
@@ -3499,7 +3552,7 @@ static int xdprxss_probe(struct platform_device *pdev)
 		ret = dprx_register_hdcp2x_dev(xdprxss, pdev);
 		if (ret < 0) {
 			dev_err(xdprxss->dev, "dp rx hdcp2/x init failed\n");
-			goto error;
+			goto error_irq;
 		}
 		xdprxss_enable_hdcp2x_interrupts(xdprxss);
 	}
@@ -3509,13 +3562,14 @@ static int xdprxss_probe(struct platform_device *pdev)
 									       "xlnx,hdcp1x_keymgmt");
 		if (IS_ERR(xdprxss->hdcp1x_keymgmt_base)) {
 			dev_err(dev, "couldn't map hdcp1x Keymgmt registers\n");
-			return -ENODEV;
+			ret = -ENODEV;
+			goto error_irq;
 		}
 
 		ret = dprx_register_hdcp1x_dev(xdprxss);
 		if (ret < 0) {
 			dev_err(xdprxss->dev, "dp rx hdcp1x init failed\n");
-			goto error;
+			goto error_irq;
 		}
 
 		irq = platform_get_irq_byname(pdev, "dprxss_hdcp_irq");
@@ -3524,8 +3578,9 @@ static int xdprxss_probe(struct platform_device *pdev)
 				       IRQF_SHARED, "dprxss_hdcp_irq", xdprxss);
 		if (ret) {
 			dev_err(dev, "err: hdcp1x interrupt registration failed!\n");
-			goto error;
+			goto error_irq;
 		}
+		xdprxss->hdcp1x_irq = irq;
 
 		/* Enable HDCP1x Interrupts */
 		xdprxss_enable_hdcp1x_interrupts(xdprxss);
@@ -3533,6 +3588,37 @@ static int xdprxss_probe(struct platform_device *pdev)
 
 	return 0;
 
+error_irq:
+	/*
+	 * The interrupt is live from here on, and devm only frees it after
+	 * probe has returned, so a worker can still be queued while the
+	 * teardown below runs. Silence the IP and flush the workers before the
+	 * state they run against is taken apart.
+	 */
+	xdprxss_silence_interrupts(xdprxss);
+	cancel_delayed_work_sync(&xdprxss->tp1_work);
+	cancel_delayed_work_sync(&xdprxss->unplug_work);
+	cancel_delayed_work_sync(&xdprxss->powerchange_work);
+	cancel_work_sync(&xdprxss->lane_set_work);
+	cancel_work_sync(&xdprxss->link_qual_work);
+	/*
+	 * A worker that was mid-flight when the call above masked the causes
+	 * can have unmasked some of them again before it returned, which would
+	 * leave the IP driving a shared line that no longer has a handler on
+	 * it. Mask them once more now that no worker is left to undo it.
+	 */
+	xdprxss_silence_interrupts(xdprxss);
+	/*
+	 * Anything probe made visible to userspace has to go as well, since it
+	 * holds pointers into the state devm is about to free. The audio
+	 * device is only registered on the paths that set audio_init, and
+	 * v4l2_async_unregister_subdev() is a no-op on a subdev that was never
+	 * registered, so the path where that registration itself failed can
+	 * share this label.
+	 */
+	if (xdprxss->audio_init)
+		dprx_unregister_aud_dev(&pdev->dev);
+	v4l2_async_unregister_subdev(subdev);
 error:
 	if (xdprxss->mst_enable)
 		xdprxss_deinit_mst(xdprxss->mst);
@@ -3568,9 +3654,24 @@ static void xdprxss_remove(struct platform_device *pdev)
 	struct v4l2_subdev *subdev = &xdprxss->subdev;
 	unsigned int i;
 
+	/*
+	 * Silence the IP before cancelling, otherwise either interrupt can
+	 * queue any of these again afterwards and the worker then runs against
+	 * state that devm is about to free.
+	 */
+	xdprxss_silence_interrupts(xdprxss);
 	cancel_delayed_work_sync(&xdprxss->tp1_work);
+	cancel_delayed_work_sync(&xdprxss->unplug_work);
+	cancel_delayed_work_sync(&xdprxss->powerchange_work);
 	cancel_work_sync(&xdprxss->lane_set_work);
 	cancel_work_sync(&xdprxss->link_qual_work);
+	/*
+	 * A worker that was mid-flight when the call above masked the causes
+	 * can have unmasked some of them again before it returned, which would
+	 * leave the IP driving a shared line that no longer has a handler on
+	 * it. Mask them once more now that no worker is left to undo it.
+	 */
+	xdprxss_silence_interrupts(xdprxss);
 	if (xdprxss->mst_enable)
 		xdprxss_deinit_mst(xdprxss->mst);
 	v4l2_async_unregister_subdev(subdev);
