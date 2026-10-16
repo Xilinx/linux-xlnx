@@ -88,7 +88,7 @@ int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 
 	/* ensure bits above array shift are not set */
 	if (offset & ~GENMASK_ULL(adev->array_shift - 1, 0)) {
-		dev_err(&apart->dev, "Invalid offset %zu.\n");
+		dev_err(&apart->dev, "Invalid offset %zu.\n", offset);
 		return -EINVAL;
 	}
 
