@@ -1297,6 +1297,24 @@ void xdprxss_dp_mst_payload_allocation(struct xdprxss_mst *xdpmst)
 		return;
 	}
 
+	/*
+	 * An ALLOCATE_PAYLOAD replaces the VC's earlier allocation rather than
+	 * adding to it, so the stream's previous slots have to be released
+	 * before the new range is stamped in. Without this a source that moves
+	 * a stream to a different range leaves it mapped to two disjoint
+	 * blocks, which over-subscribes the table and stops the IP
+	 * de-multiplexing that stream (DP 1.4a s2.6.4.1).
+	 *
+	 * A de-allocation needs the same release, and the stream_id 0 case
+	 * that clears every VC has no slots of its own to release.
+	 */
+	if (stream_id) {
+		for (idx = 0; idx < XLNX_DPRX_MST_TIMESLOT_COUNT; idx++) {
+			if (payload_table[idx] == stream_id)
+				payload_table[idx] = 0;
+		}
+	}
+
 	if (num_slots) {
 		memset(&payload_table[start_ts], stream_id, num_slots);
 		/*
@@ -1307,11 +1325,6 @@ void xdprxss_dp_mst_payload_allocation(struct xdprxss_mst *xdpmst)
 		if (!stream_id && num_slots == XLNX_DPRX_MST_TIMESLOT_COUNT - 1)
 			payload_table[XLNX_DPRX_MST_TIMESLOT_COUNT - 1] = 0;
 	} else {
-		for (idx = 0; idx < XLNX_DPRX_MST_TIMESLOT_COUNT; idx++) {
-			if (payload_table[idx] == stream_id)
-				payload_table[idx] = 0;
-		}
-
 		write_idx = start_ts;
 		for (read_idx = start_ts; read_idx < XLNX_DPRX_MST_TIMESLOT_COUNT; read_idx++) {
 			if (payload_table[read_idx])
