@@ -3401,20 +3401,30 @@ static int xdprxss_probe(struct platform_device *pdev)
 
 		ret = xlnx_find_device(pdev, "xlnx,xilinx-vfmc", &prvdata, NULL);
 		if (ret)
-			return ret;
-
-		ret = xlnx_dp_rx_gt_control_init(xdprxss);
-		if (ret < 0)
-			return ret;
-
-		if (!xdprxss->clkx5_wiz && get_rx_dec_clk_lock(xdprxss))
-			dev_info(dev, "rx decryption clock failed to lock\n");
+			goto error_phy;
 	}
 
 	ret = clk_prepare_enable(xdprxss->axi_clk);
 	if (ret) {
 		dev_err(dev, "failed to enable axi_clk (%d)\n", ret);
 		goto error_phy;
+	}
+
+	/*
+	 * Both of these reach the subsystem registers over the AXI-lite
+	 * interface, so they run here rather than alongside the GT Quad setup
+	 * above. axi_clk is all they need, which is why the link and video
+	 * clocks are still enabled after them, in the order they were before.
+	 *
+	 * rx_lnk_clk_err is the label that unwinds axi_clk alone.
+	 */
+	if (xdprxss->versal_gt_present) {
+		ret = xlnx_dp_rx_gt_control_init(xdprxss);
+		if (ret < 0)
+			goto rx_lnk_clk_err;
+
+		if (!xdprxss->clkx5_wiz && get_rx_dec_clk_lock(xdprxss))
+			dev_info(dev, "rx decryption clock failed to lock\n");
 	}
 
 	ret = clk_prepare_enable(xdprxss->rx_lnk_clk);
