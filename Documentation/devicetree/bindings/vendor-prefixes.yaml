@@ -955,6 +955,8 @@ patternProperties:
     description: M5Stack
   "^macnica,.*":
     description: Macnica Americas
+  "^macom,.*":
+    description: MACOM Technology Solutions Holdings, Inc.
   "^mantix,.*":
     description: Mantix Display Technology Co.,Ltd.
   "^mapleboard,.*":

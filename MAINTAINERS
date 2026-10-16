@@ -28513,6 +28513,7 @@ M:	Katta Dhanunjanrao <katta.dhanunjanrao@amd.com>
 R:	Vishal Sagar <vishal.sagar@amd.com>
 L:	git@amd.com
 S:	Maintained
+F:	Documentation/devicetree/bindings/misc/macom,sdi-redriver.yaml
 F:	Documentation/devicetree/bindings/misc/ti,ds10cp154.yaml
 
 XILINX SDIRXSS DRIVER
