@@ -1238,6 +1238,15 @@ static void xilinx_dpdma_chan_handle_err(struct xilinx_dpdma_chan *chan)
 	xilinx_dpdma_chan_disable(chan);
 	chan->running = false;
 
+	/* queue_transfer() won't restart the channel while a descriptor is pending. */
+	if (chan->desc.pending) {
+		spin_lock(&chan->vchan.lock);
+		list_add(&chan->desc.pending->vdesc.node,
+			 &chan->vchan.desc_issued);
+		spin_unlock(&chan->vchan.lock);
+		chan->desc.pending = NULL;
+	}
+
 	if (!chan->desc.active)
 		goto out_unlock;
 
