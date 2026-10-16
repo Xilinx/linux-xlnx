@@ -192,22 +192,28 @@ static int xilinx_intc_of_init(struct device_node *intc,
 
 		clkin = devm_clk_get_optional_enabled(&pdev->dev, NULL);
 		if (IS_ERR(clkin)) {
-			platform_device_put(pdev);
-			return dev_err_probe(&pdev->dev, PTR_ERR(clkin),
-					     "Failed to get and enable clock from Device Tree\n");
+			ret = dev_err_probe(&pdev->dev, PTR_ERR(clkin),
+					    "Failed to get and enable clock from Device Tree\n");
+			goto out_put_pdev;
 		}
 
 		irqc = devm_kzalloc(&pdev->dev, sizeof(*irqc), GFP_KERNEL);
-		if (!irqc)
-			return -ENOMEM;
+		if (!irqc) {
+			ret = -ENOMEM;
+			goto out_put_pdev;
+		}
 
 		irqc->base = devm_of_iomap(&pdev->dev, intc, 0, NULL);
-		if (IS_ERR(irqc->base))
-			return PTR_ERR(irqc->base);
+		if (IS_ERR(irqc->base)) {
+			ret = PTR_ERR(irqc->base);
+			goto out_put_pdev;
+		}
 	} else {
 		irqc = kzalloc(sizeof(*irqc), GFP_KERNEL);
-		if (!irqc)
-			return -ENOMEM;
+		if (!irqc) {
+			ret = -ENOMEM;
+			goto out_put_pdev;
+		}
 
 		irqc->base = of_iomap(intc, 0);
 		BUG_ON(!irqc->base);
@@ -277,7 +283,8 @@ static int xilinx_intc_of_init(struct device_node *intc,
 		set_handle_irq(xil_intc_handle_irq);
 	}
 
-	return 0;
+	ret = 0;
+	goto out_put_pdev;
 
 error:
 	if (!parent) {
@@ -285,6 +292,8 @@ error:
 		kfree(irqc);
 	}
 
+out_put_pdev:
+	platform_device_put(pdev);
 	return ret;
 }
 
