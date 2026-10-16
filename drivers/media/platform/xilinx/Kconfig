@@ -119,6 +119,7 @@ config VIDEO_XILINX_MULTISCALER
 config VIDEO_XILINX_SDIRXSS
 	tristate "Xilinx SDI Rx Subsystem"
 	depends on VIDEO_XILINX
+	imply XILINX_SDI_FMC
 	help
 	  Driver for Xilinx SDI Rx Subsystem
 
