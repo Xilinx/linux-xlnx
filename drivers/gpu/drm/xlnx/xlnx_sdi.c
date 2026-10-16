@@ -27,6 +27,7 @@
 #include <linux/of_graph.h>
 #include <linux/phy/phy.h>
 #include <linux/platform_device.h>
+#include <linux/xlnx_sdi_fmc.h>
 #include <media/hdr-ctrls.h>
 #include <video/videomode.h>
 #include "xlnx_sdi_modes.h"
@@ -1702,6 +1703,15 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
 	unsigned long clkrate = 0;
 	enum gpiod_flags flags;
 	u32 bpc;
+
+	/*
+	 * The SDI FMC mezzanine conditions the physical signal and must be
+	 * configured before the Tx GT is brought up.  Defer until its driver
+	 * has done so; boards with no mezzanine described return 0 here.
+	 */
+	ret = xlnx_sdi_fmc_init(dev);
+	if (ret)
+		return ret;
 
 	sdi = devm_kzalloc(dev, sizeof(*sdi), GFP_KERNEL);
 	if (!sdi)

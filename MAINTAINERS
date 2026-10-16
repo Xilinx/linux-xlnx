@@ -28517,6 +28517,7 @@ F:	Documentation/devicetree/bindings/misc/macom,sdi-redriver.yaml
 F:	Documentation/devicetree/bindings/misc/ti,ds10cp154.yaml
 F:	Documentation/devicetree/bindings/misc/xlnx,sdi-fmc.yaml
 F:	drivers/misc/xilinx-sdi-fmc.c
+F:	include/linux/xlnx_sdi_fmc.h
 
 XILINX SDIRXSS DRIVER
 M:	Katta Dhanunjanrao <katta.dhanunjanrao@amd.com>

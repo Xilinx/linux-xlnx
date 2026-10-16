@@ -32,6 +32,7 @@
 #include <linux/v4l2-subdev.h>
 #include <linux/xilinx-sdirxss.h>
 #include <linux/xilinx-v4l2-controls.h>
+#include <linux/xlnx_sdi_fmc.h>
 #include <media/hdr-ctrls.h>
 #include <media/media-entity.h>
 #include <media/v4l2-common.h>
@@ -2623,6 +2624,16 @@ static int xsdirxss_probe(struct platform_device *pdev)
 
 	xsdirxss->core.dev = &pdev->dev;
 	core = &xsdirxss->core;
+
+	/*
+	 * The SDI FMC mezzanine (reclocker/equalizer/cable-driver) conditions
+	 * the physical signal for both directions and is programmed by its own
+	 * driver.  Defer until it has done so; boards with no mezzanine
+	 * described return 0 here.
+	 */
+	ret = xlnx_sdi_fmc_init(&pdev->dev);
+	if (ret)
+		return ret;
 
 	core->rst_gt_gpio = devm_gpiod_get_optional(&pdev->dev, "reset-gt", GPIOD_OUT_HIGH);
 	if (!core->rst_gt_gpio) {
