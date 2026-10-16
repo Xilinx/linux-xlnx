@@ -258,10 +258,6 @@ static int xilinx_intc_of_init(struct device_node *intc,
 
 	if (parent) {
 		irq = irq_of_parse_and_map(intc, 0);
-#ifdef CONFIG_IRQCHIP_XILINX_INTC_MODULE_SUPPORT_EXPERIMENTAL
-		irqc->irq = irq;
-		intc->data = irqc;
-#endif
 		if (irq) {
 			irq_set_chained_handler_and_data(irq,
 							 xil_intc_irq_handler,
@@ -271,6 +267,10 @@ static int xilinx_intc_of_init(struct device_node *intc,
 			ret = -EINVAL;
 			goto error;
 		}
+#ifdef CONFIG_IRQCHIP_XILINX_INTC_MODULE_SUPPORT_EXPERIMENTAL
+		irqc->irq = irq;
+		intc->data = irqc;
+#endif
 	} else {
 		primary_intc = irqc;
 		irq_set_default_domain(primary_intc->root_domain);
@@ -304,6 +304,12 @@ static int xilinx_intc_of_remove(struct device_node *intc,
 
 	irqc = intc->data;
 	irq = irqc->irq;
+
+	/*
+	 * Clear the devm-managed pointer before any return to prevent
+	 * an invalid free in of_node_release() during overlay node release.
+	 */
+	intc->data = NULL;
 
 	irq_set_chained_handler_and_data(irq, NULL, NULL);
 
