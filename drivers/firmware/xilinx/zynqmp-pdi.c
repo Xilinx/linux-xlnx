@@ -17,6 +17,7 @@
 #define UID_BUFF_SIZE	786
 #define UID_SET_LEN	4
 #define UID_LEN		4
+#define META_HEADER_BUFF_SIZE	(32 * 1024)
 
 static char image_name[NAME_MAX];
 
@@ -211,6 +212,7 @@ static ssize_t firmware_meta_header_get_data(struct file *filp,
 	const struct firmware *fw;
 	dma_addr_t dma_addr = 0;
 	u32 sip_svc_version;
+	u32 header_size;
 	char *kbuf;
 	u32 size;
 	int ret;
@@ -221,13 +223,14 @@ static ssize_t firmware_meta_header_get_data(struct file *filp,
 		return ret;
 	}
 
-	kbuf = dma_alloc_coherent(kdev, fw->size, &dma_addr, GFP_KERNEL);
+	header_size = min_t(u32, fw->size, META_HEADER_BUFF_SIZE);
+	kbuf = dma_alloc_coherent(kdev, header_size, &dma_addr, GFP_KERNEL);
 	if (!kbuf) {
 		ret = -ENOMEM;
 		goto free_firmware;
 	}
 
-	memcpy(kbuf, fw->data, fw->size);
+	memcpy(kbuf, fw->data, header_size);
 
 	ret = zynqmp_pm_get_sip_svc_version(&sip_svc_version);
 	if (ret)
@@ -240,7 +243,7 @@ static ssize_t firmware_meta_header_get_data(struct file *filp,
 						 lower_32_bits(dma_addr),
 						 upper_32_bits(dma_addr),
 						 lower_32_bits(dma_addr),
-						 (u32)fw->size,
+						 header_size,
 						 devinfo->pdi_meta_header_flags);
 	else if (devinfo->pdi_meta_header_flags)
 		ret = -EOPNOTSUPP;
@@ -251,11 +254,11 @@ static ssize_t firmware_meta_header_get_data(struct file *filp,
 					  lower_32_bits(dma_addr),
 					  upper_32_bits(dma_addr),
 					  lower_32_bits(dma_addr),
-					  (u32)fw->size);
+					  header_size);
 	if (ret)
 		goto free_dma;
 
-	if (ret_payload[1] > fw->size) {
+	if (ret_payload[1] > header_size) {
 		ret = -EINVAL;
 		goto free_dma;
 	}
@@ -264,7 +267,7 @@ static ssize_t firmware_meta_header_get_data(struct file *filp,
 	ret = memory_read_from_buffer(buf, count, &off, kbuf, size);
 
 free_dma:
-	dma_free_coherent(kdev, fw->size, kbuf, dma_addr);
+	dma_free_coherent(kdev, header_size, kbuf, dma_addr);
 free_firmware:
 	release_firmware(fw);
 
