@@ -57,6 +57,7 @@ obj-y				+= cardreader/
 obj-$(CONFIG_PVPANIC)   	+= pvpanic/
 obj-$(CONFIG_UACCE)		+= uacce/
 obj-$(CONFIG_XILINX_SDFEC)	+= xilinx_sdfec.o
+obj-$(CONFIG_XILINX_SDI_FMC)	+= xilinx-sdi-fmc.o
 obj-$(CONFIG_HISI_HIKEY_USB)	+= hisi_hikey_usb.o
 obj-$(CONFIG_NTSYNC)		+= ntsync.o
 obj-$(CONFIG_XILINX_AIE)	+= xilinx-ai-engine/
