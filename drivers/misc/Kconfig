@@ -487,6 +487,18 @@ config PCI_ENDPOINT_TEST
 	   Enable this configuration option to enable the host side test driver
 	   for PCI Endpoint.
 
+config XILINX_SDI_FMC
+	tristate "Xilinx SDI FMC mezzanine"
+	depends on I2C && SPI && GPIOLIB && OF
+	help
+	  Configures the Fidus SDI FMC mezzanine (DS10CP15A clock crosspoint
+	  plus per-channel MACOM reclocker, cable driver and equalizer) that
+	  conditions the physical SDI signal on boards such as the VEK385.
+
+	  The SDI Tx and Rx subsystem drivers defer their probe until this
+	  mezzanine has been configured, so enable it on boards that fit the
+	  card.  Say M here to build it as a single module.
+
 config XILINX_SDFEC
 	tristate "Xilinx SDFEC 16"
 	depends on HAS_IOMEM
