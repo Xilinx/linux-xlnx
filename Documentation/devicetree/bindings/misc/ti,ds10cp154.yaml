@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/misc/ti,ds10cp154.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: TI DS10CP154 clock crosspoint switch
+
+maintainers:
+  - Katta Dhanunjanrao <katta.dhanunjanrao@amd.com>
+
+description: |
+  A 4x4 LVDS clock crosspoint switch configured over I2C.  On the Fidus/Zetta
+  SDI FMC mezzanine it routes the two SDI reference clocks (148.5 MHz and
+  148.35 MHz) to the outputs feeding the SMPTE UHD-SDI Tx and Rx subsystems.
+
+  The routing is fixed by the board and is programmed as part of mezzanine
+  bring-up, so no routing properties are described here.
+
+properties:
+  compatible:
+    const: ti,ds10cp154
+
+  reg:
+    maxItems: 1
+
+required:
+  - compatible
+  - reg
+
+additionalProperties: false
+
+examples:
+  - |
+    i2c {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        clock-crosspoint@50 {
+            compatible = "ti,ds10cp154";
+            reg = <0x50>;
+        };
+    };
+...
