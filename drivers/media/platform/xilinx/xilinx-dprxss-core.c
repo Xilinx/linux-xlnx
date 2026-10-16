@@ -1201,7 +1201,7 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state, u8 stream)
 	if (data & XDPRX_MSA_VSPOL_MASK)
 		dv_timings->bt.polarities |= V4L2_DV_VSYNC_POS_POL;
 
-	dv_timings->bt.pixelclock = vres_total * hres_total * framerate;
+	dv_timings->bt.pixelclock = (u64)vres_total * hres_total * framerate;
 	dv_timings->bt.hsync = hsw;
 	dv_timings->bt.hfrontporch = (hres_total - (hact + hstart));
 	dv_timings->bt.hbackporch = hstart - hsw;
