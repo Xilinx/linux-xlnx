@@ -25,8 +25,16 @@ properties:
       - const: xlnx,v-dp-rxss-3.0
 
   interrupt-names:
+    description:
+      dprxss_dp_irq is the subsystem interrupt and is always present.
+      dprxss_hdcp_irq is raised by the HDCP1x cipher and dprxss_timer_irq by
+      the HDCP2X timer, so each is only present when the matching HDCP
+      property is set. The order of those two is not fixed.
+    minItems: 1
     items:
       - const: dprxss_dp_irq
+      - enum: [dprxss_hdcp_irq, dprxss_timer_irq]
+      - enum: [dprxss_hdcp_irq, dprxss_timer_irq]
 
   reg:
     minItems: 1
@@ -40,7 +48,8 @@ properties:
       - const: edid_base
 
   interrupts:
-    maxItems: 1
+    minItems: 1
+    maxItems: 3
 
   clocks:
     description: List of clock specifiers
@@ -56,16 +65,55 @@ properties:
       - const: rx_vid_clk
 
   phys:
-    description: This denotes phandles for phy lanes registered for DP
-                 protocol. Number of phy lanes registered are depends on
-                 the xlnx,lane-count property.
+    description:
+      PHY lanes carrying the DisplayPort main link. Designs built around
+      the Video PHY Controller expose one PHY per lane, so the number of
+      entries follows xlnx,lane-count. Designs built around the Versal
+      Gen 2 GT Quad expose the whole quad as a single PHY.
+    minItems: 1
+    maxItems: 4
 
   phy-names:
-    items:
-      - const: dp-phy0
-      - const: dp-phy1
-      - const: dp-phy2
-      - const: dp-phy3
+    oneOf:
+      - description:
+          Per-lane names used with the Video PHY Controller, in lane
+          order. Only the first xlnx,lane-count lanes are described.
+        minItems: 1
+        items:
+          - const: dp-phy0
+          - const: dp-phy1
+          - const: dp-phy2
+          - const: dp-phy3
+      - description:
+          Name used when the main link is wired to the Versal Gen 2 GT
+          Quad, which the receiver drives as one PHY.
+        items:
+          - const: dp-gtquad
+
+  xlnx,dp-retimer:
+    description:
+      Phandle to the DisplayPort retimer sitting between the connector
+      and the PHY, typically on an FMC daughter card. The receiver
+      pushes the link rate and the per-lane equalisation requested by
+      the source through this device during link training. Omit the
+      property on designs that route the main link straight to the PHY.
+    $ref: /schemas/types.yaml#/definitions/phandle
+
+  xlnx,vidphy:
+    description:
+      Phandle to the Video PHY Controller driving the main link, used to
+      reconfigure the lanes for link-quality pattern requests. Only
+      meaningful on the VPHY topology, i.e. when xlnx,versal-gt is
+      absent.
+    $ref: /schemas/types.yaml#/definitions/phandle
+
+  xlnx,xilinx-vfmc:
+    description:
+      Phandle to the FMC mezzanine controller that powers up and clocks
+      the DisplayPort connector. The receiver only uses it to order
+      probing, deferring until the mezzanine is ready. Only meaningful
+      on the GT Quad topology, i.e. when xlnx,versal-gt is present.
+    $ref: /schemas/types.yaml#/definitions/phandle
 
   xlnx,link-rate:
     description: |
@@ -205,16 +253,41 @@ required:
   - phys
   - ports
 
-if:
-  properties:
-    xlnx,mode:
-      const: 1
-then:
-  required:
-    - xlnx,num-streams
-else:
-  properties:
-    xlnx,num-streams: false
+allOf:
+  - if:
+      properties:
+        xlnx,mode:
+          const: 1
+    then:
+      required:
+        - xlnx,num-streams
+    else:
+      properties:
+        xlnx,num-streams: false
+
+  # The two phy-names forms, xlnx,vidphy and xlnx,xilinx-vfmc each belong to
+  # one topology only, so hold a node to the set its PHY wiring implies.
+  - if:
+      required:
+        - xlnx,versal-gt
+    then:
+      properties:
+        phys:
+          maxItems: 1
+        phy-names:
+          items:
+            - const: dp-gtquad
+        xlnx,vidphy: false
+    else:
+      properties:
+        phy-names:
+          minItems: 1
+          items:
+            - const: dp-phy0
+            - const: dp-phy1
+            - const: dp-phy2
+            - const: dp-phy3
+        xlnx,xilinx-vfmc: false
 
 additionalProperties: false
 
@@ -226,8 +299,9 @@ examples:
        reg-names = "dp_base", "edid_base";
        clocks = <&zynqmp_clk 71>, <&zynqmp_clk 72>, <&misc_clk_1>;
        clock-names = "s_axi_aclk", "rx_lnk_clk", "rx_vid_clk";
-       interrupts = <0 89 4>;
-       interrupt-names = "dprxss_dp_irq";
+       interrupts = <0 89 4>, <0 90 4>, <0 91 4>;
+       interrupt-names = "dprxss_dp_irq", "dprxss_hdcp_irq",
+                         "dprxss_timer_irq";
        interrupt-parent = <&gic>;
        phys = <&vphy_lane0 0 1 1 0>, <&vphy_lane1 0 1 1 0>,
               <&vphy_lane2 0 1 1 0>, <&vphy_lane3 0 1 1 0>;
@@ -279,9 +353,8 @@ examples:
        interrupts = <0 89 4>;
        interrupt-names = "dprxss_dp_irq";
        interrupt-parent = <&gic>;
-       phys = <&dp_gtquad 0 1 1 0>, <&dp_gtquad 1 1 1 0>,
-              <&dp_gtquad 2 1 1 0>, <&dp_gtquad 3 1 1 0>;
-       phy-names = "dp-phy0", "dp-phy1", "dp-phy2", "dp-phy3";
+       phys = <&dp_gtquad 0 1 1 0>;
+       phy-names = "dp-gtquad";
        xlnx,bpc = <10>;
        xlnx,clk-wiz = <&clkx5_wiz_0>;
        xlnx,lane-count = <4>;
