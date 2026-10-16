@@ -3454,6 +3454,16 @@ static int xdprxss_probe(struct platform_device *pdev)
 		goto error;
 	}
 
+	/*
+	 * The handler schedules all five of these, so they have to be
+	 * initialised before the interrupt is requested rather than after.
+	 */
+	INIT_DELAYED_WORK(&xdprxss->tp1_work, xlnx_dp_tp1_work_func);
+	INIT_DELAYED_WORK(&xdprxss->unplug_work, xlnx_dp_unplug_work_func);
+	INIT_DELAYED_WORK(&xdprxss->powerchange_work, xlnx_dp_powerchange_work_func);
+	INIT_WORK(&xdprxss->lane_set_work, xlnx_dp_laneset_work_func);
+	INIT_WORK(&xdprxss->link_qual_work, xlnx_dp_linkqual_work_func);
+
 	/* Register interrupt handler */
 	irq = irq_of_parse_and_map(node, 0);
 	ret = devm_request_irq(xdprxss->dev, irq, xdprxss_irq_handler,
@@ -3520,12 +3530,6 @@ static int xdprxss_probe(struct platform_device *pdev)
 		/* Enable HDCP1x Interrupts */
 		xdprxss_enable_hdcp1x_interrupts(xdprxss);
 	}
-
-	INIT_DELAYED_WORK(&xdprxss->tp1_work, xlnx_dp_tp1_work_func);
-	INIT_DELAYED_WORK(&xdprxss->unplug_work, xlnx_dp_unplug_work_func);
-	INIT_DELAYED_WORK(&xdprxss->powerchange_work, xlnx_dp_powerchange_work_func);
-	INIT_WORK(&xdprxss->lane_set_work, xlnx_dp_laneset_work_func);
-	INIT_WORK(&xdprxss->link_qual_work, xlnx_dp_linkqual_work_func);
 
 	return 0;
 
