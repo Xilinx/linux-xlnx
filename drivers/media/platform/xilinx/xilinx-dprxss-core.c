@@ -3477,6 +3477,7 @@ static int xdprxss_probe(struct platform_device *pdev)
 
 	subdev->flags = V4L2_SUBDEV_FL_HAS_EVENTS | V4L2_SUBDEV_FL_HAS_DEVNODE;
 
+	subdev->entity.function = MEDIA_ENT_F_DV_DECODER;
 	subdev->entity.ops = &xdprxss_media_ops;
 
 	v4l2_set_subdevdata(subdev, xdprxss);
