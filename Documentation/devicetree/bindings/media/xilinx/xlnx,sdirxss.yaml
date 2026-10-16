@@ -73,6 +73,14 @@ properties:
   xlnx,video-width:
     description: The video width supported value is 10.
 
+  xlnx,fmc:
+    description:
+      The SDI FMC mezzanine that conditions the physical SDI signal, on boards
+      that have one fitted.  The mezzanine is shared with the SDI Tx subsystem
+      and must be configured before the Rx GT is brought up, so the Rx driver
+      defers until its driver has done so.  See misc/xlnx,sdi-fmc.yaml.
+    $ref: /schemas/types.yaml#/definitions/phandle
+
   ports:
     type: object
 
