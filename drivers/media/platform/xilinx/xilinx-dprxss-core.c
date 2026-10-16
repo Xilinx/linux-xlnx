@@ -1763,8 +1763,10 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 
 	if (status2 & XDPRX_INTR_HDCP2X_AKE_INIT_MASK) {
 		for (index = 0; index < 2; index++) {
-			xdprxss_write(state, XDPRX_SOFT_RST_REG_HDCP2X_MASK, XDPRX_SOFT_RST_REG);
-			xdprxss_write(state, XDPRX_SOFT_RST_REG_HDCP2X_MASK, 0);
+			xdprxss_set(state, XDPRX_SOFT_RST_REG,
+				    XDPRX_SOFT_RST_REG_HDCP2X_MASK);
+			xdprxss_clr(state, XDPRX_SOFT_RST_REG,
+				    XDPRX_SOFT_RST_REG_HDCP2X_MASK);
 		}
 		xhdcp2x_rx_push_events(state->hdcp2x, XHDCP2X_RX_DPCD_AKE_INIT_RCVD);
 	}
