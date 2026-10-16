@@ -148,7 +148,14 @@
 #define XDPRX_PHYRST_RATECHANGE_MASK	BIT(24)
 #define XDPRX_PHYRST_TP1START_MASK	BIT(25)
 #define XDPRX_PHYRST_ENBL_MASK		0x0	/* PHY reset disabled */
-#define XDPRX_PHY_INIT_MASK		GENMASK(29, 27)
+/*
+ * Writes to XDPRX_PHY_REG replace the whole register, so the three
+ * "issue a reset at ..." bits have to be re-asserted every time the PHY is
+ * re-initialised or the IP stops resetting the GT on its own.
+ */
+#define XDPRX_PHY_INIT_MASK		(XDPRX_PHYRST_TRITER_MASK | \
+					 XDPRX_PHYRST_RATECHANGE_MASK | \
+					 XDPRX_PHYRST_TP1START_MASK)
 
 #define XDPRX_PHYSTATUS_REG			0x208
 #define XDPRX_PHYSTATUS_ALL_LANES_GOOD_MASK	GENMASK(6, 0)
