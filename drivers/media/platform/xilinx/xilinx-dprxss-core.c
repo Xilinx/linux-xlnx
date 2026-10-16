@@ -1279,10 +1279,7 @@ static void xdprxss_core_init(struct xdprxss_state *xdprxss)
 	 * pattern
 	 */
 	xdprxss_write(xdprxss, XDPRX_PHY_REG,
-		      XDPRX_PHYRST_ENBL_MASK |
-		      XDPRX_PHYRST_TRITER_MASK |
-		      XDPRX_PHYRST_RATECHANGE_MASK |
-		      XDPRX_PHYRST_TP1START_MASK);
+		      XDPRX_PHYRST_ENBL_MASK | XDPRX_PHY_INIT_MASK);
 	xdprxss_write(xdprxss, XDPRX_MST_CAP_REG, 0x0);
 	xdprxss_write(xdprxss, XDPRX_SINK_COUNT_REG, 1);
 	xdprxss_enable_training_timeout(xdprxss);
