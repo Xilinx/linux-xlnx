@@ -673,7 +673,7 @@ static int xlnx_dp_phy_ready(struct xdprxss_state *dp)
 }
 
 /**
- * config_rx_dec_clk_clkx5 - Program CLKx5 wizard for the negotiated link rate
+ * xdprxss_config_rx_dec_clk_clkx5 - Program CLKx5 wizard for the link rate
  * @dp: driver state
  * @bw_code: DP link bandwidth code (DP_LINK_BW_*)
  *
@@ -685,7 +685,8 @@ static int xlnx_dp_phy_ready(struct xdprxss_state *dp)
  * removed once the standalone clocking wizard driver gains native
  * clkx5-wiz-1.0 support and can program the wizard via the clk API.
  */
-static void config_rx_dec_clk_clkx5(struct xdprxss_state *dp, int bw_code)
+static void xdprxss_config_rx_dec_clk_clkx5(struct xdprxss_state *dp,
+					    int bw_code)
 {
 	u32 reg2, reg3, reg4, reg11, reg15, reg17;
 	u32 prim_l, prim_h, sec_l, sec_h;
@@ -756,7 +757,7 @@ static void config_rx_dec_clk_clkx5(struct xdprxss_state *dp, int bw_code)
 	xdprxss_mmcm_write(dp, XDPRX_CLKX5_SEC_H_OFFSET, sec_h);
 }
 
-static void config_rx_dec_clk(struct xdprxss_state *dp, int bw_code)
+static void xdprxss_config_rx_dec_clk(struct xdprxss_state *dp, int bw_code)
 {
 	u8 p5_fedge_en, o_val, d_val, m_val;
 	u16 hightime, div_edge;
@@ -765,12 +766,12 @@ static void config_rx_dec_clk(struct xdprxss_state *dp, int bw_code)
 	/*
 	 * On Versal Gen 2 series silicon the clkx5-wiz-1.0 latches the
 	 * per-link-rate register table internally, so neither the MMCM
-	 * RECONFIG_LOAD trigger nor the get_rx_dec_clk_lock() readback
+	 * RECONFIG_LOAD trigger nor the xdprxss_get_rx_dec_clk_lock() readback
 	 * apply on this path: the MMCM reconfigure/lock registers are
 	 * not implemented on the clkx5 IP.
 	 */
 	if (dp->clkx5_wiz) {
-		config_rx_dec_clk_clkx5(dp, bw_code);
+		xdprxss_config_rx_dec_clk_clkx5(dp, bw_code);
 		return;
 	}
 
@@ -851,7 +852,7 @@ static void config_rx_dec_clk(struct xdprxss_state *dp, int bw_code)
 			   XDPRX_MMCM_RECONFIG_LOAD | XDPRX_MMCM_RECONFIG_SADDR);
 }
 
-static int get_rx_dec_clk_lock(struct xdprxss_state *dp)
+static int xdprxss_get_rx_dec_clk_lock(struct xdprxss_state *dp)
 {
 	u32 retry = 0;
 
@@ -868,7 +869,8 @@ static int get_rx_dec_clk_lock(struct xdprxss_state *dp)
 	return 0;
 }
 
-static int config_gt_control_linerate(struct xdprxss_state *dp, int bw_code)
+static int xdprxss_config_gt_control_linerate(struct xdprxss_state *dp,
+					      int bw_code)
 {
 	u32 data;
 
@@ -913,7 +915,7 @@ static int xlnx_dp_rx_gt_control_init(struct xdprxss_state *dp)
 	xdprxss_clr(dp, XDPRX_GTCTL_REG, XDPRX_GTCTL_EN);
 
 	/* Setting initial link rate */
-	ret = config_gt_control_linerate(dp, DP_LINK_BW_8_1);
+	ret = xdprxss_config_gt_control_linerate(dp, DP_LINK_BW_8_1);
 	if (ret) {
 		dev_err(dp->dev, "Default Line Rate setting Failed\n");
 		return ret;
@@ -1413,11 +1415,11 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 		xdprxss_write(state, XDPRX_PHY_REG, XDPRX_PHY_INIT_MASK);
 		phy_reset(state->phy[0]);
 	} else {
-		config_rx_dec_clk(state, linkrate);
+		xdprxss_config_rx_dec_clk(state, linkrate);
 
-		config_gt_control_linerate(state, linkrate);
+		xdprxss_config_gt_control_linerate(state, linkrate);
 
-		if (!state->clkx5_wiz && get_rx_dec_clk_lock(state))
+		if (!state->clkx5_wiz && xdprxss_get_rx_dec_clk_lock(state))
 			dev_info(state->dev, "rx decryption clock failed to lock\n");
 
 		/* Initialize phy logic of DP-RX core */
@@ -3427,7 +3429,7 @@ static int xdprxss_probe(struct platform_device *pdev)
 		if (ret < 0)
 			goto rx_lnk_clk_err;
 
-		if (!xdprxss->clkx5_wiz && get_rx_dec_clk_lock(xdprxss))
+		if (!xdprxss->clkx5_wiz && xdprxss_get_rx_dec_clk_lock(xdprxss))
 			dev_info(dev, "rx decryption clock failed to lock\n");
 	}
 
