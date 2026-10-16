@@ -599,6 +599,26 @@ static inline void xdprxss_soft_video_reset(struct xdprxss_state *xdprxss)
 }
 
 /**
+ * xdprxss_hold_gt_in_reset - stop the recovered link clock
+ * @xdprxss: pointer to driver state
+ *
+ * Holds the GT receiver datapath in reset, which stops the recovered link
+ * clock and makes the IP DEFER the source's DPCD 0x202 status reads instead
+ * of answering them with zeros.
+ *
+ * GTPLLRST is deliberately left clear: a rate switch has to bring the PLL and
+ * the MMCM to lock, which it cannot do with the PLL held in reset.
+ *
+ * The write replaces the whole register, so any XDPRX_PHY_REG write that does
+ * not set XDPRX_PHY_GTRXRST_MASK releases the hold again.
+ */
+static inline void xdprxss_hold_gt_in_reset(struct xdprxss_state *xdprxss)
+{
+	xdprxss_write(xdprxss, XDPRX_PHY_REG,
+		      XDPRX_PHY_INIT_MASK | XDPRX_PHY_GTRXRST_MASK);
+}
+
+/**
  * xlnx_dp_phy_ready - check if PHY is ready
  * @dp: DisplayPort IP core structure
  *
@@ -1342,6 +1362,14 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 
 	dev_dbg(state->dev, "Asserted training pattern 1\n");
 
+	/*
+	 * Re-assert the hold the interrupt handler took, so that a pass which
+	 * re-enters here is covered too. Both branches below finish by writing
+	 * XDPRX_PHY_INIT_MASK, which replaces the whole register and so
+	 * releases it.
+	 */
+	xdprxss_hold_gt_in_reset(state);
+
 	linkrate = xdprxss_read(state, XDPRX_LINK_BW_REG);
 
 	switch (linkrate) {
@@ -1649,8 +1677,20 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 		schedule_delayed_work(&state->powerchange_work, 0);
 	if (status & XDPRX_INTR_UNPLUG_MASK)
 		schedule_delayed_work(&state->unplug_work, 0);
-	if (status & XDPRX_INTR_TP1_MASK)
+	if (status & XDPRX_INTR_TP1_MASK) {
+		/*
+		 * Hold the GT receiver in reset from here in addition to
+		 * xdprxss_irq_tp1(), which runs later on the workqueue.
+		 *
+		 * The hold only helps if it is already in place when the
+		 * source's first DPCD 0x202 status read arrives, roughly
+		 * 0.4 ms after TPS1. Workqueue latency is of the same order,
+		 * so asserting it from the worker alone wins the race only
+		 * sometimes. One register write is cheap enough to do here.
+		 */
+		xdprxss_hold_gt_in_reset(state);
 		schedule_delayed_work(&state->tp1_work, 0);
+	}
 	if (status & XDPRX_INTR_TP2_MASK)
 		xdprxss_irq_tp2(state);
 	if (status & XDPRX_INTR_TRLOST_MASK)
