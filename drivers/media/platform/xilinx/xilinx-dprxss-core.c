@@ -1260,7 +1260,9 @@ static void xdprxss_set_training_params(struct xdprxss_state *xdprxss)
 		iowrite32((uint32_t)xilinx_edid[offset / 4],
 			  xdprxss->edid_base + offset);
 	}
+	xdprxss_dpcd_update_start(xdprxss);
 	xdprxss_write(xdprxss, XDPRX_LOCAL_EDID_REG, 0x1);
+	xdprxss_dpcd_update_end(xdprxss);
 	xdprxss_set(xdprxss, XDPRX_DTG_REG, XDPRX_VSCEXT_VESA_SDP_SUPPORTED);
 
 	/* Disable all the interrupts */
@@ -1309,8 +1311,10 @@ static void xdprxss_core_init(struct xdprxss_state *xdprxss)
 	 */
 	xdprxss_write(xdprxss, XDPRX_PHY_REG,
 		      XDPRX_PHYRST_ENBL_MASK | XDPRX_PHY_INIT_MASK);
+	xdprxss_dpcd_update_start(xdprxss);
 	xdprxss_write(xdprxss, XDPRX_MST_CAP_REG, 0x0);
 	xdprxss_write(xdprxss, XDPRX_SINK_COUNT_REG, 1);
+	xdprxss_dpcd_update_end(xdprxss);
 	xdprxss_enable_training_timeout(xdprxss);
 	xdprxss_set_training_params(xdprxss);
 }
