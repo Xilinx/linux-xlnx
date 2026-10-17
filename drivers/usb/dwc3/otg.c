@@ -292,7 +292,6 @@ static int start_host(struct dwc3_otg *otg)
 	int ret = -ENODEV;
 	int flg;
 	u32 octl;
-	u32 osts;
 	u32 ocfg;
 	u32 dctl;
 	struct usb_hcd *hcd;
@@ -365,7 +364,6 @@ skip:
 	/* Power the port only for A-host */
 	if (otg->otg.state == OTG_STATE_A_WAIT_VRISE) {
 		/* Spin on xhciPrtPwr bit until it becomes 1 */
-		osts = otg_read(otg, OSTS);
 		flg = otg3_handshake(otg, OSTS,
 				OSTS_XHCI_PRT_PWR,
 				OSTS_XHCI_PRT_PWR,
