@@ -172,6 +172,11 @@
 #define PERI_MODE_HOST		0
 #define PERI_MODE_PERIPHERAL	1
 
+/* Maximum time in milliseconds for an A-peripheral to disconnect
+ * after the B-host suspends the bus.
+ */
+#define B_HOST_END_TIMEOUT	200
+
 /** The main structure to keep track of OTG driver state. */
 struct dwc3_otg {
 
