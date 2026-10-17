@@ -217,7 +217,7 @@ static ssize_t firmware_meta_header_get_data(struct file *filp,
 	u32 size;
 	int ret;
 
-	ret = request_firmware(&fw, image_name, kdev);
+	ret = request_firmware(&fw, image_name, NULL);
 	if (ret) {
 		dev_err(kdev, "Error requesting firmware %s\n", image_name);
 		return ret;
