@@ -571,6 +571,7 @@ static void start_peripheral(struct dwc3_otg *otg)
 		dwc3_gadget_enable_irq(dwc);
 
 		otg_write(otg, DCTL, otg_read(otg, DCTL) | DCTL_RUN_STOP);
+		dwc->pullups_connected = true;
 		otg_dbg(otg, "Setting DCTL_RUN_STOP to 1 in DCTL\n");
 		spin_unlock(&otg->lock);
 	}
@@ -810,6 +811,7 @@ static enum usb_otg_state do_a_host(struct dwc3_otg *otg)
 	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT |
 		OEVT_A_DEV_SESS_END_DET_EVNT;
 	user_mask = USER_SRP_EVENT |
+		USER_B_DISCONN_EVENT |
 		USER_HNP_EVENT;
 
 	rc = sleep_until_event(otg,
@@ -830,6 +832,9 @@ static enum usb_otg_state do_a_host(struct dwc3_otg *otg)
 	} else if (user_events & USER_HNP_EVENT) {
 		otg_dbg(otg, "USER_HNP_EVENT\n");
 		return OTG_STATE_A_SUSPEND;
+	} else if (user_events & USER_B_DISCONN_EVENT) {
+		otg_dbg(otg, "USER_B_DISCONN_EVENT\n");
+		return OTG_STATE_A_WAIT_VFALL;
 	}
 
 	/* Invalid state */
@@ -1113,6 +1118,7 @@ static enum usb_otg_state do_b_peripheral(struct dwc3_otg *otg)
 	u32 user_mask;
 	u32 otg_events = 0;
 	u32 user_events = 0;
+	struct dwc3 *dwc = otg->dwc;
 
 	otg_dbg(otg, "");
 	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT | OEVT_B_DEV_VBUS_CHNG_EVNT;
@@ -1145,6 +1151,7 @@ again:
 		return do_b_hnp_init(otg);
 	} else if (user_events & USER_END_SESSION) {
 		otg_dbg(otg, "USER_END_SESSION\n");
+		usb_gadget_disconnect(dwc->gadget);
 		return OTG_STATE_B_IDLE;
 	}
 
@@ -1832,6 +1839,7 @@ static int dwc3_otg_notify_disconnect(struct usb_phy *phy,
 		enum usb_device_speed speed)
 {
 	struct dwc3_otg *otg;
+	unsigned long flags;
 
 	otg = otg_to_dwc3_otg(phy->otg);
 
@@ -1839,6 +1847,12 @@ static int dwc3_otg_notify_disconnect(struct usb_phy *phy,
 		while (!cancel_delayed_work(&otg->hp_work))
 			msleep(20);
 	}
+
+	spin_lock_irqsave(&otg->lock, flags);
+	otg->user_events |= USER_B_DISCONN_EVENT;
+	wakeup_main_thread(otg);
+	spin_unlock_irqrestore(&otg->lock, flags);
+
 	return 0;
 }
 

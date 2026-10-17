@@ -240,6 +240,8 @@ struct dwc3_otg {
 	 *  initiated
 	 */
 #define USER_HNP_END_SESSION		0x100
+	/** B-device disconnected from the root port (only valid in A-host) */
+#define USER_B_DISCONN_EVENT		0x200
 
 	/* States */
 	enum usb_otg_state prev;
