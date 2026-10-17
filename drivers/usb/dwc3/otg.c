@@ -532,21 +532,39 @@ static void start_peripheral(struct dwc3_otg *otg)
 		int			ret;
 
 		spin_lock(&otg->lock);
+
+		ret = dwc3_gadget_start_config(dwc, 0);
+		if (ret) {
+			otg_err(otg, "EP0 start config failed: %d\n", ret);
+			goto unlock;
+		}
+
+		/*
+		 * __dwc3_gadget_ep_disable() keeps DWC3_EP_TRANSFER_STARTED when
+		 * a delayed stop was pending, which would stop
+		 * dwc3_ep0_out_start() from queueing the SETUP transfer.
+		 */
+		dwc->eps[0]->flags = 0;
+		dwc->eps[1]->flags = 0;
+
 		dep = dwc->eps[0];
 
 		ret = __dwc3_gadget_ep_enable(dep, DWC3_DEPCFG_ACTION_INIT);
 		if (ret)
-			goto err0;
+			goto unlock;
 
 		dep = dwc->eps[1];
 
 		ret = __dwc3_gadget_ep_enable(dep, DWC3_DEPCFG_ACTION_INIT);
 		if (ret)
-			goto err1;
+			goto disable_ep0;
 
 		otg_dbg(otg, "enabled ep in gadget driver\n");
 		/* begin to receive SETUP packets */
 		dwc->ep0state = EP0_SETUP_PHASE;
+		dwc->ep0_bounced = false;
+		dwc->delayed_status = false;
+		dwc->link_state = DWC3_LINK_STATE_SS_DIS;
 		dwc3_ep0_out_start(dwc);
 
 		otg_dbg(otg, "enabled irq\n");
@@ -570,11 +588,10 @@ static void start_peripheral(struct dwc3_otg *otg)
 	msleep(500);
 
 	return;
-err1:
-		__dwc3_gadget_ep_disable(dwc->eps[0]);
-
-err0:
-		return;
+disable_ep0:
+	__dwc3_gadget_ep_disable(dwc->eps[0]);
+unlock:
+	spin_unlock(&otg->lock);
 }
 
 static void stop_peripheral(struct dwc3_otg *otg)
@@ -1741,6 +1758,8 @@ static int dwc3_otg_set_periph(struct usb_otg *_otg, struct usb_gadget *gadget)
 	}
 
 	otg->otg.gadget = gadget;
+	otg->otg.gadget->otg_caps = &otg->otg_caps;
+	otg->otg.gadget->is_otg = 1;
 	otg->otg.gadget->hnp_polling_support = 1;
 
 	start_main_thread(otg);
@@ -1804,6 +1823,11 @@ static int dwc3_otg_start_srp(struct usb_otg *x)
 
 	if (!otg->otg.host || !otg->otg.gadget)
 		return -ENODEV;
+
+	if (!(otg_read(otg, OSTS) & OSTS_CONN_ID_STS)) {
+		otg_err(otg, "SRP can only be initiated by the B-device\n");
+		return -EINVAL;
+	}
 
 	spin_lock_irqsave(&otg->lock, flags);
 	otg->user_events |= USER_SRP_EVENT;
@@ -1969,8 +1993,17 @@ static ssize_t store_hnp(struct device *dev, struct device_attribute *attr,
 		return count;
 	}
 
-	dev_info(dev, "b_hnp_enable is FALSE\n");
+	/* The sysfs files are created before dwc3_gadget_init() */
+	if (!dwc->gadget) {
+		usb_put_phy(phy);
+		return -ENODEV;
+	}
+
 	dwc->gadget->host_request_flag = 1;
+	if (dwc->gadget->b_hnp_enable)
+		otg_start_hnp(otg);
+	else
+		dev_info(dev, "b_hnp_enable is FALSE\n");
 
 	usb_put_phy(phy);
 	return count;
@@ -2129,6 +2162,11 @@ void dwc3_otg_init(struct dwc3 *dwc)
 	otg->otg.set_peripheral = dwc3_otg_set_periph;
 
 	otg->hwparams6 = reg;
+
+	otg->otg_caps.otg_rev = OTG_REV_2_0;
+	otg->otg_caps.hnp_support = hnp_capable(otg);
+	otg->otg_caps.srp_support = srp_capable(otg);
+
 	otg->state = OTG_STATE_UNDEFINED;
 
 	spin_lock_init(&otg->lock);

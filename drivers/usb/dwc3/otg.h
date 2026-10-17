@@ -166,6 +166,9 @@
 #define OTG_STATE_EXIT				14
 #define OTG_STATE_TERMINATED			15
 
+/* bcdOTG value for the OTG 2.0 descriptor */
+#define OTG_REV_2_0				0x0200
+
 #define PERI_MODE_HOST		0
 #define PERI_MODE_PERIPHERAL	1
 
@@ -238,6 +241,11 @@ struct dwc3_otg {
 	bool exiting;
 
 	struct delayed_work hp_work;	/* drives HNP polling */
+	/**
+	 *  OTG capabilities exposed to the gadget core for the
+	 *  OTG 2.0 descriptor (bcdOTG/bmAttributes).
+	 */
+	struct usb_otg_caps otg_caps;
 
 };
 
