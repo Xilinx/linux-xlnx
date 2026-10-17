@@ -176,6 +176,14 @@
  * after the B-host suspends the bus.
  */
 #define B_HOST_END_TIMEOUT	200
+/* Maximum time in milliseconds for an A-peripheral to wait for
+ * bus idle-to-disconnect.
+ */
+#define TA_BIDL_ADIS_MAX	200
+/* Timeout in milliseconds waiting for an A-device to connect in
+ * B_WAIT_ACON state.
+ */
+#define B_WAIT_ACON_TIMEOUT	2000
 
 /** The main structure to keep track of OTG driver state. */
 struct dwc3_otg {

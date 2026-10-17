@@ -1004,8 +1004,10 @@ static enum usb_otg_state do_a_peripheral(struct dwc3_otg *otg)
 	int rc;
 	u32 otg_mask;
 	u32 user_mask;
+	int timeout = TA_BIDL_ADIS_MAX;
 	u32 otg_events = 0;
 	u32 user_events = 0;
+	struct dwc3 *dwc = otg->dwc;
 
 	otg_dbg(otg, "");
 	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT |
@@ -1013,9 +1015,10 @@ static enum usb_otg_state do_a_peripheral(struct dwc3_otg *otg)
 		OEVT_A_DEV_B_DEV_HOST_END_EVNT;
 	user_mask = USER_HNP_END_SESSION;
 
+again:
 	rc = sleep_until_event(otg,
 			otg_mask, user_mask,
-			&otg_events, &user_events, 0);
+			&otg_events, &user_events, timeout);
 	if (rc < 0)
 		return OTG_STATE_UNDEFINED;
 
@@ -1029,10 +1032,22 @@ static enum usb_otg_state do_a_peripheral(struct dwc3_otg *otg)
 
 	} else if (otg_events & OEVT_A_DEV_B_DEV_HOST_END_EVNT) {
 		otg_dbg(otg, "OEVT_A_DEV_B_DEV_HOST_END_EVNT\n");
+		if (!dwc->connected && rc > 0) {
+			otg_dbg(otg, "A_DEV_B_DEV_HOST_END before gadget connected, ignoring\n");
+			timeout = rc;
+			goto again;
+		}
 		return OTG_STATE_A_WAIT_VRISE;
 	} else if (user_events & USER_HNP_END_SESSION) {
 		otg_dbg(otg, "USER_HNP_END_SESSION\n");
 		return OTG_STATE_A_WAIT_VRISE;
+	} else if (rc == 0) {
+		if (!dwc->connected) {
+			otg_dbg(otg, "B-host did not reset the bus, back to A-host\n");
+			return OTG_STATE_A_WAIT_VRISE;
+		}
+		timeout = 0;
+		goto again;
 	}
 
 	return OTG_STATE_UNDEFINED;
@@ -1140,6 +1155,7 @@ static enum usb_otg_state do_b_wait_acon(struct dwc3_otg *otg)
 {
 	int rc;
 	u32 otg_mask;
+	int timeout = B_WAIT_ACON_TIMEOUT;
 	u32 user_mask = 0;
 	u32 otg_events = 0;
 	u32 user_events = 0;
@@ -1168,7 +1184,7 @@ static enum usb_otg_state do_b_wait_acon(struct dwc3_otg *otg)
 again:
 	rc = sleep_until_event(otg,
 			otg_mask, user_mask,
-			&otg_events, &user_events, 0);
+			&otg_events, &user_events, timeout);
 	if (rc < 0)
 		return OTG_STATE_UNDEFINED;
 
@@ -1183,7 +1199,12 @@ again:
 		otg_dbg(otg, "OEVT_B_DEV_VBUS_CHNG_EVNT\n");
 		if (otg_events & OEVT_B_SES_VLD_EVT) {
 			otg_dbg(otg, "Session valid\n");
-			goto again;
+			if (rc > 0) {
+				timeout = rc;
+				goto again;
+			}
+			otg_err(otg, "A-device did not connect, back to B-peripheral\n");
+			return OTG_STATE_B_PERIPHERAL;
 		} else {
 			otg_dbg(otg, "Session not valid\n");
 			return OTG_STATE_B_IDLE;
@@ -1193,6 +1214,9 @@ again:
 		return OTG_STATE_B_HOST;
 	} else if (user_events & USER_HNP_END_SESSION) {
 		otg_dbg(otg, "USER_HNP_END_SESSION\n");
+		return OTG_STATE_B_PERIPHERAL;
+	} else if (rc == 0) {
+		otg_err(otg, "A-device did not connect, back to B-peripheral\n");
 		return OTG_STATE_B_PERIPHERAL;
 	}
 
@@ -1337,7 +1361,7 @@ again:
 		}
 	} else if (user_events & USER_HNP_END_SESSION) {
 		otg_dbg(otg, "USER_HNP_END_SESSION\n");
-		return OTG_STATE_B_PERIPHERAL;
+		return do_b_suspend(otg);
 	}
 
 	/* Invalid state */
@@ -1759,6 +1783,7 @@ static int dwc3_otg_notify_connect(struct usb_phy *phy,
 	struct usb_device *udev;
 	struct usb_hcd *hcd;
 	struct dwc3_otg *otg;
+	unsigned long flags;
 	int err = 0;
 
 	otg = otg_to_dwc3_otg(phy->otg);
@@ -1774,6 +1799,11 @@ static int dwc3_otg_notify_connect(struct usb_phy *phy,
 	udev = usb_hub_find_child(bus->root_hub, bus->otg_port);
 	if (!udev)
 		return 0;
+
+	spin_lock_irqsave(&otg->lock, flags);
+	otg->user_events |= USER_A_CONN_EVENT;
+	wakeup_main_thread(otg);
+	spin_unlock_irqrestore(&otg->lock, flags);
 
 	/*
 	 * OTG-aware devices on OTG-capable root hubs may be able to use SRP,
