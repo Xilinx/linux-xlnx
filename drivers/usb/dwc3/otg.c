@@ -1200,6 +1200,102 @@ again:
 	return OTG_STATE_UNDEFINED;
 }
 
+static int suspend_otg_port(struct dwc3_otg *otg)
+{
+	struct usb_device *rhdev;
+	struct usb_device *udev;
+	struct usb_hcd *hcd;
+	struct usb_bus *bus;
+	int ret;
+
+	if (!otg->otg.host)
+		return -ENODEV;
+
+	hcd = container_of(otg->otg.host, struct usb_hcd, self);
+	bus = &hcd->self;
+	if (!bus->otg_port)
+		return -ENODEV;
+
+	rhdev = bus->root_hub;
+
+	usb_lock_device(rhdev);
+	udev = usb_hub_find_child(rhdev, bus->otg_port);
+	if (udev)
+		usb_get_dev(udev);
+	usb_unlock_device(rhdev);
+	if (!udev)
+		return -ENODEV;
+
+	usb_lock_device(udev);
+	if (udev->state == USB_STATE_NOTATTACHED)
+		ret = -ENODEV;
+	else
+		ret = usb_port_suspend(udev, PMSG_AUTO_SUSPEND);
+	usb_unlock_device(udev);
+	usb_put_dev(udev);
+
+	return ret;
+}
+
+static enum usb_otg_state do_b_suspend(struct dwc3_otg *otg)
+{
+	int rc;
+	int ret;
+	u32 otg_mask;
+	u32 otg_events = 0;
+
+	otg_dbg(otg, "");
+
+	cancel_delayed_work_sync(&otg->hp_work);
+
+	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT |
+		OEVT_B_DEV_B_HOST_END_EVNT |
+		OEVT_B_DEV_VBUS_CHNG_EVNT;
+
+	start_a_hnp(otg);
+	ret = suspend_otg_port(otg);
+	if (ret) {
+		otg_err(otg, "B-host port suspend failed: %d\n", ret);
+		stop_a_hnp(otg);
+		return OTG_STATE_B_PERIPHERAL;
+	}
+
+	rc = B_HOST_END_TIMEOUT;
+again:
+	rc = sleep_until_event(otg, otg_mask, 0, &otg_events, NULL, rc);
+	if (rc < 0) {
+		stop_a_hnp(otg);
+		return OTG_STATE_UNDEFINED;
+	}
+
+	if (otg_events & OEVT_CONN_ID_STS_CHNG_EVNT) {
+		otg_dbg(otg, "OEVT_CONN_ID_STS_CHNG_EVNT\n");
+		stop_a_hnp(otg);
+		return OTG_STATE_UNDEFINED;
+	} else if (otg_events & OEVT_B_DEV_B_HOST_END_EVNT) {
+		otg_dbg(otg, "OEVT_B_DEV_B_HOST_END_EVNT\n");
+	} else if (otg_events & OEVT_B_DEV_VBUS_CHNG_EVNT) {
+		otg_dbg(otg, "OEVT_B_DEV_VBUS_CHNG_EVNT\n");
+		if (otg_events & OEVT_B_SES_VLD_EVT) {
+			otg_dbg(otg, "Session valid\n");
+			if (rc > 0)
+				goto again;
+			otg_err(otg, "A-device did not disconnect after B-host suspend\n");
+		} else {
+			otg_dbg(otg, "Session not valid\n");
+			stop_a_hnp(otg);
+			return OTG_STATE_B_IDLE;
+		}
+	} else if (rc == 0) {
+		otg_err(otg, "A-device did not disconnect after B-host suspend\n");
+	} else {
+		goto again;
+	}
+
+	stop_a_hnp(otg);
+	return OTG_STATE_B_PERIPHERAL;
+}
+
 static enum usb_otg_state do_b_host(struct dwc3_otg *otg)
 {
 	int rc;
