@@ -38,6 +38,11 @@
 #include "xlnx_crtc.h"
 #include "xlnx_drv.h"
 
+static bool overclock_2x;
+module_param(overclock_2x, bool, 0444);
+MODULE_PARM_DESC(overclock_2x,
+		 "Double the pixel clock rate for some legacy designs");
+
 #define XLNX_AVPG_MAX_WIDTH		8192
 #define XLNX_AVPG_MAX_HEIGHT		8192
 
@@ -508,31 +513,25 @@ static void xlnx_avpg_crtc_enable(struct drm_crtc *crtc,
 	struct videomode vm;
 	struct drm_display_mode *mode = &crtc->state->adjusted_mode;
 	struct xlnx_avpg *avpg = crtc_to_avpg(crtc);
-	unsigned long pixel_clk = mode->clock * 1000;
+	unsigned long pixel_clk = mode->clock * 1000 / avpg->pixels_per_clock;
 	int ret;
 
 	pm_runtime_get_sync(&avpg->pdev->dev);
 
-	ret = clk_prepare_enable(avpg->video_clk);
-	if (ret < 0) {
-		dev_err(&avpg->pdev->dev,
-			"failed to enable video clock: %d\n", ret);
-		return;
-	}
-	/*
-	 * We use /2 clock output from clock wizard as the pixel clock, so we
-	 * should set double the pixel clock rate.
-	 */
-	if (avpg->pixels_per_clock > 1)
-		pixel_clk /= avpg->pixels_per_clock >> 1;
-	else
+	if (overclock_2x)
 		pixel_clk *= 2;
 	ret = clk_set_rate(avpg->video_clk, pixel_clk);
 	if (ret < 0) {
 		dev_err(&avpg->pdev->dev,
 			"failed to set video clock rate of %lu: %d\n",
 			pixel_clk, ret);
-		clk_disable_unprepare(avpg->video_clk);
+		return;
+	}
+
+	ret = clk_prepare_enable(avpg->video_clk);
+	if (ret < 0) {
+		dev_err(&avpg->pdev->dev,
+			"failed to enable video clock: %d\n", ret);
 		return;
 	}
 
