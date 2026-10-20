@@ -42,6 +42,11 @@
 
 #define XLNX_PL_DISP_MAX_NUM_PLANES	3
 
+static bool overclock_2x;
+module_param(overclock_2x, bool, 0444);
+MODULE_PARM_DESC(overclock_2x,
+		 "Double the pixel clock rate for some legacy designs");
+
 /*
  * Overview
  * --------
@@ -473,28 +478,11 @@ static void xlnx_pl_disp_crtc_atomic_enable(struct drm_crtc *crtc,
 	u32 user_calc_ppc = 1;
 	int ret;
 
-	/*
-	 * Bring up the PL video (pixel) clock for this pipeline. The source
-	 * emits @ppc pixels per clock, and the clock wizard output is a /2
-	 * ("2x") clock, so the required rate matches AVPG's handling: for
-	 * ppc > 1 divide the pixel rate by ppc/2, otherwise double it. The
-	 * clock is optional; clk_* on NULL is a no-op for boards that manage
-	 * the video clock elsewhere.
-	 */
-	pixel_clk = adjusted_mode->clock * 1000;
-	ret = clk_prepare_enable(xlnx_pl_disp->vid_clk);
-	if (ret < 0) {
-		dev_err(xlnx_pl_disp->dev,
-			"failed to enable video clock: %d\n", ret);
-		return;
-	}
-	xlnx_pl_disp->vid_clk_enabled = true;
-	if (xlnx_pl_disp->ppc > 1)
-		pixel_clk /= xlnx_pl_disp->ppc >> 1;
-	else
+	pixel_clk = adjusted_mode->clock * 1000 / xlnx_pl_disp->ppc;
+	if (overclock_2x)
 		pixel_clk *= 2;
 	/*
-	 * Several pipelines share a single clocking-wizard VCO. Calling
+	 * Several pipelines may share a single clocking-wizard VCO. Calling
 	 * clk_set_rate() triggers a dynamic reconfiguration that re-locks the
 	 * whole wizard, momentarily dropping its "locked" output and resetting
 	 * the timing generators of the other, already-running pipelines. Only
@@ -515,11 +503,17 @@ static void xlnx_pl_disp_crtc_atomic_enable(struct drm_crtc *crtc,
 			dev_err(xlnx_pl_disp->dev,
 				"failed to set video clock rate of %lu: %d\n",
 				pixel_clk, ret);
-			clk_disable_unprepare(xlnx_pl_disp->vid_clk);
-			xlnx_pl_disp->vid_clk_enabled = false;
 			return;
 		}
 	}
+
+	ret = clk_prepare_enable(xlnx_pl_disp->vid_clk);
+	if (ret < 0) {
+		dev_err(xlnx_pl_disp->dev,
+			"failed to enable video clock: %d\n", ret);
+		return;
+	}
+	xlnx_pl_disp->vid_clk_enabled = true;
 
 	if (xlnx_pl_disp->vtc_bridge && !xlnx_pl_disp->dp_native) {
 		/* Ungate the VTC clock before programming/enabling it. */
