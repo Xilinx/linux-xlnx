@@ -24,6 +24,22 @@ struct device;
 
 #define XLNX_DPRXSS_EDID_IIC_ADDRESS	0x50
 #define XLNX_DPRX_MST_DEFAULT_PBN	2560
+/*
+ * Link the default PBN above corresponds to, per DP 1.4a section 2.6.4.1:
+ * HBR2 across four lanes.
+ */
+#define XLNX_DPRX_MST_PBN_BASE_MBPS	5400
+#define XLNX_DPRX_MST_PBN_BASE_LANES	4
+
+/*
+ * Channel coding efficiency in 1ppm units: the share of the raw line rate
+ * left for payload once the symbol conversion overhead is taken out. 8B/10B
+ * spends 20% of the rate on encoding; 128B/132B spends 3.29% and also carries
+ * the link and PHY control symbol insertion overhead of DP 2.1 section
+ * 3.5.2.18.
+ */
+#define XLNX_DPRX_CODING_EFF_8B10B_PPM		800000
+#define XLNX_DPRX_CODING_EFF_128B132B_PPM	967100
 
 #define XLNX_DPRX_MST_INPUT_PORT	0
 #define XLNX_DPRX_INPUT_PORT_MST_SOURCE	0
@@ -74,7 +90,8 @@ struct xdprxss_mst;
 struct xdprxss_mst *xdprxss_init_mst(struct device *dev,
 				     void __iomem *intf_base,
 				     bool mst_enable, u32 num_audio_channels,
-				     u8 num_streams);
+				     u8 num_streams, u8 max_linkrate,
+				     u8 max_lanecount, bool uhbr_capable);
 void xdprxss_dp_mst_handle_down_req(struct xdprxss_mst *xdpmst);
 void xdprxss_dp_mst_payload_allocation(struct xdprxss_mst *xdpmst);
 unsigned long xdprxss_mst_active_mask(const struct xdprxss_mst *xdpmst,

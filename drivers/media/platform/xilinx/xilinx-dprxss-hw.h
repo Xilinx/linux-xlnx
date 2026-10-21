@@ -14,6 +14,8 @@
 #include <linux/bits.h>
 #include <linux/units.h>
 
+#include <drm/display/drm_dp.h>
+
 /* DP Rx subsystem register map, bitmask, and offsets. */
 #define XDPRX_LINK_ENABLE_REG		0x000
 #define XDPRX_AUX_CLKDIV_REG		0x004
@@ -503,5 +505,35 @@
 #define XDPRX_TPS1_SCORE_DELAY			0
 #define XDPRX_LTTPR_COUNT_REG			0x1664
 #define XDPRX_LTTPR_COUNT_MASK			GENMASK(7, 0)
+
+/*
+ * Every UHBR bandwidth code is numerically below the lowest 8B/10B one, so
+ * applying the 8B/10B rule of code * 0.27 Gb/s to one yields a rate that is
+ * far too low rather than an obvious error. Test the three codes by value.
+ */
+static inline bool xdprxss_linkrate_is_uhbr(u32 bw_code)
+{
+	return bw_code == DP_LINK_BW_10 || bw_code == DP_LINK_BW_13_5 ||
+	       bw_code == DP_LINK_BW_20;
+}
+
+/*
+ * Translates a LINK_BW_SET code into the Mb/s value carried in
+ * phy_configure_opts_dp.link_rate. The 8B/10B codes scale by 270, whereas the
+ * UHBR codes map to flat rates.
+ */
+static inline unsigned int xdprxss_link_rate_to_mbps(u32 bw_code)
+{
+	switch (bw_code) {
+	case DP_LINK_BW_10:
+		return XDPRX_LINK_RATE_UHBR10_MBPS;
+	case DP_LINK_BW_13_5:
+		return XDPRX_LINK_RATE_UHBR13_5_MBPS;
+	case DP_LINK_BW_20:
+		return XDPRX_LINK_RATE_UHBR20_MBPS;
+	default:
+		return bw_code * 270;
+	}
+}
 
 #endif /* __XILINX_DPRXSS_HW_H__ */
