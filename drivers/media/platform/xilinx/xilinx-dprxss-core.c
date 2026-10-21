@@ -493,6 +493,13 @@ static const u8 xdprxss_rates_8b10b[] = {
 	DP_LINK_BW_8_1,
 };
 
+/**
+ * xdprxss_linkrate_is_8b10b - Test for a DP1.4 link rate
+ * @link_rate: DPCD LINK_BW_SET code
+ *
+ * Return: true if @link_rate is one of the 1.62/2.7/5.4/8.1Gbps codes, which
+ * always imply 8B/10B channel coding.
+ */
 static bool xdprxss_linkrate_is_8b10b(u32 link_rate)
 {
 	unsigned int i;
@@ -504,18 +511,43 @@ static bool xdprxss_linkrate_is_8b10b(u32 link_rate)
 	return false;
 }
 
+/**
+ * xdprxss_linkrate_is_valid - Test for any known link rate
+ * @link_rate: DPCD LINK_BW_SET code
+ *
+ * Return: true if @link_rate is a valid 8B/10B or UHBR code.
+ */
 static bool xdprxss_linkrate_is_valid(u32 link_rate)
 {
 	return xdprxss_linkrate_is_8b10b(link_rate) ||
 	       xdprxss_linkrate_is_uhbr(link_rate);
 }
 
+/**
+ * xdprxss_advertise_uhbr - Test whether UHBR should be advertised
+ * @xdprxss: pointer to driver state
+ *
+ * UHBR is advertised only when the IP supports it and the device tree
+ * ceiling in xlnx,link-rate actually names a UHBR rate.
+ *
+ * Return: true if the receiver should advertise 128B/132B capability.
+ */
 static bool xdprxss_advertise_uhbr(const struct xdprxss_state *xdprxss)
 {
 	return xdprxss->uhbr_capable &&
 	       xdprxss_linkrate_is_uhbr(xdprxss->max_linkrate);
 }
 
+/**
+ * xdprxss_is_stream_valid - Test whether all active streams carry valid video
+ * @state: pointer to driver state
+ *
+ * In MST mode the number of streams the source is actually sending is taken
+ * from the live VC payload table rather than the device tree, so that a
+ * runtime change in stream count does not fail the check.
+ *
+ * Return: true if every active stream has been marked valid.
+ */
 static bool xdprxss_is_stream_valid(struct xdprxss_state *state)
 {
 	unsigned long active = xdprxss_mst_active_mask(state->mst,
@@ -543,6 +575,12 @@ static void xdprxss_clear_valid_streams(struct xdprxss_state *state)
 		clear_bit(stream, &state->valid_streams);
 }
 
+/**
+ * xdprxss_is_supported_bpc - Test for a supported bit depth
+ * @bpc: bits per component as reported in the MSA
+ *
+ * Return: true if @bpc is 6, 8, 10 or 12.
+ */
 static bool xdprxss_is_supported_bpc(u8 bpc)
 {
 	return bpc == XDPRX_MSA_BPC_6 || bpc == XDPRX_MSA_BPC_8 ||
@@ -550,6 +588,14 @@ static bool xdprxss_is_supported_bpc(u8 bpc)
 }
 
 /* Register related operations */
+
+/**
+ * xdprxss_hdcp1x_keymgmt_reset - Pulse the HDCP1x key management reset
+ * @state: pointer to driver state
+ *
+ * Any failing regmap access aborts the sequence, leaving the block in its
+ * previous state.
+ */
 static inline void xdprxss_hdcp1x_keymgmt_reset(struct xdprxss_state *state)
 {
 	u32 data;
@@ -568,6 +614,13 @@ static inline void xdprxss_hdcp1x_keymgmt_reset(struct xdprxss_state *state)
 	regmap_write(state->hdcp1x_keymgmt_base, HDCP1X_KEYMGMT_REG_CTRL, data);
 }
 
+/**
+ * xdprxss_hdcp1x_keymgmt_enable - Enable the HDCP1x key management block
+ * @state: pointer to driver state
+ *
+ * Enables the block and its key table. Any failing regmap access aborts the
+ * sequence, leaving the block in its previous state.
+ */
 static inline void xdprxss_hdcp1x_keymgmt_enable(struct xdprxss_state *state)
 {
 	u32 data;
@@ -587,6 +640,10 @@ static inline void xdprxss_hdcp1x_keymgmt_enable(struct xdprxss_state *state)
 	regmap_write(state->hdcp1x_keymgmt_base, HDCP1X_KEYMGMT_REG_TBL_CTRL, data);
 }
 
+/**
+ * xdprxss_hdcp1x_keymgmt_disable - Disable the HDCP1x key management block
+ * @state: pointer to driver state
+ */
 static inline void xdprxss_hdcp1x_keymgmt_disable(struct xdprxss_state *state)
 {
 	u32 data;
@@ -598,40 +655,88 @@ static inline void xdprxss_hdcp1x_keymgmt_disable(struct xdprxss_state *state)
 	regmap_write(state->hdcp1x_keymgmt_base, HDCP1X_KEYMGMT_REG_CTRL, data);
 }
 
+/**
+ * xdprxss_mmcm_read - Read an MMCM register
+ * @xdprxss: pointer to driver state
+ * @addr: register offset within the MMCM window
+ *
+ * Return: register value
+ */
 static inline u32 xdprxss_mmcm_read(struct xdprxss_state *xdprxss, u32 addr)
 {
 	return ioread32(xdprxss->dp_base + XDPRXSS_MMCM_OFFSET + addr);
 }
 
+/**
+ * xdprxss_mmcm_write - Write an MMCM register
+ * @xdprxss: pointer to driver state
+ * @addr: register offset within the MMCM window
+ * @value: value to write
+ */
 static inline void xdprxss_mmcm_write(struct xdprxss_state *xdprxss, u32 addr,
 				      u32 value)
 {
 	iowrite32(value, xdprxss->dp_base + XDPRXSS_MMCM_OFFSET + addr);
 }
 
+/**
+ * xdprxss_read - Read a DPRX register
+ * @xdprxss: pointer to driver state
+ * @addr: register offset
+ *
+ * Return: register value
+ */
 static inline u32 xdprxss_read(struct xdprxss_state *xdprxss, u32 addr)
 {
 	return ioread32(xdprxss->dp_base + addr);
 }
 
+/**
+ * xdprxss_write - Write a DPRX register
+ * @xdprxss: pointer to driver state
+ * @addr: register offset
+ * @value: value to write
+ */
 static inline void xdprxss_write(struct xdprxss_state *xdprxss, u32 addr,
 				 u32 value)
 {
 	iowrite32(value, xdprxss->dp_base + addr);
 }
 
+/**
+ * xdprxss_clr - Clear bits in a DPRX register
+ * @xdprxss: pointer to driver state
+ * @addr: register offset
+ * @clr: mask of bits to clear
+ */
 static inline void xdprxss_clr(struct xdprxss_state *xdprxss, u32 addr,
 			       u32 clr)
 {
 	xdprxss_write(xdprxss, addr, xdprxss_read(xdprxss, addr) & ~clr);
 }
 
+/**
+ * xdprxss_set - Set bits in a DPRX register
+ * @xdprxss: pointer to driver state
+ * @addr: register offset
+ * @set: mask of bits to set
+ */
 static inline void xdprxss_set(struct xdprxss_state *xdprxss, u32 addr,
 			       u32 set)
 {
 	xdprxss_write(xdprxss, addr, xdprxss_read(xdprxss, addr) | set);
 }
 
+/**
+ * xdprxss_clrset - Replace a bitfield in a DPRX register
+ * @dp: pointer to driver state
+ * @addr: register offset
+ * @clr_mask: mask of the field to replace
+ * @set_data: new field value, unshifted
+ *
+ * @set_data is shifted into the position described by @clr_mask, so callers
+ * pass the logical field value rather than a pre-shifted one.
+ */
 static void xdprxss_clrset(struct xdprxss_state *dp, u32 addr,
 			   u32 clr_mask, u32 set_data)
 {
@@ -643,11 +748,22 @@ static void xdprxss_clrset(struct xdprxss_state *dp, u32 addr,
 	xdprxss_write(dp, addr, regval);
 }
 
+/**
+ * xdprxss_dpcd_update_start - Open the DPCD override window
+ * @xdprxss: pointer to driver state
+ *
+ * While the window is open the driver may write the DPCD mirror registers and
+ * the IP propagates them into the capability fields the source reads.
+ */
 static inline void xdprxss_dpcd_update_start(struct xdprxss_state *xdprxss)
 {
 	iowrite32(0x1, xdprxss->dp_base + XDPRX_CTRL_DPCD_REG);
 }
 
+/**
+ * xdprxss_dpcd_update_end - Close the DPCD override window
+ * @xdprxss: pointer to driver state
+ */
 static inline void xdprxss_dpcd_update_end(struct xdprxss_state *xdprxss)
 {
 	iowrite32(0x0, xdprxss->dp_base + XDPRX_CTRL_DPCD_REG);
@@ -708,6 +824,13 @@ static void xdprxss_set_channel_coding(struct xdprxss_state *xdprxss,
 	WRITE_ONCE(xdprxss->channel_coding, coding);
 }
 
+/**
+ * xdprxss_get_lane01_reqval - Read the lane 0/1 drive settings
+ * @xdprxss: pointer to driver state
+ *
+ * Return: the voltage swing and pre-emphasis field the source requested for
+ * lanes 0 and 1.
+ */
 static inline int xdprxss_get_lane01_reqval(struct xdprxss_state *xdprxss)
 {
 	return xdprxss_read(xdprxss, XDPRX_DPCD_LANE01_STATUS) &
@@ -730,6 +853,10 @@ static inline void xdprxss_dpcd_update(struct xdprxss_state *xdprxss,
 	xdprxss_write(xdprxss, addr, val);
 }
 
+/**
+ * xdprxss_soft_video_reset - Pulse the video datapath reset
+ * @xdprxss: pointer to driver state
+ */
 static inline void xdprxss_soft_video_reset(struct xdprxss_state *xdprxss)
 {
 	xdprxss_write(xdprxss, XDPRX_SOFT_RST_REG, XDPRX_SOFT_VIDRST_MASK);
@@ -886,6 +1013,18 @@ static void xdprxss_config_rx_dec_clk_clkx5(struct xdprxss_state *dp,
 	xdprxss_mmcm_write(dp, XDPRX_CLKX5_SEC_H_OFFSET, sec_h);
 }
 
+/**
+ * xdprxss_config_rx_dec_clk - Reprogram the decryption clock for a link rate
+ * @dp: pointer to driver state
+ * @bw_code: DPCD LINK_BW_SET code
+ *
+ * Retunes the MMCM so that the /16 GT output clock yields the /20 decryption
+ * clock the link layer needs. Designs fitted with the clkx5 wizard use the
+ * per-rate register table in config_rx_dec_clk_clkx5() instead.
+ *
+ * UHBR rates do not use this path at all; their clocking is set up through
+ * phy_configure(). Passing a UHBR code is a caller bug and is rejected.
+ */
 static void xdprxss_config_rx_dec_clk(struct xdprxss_state *dp, int bw_code)
 {
 	u8 p5_fedge_en, o_val, d_val, m_val;
@@ -992,6 +1131,15 @@ static void xdprxss_config_rx_dec_clk(struct xdprxss_state *dp, int bw_code)
 			   XDPRX_MMCM_RECONFIG_LOAD | XDPRX_MMCM_RECONFIG_SADDR);
 }
 
+/**
+ * xdprxss_get_rx_dec_clk_lock - Reset the MMCM and wait for lock
+ * @dp: pointer to driver state
+ *
+ * Not applicable to designs fitted with the clkx5 wizard, which implements
+ * neither the reset nor the status register.
+ *
+ * Return: 0 once the MMCM reports lock, or -ENODEV on timeout.
+ */
 static int xdprxss_get_rx_dec_clk_lock(struct xdprxss_state *dp)
 {
 	u32 retry = 0;
@@ -1009,6 +1157,17 @@ static int xdprxss_get_rx_dec_clk_lock(struct xdprxss_state *dp)
 	return 0;
 }
 
+/**
+ * xdprxss_config_gt_control_linerate - Set the GT line rate
+ * @dp: pointer to driver state
+ * @bw_code: DPCD LINK_BW_SET code
+ *
+ * The GTCTL line-rate field is two bits wide and only encodes the four DP1.4
+ * rates, so UHBR codes are rejected; those go through phy_configure() on the
+ * GT Quad or VPHY path instead.
+ *
+ * Return: 0 once the PHY reports ready, or a negative error code.
+ */
 static int xdprxss_config_gt_control_linerate(struct xdprxss_state *dp,
 					      int bw_code)
 {
@@ -1047,6 +1206,16 @@ static int xdprxss_config_gt_control_linerate(struct xdprxss_state *dp,
 	return xlnx_dp_phy_ready(dp);
 }
 
+/**
+ * xlnx_dp_rx_gt_control_init - Bring up the GT control interface
+ * @dp: pointer to driver state
+ *
+ * Applies the initial voltage swing and default 8.1Gbps line rate. Versal
+ * Gen 2 series silicon needs a short settling delay before the first swing
+ * write.
+ *
+ * Return: 0 on success, or a negative error code.
+ */
 static int xlnx_dp_rx_gt_control_init(struct xdprxss_state *dp)
 {
 	int ret;
@@ -1075,6 +1244,10 @@ static int xlnx_dp_rx_gt_control_init(struct xdprxss_state *dp)
 	return 0;
 }
 
+/**
+ * xdprxss_dtg_disable - Stop the display timing generator
+ * @state: pointer to driver state
+ */
 static void xdprxss_dtg_disable(struct xdprxss_state *state)
 {
 	xdprxss_clr(state, XDPRX_DTG_REG, XDPRX_DTG_DIS_MASK);
@@ -1445,6 +1618,13 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state, u8 stream)
 	return 0;
 }
 
+/**
+ * xdprxss_enable_mst_interrupts - Unmask the MST interrupts
+ * @xdprxss: pointer to driver state
+ *
+ * Enables both the sideband message interrupts and the per-stream valid-video
+ * interrupts.
+ */
 static void xdprxss_enable_mst_interrupts(struct xdprxss_state *xdprxss)
 {
 	xdprxss_enable_mst_sb_msg_interrupts(xdprxss);
@@ -1453,6 +1633,13 @@ static void xdprxss_enable_mst_interrupts(struct xdprxss_state *xdprxss)
 
 static void xdprxss_set_128b132b_lt_timeouts(struct xdprxss_state *xdprxss);
 
+/**
+ * xdprxss_set_training_params - Program the link-training constraints
+ * @xdprxss: pointer to driver state
+ *
+ * Sets the minimum voltage swing the source must reach, the AUX defer count
+ * and, on UHBR-capable designs, the 128B/132B stage timeouts.
+ */
 static void xdprxss_set_training_params(struct xdprxss_state *xdprxss)
 {
 	unsigned int offset;
@@ -1508,7 +1695,10 @@ static void xdprxss_set_training_params(struct xdprxss_state *xdprxss)
 	xdprxss_write(xdprxss, XDPRX_LINK_ENABLE_REG, 0x1);
 }
 
-/*
+/**
+ * xdprxss_set_128b132b_lt_timeouts - Bound the 128B/132B training stages
+ * @xdprxss: pointer to driver state
+ *
  * Bound how long the receiver waits to reach each 128B/132B training stage.
  *
  * Left unprogrammed the IP never asserts the DPCD 0x204 EQ/CDS
@@ -1582,6 +1772,14 @@ static void xdprxss_set_128b132b_lt_timeouts(struct xdprxss_state *xdprxss)
 		cds_timeout);
 }
 
+/**
+ * xdprxss_core_init - Publish the receiver capabilities and reset the core
+ * @xdprxss: pointer to driver state
+ *
+ * Advertises the maximum link rate, lane count and channel coding through the
+ * DPCD mirror registers, then takes the AUX and PHY blocks through their reset
+ * sequence so the source sees a consistent capability set at the next HPD.
+ */
 static void xdprxss_core_init(struct xdprxss_state *xdprxss)
 {
 	unsigned long axi_clk;
@@ -1645,6 +1843,19 @@ static void xdprxss_core_init(struct xdprxss_state *xdprxss)
 	xdprxss_set_training_params(xdprxss);
 }
 
+/**
+ * xdprxss_irq_unplug - Handle a cable unplug interrupt
+ * @state: pointer to driver state
+ *
+ * Tears down HDCP, resets the video datapath and the retimer's DP path, then
+ * narrows the unmasked interrupts back to the training set so the receiver is
+ * ready for the next plug event. HPD is pulsed twice: once to tell the source
+ * the sink went away, and once at the end so a source still holding the cable
+ * on a lost link retrains instead of waiting.
+ *
+ * The receiver capabilities are left as they are. They are published from
+ * xdprxss_core_init() and survive an unplug.
+ */
 static void xdprxss_irq_unplug(struct xdprxss_state *state)
 {
 	struct retimer_cfg *rtmr_cfg;
@@ -1691,6 +1902,14 @@ static void xdprxss_irq_unplug(struct xdprxss_state *state)
 		      XDPRX_HPD_INTR_MASK);
 }
 
+/**
+ * xdprxss_irq_tp1 - Handle the training pattern 1 interrupt
+ * @state: pointer to driver state
+ *
+ * Runs at the start of every training pass. Re-reads the rate and channel
+ * coding the source selected, validates the combination, programs the decoder
+ * and the clocking to match, and resets the PHY onto the new line rate.
+ */
 static void xdprxss_irq_tp1(struct xdprxss_state *state)
 {
 	union phy_configure_opts phy_opts = { 0 };
@@ -1846,14 +2065,21 @@ release_gt:
 	xdprxss_write(state, XDPRX_PHY_REG, XDPRX_PHY_INIT_MASK);
 }
 
+/**
+ * xdprxss_irq_tp2 - Handle the training pattern 2 interrupt
+ * @state: pointer to driver state
+ *
+ * Records that the source reached the equalisation stage.
+ */
 static void xdprxss_irq_tp2(struct xdprxss_state *state)
 {
 	dev_dbg(state->dev, "Asserted training pattern 2\n");
 	WRITE_ONCE(state->ltstate, 2);
 }
 
-/*
- * 128B/132B training pattern 2 (TPS2_CDS) / DP 1.4 TPS4 interrupt handler.
+/**
+ * xdprxss_irq_tp4 - Handle the TPS4 / TPS2_CDS interrupt
+ * @state: pointer to driver state
  *
  * The same hardware IRQ bit (bit 31 of XDPRX_INTR_CAUSE_1_REG, masked into
  * XDPRX_INTR_TP4_MASK) is asserted by the IP for:
@@ -1875,6 +2101,13 @@ static void xdprxss_irq_tp4(struct xdprxss_state *state)
 	WRITE_ONCE(state->ltstate, 3);
 }
 
+/**
+ * xdprxss_training_failure - Handle loss of link training
+ * @state: pointer to driver state
+ *
+ * Invalidates the streams, tears down HDCP and pulses HPD so the source
+ * retrains.
+ */
 static void xdprxss_training_failure(struct xdprxss_state *state)
 {
 	dev_dbg(state->dev, "Training Lost !!\n");
@@ -1903,6 +2136,12 @@ static void xdprxss_training_failure(struct xdprxss_state *state)
 	xdprxss_disable_audio(state);
 }
 
+/**
+ * xdprxss_irq_no_video - Handle the no-valid-video interrupt
+ * @state: pointer to driver state
+ *
+ * Restarts the timing generator and notifies userspace of the source change.
+ */
 static void xdprxss_irq_no_video(struct xdprxss_state *state)
 {
 	dev_dbg(state->dev, "No Valid video received !!\n");
@@ -1932,6 +2171,14 @@ static void xdprxss_irq_no_video(struct xdprxss_state *state)
 	xdprxss_clear_valid_streams(state);
 }
 
+/**
+ * xdprxss_irq_valid_video - Handle the valid-video interrupt
+ * @state: pointer to driver state
+ * @stream: 0-based stream index that became valid
+ *
+ * Decodes the stream properties and, once they are stable, signals a
+ * resolution change to userspace.
+ */
 static void xdprxss_irq_valid_video(struct xdprxss_state *state, u8 stream)
 {
 	int ret;
@@ -2016,6 +2263,13 @@ static void xdprxss_parse_drmif(struct xdprxss_state *state,
 				(iframe->payload.byte[27] << 8);
 }
 
+/**
+ * xdprxss_irq_audio_detected - Handle an info packet interrupt
+ * @state: pointer to driver state
+ *
+ * Drains the info packet FIFO and dispatches audio and HDR metadata packets to
+ * their respective consumers.
+ */
 static void xdprxss_irq_audio_detected(struct xdprxss_state *state)
 {
 	struct xdprxss_infoframe *iframe = &state->infoframe;
@@ -2044,6 +2298,13 @@ static void xdprxss_irq_audio_detected(struct xdprxss_state *state)
 	}
 }
 
+/**
+ * xdprxss_irq_access_laneset - Handle a source write to the lane-set registers
+ * @state: pointer to driver state
+ *
+ * Forwards the requested drive settings to the retimer. The nibbles encode
+ * voltage swing and pre-emphasis for 8B/10B, and an FFE preset for 128B/132B.
+ */
 static void xdprxss_irq_access_laneset(struct xdprxss_state *state)
 {
 	struct retimer_cfg *rtmr_cfg;
@@ -2085,6 +2346,13 @@ static void xdprxss_irq_access_laneset(struct xdprxss_state *state)
 	}
 }
 
+/**
+ * xdprxss_irq_access_linkqual - Handle a link-quality pattern request
+ * @state: pointer to driver state
+ *
+ * Drives the PRBS pattern through the VPHY and retimer hooks. Versal Gen 2
+ * series designs replace the VPHY with the GT Quad and are skipped.
+ */
 static void xdprxss_irq_access_linkqual(struct xdprxss_state *state)
 {
 	struct retimer_cfg *rtmr_cfg;
@@ -2132,6 +2400,21 @@ static void xdprxss_irq_access_linkqual(struct xdprxss_state *state)
 	}
 }
 
+/**
+ * xdprxss_irq_handler - Hard interrupt handler
+ * @irq: interrupt number
+ * @dev_id: pointer to driver state
+ *
+ * Latches and acknowledges the interrupt causes. Three things are done here
+ * because they cannot wait for the thread: the link-layer decoder is
+ * programmed on a bandwidth change, the GT is held in reset on
+ * training-pattern 1, and the power state is sampled so a back-to-back
+ * D3 -> D0 pair cannot hide the power-down edge. The rest is deferred to the
+ * threaded handler so the sleeping PLL waits in the training path are
+ * legal.
+ *
+ * Return: %IRQ_WAKE_THREAD when work was latched, %IRQ_NONE otherwise.
+ */
 static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 {
 	struct xdprxss_state *state = (struct xdprxss_state *)dev_id;
@@ -2226,7 +2509,11 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 	return IRQ_WAKE_THREAD;
 }
 
-/*
+/**
+ * xdprxss_irq_thread - Threaded interrupt handler
+ * @irq: interrupt number
+ * @dev_id: pointer to driver state
+ *
  * All link-training stages run here, in order.
  *
  * TP1 reprograms the line rate and resets the PHY, which takes tens of
@@ -2234,7 +2521,9 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
  * handler overtake it, so the PHY was being reset underneath a training
  * pattern the source had already moved past and equalisation could never
  * converge. Servicing every stage from this one thread keeps TP1 ahead of TP2
- * while still allowing the PLL waits to sleep.
+ * and TP4 while still allowing the PLL waits to sleep.
+ *
+ * Return: %IRQ_HANDLED
  */
 static irqreturn_t xdprxss_irq_thread(int irq, void *dev_id)
 {
@@ -2409,6 +2698,16 @@ static int xdprxss_subscribe_event(struct v4l2_subdev *sd,
 	return ret;
 }
 
+/**
+ * xdprxss_s_stream - Start or stop streaming
+ * @sd: pointer to the V4L2 subdevice
+ * @enable: non-zero to start streaming
+ *
+ * The DP receiver does not need enabling to stream, so this only validates
+ * that every active stream carries valid video and latches the new state.
+ *
+ * Return: 0 on success, or -EINVAL if a stream is not yet valid.
+ */
 static int xdprxss_s_stream(struct v4l2_subdev *sd, int enable)
 {
 	struct xdprxss_state *xdprxss = to_xdprxssstate(sd);
@@ -2663,6 +2962,16 @@ static int xdprxss_get_dv_timings_cap(struct v4l2_subdev *subdev,
 	return 0;
 }
 
+/**
+ * xdprxss_query_dv_timings - Query the detected timings
+ * @sd: pointer to the V4L2 subdevice
+ * @pad: pad number, used as the stream index
+ * @timings: returned timings
+ *
+ * Retries while the MSA and SDP state is still settling.
+ *
+ * Return: 0 on success, or a negative error code.
+ */
 static int xdprxss_query_dv_timings(struct v4l2_subdev *sd, unsigned int pad,
 				    struct v4l2_dv_timings *timings)
 {
@@ -2703,6 +3012,12 @@ static int xdprxss_query_dv_timings(struct v4l2_subdev *sd, unsigned int pad,
 	return 0;
 }
 
+/**
+ * xdprxss_g_volatile_ctrl - Read back a volatile control
+ * @ctrl: control being read
+ *
+ * Return: 0 on success, or a negative error code.
+ */
 static int xdprxss_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 {
 	int ret = 0;
@@ -2759,6 +3074,15 @@ static const struct media_entity_operations xdprxss_media_ops = {
 	.link_validate = v4l2_subdev_link_validate
 };
 
+/**
+ * xdprxss_hdcp1x_keymgmt_is_table_config_done - Wait for the key table to settle
+ * @state: pointer to driver state
+ *
+ * Polls the table status until the config-in-progress bit clears.
+ *
+ * Return: the remaining retry count once the bit has cleared, 0 on timeout or
+ * regmap failure.
+ */
 static int xdprxss_hdcp1x_keymgmt_is_table_config_done(struct xdprxss_state *state)
 {
 	int retry = HDCP1X_KEYMGMT_REG_TBL_STATUS_RETRY;
@@ -2776,6 +3100,15 @@ static int xdprxss_hdcp1x_keymgmt_is_table_config_done(struct xdprxss_state *sta
 	return retry;
 }
 
+/**
+ * xdprxss_hdcp1x_keymgmt_table_read - Read one key table row
+ * @state: pointer to driver state
+ * @table_id: key table index
+ * @row_id: row within the table
+ * @read_val: returned row contents
+ *
+ * Return: 0 on success, or -EIO on a regmap failure.
+ */
 static int xdprxss_hdcp1x_keymgmt_table_read(struct xdprxss_state *state,
 					     u8 table_id, u8 row_id, u64 *read_val)
 {
@@ -2814,6 +3147,15 @@ static int xdprxss_hdcp1x_keymgmt_table_read(struct xdprxss_state *state,
 	return 0;
 }
 
+/**
+ * xdprxss_hdcp1x_keymgmt_table_write - Write one key table row
+ * @state: pointer to driver state
+ * @table_id: key table index
+ * @row_id: row within the table
+ * @write_val: row contents to write
+ *
+ * Return: 0 on success, or -EIO on a regmap failure.
+ */
 static int xdprxss_hdcp1x_keymgmt_table_write(struct xdprxss_state *state,
 					      u8 table_id, u8 row_id, u64 write_val)
 {
@@ -2849,6 +3191,14 @@ static int xdprxss_hdcp1x_keymgmt_table_write(struct xdprxss_state *state,
 	return 0;
 }
 
+/**
+ * xdprxss_hdcp1x_keymgmt_get_num_of_tables_rows - Read the key table geometry
+ * @state: pointer to driver state
+ * @num_tables: returned number of key tables
+ * @num_rows_per_table: returned rows per table
+ *
+ * Both outputs are left untouched if the geometry register cannot be read.
+ */
 static void xdprxss_hdcp1x_keymgmt_get_num_of_tables_rows(struct xdprxss_state *state,
 							  u8 *num_tables,
 							  u8 *num_rows_per_table)
@@ -2868,6 +3218,12 @@ static void xdprxss_hdcp1x_keymgmt_get_num_of_tables_rows(struct xdprxss_state *
 	}
 }
 
+/**
+ * xdprxss_hdcp1x_keymgmt_init_tables - Zero every key table row
+ * @state: pointer to driver state
+ *
+ * Return: 0 on success, or a negative error code.
+ */
 static int xdprxss_hdcp1x_keymgmt_init_tables(struct xdprxss_state *state)
 {
 	int ret = 0;
@@ -2883,6 +3239,14 @@ static int xdprxss_hdcp1x_keymgmt_init_tables(struct xdprxss_state *state)
 	return ret;
 }
 
+/**
+ * xdprxss_hdcp1x_keymgmt_load_keys - Write the key table into the block
+ * @state: pointer to driver state
+ * @key_table: key table to load
+ * @key_table_size: size of @key_table in bytes
+ *
+ * Return: 0 on success, or a negative error code.
+ */
 static int xdprxss_hdcp1x_keymgmt_load_keys(struct xdprxss_state *state,
 					    union hdcp1x_key_table *key_table,
 					    u32 key_table_size)
@@ -2898,6 +3262,14 @@ static int xdprxss_hdcp1x_keymgmt_load_keys(struct xdprxss_state *state,
 	return ret;
 }
 
+/**
+ * xdprxss_hdcp1x_keymgmt_verify_keys - Read back and compare the key table
+ * @state: pointer to driver state
+ * @key_table: expected key table contents
+ * @key_table_size: size of @key_table in bytes
+ *
+ * Return: 0 when the readback matches, or a negative error code.
+ */
 static int xdprxss_hdcp1x_keymgmt_verify_keys(struct xdprxss_state *state,
 					      union hdcp1x_key_table *key_table,
 					      u32 key_table_size)
@@ -2917,6 +3289,15 @@ static int xdprxss_hdcp1x_keymgmt_verify_keys(struct xdprxss_state *state,
 	return ret;
 }
 
+/**
+ * xdprxss_hdcp1x_keymgmt_set_key - Program and verify the HDCP1x keys
+ * @state: pointer to driver state
+ *
+ * Resets the block, initialises the tables, loads the keys held in the driver
+ * state and verifies the readback before enabling the block.
+ *
+ * Return: 0 on success, or a negative error code.
+ */
 static int xdprxss_hdcp1x_keymgmt_set_key(struct xdprxss_state *state)
 {
 	union hdcp1x_key_table key_table;
@@ -2957,6 +3338,13 @@ static int xdprxss_hdcp1x_keymgmt_set_key(struct xdprxss_state *state)
 	return 0;
 }
 
+/**
+ * xdprxss_hdcp2x_key_write - Install the HDCP2x keys from userspace
+ * @xdprxss: pointer to driver state
+ * @xhdcp22_keys: key set supplied through the ioctl
+ *
+ * Return: 0 on success, or a negative error code.
+ */
 static int xdprxss_hdcp2x_key_write(struct xdprxss_state *xdprxss,
 				    struct xdprxss_hdcp2x_keys_ioctl *xhdcp22_keys)
 {
@@ -2996,6 +3384,13 @@ static int xdprxss_hdcp2x_key_write(struct xdprxss_state *xdprxss,
 	return ret;
 }
 
+/**
+ * xdprxss_hdcp1x_key_write - Install the HDCP1x keys from userspace
+ * @xdprxss: pointer to driver state
+ * @hdcp_keys: key set supplied through the ioctl
+ *
+ * Return: 0 on success, or a negative error code.
+ */
 static int xdprxss_hdcp1x_key_write(struct xdprxss_state *xdprxss,
 				    struct xdprxss_hdcp1x_keys_ioctl *hdcp_keys)
 {
@@ -3031,6 +3426,16 @@ static int xdprxss_hdcp1x_key_write(struct xdprxss_state *xdprxss,
 	return ret;
 }
 
+/**
+ * xdprxss_ioctl - Handle the driver private ioctls
+ * @sd: pointer to the V4L2 subdevice
+ * @cmd: ioctl command
+ * @arg: ioctl argument
+ *
+ * Used to hand the HDCP1x and HDCP2x key sets to the driver.
+ *
+ * Return: 0 on success, or a negative error code.
+ */
 static long xdprxss_ioctl(struct v4l2_subdev *sd, u32 cmd, void *arg)
 {
 	struct xdprxss_state *xdprxss = to_xdprxssstate(sd);
@@ -3218,6 +3623,13 @@ static void dprx_unregister_aud_dev(struct device *dev)
 /* ----------------------------------------------------------------
  * Platform Device Driver
  */
+
+/**
+ * xdprxss_parse_of - Read the device tree configuration
+ * @xdprxss: pointer to driver state
+ *
+ * Return: 0 on success, or a negative error code.
+ */
 static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
 {
 	struct device_node *node = xdprxss->dev->of_node;
@@ -3333,6 +3745,10 @@ static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
 	return 0;
 }
 
+/**
+ * xlnx_dp_laneset_work_func - Deferred lane-set handler
+ * @work: work item embedded in the driver state
+ */
 static void xlnx_dp_laneset_work_func(struct work_struct *work)
 {
 	struct xdprxss_state *dp;
@@ -3342,6 +3758,10 @@ static void xlnx_dp_laneset_work_func(struct work_struct *work)
 	xdprxss_irq_access_laneset(dp);
 }
 
+/**
+ * xlnx_dp_linkqual_work_func - Deferred link-quality pattern handler
+ * @work: work item embedded in the driver state
+ */
 static void xlnx_dp_linkqual_work_func(struct work_struct *work)
 {
 	struct xdprxss_state *dp;
@@ -3351,6 +3771,10 @@ static void xlnx_dp_linkqual_work_func(struct work_struct *work)
 	xdprxss_irq_access_linkqual(dp);
 }
 
+/**
+ * xlnx_dp_unplug_work_func - Deferred cable unplug handler
+ * @work: delayed work item embedded in the driver state
+ */
 static void xlnx_dp_unplug_work_func(struct work_struct *work)
 {
 	struct xdprxss_state *dp;
@@ -3360,6 +3784,14 @@ static void xlnx_dp_unplug_work_func(struct work_struct *work)
 	xdprxss_irq_unplug(dp);
 }
 
+/**
+ * xlnx_dp_powerchange_work_func - Deferred power state change handler
+ * @work: delayed work item embedded in the driver state
+ *
+ * Consumes the power-down latch taken by the interrupt handler, but only once
+ * the source has powered the link back up, so a D3 followed by D0 still
+ * results in one PHY reset.
+ */
 static void xlnx_dp_powerchange_work_func(struct work_struct *work)
 {
 	struct xdprxss_state *state;
@@ -3412,9 +3844,18 @@ static void xlnx_dp_powerchange_work_func(struct work_struct *work)
 	dev_dbg(state->dev, "power returned to normal: PHY reset, training re-armed\n");
 }
 
-/*
- * Look up the provider behind phandle @name. When @prvdev is non-NULL the
- * provider device is returned in it and pinned with a device link.
+/**
+ * xlnx_find_device - Resolve an optional interface phandle
+ * @pdev: platform device being probed
+ * @name: device tree property holding the phandle
+ * @prvdata: returns the provider's driver data, or NULL when there is none
+ * @prvdev: when non-NULL, returns the provider device pinned with a device link
+ *
+ * Looks up the provider behind phandle @name. A missing phandle is not an
+ * error, in which case @prvdata is left NULL. A provider that has not yet
+ * published its driver data defers the probe.
+ *
+ * Return: 0 on success, or a negative error code.
  */
 static int xlnx_find_device(struct platform_device *pdev, const char *name,
 			    void **prvdata, struct device **prvdev)
@@ -3462,6 +3903,15 @@ static int xlnx_find_device(struct platform_device *pdev, const char *name,
 	return ret;
 }
 
+/**
+ * dprx_hdcp2x_dpcd_rd_handler - Read from the HDCP2x DPCD window
+ * @ref: pointer to driver state
+ * @offset: byte offset within the HDCP2x port
+ * @buff: destination buffer
+ * @buff_size: number of bytes to read
+ *
+ * Return: number of bytes read.
+ */
 static int dprx_hdcp2x_dpcd_rd_handler(void *ref, u32 offset, u8 *buff, u32 buff_size)
 {
 	struct xdprxss_state *xdprxss = (struct xdprxss_state *)ref;
@@ -3500,6 +3950,15 @@ static int dprx_hdcp2x_dpcd_rd_handler(void *ref, u32 offset, u8 *buff, u32 buff
 	return num_read;
 }
 
+/**
+ * dprx_hdcp2x_dpcd_wr_handler - Write into the HDCP2x DPCD window
+ * @ref: pointer to driver state
+ * @offset: byte offset within the HDCP2x port
+ * @buff: source buffer
+ * @buff_size: number of bytes to write
+ *
+ * Return: number of bytes written.
+ */
 static int dprx_hdcp2x_dpcd_wr_handler(void *ref, u32 offset, u8 *buff,
 				       u32 buff_size)
 {
@@ -3554,6 +4013,10 @@ static int dprx_hdcp2x_dpcd_wr_handler(void *ref, u32 offset, u8 *buff,
 	return num_written;
 }
 
+/**
+ * dprx_hdcp2x_cp_irq_set_handler - Raise CP_IRQ towards the source
+ * @ref: pointer to driver state
+ */
 static void dprx_hdcp2x_cp_irq_set_handler(void *ref)
 {
 	struct xdprxss_state *xdprxss = (struct xdprxss_state *)ref;
@@ -3562,6 +4025,11 @@ static void dprx_hdcp2x_cp_irq_set_handler(void *ref)
 	xdprxss_write(xdprxss, XDPRX_DEVICE_SERVICE_IRQ, XDPRX_DEVICE_SERVICE_IRQ_CP_IRQ_MASK);
 }
 
+/**
+ * dprx_hdcp2x_notification_handler - Act on an HDCP2x state notification
+ * @ref: pointer to driver state
+ * @notification: notification code from the HDCP2x receiver
+ */
 static void dprx_hdcp2x_notification_handler(void *ref, u8 notification)
 {
 	struct xdprxss_state *xdprxss = (struct xdprxss_state *)ref;
@@ -3585,7 +4053,14 @@ static void dprx_hdcp2x_notification_handler(void *ref, u8 notification)
 	}
 }
 
-static irqreturn_t xlnx_timer_irq_handler (int irq, void *dev_id)
+/**
+ * xlnx_timer_irq_handler - HDCP timer interrupt handler
+ * @irq: interrupt number
+ * @dev_id: pointer to driver state
+ *
+ * Return: %IRQ_HANDLED
+ */
+static irqreturn_t xlnx_timer_irq_handler(int irq, void *dev_id)
 {
 	struct xdprxss_state *state = (struct xdprxss_state *)dev_id;
 
@@ -3594,6 +4069,11 @@ static irqreturn_t xlnx_timer_irq_handler (int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+/**
+ * xlnx_hdcp2x_rx_timer_handler - Feed a timer expiry to the HDCP2x receiver
+ * @ref: pointer to driver state
+ * @tmrcntr_number: counter that expired
+ */
 static void xlnx_hdcp2x_rx_timer_handler(void *ref, u8 tmrcntr_number)
 {
 	struct xdprxss_state *state = (struct xdprxss_state *)ref;
@@ -3602,6 +4082,15 @@ static void xlnx_hdcp2x_rx_timer_handler(void *ref, u8 tmrcntr_number)
 	xhdcp2x_rx_push_events(state->hdcp2x, XHDCP2X_RX_TIMER_EVENT);
 }
 
+/**
+ * dprx_register_hdcp2x_dev - Bring up the HDCP2x receiver
+ * @xdprxss: pointer to driver state
+ * @pdev: platform device being probed
+ *
+ * Initialises the HDCP2x instance, its timer and the DPCD access callbacks.
+ *
+ * Return: 0 on success, or a negative error code.
+ */
 static int dprx_register_hdcp2x_dev(struct xdprxss_state *xdprxss, struct platform_device *pdev)
 {
 	int ret;
@@ -3661,6 +4150,13 @@ static int dprx_register_hdcp2x_dev(struct xdprxss_state *xdprxss, struct platfo
 	return 0;
 }
 
+/**
+ * xdprxss_hdcp1x_irq_handler - HDCP1x interrupt handler
+ * @irq: interrupt number
+ * @dev_id: pointer to driver state
+ *
+ * Return: %IRQ_HANDLED
+ */
 static irqreturn_t xdprxss_hdcp1x_irq_handler(int irq, void *dev_id)
 {
 	struct xdprxss_state *state = (struct xdprxss_state *)dev_id;
@@ -3670,6 +4166,15 @@ static irqreturn_t xdprxss_hdcp1x_irq_handler(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+/**
+ * dprx_hdcp1x_dpcd_rd_handler - Read from the HDCP1x DPCD window
+ * @ref: pointer to driver state
+ * @offset: byte offset within the HDCP1x port
+ * @buff: destination buffer
+ * @buff_size: number of bytes to read, truncated to the port length
+ *
+ * Return: number of bytes read.
+ */
 static int dprx_hdcp1x_dpcd_rd_handler(void *ref, u32 offset, u8 *buff,
 				       u32 buff_size)
 {
@@ -3712,6 +4217,15 @@ static int dprx_hdcp1x_dpcd_rd_handler(void *ref, u32 offset, u8 *buff,
 	return num_read;
 }
 
+/**
+ * dprx_hdcp1x_dpcd_wr_handler - Write into the HDCP1x DPCD window
+ * @ref: pointer to driver state
+ * @offset: byte offset within the HDCP1x port
+ * @buff: source buffer
+ * @buff_size: number of bytes to write, truncated to the port length
+ *
+ * Return: number of bytes written.
+ */
 static int dprx_hdcp1x_dpcd_wr_handler(void *ref, u32 offset, u8 *buff,
 				       u32 buff_size)
 {
@@ -3776,6 +4290,11 @@ static int dprx_hdcp1x_dpcd_wr_handler(void *ref, u32 offset, u8 *buff,
 	return num_written;
 }
 
+/**
+ * dprx_hdcp1x_notification_handler - Act on an HDCP1x state notification
+ * @ref: pointer to driver state
+ * @notification: notification code from the HDCP1x receiver
+ */
 static void dprx_hdcp1x_notification_handler(void *ref, u32 notification)
 {
 	struct xdprxss_state *xdprxss = (struct xdprxss_state *)ref;
@@ -3794,6 +4313,14 @@ static void dprx_hdcp1x_notification_handler(void *ref, u32 notification)
 	}
 }
 
+/**
+ * dprx_register_hdcp1x_dev - Bring up the HDCP1x receiver
+ * @xdprxss: pointer to driver state
+ *
+ * Initialises the HDCP1x instance and its DPCD access callbacks.
+ *
+ * Return: 0 on success, or a negative error code.
+ */
 static int dprx_register_hdcp1x_dev(struct xdprxss_state *xdprxss)
 {
 	xdprxss->hdcp1x = xhdcp1x_rx_init(xdprxss->dev, xdprxss,
@@ -3856,6 +4383,15 @@ static void xdprxss_silence_interrupts(struct xdprxss_state *xdprxss)
 		synchronize_irq(xdprxss->hdcp1x_irq);
 }
 
+/**
+ * xdprxss_probe - Probe the DP receiver subsystem
+ * @pdev: platform device
+ *
+ * Maps the register banks, parses the device tree, brings up the optional
+ * retimer, VPHY, HDCP and MST blocks and registers the V4L2 subdevice.
+ *
+ * Return: 0 on success, or a negative error code.
+ */
 static int xdprxss_probe(struct platform_device *pdev)
 {
 	struct v4l2_subdev *subdev;
@@ -4262,6 +4798,10 @@ error_phy:
 	return ret;
 }
 
+/**
+ * xdprxss_remove - Tear down the DP receiver subsystem
+ * @pdev: platform device
+ */
 static void xdprxss_remove(struct platform_device *pdev)
 {
 	struct xdprxss_state *xdprxss = platform_get_drvdata(pdev);

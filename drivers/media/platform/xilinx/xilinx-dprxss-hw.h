@@ -506,10 +506,16 @@
 #define XDPRX_LTTPR_COUNT_REG			0x1664
 #define XDPRX_LTTPR_COUNT_MASK			GENMASK(7, 0)
 
-/*
+/**
+ * xdprxss_linkrate_is_uhbr - Test for a DP 2.1 UHBR link rate
+ * @bw_code: DPCD LINK_BW_SET code
+ *
  * Every UHBR bandwidth code is numerically below the lowest 8B/10B one, so
  * applying the 8B/10B rule of code * 0.27 Gb/s to one yields a rate that is
  * far too low rather than an obvious error. Test the three codes by value.
+ *
+ * Return: true if @bw_code is a UHBR code, which always implies 128B/132B
+ * channel coding.
  */
 static inline bool xdprxss_linkrate_is_uhbr(u32 bw_code)
 {
@@ -517,10 +523,15 @@ static inline bool xdprxss_linkrate_is_uhbr(u32 bw_code)
 	       bw_code == DP_LINK_BW_20;
 }
 
-/*
+/**
+ * xdprxss_link_rate_to_mbps - Convert a LINK_BW_SET code to a rate in Mb/s
+ * @bw_code: DPCD LINK_BW_SET code, 8B/10B or UHBR
+ *
  * Translates a LINK_BW_SET code into the Mb/s value carried in
  * phy_configure_opts_dp.link_rate. The 8B/10B codes scale by 270, whereas the
  * UHBR codes map to flat rates.
+ *
+ * Return: link rate in Mb/s
  */
 static inline unsigned int xdprxss_link_rate_to_mbps(u32 bw_code)
 {
