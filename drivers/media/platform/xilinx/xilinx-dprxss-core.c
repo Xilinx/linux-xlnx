@@ -242,7 +242,9 @@ struct vidphy_cfg {
  * @valid_streams: bitmask of streams currently locked with valid video
  * @streaming: Flag for storing streaming state
  * @ltstate: Flag for storing link training state
- * @last_powered_down: Tracks whether link was last in power-down state
+ * @power_down_latched: Set when a SET_POWER write is seen leaving normal
+ *			power, consumed once power returns to normal.
+ *			Guarded by @irq_lock.
  * @hdcp2x_timer_irq: HDCP2X timer IRQ variable
  * @irq: subsystem interrupt, silenced before teardown cancels the workers
  * @hdcp1x_irq: HDCP1x interrupt, silenced alongside @irq
@@ -309,7 +311,7 @@ struct xdprxss_state {
 	unsigned long valid_streams;
 	unsigned int streaming : 1;
 	unsigned int ltstate : 2;
-	unsigned int last_powered_down : 1;
+	bool power_down_latched;
 	int hdcp2x_timer_irq;
 	int irq;
 	int hdcp1x_irq;
@@ -1678,6 +1680,7 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 {
 	struct xdprxss_state *state = (struct xdprxss_state *)dev_id;
 	u32 status, status1, status2;
+	bool powered_down = false;
 
 	status = xdprxss_read(state, XDPRX_INTR_CAUSE_REG);
 	status &= ~xdprxss_read(state, XDPRX_INTR_MASK_REG);
@@ -1709,6 +1712,18 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 		xdprxss_hold_gt_in_reset(state);
 
 	/*
+	 * Sources drive SET_POWER as a back-to-back D3 -> D0 pair only a few
+	 * hundred microseconds apart, and both writes raise this interrupt.
+	 * Sample the power state here rather than from the work item: a read
+	 * deferred that long only ever observes the final D0, so the
+	 * power-down edge was lost and the PHY was never reset before the
+	 * source retrained.
+	 */
+	if (status & XDPRX_INTR_POWER_MASK)
+		powered_down = xdprxss_read(state, XDPRX_DPCD_SET_POWER_STATE) !=
+			       XDPRX_POWERNORMAL_STATE;
+
+	/*
 	 * The cause registers clear on read, so hand the bits to the thread
 	 * instead of letting it read them again.
 	 */
@@ -1716,6 +1731,8 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 	state->irq_status |= status;
 	state->irq_status1 |= status1;
 	state->irq_status2 |= status2;
+	if (powered_down)
+		state->power_down_latched = true;
 	raw_spin_unlock(&state->irq_lock);
 
 	return IRQ_WAKE_THREAD;
@@ -2828,34 +2845,53 @@ static void xlnx_dp_unplug_work_func(struct work_struct *work)
 static void xlnx_dp_powerchange_work_func(struct work_struct *work)
 {
 	struct xdprxss_state *state;
-	bool powered_down = true;
-	u32 power_state;
+	bool was_powered_down;
 
 	state = container_of(work, struct xdprxss_state, powerchange_work.work);
-	power_state = xdprxss_read(state, XDPRX_DPCD_SET_POWER_STATE);
 
-	if (power_state == XDPRX_POWERNORMAL_STATE)
-		powered_down = false;
-
-	if (state->last_powered_down != powered_down) {
-		state->last_powered_down = powered_down;
-		if (!powered_down) {
-			/* From other power state -> power normal */
-			/* => Reset PHY */
-			xdprxss_write(state, XDPRX_PHY_REG, XDPRX_PHY_INIT_MASK);
-			phy_reset(state->phy[0]);
-
-			/* Reset interrupt mask to training mask */
-			xdprxss_disable_allintr(state);
-			xdprxss_disable_allintr_1(state);
-
-			xdprxss_enable_training_intr(state);
-			xdprxss_enable_training_intr_1(state);
-
-			if (state->mst_enable)
-				xdprxss_enable_mst_interrupts(state);
-		}
+	/*
+	 * Still powered down: keep the latch so the re-init happens on the
+	 * write that brings the link back to normal power.
+	 *
+	 * Read the power state and consume the latch as one step. Reading it
+	 * first and clearing the latch afterwards would let a power-down that
+	 * arrives in between have its latch consumed here, losing the PHY
+	 * reset that its return to normal power needs. The lock is what keeps
+	 * the interrupt from setting the latch between the two.
+	 */
+	raw_spin_lock_irq(&state->irq_lock);
+	if (xdprxss_read(state, XDPRX_DPCD_SET_POWER_STATE) ==
+	    XDPRX_POWERNORMAL_STATE) {
+		was_powered_down = state->power_down_latched;
+		state->power_down_latched = false;
+	} else {
+		was_powered_down = false;
 	}
+	raw_spin_unlock_irq(&state->irq_lock);
+
+	/*
+	 * Only a genuine return from a lower power state needs the PHY reset.
+	 * Acting on every SET_POWER write would tear down a live link for
+	 * sources that rewrite D0 while streaming.
+	 */
+	if (!was_powered_down)
+		return;
+
+	/* From other power state -> power normal => reset PHY */
+	xdprxss_write(state, XDPRX_PHY_REG, XDPRX_PHY_INIT_MASK);
+	phy_reset(state->phy[0]);
+
+	/* Reset interrupt mask to training mask */
+	xdprxss_disable_allintr(state);
+	xdprxss_disable_allintr_1(state);
+
+	xdprxss_enable_training_intr(state);
+	xdprxss_enable_training_intr_1(state);
+
+	if (state->mst_enable)
+		xdprxss_enable_mst_interrupts(state);
+
+	dev_dbg(state->dev, "power returned to normal: PHY reset, training re-armed\n");
 }
 
 /*
