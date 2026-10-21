@@ -1697,6 +1697,29 @@ static void xdprxss_irq_tp2(struct xdprxss_state *state)
 	WRITE_ONCE(state->ltstate, 2);
 }
 
+/*
+ * 128B/132B training pattern 2 (TPS2_CDS) / DP 1.4 TPS4 interrupt handler.
+ *
+ * The same hardware IRQ bit (bit 31 of XDPRX_INTR_CAUSE_1_REG, masked into
+ * XDPRX_INTR_TP4_MASK) is asserted by the IP for:
+ *
+ *   - DP 1.4 8B/10B TPS4 (training pattern 4, channel-equalization at 8.1G)
+ *   - DP 2.1 128B/132B TPS2_CDS (CDS-and-channel-equalization)
+ *
+ * For both cases the right action is the same: mark the link-training state
+ * machine as "past the CDS/EQ stage". Training completes naturally on the
+ * subsequent TRDONE interrupt so we do not need to drive any further DPCD
+ * or PHY writes from here.
+ */
+static void xdprxss_irq_tp4(struct xdprxss_state *state)
+{
+	dev_dbg(state->dev,
+		"Asserted training pattern 4 / TPS2_CDS (coding=%s)\n",
+		state->channel_coding == XDPRX_CHANNEL_CODING_128B132B ?
+			"128B/132B" : "8B/10B");
+	WRITE_ONCE(state->ltstate, 3);
+}
+
 static void xdprxss_training_failure(struct xdprxss_state *state)
 {
 	dev_dbg(state->dev, "Training Lost !!\n");
@@ -2028,6 +2051,12 @@ static irqreturn_t xdprxss_irq_thread(int irq, void *dev_id)
 		xdprxss_irq_tp1(state);
 	if (status & XDPRX_INTR_TP2_MASK)
 		xdprxss_irq_tp2(state);
+	/*
+	 * TP4 (bit 31 of XDPRX_INTR_CAUSE_1_REG) covers both DP 1.4 TPS4 and
+	 * DP 2.1 TPS2_CDS - see xdprxss_irq_tp4().
+	 */
+	if (status1 & XDPRX_INTR_TP4_MASK)
+		xdprxss_irq_tp4(state);
 	if (status & XDPRX_INTR_TRLOST_MASK)
 		xdprxss_training_failure(state);
 	if (status & XDPRX_INTR_NOVID_MASK)
