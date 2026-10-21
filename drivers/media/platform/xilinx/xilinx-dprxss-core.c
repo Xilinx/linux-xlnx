@@ -653,6 +653,61 @@ static inline void xdprxss_dpcd_update_end(struct xdprxss_state *xdprxss)
 	iowrite32(0x0, xdprxss->dp_base + XDPRX_CTRL_DPCD_REG);
 }
 
+/**
+ * xdprxss_get_dpcd_channel_coding - Read the coding the source selected
+ * @xdprxss: pointer to driver state
+ *
+ * Reads the local mirror of DPCD 0x108 (DP_MAIN_LINK_CHANNEL_CODING_SET). The
+ * result can be fed straight back into the channel-coding override register.
+ * The mirror only exists on the DP 2.1 IP, so anything else is 8B/10B by
+ * construction and must not read the register.
+ *
+ * Return: %XDPRX_CHANNEL_CODING_128B132B or %XDPRX_CHANNEL_CODING_8B10B
+ */
+static u8 xdprxss_get_dpcd_channel_coding(struct xdprxss_state *xdprxss)
+{
+	u32 val;
+
+	if (!xdprxss->uhbr_capable)
+		return XDPRX_CHANNEL_CODING_8B10B;
+
+	val = xdprxss_read(xdprxss, XDPRX_DPCD_MAIN_LINK_CHANNEL_CODING_SET);
+
+	if (val & XDPRX_MAIN_LINK_CODING_128B132B_MASK)
+		return XDPRX_CHANNEL_CODING_128B132B;
+	return XDPRX_CHANNEL_CODING_8B10B;
+}
+
+/**
+ * xdprxss_set_channel_coding - Program the link-layer channel coding
+ * @xdprxss: pointer to driver state
+ * @coding: %XDPRX_CHANNEL_CODING_8B10B or %XDPRX_CHANNEL_CODING_128B132B
+ *
+ * The write must be wrapped in the XDPRX_CTRL_DPCD_REG override window for
+ * the IP to propagate the new value into the DPCD capability fields and the
+ * matching internal datapath.
+ *
+ * Outside probe this is the only writer of @xdprxss->channel_coding, which is
+ * what keeps the cached value equal to the register. The callers reprogram
+ * only when the source's choice differs from the cached value, so a cached
+ * value that had drifted would make them skip a reprogram the link needs.
+ *
+ * The cached value is written from hard interrupt context and read from the
+ * threaded handler and from the subdev operations, so every access goes
+ * through READ_ONCE()/WRITE_ONCE(). A single-byte enum needs no more than
+ * that: a reader either sees the old coding or the new one, and the two
+ * writers are serialised by the interrupt being masked across the thread.
+ */
+static void xdprxss_set_channel_coding(struct xdprxss_state *xdprxss,
+				       u8 coding)
+{
+	xdprxss_dpcd_update_start(xdprxss);
+	xdprxss_clrset(xdprxss, XDPRX_CHANNEL_CODING_REG,
+		       XDPRX_CHANNEL_CODING_MASK, coding);
+	xdprxss_dpcd_update_end(xdprxss);
+	WRITE_ONCE(xdprxss->channel_coding, coding);
+}
+
 static inline int xdprxss_get_lane01_reqval(struct xdprxss_state *xdprxss)
 {
 	return xdprxss_read(xdprxss, XDPRX_DPCD_LANE01_STATUS) &
@@ -1104,7 +1159,7 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state, u8 stream)
 			stream, hact, vact);
 		return -EAGAIN;
 	}
-	coding = state->channel_coding;
+	coding = READ_ONCE(state->channel_coding);
 	if (coding == XDPRX_CHANNEL_CODING_8B10B &&
 	    (!rxmsa_mvid || !rxmsa_nvid)) {
 		dev_dbg(state->dev,
@@ -1534,9 +1589,24 @@ static void xdprxss_core_init(struct xdprxss_state *xdprxss)
 	u32 max_lanecount = xdprxss->max_lanecount;
 
 	xdprxss_dpcd_update_start(xdprxss);
-	xdprxss_dpcd_update(xdprxss,
-			    XDPRX_VRD_BWSET_REG, xdprxss->max_linkrate);
-	xdprxss_update_ext_rcv_cap(xdprxss, xdprxss->max_linkrate);
+	/*
+	 * A UHBR receiver still has to advertise a selectable 8B/10B rate.
+	 * MAX_LINK_RATE (DPCD 0x001) has no encoding for a UHBR rate, and
+	 * because TRAINING_AUX_RD_INTERVAL marks the extended field as
+	 * present, sources read 0x2201 in preference to 0x001. Advertising a
+	 * UHBR code in both leaves a source with no 8B/10B rate to pick and it
+	 * aborts before writing LINK_BW_SET. Advertise the 8B/10B ceiling in
+	 * both bytes so a DP 1.4 source, or a DP 2.1 source that falls back to
+	 * 8B/10B, can still train.
+	 */
+	if (xdprxss_advertise_uhbr(xdprxss)) {
+		xdprxss_dpcd_update(xdprxss, XDPRX_VRD_BWSET_REG, DP_LINK_BW_8_1);
+		xdprxss_update_ext_rcv_cap(xdprxss, DP_LINK_BW_8_1);
+	} else {
+		xdprxss_dpcd_update(xdprxss,
+				    XDPRX_VRD_BWSET_REG, xdprxss->max_linkrate);
+		xdprxss_update_ext_rcv_cap(xdprxss, xdprxss->max_linkrate);
+	}
 	max_lanecount |= (XDPRX_EFRAME_CAP_MASK | XDPRX_LNCNT_TPS3_MASK);
 	xdprxss_dpcd_update(xdprxss, XDPRX_LANE_CNT_REG, max_lanecount);
 	/*
@@ -1548,7 +1618,7 @@ static void xdprxss_core_init(struct xdprxss_state *xdprxss)
 	if (xdprxss->uhbr_capable)
 		xdprxss_clrset(xdprxss, XDPRX_CHANNEL_CODING_REG,
 			       XDPRX_CHANNEL_CODING_MASK,
-			       xdprxss->channel_coding);
+			       READ_ONCE(xdprxss->channel_coding));
 	xdprxss_dpcd_update_end(xdprxss);
 	xdprxss_write(xdprxss, XDPRX_LINK_ENABLE_REG, 0x0);
 	axi_clk = clk_get_rate(xdprxss->axi_clk);
@@ -1629,6 +1699,7 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 	unsigned int i;
 	bool is_uhbr;
 	u32 linkrate;
+	u8 coding;
 
 	dev_dbg(state->dev, "Asserted training pattern 1\n");
 
@@ -1642,7 +1713,20 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 
 	linkrate = xdprxss_read(state, XDPRX_LINK_BW_REG);
 
-	is_uhbr = state->channel_coding == XDPRX_CHANNEL_CODING_128B132B;
+	/*
+	 * Re-evaluate the coding at the start of every training pass. A DP 2.1
+	 * source may fall back to 8B/10B without an HPD cycle, and LINK_BW_SET
+	 * carries no rate on its own: DP 2.1a defines it once per channel
+	 * coding, so the byte has to be read against DPCD 0x108.
+	 *
+	 * Program the decoder whenever the source's choice differs from what
+	 * is currently loaded, otherwise the link layer keeps decoding with the
+	 * coding the receiver advertised rather than the one on the wire.
+	 */
+	coding = xdprxss_get_dpcd_channel_coding(state);
+	if (coding != READ_ONCE(state->channel_coding))
+		xdprxss_set_channel_coding(state, coding);
+	is_uhbr = coding == XDPRX_CHANNEL_CODING_128B132B;
 
 	/*
 	 * For DP 1.4 the bandwidth code is bw_code*270 Mb/s; for DP 2.1 the
@@ -1786,7 +1870,7 @@ static void xdprxss_irq_tp4(struct xdprxss_state *state)
 {
 	dev_dbg(state->dev,
 		"Asserted training pattern 4 / TPS2_CDS (coding=%s)\n",
-		state->channel_coding == XDPRX_CHANNEL_CODING_128B132B ?
+		READ_ONCE(state->channel_coding) == XDPRX_CHANNEL_CODING_128B132B ?
 			"128B/132B" : "8B/10B");
 	WRITE_ONCE(state->ltstate, 3);
 }
@@ -2075,10 +2159,42 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 		return IRQ_HANDLED;
 
 	/*
-	 * Take the GT hold here as well as in xdprxss_irq_tp1(). It only helps
-	 * if it is already in place when the source's first DPCD 0x202 status
-	 * read arrives, roughly 0.4 ms after TPS1, which is not far above the
-	 * latency of waking this thread.
+	 * Program the link-layer decoder from the source's DPCD 0x108 choice
+	 * as soon as it sets the link rate.
+	 *
+	 * xdprxss_irq_tp1() does this too, but it cannot be the only site:
+	 * the decoder has to already match the wire coding for the IP to
+	 * detect TPS1 and raise TP1 at all. A DP 2.1 IP leaves
+	 * xdprxss_core_init(), and every UHBR link, decoding 128B/132B, so the
+	 * first 8B/10B pass after either never raises TP1 in time, so the hold
+	 * below is never asserted. Without that hold, and without the AUX
+	 * DEFERs it produces, the source exhausts its clock-recovery attempts
+	 * in 4.9 ms against the ~15 ms this receiver needs.
+	 *
+	 * The source writes DPCD 0x108 around 15 ms before LINK_BW_SET and
+	 * TPS1 around 0.5 ms after it, so the mirror is already valid here and
+	 * there is margin for the write. TP1 remains the backstop for a source
+	 * that reorders the two.
+	 */
+	if (state->uhbr_capable && (status & XDPRX_INTR_BWCHANGE_MASK)) {
+		u8 coding = xdprxss_get_dpcd_channel_coding(state);
+
+		if (coding != READ_ONCE(state->channel_coding))
+			xdprxss_set_channel_coding(state, coding);
+	}
+
+	/*
+	 * Put the GT receiver into reset here rather than from
+	 * xdprxss_irq_tp1() in the threaded handler.
+	 *
+	 * The hold is what makes the IP DEFER the source's DPCD 0x202 reads
+	 * while the line rate is being reprogrammed, and it only helps if it
+	 * is already in place when the first of those reads arrives, roughly
+	 * 0.4 ms after TPS1. Thread wake-up latency is of the same order, so
+	 * asserting it from the thread wins the race only sometimes: in one
+	 * capture two of twelve attempts at 8.1 Gbps trained and the rest read
+	 * back zeros and fell back. One register write is cheap enough to do
+	 * in hard IRQ context. xdprxss_irq_tp1() releases it on every path.
 	 */
 	if (status & XDPRX_INTR_TP1_MASK)
 		xdprxss_hold_gt_in_reset(state);
@@ -3172,8 +3288,9 @@ static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
 		return -EINVAL;
 	}
 	xdprxss->max_linkrate = val;
-	xdprxss->channel_coding = xdprxss_advertise_uhbr(xdprxss) ?
-		XDPRX_CHANNEL_CODING_128B132B : XDPRX_CHANNEL_CODING_8B10B;
+	WRITE_ONCE(xdprxss->channel_coding,
+		   xdprxss_advertise_uhbr(xdprxss) ?
+		   XDPRX_CHANNEL_CODING_128B132B : XDPRX_CHANNEL_CODING_8B10B);
 
 	ret = of_property_read_u32(node, "xlnx,lane-count", &val);
 	if (ret < 0) {
