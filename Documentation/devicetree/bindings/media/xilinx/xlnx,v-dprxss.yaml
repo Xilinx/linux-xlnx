@@ -18,11 +18,15 @@ description: |
 
 properties:
   compatible:
-    items:
+    oneOf:
+      - items:
+          - enum:
+              - xlnx,v-dp-rxss-3.1
+              - xlnx,v-dp-rxss-3.0
+          - const: xlnx,v-dp-rxss-3.0
       - enum:
-          - xlnx,v-dp-rxss-3.1
-          - xlnx,v-dp-rxss-3.0
-      - const: xlnx,v-dp-rxss-3.0
+          - xlnx,v-dp-rxss2-2.0
+          - xlnx,v-dp-rxss2-1.0
 
   interrupt-names:
     description:
@@ -122,9 +126,16 @@ properties:
       0xa  - 2.7 Gb/s
       0x14 - 5.4 Gb/s
       0x1e - 8.1 Gb/s
+
+      The UHBR rates are a second encoding of the same field, selected by
+      128B/132B channel coding instead of 8B/10B, so they are accepted
+      only on the DP2.1 IP -
+      0x1  - UHBR10, 10 Gb/s
+      0x2  - UHBR20, 20 Gb/s
+      0x4  - UHBR13.5, 13.5 Gb/s
     allOf:
       - $ref: /schemas/types.yaml#/definitions/uint32
-      - enum: [0x6, 0xa, 0x14, 0x1e]
+      - enum: [0x1, 0x2, 0x4, 0x6, 0xa, 0x14, 0x1e]
 
   xlnx,lane-count:
     description: Max number of lanes that IP configured with.
@@ -289,6 +300,21 @@ allOf:
             - const: dp-phy3
         xlnx,xilinx-vfmc: false
 
+  # The UHBR link rates require 128B/132B channel coding, which only the
+  # DP2.1 IP implements.
+  - if:
+      not:
+        properties:
+          compatible:
+            contains:
+              enum:
+                - xlnx,v-dp-rxss2-2.0
+                - xlnx,v-dp-rxss2-1.0
+    then:
+      properties:
+        xlnx,link-rate:
+          enum: [0x6, 0xa, 0x14, 0x1e]
+
 additionalProperties: false
 
 examples:
@@ -429,6 +455,38 @@ examples:
                reg = <3>;
                endpoint {
                    remote-endpoint = <&remap3_in>;
+               };
+           };
+       };
+   };
+
+  # DP2.1 variant: UHBR link rate with 128B/132B channel coding.
+  - |
+   v-dp-rxss4@a0040000 {
+       compatible = "xlnx,v-dp-rxss2-1.0";
+       reg = <0xa0040000 0x40000>, <0xa0010000 0x1000>;
+       reg-names = "dp_base", "edid_base";
+       clock-names = "s_axi_aclk", "rx_lnk_clk", "rx_vid_clk";
+       clocks = <&zynqmp_clk 71>, <&zynqmp_clk 72>, <&misc_clk_1>;
+       interrupt-names = "dprxss_dp_irq";
+       interrupt-parent = <&gic>;
+       interrupts = <0 89 4>;
+       phy-names = "dp-gtquad";
+       phys = <&dp_gtquad 0 1 1 0>;
+       xlnx,bpc = <10>;
+       xlnx,lane-count = <4>;
+       xlnx,link-rate = <0x1>;
+       xlnx,mode = <0>;
+       xlnx,versal-gt;
+
+       ports {
+           #address-cells = <1>;
+           #size-cells = <0>;
+
+           port@0 {
+               reg = <0>;
+               dp_rxss4_out: endpoint {
+                   remote-endpoint = <&remap4_in>;
                };
            };
        };
