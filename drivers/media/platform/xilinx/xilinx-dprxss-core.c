@@ -19,8 +19,6 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_irq.h>
-#include <linux/of_address.h>
-#include <linux/of_device.h>
 #include <linux/of_platform.h>
 #include <linux/phy/phy.h>
 #include <linux/phy/phy-dp.h>
@@ -216,7 +214,13 @@ struct vidphy_cfg {
  * @irq_status2: Pending XDPRX_INTR_CAUSE_2_REG bits
  * @format: Active V4L2 format on each pad
  * @frame_interval: Captures the frame rate
- * @max_linkrate: Maximum supported link rate
+ * @max_linkrate: Maximum supported link rate, as a DPCD LINK_BW_SET
+ *	bandwidth code. Either a DP 1.4 code (DP_LINK_BW_1_62..8_1) or a
+ *	DP 2.1 UHBR code (DP_LINK_BW_10/13_5/20), taken from xlnx,link-rate.
+ * @uhbr_capable: True when the compatible string identifies a DP 2.1 IP.
+ *	Enables 128B/132B advertisement when @max_linkrate is a UHBR code.
+ * @channel_coding: Link-layer channel coding advertised on the receiver,
+ *	either XDPRX_CHANNEL_CODING_8B10B or XDPRX_CHANNEL_CODING_128B132B.
  * @max_lanecount: Maximux supported lane count
  * @bpc: Bits per component (DT-configured maximum sink advertisement)
  * @detected_bpc: Per-stream detected BPC (8/10/12) decoded from MSA/SDP
@@ -292,6 +296,8 @@ struct xdprxss_state {
 	struct v4l2_mbus_framefmt format[XDPRX_MAX_STREAM_COUNT];
 	unsigned int frame_interval;
 	u32 max_linkrate;
+	bool uhbr_capable;
+	u8 channel_coding;
 	u32 max_lanecount;
 	u32 bpc;
 	u8 detected_bpc[XDPRX_MAX_STREAM_COUNT];
@@ -451,6 +457,58 @@ static inline struct xdprxss_state *
 to_xdprxssstate(struct v4l2_subdev *subdev)
 {
 	return container_of(subdev, struct xdprxss_state, subdev);
+}
+
+/*
+ * DisplayPort link-rate capability helpers.
+ *
+ * The IP family (DP 1.4 or DP 2.1) comes from the compatible string via
+ * uhbr_capable, and the design's maximum rate from xlnx,link-rate. DP 2.1a
+ * defines LINK_BW_SET once per channel coding and each definition marks the
+ * other's values RESERVED, so a bandwidth code only names a rate once the
+ * coding selected in DPCD 0x108 is known.
+ */
+struct xdprxss_match_data {
+	bool uhbr_capable;
+};
+
+static const struct xdprxss_match_data xdprxss_dp14_data = {
+	.uhbr_capable = false,
+};
+
+static const struct xdprxss_match_data xdprxss_dp21_data = {
+	.uhbr_capable = true,
+};
+
+/* DP 1.4 8B/10B LINK_BW_SET codes, ascending. */
+static const u8 xdprxss_rates_8b10b[] = {
+	DP_LINK_BW_1_62,
+	DP_LINK_BW_2_7,
+	DP_LINK_BW_5_4,
+	DP_LINK_BW_8_1,
+};
+
+static bool xdprxss_linkrate_is_8b10b(u32 link_rate)
+{
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(xdprxss_rates_8b10b); i++) {
+		if (xdprxss_rates_8b10b[i] == link_rate)
+			return true;
+	}
+	return false;
+}
+
+static bool xdprxss_linkrate_is_valid(u32 link_rate)
+{
+	return xdprxss_linkrate_is_8b10b(link_rate) ||
+	       xdprxss_linkrate_is_uhbr(link_rate);
+}
+
+static bool xdprxss_advertise_uhbr(const struct xdprxss_state *xdprxss)
+{
+	return xdprxss->uhbr_capable &&
+	       xdprxss_linkrate_is_uhbr(xdprxss->max_linkrate);
 }
 
 static bool xdprxss_is_stream_valid(struct xdprxss_state *state)
@@ -1305,6 +1363,16 @@ static void xdprxss_core_init(struct xdprxss_state *xdprxss)
 	xdprxss_update_ext_rcv_cap(xdprxss, xdprxss->max_linkrate);
 	max_lanecount |= (XDPRX_EFRAME_CAP_MASK | XDPRX_LNCNT_TPS3_MASK);
 	xdprxss_dpcd_update(xdprxss, XDPRX_LANE_CNT_REG, max_lanecount);
+	/*
+	 * Advertise the link-layer channel coding. The register only exists on
+	 * the DP 2.1 IP, so leave it alone elsewhere. A DP 2.1 IP configured
+	 * for a UHBR rate advertises 128B/132B here, which the source echoes
+	 * back through DPCD 0x108 once link training begins.
+	 */
+	if (xdprxss->uhbr_capable)
+		xdprxss_clrset(xdprxss, XDPRX_CHANNEL_CODING_REG,
+			       XDPRX_CHANNEL_CODING_MASK,
+			       xdprxss->channel_coding);
 	xdprxss_dpcd_update_end(xdprxss);
 	xdprxss_write(xdprxss, XDPRX_LINK_ENABLE_REG, 0x0);
 	axi_clk = clk_get_rate(xdprxss->axi_clk);
@@ -2765,14 +2833,24 @@ static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
 		dev_err(xdprxss->dev, "xlnx,link-rate property not found\n");
 		return ret;
 	}
-	if (!(val == DP_LINK_BW_1_62 ||
-	      val == DP_LINK_BW_2_7 ||
-	      val == DP_LINK_BW_5_4 ||
-	      val == DP_LINK_BW_8_1)) {
-		dev_err(xdprxss->dev, "invalid link rate\n");
+	/*
+	 * xlnx,link-rate is the maximum link rate the IP was built for, as a
+	 * DPCD LINK_BW_SET bandwidth code. UHBR codes require a DP 2.1-capable
+	 * compatible.
+	 */
+	if (!xdprxss_linkrate_is_valid(val)) {
+		dev_err(xdprxss->dev, "invalid link rate 0x%x\n", val);
+		return -EINVAL;
+	}
+	if (xdprxss_linkrate_is_uhbr(val) && !xdprxss->uhbr_capable) {
+		dev_err(xdprxss->dev,
+			"UHBR link-rate 0x%x needs the xlnx,v-dp-rxss2-1.0 or xlnx,v-dp-rxss2-2.0 compatible\n",
+			val);
 		return -EINVAL;
 	}
 	xdprxss->max_linkrate = val;
+	xdprxss->channel_coding = xdprxss_advertise_uhbr(xdprxss) ?
+		XDPRX_CHANNEL_CODING_128B132B : XDPRX_CHANNEL_CODING_8B10B;
 
 	ret = of_property_read_u32(node, "xlnx,lane-count", &val);
 	if (ret < 0) {
@@ -3345,6 +3423,7 @@ static int xdprxss_probe(struct platform_device *pdev)
 	struct device_node *node;
 	struct device *dev = &pdev->dev;
 	struct resource *res;
+	const struct xdprxss_match_data *pdata;
 	u32 family = 0;
 	int ret, irq;
 	unsigned int i = 0, j;
@@ -3357,6 +3436,10 @@ static int xdprxss_probe(struct platform_device *pdev)
 
 	xdprxss->dev = &pdev->dev;
 	node = xdprxss->dev->of_node;
+
+	pdata = device_get_match_data(dev);
+	if (pdata)
+		xdprxss->uhbr_capable = pdata->uhbr_capable;
 
 	/*
 	 * Read xlnx,versal-gt up front so the optional xlnx,vidphy phandle
@@ -3530,7 +3613,10 @@ static int xdprxss_probe(struct platform_device *pdev)
 		 */
 		xdprxss->mst = xdprxss_init_mst(xdprxss->dev, xdprxss->dp_base,
 						xdprxss->mst_enable, xdprxss->num_mst_streams,
-						xdprxss->num_mst_streams);
+						xdprxss->num_mst_streams,
+						xdprxss->max_linkrate,
+						xdprxss->max_lanecount,
+						xdprxss->uhbr_capable);
 		if (IS_ERR(xdprxss->mst)) {
 			dev_err(xdprxss->dev, "failed to initialize MST module\n");
 			ret = PTR_ERR(xdprxss->mst);
@@ -3777,7 +3863,10 @@ static void xdprxss_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id xdprxss_of_id_table[] = {
-	{ .compatible = "xlnx,v-dp-rxss-3.0", },
+	{ .compatible = "xlnx,v-dp-rxss2-2.0", .data = &xdprxss_dp21_data },
+	{ .compatible = "xlnx,v-dp-rxss2-1.0", .data = &xdprxss_dp21_data },
+	{ .compatible = "xlnx,v-dp-rxss-3.1", .data = &xdprxss_dp14_data },
+	{ .compatible = "xlnx,v-dp-rxss-3.0", .data = &xdprxss_dp14_data },
 	{ /* end of table */ }
 };
 MODULE_DEVICE_TABLE(of, xdprxss_of_id_table);
