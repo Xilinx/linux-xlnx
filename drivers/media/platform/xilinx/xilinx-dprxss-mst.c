@@ -1123,6 +1123,30 @@ xdprxss_build_remote_iic_read_reply(struct xdprxss_mst *xdpmst,
 }
 
 /**
+ * xdprxss_mst_clear_payload_table() - Release every VC payload allocation
+ * @xdpmst: MST context
+ *
+ * CLEAR_PAYLOAD_ID_TABLE releases the allocation of every VC in the device,
+ * so the table mirror, the hardware timeslot map and the update flag all have
+ * to follow it. See DP 1.4a section 2.11.9.1.5.
+ */
+static void xdprxss_mst_clear_payload_table(struct xdprxss_mst *xdpmst)
+{
+	u8 idx;
+
+	memset(xdpmst->rx_topology.payload_id_table, 0,
+	       sizeof(xdpmst->rx_topology.payload_id_table));
+
+	for (idx = 0; idx < XLNX_DPRX_MST_TIMESLOT_COUNT; idx++)
+		xdprxss_mst_write(xdpmst,
+				  XDPRX_VC_PAYLOAD_TABLE + (idx * sizeof(u32)),
+				  0);
+
+	xdprxss_mst_set(xdpmst, XDPRX_MST_CAP_REG,
+			XDPRX_MST_CAP_VCP_UPDATE_MASK);
+}
+
+/**
  * xdprxss_build_clear_payload_reply() - Build CLEAR_PAYLOAD_ID_TABLE reply
  * @reply_msg: reply container
  *
@@ -1218,6 +1242,7 @@ static int xdprxss_dp_mst_process_down_req(struct xdprxss_mst *xdpmst)
 
 	switch (opcode) {
 	case XLNX_DPRX_SBMSG_CLEAR_PAYLOAD_ID_TABLE:
+		xdprxss_mst_clear_payload_table(xdpmst);
 		xdprxss_build_clear_payload_reply(&reply_msg);
 		break;
 	case XLNX_DPRX_SBMSG_LINK_ADDRESS:
