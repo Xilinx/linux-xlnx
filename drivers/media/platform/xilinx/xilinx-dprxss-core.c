@@ -1325,6 +1325,8 @@ static void xdprxss_enable_mst_interrupts(struct xdprxss_state *xdprxss)
 	xdprxss_enable_mst_valid_video_interrupts(xdprxss);
 }
 
+static void xdprxss_set_128b132b_lt_timeouts(struct xdprxss_state *xdprxss);
+
 static void xdprxss_set_training_params(struct xdprxss_state *xdprxss)
 {
 	unsigned int offset;
@@ -1344,6 +1346,12 @@ static void xdprxss_set_training_params(struct xdprxss_state *xdprxss)
 	xdprxss_dpcd_update(xdprxss, XDPRX_TP_SET_REG,
 			    (XDPRX_AUX_RDINT_16MS << XDPRX_AUX_RDINT_SHIFT) |
 			    XDPRX_AUX_READINTRVL_MASK);
+	/*
+	 * Layer the 128B/132B timeouts on top of the write above while the
+	 * window is still open. Programming them from core_init() instead put
+	 * them outside the window and let this write clear the enable bits.
+	 */
+	xdprxss_set_128b132b_lt_timeouts(xdprxss);
 	xdprxss_dpcd_update_end(xdprxss);
 
 	xdprxss_clr(xdprxss, XDPRX_INTR_MASK_REG, XDPRX_INTR_ALL_MASK);
@@ -1372,6 +1380,80 @@ static void xdprxss_set_training_params(struct xdprxss_state *xdprxss)
 	xdprxss_write(xdprxss, XDPRX_BSIDLE_TIME_REG, XDPRX_BSIDLE_TMOUT_VAL);
 	xdprxss_clr(xdprxss, XDPRX_CRC_CONFIG_REG, XDPRX_CRC_EN_MASK);
 	xdprxss_write(xdprxss, XDPRX_LINK_ENABLE_REG, 0x1);
+}
+
+/*
+ * Bound how long the receiver waits to reach each 128B/132B training stage.
+ *
+ * Left unprogrammed the IP never asserts the DPCD 0x204 EQ/CDS
+ * interlane-align-done bits, so a source sees every lane reach per-lane status
+ * 0x7 and then stalls polling 0x204 until it times out and falls back.
+ *
+ * The CDS budget is 20 ms per LTTPR hop. The hop count is only known once a
+ * source has written the LTTPR DPCD fields, and this runs from probe before
+ * any source has trained, so the count reads zero here and the budget comes
+ * out at the single hop of a direct connection. Training through a repeater
+ * chain needs these timeouts reprogrammed once the count is known, which is
+ * left for separate work.
+ *
+ * Must be called with the DPCD override window held open: every register
+ * touched here lives in the DPCD mirror block and reads back as zero when
+ * written with the window closed.
+ */
+static void xdprxss_set_128b132b_lt_timeouts(struct xdprxss_state *xdprxss)
+{
+	unsigned long axi_clk;
+	u32 lttpr_count;
+	u64 cds_timeout;
+	u64 cds_us;
+
+	if (!xdprxss->uhbr_capable)
+		return;
+
+	/*
+	 * Leave the stage timeouts disabled rather than enable them with a
+	 * budget derived from an unknown clock rate. Disabled, the IP keeps
+	 * the behaviour it had before this and the source falls back to
+	 * 8B/10B. Enabled with a zero budget, every pass fails at once.
+	 */
+	axi_clk = clk_get_rate(xdprxss->axi_clk);
+	if (!axi_clk) {
+		dev_err(xdprxss->dev,
+			"no axi_clk rate, leaving the 128B/132B stage timeouts disabled\n");
+		return;
+	}
+
+	/*
+	 * Read-modify-write: the caller has already written the AUX read
+	 * interval into the other half of this register.
+	 */
+	xdprxss_set(xdprxss, XDPRX_TP_SET_REG, XDPRX_TP_SET_LT_TIMEOUT_MASK);
+
+	xdprxss_write(xdprxss, XDPRX_AUX_RD_INTERVAL_REG,
+		      XDPRX_AUX_RD_INTERVAL_EQ_DONE_DELAY);
+
+	lttpr_count = FIELD_GET(XDPRX_LTTPR_COUNT_MASK,
+				xdprxss_read(xdprxss, XDPRX_LTTPR_COUNT_REG));
+
+	cds_us = (u64)(lttpr_count + 1) * XDPRX_CDS_WAIT_PER_LTTPR_US;
+	cds_timeout = div_u64(cds_us * axi_clk, USEC_PER_SEC);
+	xdprxss_write(xdprxss, XDPRX_CDS_SEQ_COUNT_REG,
+		      min_t(u64, cds_timeout, U32_MAX));
+
+	xdprxss_write(xdprxss, XDPRX_TPS1_SCORE_REG, XDPRX_TPS1_SCORE_DELAY);
+
+	/*
+	 * These offsets only exist on DP 2.1 IP. Log what reads back next to
+	 * what was programmed so an IP that does not implement them is
+	 * visible during bring-up.
+	 */
+	dev_dbg(xdprxss->dev,
+		"128B/132B LT timeouts: lttpr=%u eq=0x%08x cds=0x%08x tps1=0x%08x (wrote cds=0x%llx)\n",
+		lttpr_count,
+		xdprxss_read(xdprxss, XDPRX_AUX_RD_INTERVAL_REG),
+		xdprxss_read(xdprxss, XDPRX_CDS_SEQ_COUNT_REG),
+		xdprxss_read(xdprxss, XDPRX_TPS1_SCORE_REG),
+		cds_timeout);
 }
 
 static void xdprxss_core_init(struct xdprxss_state *xdprxss)
