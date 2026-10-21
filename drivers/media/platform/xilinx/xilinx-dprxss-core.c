@@ -245,7 +245,8 @@ struct vidphy_cfg {
  * @rx_audio_data: audio data
  * @valid_streams: bitmask of streams currently locked with valid video
  * @streaming: Flag for storing streaming state
- * @ltstate: Flag for storing link training state
+ * @ltstate: Link training stage reached, written from the threaded interrupt
+ *	     handler and read from the lane-set worker.
  * @power_down_latched: Set when a SET_POWER write is seen leaving normal
  *			power, consumed once power returns to normal.
  *			Guarded by @irq_lock.
@@ -316,7 +317,7 @@ struct xdprxss_state {
 	struct xlnx_dprx_audio_data *rx_audio_data;
 	unsigned long valid_streams;
 	unsigned int streaming : 1;
-	unsigned int ltstate : 2;
+	u8 ltstate;
 	bool power_down_latched;
 	int hdcp2x_timer_irq;
 	int irq;
@@ -833,6 +834,17 @@ static void xdprxss_config_rx_dec_clk(struct xdprxss_state *dp, int bw_code)
 	u32 reg;
 
 	/*
+	 * Decryption-clock MMCM/clkx5 tables only cover DP 1.4 rates.
+	 * UHBR leaves this path unused (phy_configure handles the clocking).
+	 */
+	if (xdprxss_linkrate_is_uhbr(bw_code)) {
+		dev_err(dp->dev,
+			"UHBR bw_code 0x%x cannot use Dec_Clk MMCM/clkx5 path\n",
+			bw_code);
+		return;
+	}
+
+	/*
 	 * On Versal Gen 2 series silicon the clkx5-wiz-1.0 latches the
 	 * per-link-rate register table internally, so neither the MMCM
 	 * RECONFIG_LOAD trigger nor the xdprxss_get_rx_dec_clk_lock() readback
@@ -942,6 +954,17 @@ static int xdprxss_config_gt_control_linerate(struct xdprxss_state *dp,
 					      int bw_code)
 {
 	u32 data;
+
+	/*
+	 * GTCTL line-rate field is 2 bits and only encodes DP 1.4 rates.
+	 * UHBR must use phy_configure() on the GT Quad / VPHY path instead.
+	 */
+	if (xdprxss_linkrate_is_uhbr(bw_code)) {
+		dev_err(dp->dev,
+			"UHBR bw_code 0x%x cannot use GTCTL line-rate path\n",
+			bw_code);
+		return -EINVAL;
+	}
 
 	switch (bw_code) {
 	case DP_LINK_BW_1_62:
@@ -1451,13 +1474,14 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 	struct phy_configure_opts_dp *phy_cfg = &phy_opts.dp;
 	struct retimer_cfg *rtmr_cfg;
 	unsigned int i;
+	bool is_uhbr;
 	u32 linkrate;
 
 	dev_dbg(state->dev, "Asserted training pattern 1\n");
 
 	/*
 	 * Re-assert the hold the interrupt handler took, so that a pass which
-	 * re-enters here is covered too. Both branches below finish by writing
+	 * re-enters here is covered too. Every path out of here writes
 	 * XDPRX_PHY_INIT_MASK, which replaces the whole register and so
 	 * releases it.
 	 */
@@ -1465,17 +1489,35 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 
 	linkrate = xdprxss_read(state, XDPRX_LINK_BW_REG);
 
-	switch (linkrate) {
-	case DP_LINK_BW_1_62:
-	case DP_LINK_BW_2_7:
-	case DP_LINK_BW_5_4:
-	case DP_LINK_BW_8_1:
-		phy_cfg->link_rate = linkrate * 270;
-		break;
-	default:
-		dev_err(state->dev, "invalid link rate\n");
-		break;
+	is_uhbr = state->channel_coding == XDPRX_CHANNEL_CODING_128B132B;
+
+	/*
+	 * For DP 1.4 the bandwidth code is bw_code*270 Mb/s; for DP 2.1 the
+	 * UHBR codes are flat rates (10000/13500/20000 Mb/s). Validate the
+	 * code against the active channel coding so a stale source DPCD
+	 * write cannot push us into an out-of-band combination.
+	 */
+	if (is_uhbr) {
+		if (!xdprxss_linkrate_is_uhbr(linkrate)) {
+			dev_err(state->dev,
+				"invalid UHBR link rate 0x%x while 128B/132B is active\n",
+				linkrate);
+			goto release_gt;
+		}
+		if (!state->uhbr_capable) {
+			dev_err(state->dev,
+				"128B/132B negotiated on non-DP21 IP (rate 0x%x)\n",
+				linkrate);
+			goto release_gt;
+		}
+	} else {
+		if (!xdprxss_linkrate_is_8b10b(linkrate)) {
+			dev_err(state->dev,
+				"invalid 8B/10B link rate 0x%x\n", linkrate);
+			goto release_gt;
+		}
 	}
+	phy_cfg->link_rate = xdprxss_link_rate_to_mbps(linkrate);
 
 	if (state->retimer_prvdata) {
 		rtmr_cfg = state->retimer_prvdata;
@@ -1486,13 +1528,58 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 	}
 
 	if (!state->versal_gt_present) {
+		int ret = 0;
+
 		phy_cfg->set_rate = 1;
-		for (i = 0; i < state->max_lanecount; i++)
-			phy_configure(state->phy[i], &phy_opts);
+		for (i = 0; i < state->max_lanecount; i++) {
+			ret = phy_configure(state->phy[i], &phy_opts);
+			if (ret) {
+				dev_err(state->dev,
+					"PHY lane %u rate switch failed (rate=%u Mb/s): %d\n",
+					i, phy_cfg->link_rate, ret);
+				goto release_gt;
+			}
+		}
 		/* Initialize phy logic of DP-RX core */
 		xdprxss_write(state, XDPRX_PHY_REG, XDPRX_PHY_INIT_MASK);
 		phy_reset(state->phy[0]);
+	} else if (is_uhbr) {
+		int ret;
+
+		/*
+		 * UHBR rates are clocked through the GT Quad PHY rather than
+		 * the legacy MMCM/clkx5 + GT-control-linerate path. The IP has
+		 * no 128B/132B clock-wizard table and the MMCM/GT-control
+		 * line-rate registers are unused at UHBR rates. The GT Quad's
+		 * 2-bit XDPRX_GTCTL_LINE_RATE_MASK field also cannot encode
+		 * the UHBR codes. Offer the rate to the GT Quad PHY driver and
+		 * then re-init the core PHY logic.
+		 *
+		 * A GT Quad that implements no configure op reports
+		 * -EOPNOTSUPP. That is not a failure: such a quad stays at the
+		 * single UHBR rate the design was built for, which is also the
+		 * ceiling this driver advertises, so there is nothing to
+		 * switch.
+		 */
+		dev_dbg(state->dev,
+			"UHBR rate 0x%x (%u Mb/s): offering to GT Quad PHY\n",
+			linkrate, phy_cfg->link_rate);
+		phy_cfg->set_rate = 1;
+		ret = phy_configure(state->phy[0], &phy_opts);
+		if (ret && ret != -EOPNOTSUPP) {
+			dev_err(state->dev,
+				"GT Quad PHY UHBR rate switch failed (rate=%u Mb/s): %d\n",
+				phy_cfg->link_rate, ret);
+			goto release_gt;
+		}
+		xdprxss_write(state, XDPRX_PHY_REG, XDPRX_PHY_INIT_MASK);
+		phy_reset(state->phy[0]);
 	} else {
+		/*
+		 * At 8B/10B rates the decode clock comes from the MMCM inside
+		 * the PHY, which is reprogrammed for the negotiated link rate
+		 * and then polled for lock.
+		 */
 		xdprxss_config_rx_dec_clk(state, linkrate);
 
 		xdprxss_config_gt_control_linerate(state, linkrate);
@@ -1503,14 +1590,29 @@ static void xdprxss_irq_tp1(struct xdprxss_state *state)
 		/* Initialize phy logic of DP-RX core */
 		xdprxss_write(state, XDPRX_PHY_REG, XDPRX_PHY_INIT_MASK);
 	}
-	state->ltstate = 1;
+	WRITE_ONCE(state->ltstate, 1);
 	xdprxss_clr(state, XDPRX_INTR_MASK_REG, XDPRX_INTR_ALL_MASK);
+	return;
+
+release_gt:
+	/*
+	 * Release the hold taken above. Left asserted it keeps the recovered
+	 * link clock stopped, so the IP would go on deferring the source's
+	 * DPCD 0x202 reads and the link could not retrain without an unplug.
+	 *
+	 * Clear the training stage with it. This pass never reached an
+	 * equalisation phase, so leaving the stage at the value a previous
+	 * pass stored would let the lane set worker drive the retimer for a
+	 * stage that is no longer in progress.
+	 */
+	WRITE_ONCE(state->ltstate, 0);
+	xdprxss_write(state, XDPRX_PHY_REG, XDPRX_PHY_INIT_MASK);
 }
 
 static void xdprxss_irq_tp2(struct xdprxss_state *state)
 {
 	dev_dbg(state->dev, "Asserted training pattern 2\n");
-	state->ltstate = 2;
+	WRITE_ONCE(state->ltstate, 2);
 }
 
 static void xdprxss_training_failure(struct xdprxss_state *state)
