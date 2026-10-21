@@ -23,7 +23,11 @@ struct phy_configure_opts_dp {
 	 *
 	 * Link Rate, in Mb/s, of the main link.
 	 *
-	 * Allowed values: 1620, 2160, 2430, 2700, 3240, 4320, 5400, 8100 Mb/s
+	 * Allowed values with 8b/10b channel coding: 1620, 2160, 2430,
+	 * 2700, 3240, 4320, 5400, 8100 Mb/s
+	 *
+	 * Allowed values with 128b/132b channel coding: 10000, 13500,
+	 * 20000 Mb/s
 	 */
 	unsigned int link_rate;
 
