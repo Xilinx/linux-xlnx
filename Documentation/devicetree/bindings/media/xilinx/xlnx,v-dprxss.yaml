@@ -359,14 +359,6 @@ examples:
        compatible = "xlnx,hdcp-keymngmt-blk-1.0", "syscon";
        reg = <0xa00c0000 0x10000>;
    };
-   clk_wiz_0: clock-controller@a4000000 {
-       compatible = "xlnx,clk-wizard-1.0";
-       reg = <0xa4000000 0x10000>;
-       #clock-cells = <1>;
-       clocks = <&misc_clk_0>, <&zynqmp_clk 71>;
-       clock-names = "clk_in1", "s_axi_aclk";
-       clock-output-names = "clk_out1";
-   };
 
   # Versal Gen 2 variant: clkx5-wiz-1.0 clocking wizard, GT Quad PHY.
   - |
@@ -399,14 +391,6 @@ examples:
                };
            };
        };
-   };
-   clkx5_wiz_0: clock-controller@a4010000 {
-       compatible = "xlnx,clkx5-wiz-1.0";
-       reg = <0xa4010000 0x10000>;
-       #clock-cells = <1>;
-       clocks = <&misc_clk_0>, <&versal_clk 71>;
-       clock-names = "clk_in1", "s_axi_aclk";
-       clock-output-names = "clk_out1";
    };
   - |
    v-dp-rxss2@a0040000 {
