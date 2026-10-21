@@ -131,6 +131,7 @@
 #define XDPRX_AUX_RDINT_SHIFT		8
 #define XDPRX_AUX_RDINT_16MS		4
 #define XDPRX_AUX_READINTRVL_MASK	BIT(15)
+#define XDPRX_TP_SET_LT_TIMEOUT_MASK	GENMASK(24, 17)
 
 #define XDPRX_CTRL_DPCD_REG		0x0b8
 #define XDPRX_MST_CAP_REG		0x0d0
@@ -455,5 +456,52 @@
 	 XDPRX_INTERRUPT_MASK_1_VIDEO_STREAM_ALT_MASK(2) | \
 	 XDPRX_INTERRUPT_MASK_1_VIDEO_STREAM_ALT_MASK(3) | \
 	 XDPRX_INTERRUPT_MASK_1_VIDEO_STREAM_ALT_MASK(4))
+
+/* Link rates only reachable with 128B/132B channel coding */
+#define XDPRX_LINK_RATE_UHBR10_MBPS	10000
+#define XDPRX_LINK_RATE_UHBR13_5_MBPS	13500
+#define XDPRX_LINK_RATE_UHBR20_MBPS	20000
+
+/*
+ * Mirror of DPCD 0x108: the encoding the source selected during link
+ * training. Bit 1 set means it chose 128B/132B, otherwise 8B/10B.
+ */
+#define XDPRX_DPCD_MAIN_LINK_CHANNEL_CODING_SET	0x434
+#define XDPRX_MAIN_LINK_CODING_128B132B_MASK	BIT(1)
+
+/* Link-layer decoder mode. Must agree with what the source negotiated. */
+#define XDPRX_CHANNEL_CODING_REG	0x1600
+#define XDPRX_CHANNEL_CODING_MASK	GENMASK(1, 0)
+#define XDPRX_CHANNEL_CODING_8B10B	0x1
+#define XDPRX_CHANNEL_CODING_128B132B	0x2
+
+/*
+ * Per-stream pixel rate, packed as {HIGH << 24, LOW[23:0]}. Streams are 8
+ * bytes apart. The IP calls this VFreq, but the counter holds pixels per
+ * second rather than a refresh rate: dividing it by the total frame size
+ * yields the frame rate, which is how the stream timing is derived.
+ */
+#define XDPRX_VFREQ_STREAM1_LOW		0x1608
+#define XDPRX_VFREQ_STREAM1_HIGH	0x160c
+#define XDPRX_VFREQ_STREAM_STRIDE	0x8
+#define XDPRX_VFREQ_HIGH_SHIFT		24
+#define XDPRX_VFREQ_LOW_MASK		GENMASK(23, 0)
+
+/*
+ * 128B/132B link-training stage timeouts, all counted in s_axi_aclk cycles.
+ * The CDS budget is 20 ms per LTTPR hop, converted to cycles by the caller
+ * from the rate clk_get_rate() reports. The EQ done delay is a fixed
+ * 10,000,000 cycles, which is 100 ms at a 100 MHz s_axi_aclk and scales
+ * with it. TPS1 uses the IP default of 0. The enable bits for these live in
+ * XDPRX_TP_SET_LT_TIMEOUT_MASK.
+ */
+#define XDPRX_AUX_RD_INTERVAL_REG		0x1644
+#define XDPRX_AUX_RD_INTERVAL_EQ_DONE_DELAY	0x989680
+#define XDPRX_CDS_SEQ_COUNT_REG			0x1648
+#define XDPRX_CDS_WAIT_PER_LTTPR_US		20000
+#define XDPRX_TPS1_SCORE_REG			0x164c
+#define XDPRX_TPS1_SCORE_DELAY			0
+#define XDPRX_LTTPR_COUNT_REG			0x1664
+#define XDPRX_LTTPR_COUNT_MASK			GENMASK(7, 0)
 
 #endif /* __XILINX_DPRXSS_HW_H__ */
