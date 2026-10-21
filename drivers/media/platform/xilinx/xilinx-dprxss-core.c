@@ -203,12 +203,17 @@ struct vidphy_cfg {
  * @vidphy_prvdata: Pointer to video phy private data structure
  * @vidphy_dev: struct device of the video phy provider, passed to the vidphy
  *	callback so the provider recovers the correct instance
- * @tp1_work: training pattern 1 worker
  * @unplug_work: Unplug worker
  * @powerchange_work: Delayed work for DP power state change handling
  * @lane_set_work: lane set worker
  * @link_qual_work: link qual worker
  * @lock: Lock is used for width, height, framerate variables
+ * @irq_lock: Protects the interrupt status handed from the IRQ to its thread.
+ *	Raw because the hard handler takes it, and a sleeping lock cannot be
+ *	acquired from hard interrupt context on a PREEMPT_RT kernel
+ * @irq_status: Pending XDPRX_INTR_CAUSE_REG bits
+ * @irq_status1: Pending XDPRX_INTR_CAUSE_1_REG bits
+ * @irq_status2: Pending XDPRX_INTR_CAUSE_2_REG bits
  * @format: Active V4L2 format on each pad
  * @frame_interval: Captures the frame rate
  * @max_linkrate: Maximum supported link rate
@@ -271,13 +276,17 @@ struct xdprxss_state {
 	struct device *retimer_dev;
 	struct vidphy_cfg *vidphy_prvdata;
 	struct device *vidphy_dev;
-	struct delayed_work tp1_work;
 	struct delayed_work unplug_work;
 	struct delayed_work powerchange_work;
 	struct work_struct lane_set_work;
 	struct work_struct link_qual_work;
 	/* protects width, height, framerate variables */
 	spinlock_t lock;
+	/* protects the interrupt status handed from the IRQ to its thread */
+	raw_spinlock_t irq_lock;
+	u32 irq_status;
+	u32 irq_status1;
+	u32 irq_status2;
 	struct v4l2_mbus_framefmt format[XDPRX_MAX_STREAM_COUNT];
 	unsigned int frame_interval;
 	u32 max_linkrate;
@@ -964,7 +973,6 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state, u8 stream)
 	bool use_sdp = false;
 	u32 sdp_raw_aligned;
 	u8 tmp_fmt, tmp_bpc;
-	unsigned long flags;
 	unsigned long active;
 	u32 sdp_bases[2];
 	u32 sdp_raw_word;
@@ -1211,7 +1219,7 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state, u8 stream)
 	dv_timings->bt.vfrontporch = (vres_total - (vact + vstart));
 	dv_timings->bt.vbackporch = vstart - vsw;
 
-	spin_lock_irqsave(&state->lock, flags);
+	spin_lock(&state->lock);
 	format->width = dv_timings->bt.width;
 	format->height = dv_timings->bt.height;
 	format->colorspace = V4L2_COLORSPACE_REC709;
@@ -1220,7 +1228,7 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state, u8 stream)
 	format->quantization = V4L2_QUANTIZATION_DEFAULT;
 	format->field = V4L2_FIELD_NONE;
 	state->frame_interval = framerate;
-	spin_unlock_irqrestore(&state->lock, flags);
+	spin_unlock(&state->lock);
 
 	dev_dbg(state->dev, "detected properties : width %d height %d\n",
 		dv_timings->bt.width, dv_timings->bt.height);
@@ -1670,8 +1678,6 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 {
 	struct xdprxss_state *state = (struct xdprxss_state *)dev_id;
 	u32 status, status1, status2;
-	u32 lane_count;
-	u8 index;
 
 	status = xdprxss_read(state, XDPRX_INTR_CAUSE_REG);
 	status &= ~xdprxss_read(state, XDPRX_INTR_MASK_REG);
@@ -1685,13 +1691,61 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 		return IRQ_NONE;
 
 	/*
-	 * The cause registers clear on read, so the reads above have already
-	 * acknowledged everything and the line is quiet. Return here rather
-	 * than queue a worker: the state the workers run against is being
-	 * taken apart, and nothing is left to cancel one queued now.
+	 * The reads above have acknowledged everything, so the line is quiet
+	 * already. Return here rather than wake the thread: the state it runs
+	 * against is being taken apart, and nothing is left to wait on a
+	 * thread woken now.
 	 */
 	if (state->going_away)
 		return IRQ_HANDLED;
+
+	/*
+	 * Take the GT hold here as well as in xdprxss_irq_tp1(). It only helps
+	 * if it is already in place when the source's first DPCD 0x202 status
+	 * read arrives, roughly 0.4 ms after TPS1, which is not far above the
+	 * latency of waking this thread.
+	 */
+	if (status & XDPRX_INTR_TP1_MASK)
+		xdprxss_hold_gt_in_reset(state);
+
+	/*
+	 * The cause registers clear on read, so hand the bits to the thread
+	 * instead of letting it read them again.
+	 */
+	raw_spin_lock(&state->irq_lock);
+	state->irq_status |= status;
+	state->irq_status1 |= status1;
+	state->irq_status2 |= status2;
+	raw_spin_unlock(&state->irq_lock);
+
+	return IRQ_WAKE_THREAD;
+}
+
+/*
+ * All link-training stages run here, in order.
+ *
+ * TP1 reprograms the line rate and resets the PHY, which takes tens of
+ * milliseconds of PLL polling. Running it from a workqueue let the inline TP2
+ * handler overtake it, so the PHY was being reset underneath a training
+ * pattern the source had already moved past and equalisation could never
+ * converge. Servicing every stage from this one thread keeps TP1 ahead of TP2
+ * while still allowing the PLL waits to sleep.
+ */
+static irqreturn_t xdprxss_irq_thread(int irq, void *dev_id)
+{
+	struct xdprxss_state *state = (struct xdprxss_state *)dev_id;
+	u32 status, status1, status2;
+	u32 lane_count;
+	u8 index;
+
+	raw_spin_lock_irq(&state->irq_lock);
+	status = state->irq_status;
+	status1 = state->irq_status1;
+	status2 = state->irq_status2;
+	state->irq_status = 0;
+	state->irq_status1 = 0;
+	state->irq_status2 = 0;
+	raw_spin_unlock_irq(&state->irq_lock);
 
 	if (status1 & XDPRX_INTR_ACCESS_LANE_SET_MASK)
 		schedule_work(&state->lane_set_work);
@@ -1701,20 +1755,8 @@ static irqreturn_t xdprxss_irq_handler(int irq, void *dev_id)
 		schedule_delayed_work(&state->powerchange_work, 0);
 	if (status & XDPRX_INTR_UNPLUG_MASK)
 		schedule_delayed_work(&state->unplug_work, 0);
-	if (status & XDPRX_INTR_TP1_MASK) {
-		/*
-		 * Hold the GT receiver in reset from here in addition to
-		 * xdprxss_irq_tp1(), which runs later on the workqueue.
-		 *
-		 * The hold only helps if it is already in place when the
-		 * source's first DPCD 0x202 status read arrives, roughly
-		 * 0.4 ms after TPS1. Workqueue latency is of the same order,
-		 * so asserting it from the worker alone wins the race only
-		 * sometimes. One register write is cheap enough to do here.
-		 */
-		xdprxss_hold_gt_in_reset(state);
-		schedule_delayed_work(&state->tp1_work, 0);
-	}
+	if (status & XDPRX_INTR_TP1_MASK)
+		xdprxss_irq_tp1(state);
 	if (status & XDPRX_INTR_TP2_MASK)
 		xdprxss_irq_tp2(state);
 	if (status & XDPRX_INTR_TRLOST_MASK)
@@ -2774,15 +2816,6 @@ static void xlnx_dp_linkqual_work_func(struct work_struct *work)
 	xdprxss_irq_access_linkqual(dp);
 }
 
-static void xlnx_dp_tp1_work_func(struct work_struct *work)
-{
-	struct xdprxss_state *dp;
-
-	dp = container_of(work, struct xdprxss_state, tp1_work.work);
-
-	xdprxss_irq_tp1(dp);
-}
-
 static void xlnx_dp_unplug_work_func(struct work_struct *work)
 {
 	struct xdprxss_state *dp;
@@ -3238,15 +3271,16 @@ static int dprx_register_hdcp1x_dev(struct xdprxss_state *xdprxss)
  * @xdprxss: pointer to driver state
  *
  * Masks every interrupt cause at the IP and marks the state as going away,
- * then waits for a handler that is already running to return. After this no
- * handler queues a worker.
+ * then waits for a handler that is already running to return, the thread
+ * included. After this the hard handler wakes no thread and queues no worker.
  *
- * Both subsystem interrupts are requested with IRQF_SHARED, so the line
- * itself must be left alone: disable_irq() would mask it for every other
- * device that shares it. Masking the causes silences this IP only.
+ * The lines are left alone rather than disabled. The HDCP1x interrupt is
+ * requested with IRQF_SHARED, so disable_irq() would mask it for every other
+ * device on that line. Masking the causes silences this IP only.
  *
- * A worker that was already running can unmask causes again as it finishes,
- * so a caller that cancels the workers has to call this once more after it.
+ * The thread, or a worker that was already running, can unmask causes again
+ * as it finishes, so a caller that cancels the workers has to call this once
+ * more after it.
  */
 static void xdprxss_silence_interrupts(struct xdprxss_state *xdprxss)
 {
@@ -3254,7 +3288,8 @@ static void xdprxss_silence_interrupts(struct xdprxss_state *xdprxss)
 	 * Set before the masking, so that a handler running in between
 	 * acknowledges its causes and returns without queueing anything. The
 	 * synchronize_irq() below then rules out a handler that read the flag
-	 * before it was set, and from there nothing new reaches the workqueue.
+	 * before it was set, and from there nothing new reaches the thread or
+	 * the workqueue.
 	 */
 	xdprxss->going_away = true;
 
@@ -3446,6 +3481,7 @@ static int xdprxss_probe(struct platform_device *pdev)
 	}
 
 	spin_lock_init(&xdprxss->lock);
+	raw_spin_lock_init(&xdprxss->irq_lock);
 
 	/* Initialize the DP core */
 	xdprxss_core_init(xdprxss);
@@ -3524,10 +3560,9 @@ static int xdprxss_probe(struct platform_device *pdev)
 	}
 
 	/*
-	 * The handler schedules all five of these, so they have to be
+	 * The thread schedules all four of these, so they have to be
 	 * initialised before the interrupt is requested rather than after.
 	 */
-	INIT_DELAYED_WORK(&xdprxss->tp1_work, xlnx_dp_tp1_work_func);
 	INIT_DELAYED_WORK(&xdprxss->unplug_work, xlnx_dp_unplug_work_func);
 	INIT_DELAYED_WORK(&xdprxss->powerchange_work, xlnx_dp_powerchange_work_func);
 	INIT_WORK(&xdprxss->lane_set_work, xlnx_dp_laneset_work_func);
@@ -3535,8 +3570,9 @@ static int xdprxss_probe(struct platform_device *pdev)
 
 	/* Register interrupt handler */
 	irq = irq_of_parse_and_map(node, 0);
-	ret = devm_request_irq(xdprxss->dev, irq, xdprxss_irq_handler,
-			       IRQF_SHARED, subdev->name, xdprxss);
+	ret = devm_request_threaded_irq(xdprxss->dev, irq, xdprxss_irq_handler,
+					xdprxss_irq_thread, IRQF_ONESHOT,
+					subdev->name, xdprxss);
 	if (ret) {
 		dev_err(dev, "Err = %d Interrupt handler reg failed!\n",
 			ret);
@@ -3613,7 +3649,6 @@ error_irq:
 	 * state they run against is taken apart.
 	 */
 	xdprxss_silence_interrupts(xdprxss);
-	cancel_delayed_work_sync(&xdprxss->tp1_work);
 	cancel_delayed_work_sync(&xdprxss->unplug_work);
 	cancel_delayed_work_sync(&xdprxss->powerchange_work);
 	cancel_work_sync(&xdprxss->lane_set_work);
@@ -3677,7 +3712,6 @@ static void xdprxss_remove(struct platform_device *pdev)
 	 * state that devm is about to free.
 	 */
 	xdprxss_silence_interrupts(xdprxss);
-	cancel_delayed_work_sync(&xdprxss->tp1_work);
 	cancel_delayed_work_sync(&xdprxss->unplug_work);
 	cancel_delayed_work_sync(&xdprxss->powerchange_work);
 	cancel_work_sync(&xdprxss->lane_set_work);
