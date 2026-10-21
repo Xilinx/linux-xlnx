@@ -15,6 +15,7 @@
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
+#include <linux/math64.h>
 #include <linux/mfd/syscon.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -1050,6 +1051,7 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state, u8 stream)
 	u16 vres_total, hres_total, framerate, lanecount;
 	u16 hact, vact, hsw, vsw, hstart, vstart;
 	u8 msa_fmt, msa_bpc, sdp_fmt, sdp_bpc;
+	u8 coding;
 	struct v4l2_dv_timings *dv_timings;
 	struct v4l2_mbus_framefmt *format;
 	bool have_valid_sdp_bpc = false;
@@ -1091,10 +1093,23 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state, u8 stream)
 	hsw = xdprxss_read(state, XDPRX_MSA_HSWIDTH_REG + xdprxss_mst_offset(stream));
 	vsw = xdprxss_read(state, XDPRX_MSA_VSWIDTH_REG + xdprxss_mst_offset(stream));
 
-	if (!hact || !vact || !rxmsa_mvid || !rxmsa_nvid) {
+	/*
+	 * 128B/132B sources do not transmit MVID/NVID, so for that coding the
+	 * MVID/NVID sanity check is dropped and the per-stream VFreq counter
+	 * is used instead.
+	 */
+	if (!hact || !vact) {
 		dev_dbg(state->dev,
-			"stream=%u MSA unstable mvid=%u nvid=%u hact=%u vact=%u\n",
-			stream, rxmsa_mvid, rxmsa_nvid, hact, vact);
+			"stream=%u MSA unstable hact=%u vact=%u\n",
+			stream, hact, vact);
+		return -EAGAIN;
+	}
+	coding = state->channel_coding;
+	if (coding == XDPRX_CHANNEL_CODING_8B10B &&
+	    (!rxmsa_mvid || !rxmsa_nvid)) {
+		dev_dbg(state->dev,
+			"stream=%u 8B/10B MSA unstable mvid=%u nvid=%u\n",
+			stream, rxmsa_mvid, rxmsa_nvid);
 		return -EAGAIN;
 	}
 	if (!hres_total || !vres_total) {
@@ -1104,16 +1119,69 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state, u8 stream)
 		return -EINVAL;
 	}
 
-	recv_clk_freq = (linkrate * 27 * rxmsa_mvid) / rxmsa_nvid;
+	if (coding == XDPRX_CHANNEL_CODING_128B132B) {
+		/*
+		 * DP 2.1 / 128B/132B: derive frame rate (and from it the
+		 * pixel clock) from the per-stream VFreq counter that the IP
+		 * exposes. VFreq is concatenated from a LOW word carrying the
+		 * low 24 bits and a HIGH word carrying the rest.
+		 *
+		 * VFreq counts pixels per second, so dividing it by the total
+		 * frame size gives the frame rate with no scaling, and scaling
+		 * it down to MHz gives the same recovered pixel clock that the
+		 * 8B/10B branch derives from the link rate and MVID/NVID.
+		 */
+		u32 vfreq_off = (stream - 1) * XDPRX_VFREQ_STREAM_STRIDE;
+		u32 vfreq_low = xdprxss_read(state,
+					     XDPRX_VFREQ_STREAM1_LOW + vfreq_off);
+		u32 vfreq_high = xdprxss_read(state,
+					      XDPRX_VFREQ_STREAM1_HIGH + vfreq_off);
+		u64 vfreq = ((u64)vfreq_high << XDPRX_VFREQ_HIGH_SHIFT) |
+			    (vfreq_low & XDPRX_VFREQ_LOW_MASK);
+		u64 frame_div = (u64)hres_total * vres_total;
 
+		if (!vfreq || !frame_div) {
+			dev_dbg(state->dev,
+				"stream=%u 128B/132B VFreq unstable vfreq=%llu htotal*vtotal=%llu\n",
+				stream, vfreq, frame_div);
+			return -EAGAIN;
+		}
+
+		u64 rate = div64_u64(vfreq, frame_div);
+
+		/*
+		 * framerate is a u16. A VFreq large enough to overflow it is
+		 * a counter that has not settled, so treat it the same way as
+		 * a zero reading rather than storing a truncated rate.
+		 */
+		if (rate > U16_MAX) {
+			dev_dbg(state->dev,
+				"stream=%u 128B/132B VFreq out of range vfreq=%llu rate=%llu\n",
+				stream, vfreq, rate);
+			return -EAGAIN;
+		}
+
+		framerate = rate;
+		recv_clk_freq = (u32)div64_u64(vfreq, HZ_PER_MHZ);
+	} else {
+		recv_clk_freq = (linkrate * 27 * rxmsa_mvid) / rxmsa_nvid;
+		framerate = (recv_clk_freq * HZ_PER_MHZ) /
+			    (hres_total * vres_total);
+	}
+
+	/*
+	 * The video datapath width follows the pixel clock, not the link
+	 * rate: the thresholds are the rates past which one pixel per clock
+	 * can no longer keep up. A small mode still wants the narrow
+	 * datapath however fast the link underneath it runs.
+	 */
 	if (recv_clk_freq > 540 && lanecount == 4)
 		pixel_width = 0x4;
-	else if (recv_clk_freq > 270 && (lanecount != 1))
+	else if (recv_clk_freq > 270 && lanecount != 1)
 		pixel_width = 0x2;
 	else
 		pixel_width = 0x1;
 
-	framerate = (recv_clk_freq * HZ_PER_MHZ) / (hres_total * vres_total);
 	framerate = roundup(framerate, 5);
 
 	/*
