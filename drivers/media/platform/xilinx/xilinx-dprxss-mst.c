@@ -13,10 +13,13 @@
 #include <linux/device.h>
 #include <linux/io.h>
 #include <linux/iopoll.h>
+#include <linux/math64.h>
 #include <linux/mutex.h>
 #include <linux/string.h>
 #include <linux/types.h>
 #include <linux/workqueue.h>
+
+#include <drm/display/drm_dp.h>
 
 #include "xilinx-dprxss-hw.h"
 #include "xilinx-dprxss-mst.h"
@@ -104,12 +107,13 @@ static const u8 guid_table[XLNX_DPRX_MAX_MST_PORTS][XLNX_DPRX_GUID_NBYTES] = {
  * Default DPCD capability bytes returned by REMOTE_DPCD_READ.
  *
  * These bytes map to the receiver capability space at DPCD 0x00000 onward.
- * See DP 1.4a section 2.9.3 (DPCD Field Address Mapping).
+ * See DP 1.4a section 2.9.3 (DPCD Field Address Mapping). Max link rate and
+ * revision are overwritten from the RXSS link caps at MST init.
  */
-static const u8 dpcd[] = {
+static const u8 dpcd_template[] = {
 	0x12, /* DPCD Rev 1.2 */
-	0x0a, /* Max Link Rate 2.7 Gbps */
-	0x84, /* Max Lane Count 4 + Enhanced Framing */
+	0x0a, /* Max Link Rate (updated from xlnx,link-rate) */
+	0x84, /* Max Lane Count 4 + Enhanced Framing (lane bits updated) */
 	0x01, /* Max Downspread 0.5% */
 	0x01, /* Receiver Port 0 present */
 	0x00, 0x00, 0x00,
@@ -275,7 +279,13 @@ struct xdprx_mst_config {
  * @intf_base: mapped DPRX register base
  * @num_audio_channels: SDP stream/sink capability fields
  * @num_streams: configured number of downstream streams
+ * @max_linkrate: link rate advertised in LINK_ADDRESS replies, as a DPCD
+ *		  LINK_BW_SET code
+ * @max_lanecount: lane count advertised in LINK_ADDRESS replies
+ * @port_pbn: payload bandwidth number reported for each stream port
  * @mst_enable: MST mode enable flag
+ * @uhbr_capable: sink supports DP2.1 UHBR (128b/132b) link rates
+ * @remote_dpcd: capability mirror answering REMOTE_DPCD_READ
  */
 struct xdprxss_mst {
 	struct device *dev;
@@ -285,7 +295,12 @@ struct xdprxss_mst {
 	void __iomem *intf_base;
 	u32 num_audio_channels;
 	u8 num_streams;
+	u8 max_linkrate;
+	u8 max_lanecount;
+	u32 port_pbn;
 	bool mst_enable;
+	bool uhbr_capable;
+	u8 remote_dpcd[sizeof(dpcd_template)];
 };
 
 /**
@@ -418,12 +433,12 @@ static int xdprxss_init_mst_stream_params(struct xdprxss_mst *xdpmst, u8 stream)
 	if (ret)
 		return ret;
 
-	xdpmst->rx_topology.mst_port[stream].dpcd.bytes = dpcd;
-	xdpmst->rx_topology.mst_port[stream].dpcd.num_bytes = sizeof(dpcd);
+	xdpmst->rx_topology.mst_port[stream].dpcd.bytes = xdpmst->remote_dpcd;
+	xdpmst->rx_topology.mst_port[stream].dpcd.num_bytes = sizeof(xdpmst->remote_dpcd);
 	xdpmst->rx_topology.mst_port[stream].dpcd.start_address = 0;
 
-	xdpmst->rx_topology.mst_port[stream].fullpbn = XLNX_DPRX_MST_DEFAULT_PBN;
-	xdpmst->rx_topology.mst_port[stream].availpbn = XLNX_DPRX_MST_DEFAULT_PBN;
+	xdpmst->rx_topology.mst_port[stream].fullpbn = xdpmst->port_pbn;
+	xdpmst->rx_topology.mst_port[stream].availpbn = xdpmst->port_pbn;
 
 	xdprxss_enable_mst_stream(xdpmst, stream, true);
 
@@ -922,8 +937,8 @@ xdprxss_build_enum_path_resource_reply(struct xdprxss_mst *xdpmst,
 	reply_msg->data.msg[idx++] = port_number << 4;
 
 	if (!port->fullpbn || !port->availpbn) {
-		port->fullpbn = XLNX_DPRX_MST_DEFAULT_PBN;
-		port->availpbn = XLNX_DPRX_MST_DEFAULT_PBN;
+		port->fullpbn = xdpmst->port_pbn;
+		port->availpbn = xdpmst->port_pbn;
 	}
 
 	reply_msg->data.msg[idx++] = port->fullpbn >> 8;
@@ -1344,18 +1359,89 @@ void xdprxss_dp_mst_payload_allocation(struct xdprxss_mst *xdpmst)
 }
 
 /**
+ * xdprxss_mst_calc_port_pbn() - Full-link PBN reported in ENUM_PATH_RESOURCES
+ * @xdpmst: MST context
+ *
+ * XLNX_DPRX_MST_DEFAULT_PBN is the DP 1.4a section 2.6.4.1 payload bandwidth
+ * number for HBR2 on four lanes. Scale it by the configured bandwidth over
+ * that reference, otherwise a source sizing its time slot allocation from the
+ * reply is capped at HBR2 however fast the link actually runs.
+ *
+ * A PBN counts payload bandwidth rather than line rate, so the channel coding
+ * efficiency has to scale it too. 128B/132B spends 3.29% of the raw rate on
+ * encoding against the 20% that the 8B/10B reference spends, and the reference
+ * PBN already has that 20% folded into it, so the two efficiencies enter as a
+ * ratio. Scaling by the raw rate alone reports a UHBR link as having about
+ * 83% of the payload bandwidth it really has.
+ *
+ * Return: payload bandwidth number for one stream port
+ */
+static u32 xdprxss_mst_calc_port_pbn(const struct xdprxss_mst *xdpmst)
+{
+	bool is_uhbr = xdprxss_linkrate_is_uhbr(xdpmst->max_linkrate);
+	u8 lanes = xdpmst->max_lanecount ? xdpmst->max_lanecount : 1;
+	unsigned int mbps = xdprxss_link_rate_to_mbps(xdpmst->max_linkrate);
+	u32 pbn;
+
+	pbn = div64_u64((u64)XLNX_DPRX_MST_DEFAULT_PBN * mbps * lanes *
+			(is_uhbr ? XLNX_DPRX_CODING_EFF_128B132B_PPM :
+				   XLNX_DPRX_CODING_EFF_8B10B_PPM),
+			(u64)XLNX_DPRX_MST_PBN_BASE_MBPS *
+			XLNX_DPRX_MST_PBN_BASE_LANES *
+			XLNX_DPRX_CODING_EFF_8B10B_PPM);
+
+	return pbn ? pbn : XLNX_DPRX_MST_DEFAULT_PBN;
+}
+
+/**
+ * xdprxss_mst_setup_remote_dpcd() - Initialise the virtual port DPCD mirror
+ * @xdpmst: MST context
+ *
+ * A REMOTE_DPCD_READ addressed to a virtual port is answered from
+ * @xdpmst->remote_dpcd rather than from hardware. Seed it from the static
+ * template, then overwrite DPCD_REV, MAX_LINK_RATE and MAX_LANE_COUNT with the
+ * values this receiver is configured for. The template hardcodes HBR on four
+ * lanes, and a source sizes its stream payloads from what it reads back here.
+ */
+static void xdprxss_mst_setup_remote_dpcd(struct xdprxss_mst *xdpmst)
+{
+	memcpy(xdpmst->remote_dpcd, dpcd_template, sizeof(dpcd_template));
+
+	/*
+	 * MAX_LINK_RATE cannot encode a UHBR rate, so a UHBR design reports the
+	 * 8B/10B ceiling here, matching what the receiver publishes in its own
+	 * MAX_LINK_RATE mirror in xdprxss_core_init().
+	 */
+	if (xdpmst->uhbr_capable &&
+	    xdprxss_linkrate_is_uhbr(xdpmst->max_linkrate)) {
+		xdpmst->remote_dpcd[DP_DPCD_REV] = DP_DPCD_REV_14;
+		xdpmst->remote_dpcd[DP_MAX_LINK_RATE] = DP_LINK_BW_8_1;
+	} else {
+		xdpmst->remote_dpcd[DP_MAX_LINK_RATE] = xdpmst->max_linkrate;
+	}
+
+	xdpmst->remote_dpcd[DP_MAX_LANE_COUNT] &= ~DP_MAX_LANE_COUNT_MASK;
+	xdpmst->remote_dpcd[DP_MAX_LANE_COUNT] |=
+		xdpmst->max_lanecount & DP_MAX_LANE_COUNT_MASK;
+}
+
+/**
  * xdprxss_init_mst() - Allocate and initialize MST sideband engine context
  * @dev: owning device
  * @intf_base: mapped DPRX register base
  * @mst_enable: MST mode enable flag
  * @num_audio_channels: audio capability count used in LINK_ADDRESS
  * @num_streams: number of downstream virtual streams
+ * @max_linkrate: link rate to advertise, as a DPCD LINK_BW_SET code
+ * @max_lanecount: lane count to advertise
+ * @uhbr_capable: sink supports DP2.1 UHBR (128b/132b) link rates
  *
  * Return: valid context pointer on success, %ERR_PTR() on failure.
  */
 struct xdprxss_mst *xdprxss_init_mst(struct device *dev, void __iomem *intf_base,
 				     bool mst_enable, u32 num_audio_channels,
-				     u8 num_streams)
+				     u8 num_streams, u8 max_linkrate,
+				     u8 max_lanecount, bool uhbr_capable)
 {
 	struct xdprxss_mst *xdpmst;
 	int ret;
@@ -1372,6 +1458,11 @@ struct xdprxss_mst *xdprxss_init_mst(struct device *dev, void __iomem *intf_base
 	xdpmst->num_audio_channels = num_audio_channels;
 	xdpmst->dev = dev;
 	xdpmst->intf_base = intf_base;
+	xdpmst->max_linkrate = max_linkrate;
+	xdpmst->max_lanecount = max_lanecount;
+	xdpmst->uhbr_capable = uhbr_capable;
+	xdpmst->port_pbn = xdprxss_mst_calc_port_pbn(xdpmst);
+	xdprxss_mst_setup_remote_dpcd(xdpmst);
 
 	mutex_init(&xdpmst->dprx_mst_mutex);
 	INIT_WORK(&xdpmst->mst_work, xdprxss_dp_mst_work);
