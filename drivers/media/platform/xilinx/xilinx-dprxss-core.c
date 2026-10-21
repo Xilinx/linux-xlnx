@@ -246,7 +246,9 @@ struct vidphy_cfg {
  * @valid_streams: bitmask of streams currently locked with valid video
  * @streaming: Flag for storing streaming state
  * @ltstate: Link training stage reached, written from the threaded interrupt
- *	     handler and read from the lane-set worker.
+ *	     handler.
+ * @lane_set_ltstate: Training stage the lane-set worker was queued for,
+ *		     latched from @ltstate as the work is queued.
  * @power_down_latched: Set when a SET_POWER write is seen leaving normal
  *			power, consumed once power returns to normal.
  *			Guarded by @irq_lock.
@@ -318,6 +320,7 @@ struct xdprxss_state {
 	unsigned long valid_streams;
 	unsigned int streaming : 1;
 	u8 ltstate;
+	u8 lane_set_ltstate;
 	bool power_down_latched;
 	int hdcp2x_timer_irq;
 	int irq;
@@ -1724,6 +1727,13 @@ static void xdprxss_training_failure(struct xdprxss_state *state)
 {
 	dev_dbg(state->dev, "Training Lost !!\n");
 
+	/*
+	 * No equalisation stage is in progress once the link is lost, so stop
+	 * the worker driving the retimer for the stage the last pass left
+	 * behind.
+	 */
+	WRITE_ONCE(state->ltstate, 0);
+
 	xdprxss_clear_valid_streams(state);
 
 	if (state->hdcp_enable)
@@ -1887,10 +1897,29 @@ static void xdprxss_irq_access_laneset(struct xdprxss_state *state)
 	struct retimer_cfg *rtmr_cfg;
 	u32 read_val;
 	u8 training;
+	u8 ltstate;
 
 	training = xdprxss_read(state, XDPRX_DPCD_TRAINING_PATTERN_SET);
 
-	if (state->ltstate == 2 && training != 1) {
+	/*
+	 * Lane-set adjust-request handling.
+	 *
+	 * For 8B/10B the lower nibbles encode VSwing/PreEmphasis (handled by
+	 * the retimer driver). For 128B/132B the same nibbles encode the
+	 * 4-bit FFE preset (DP 2.0 spec section 3.5.2.16). The retimer hook
+	 * is link-layer-agnostic - it simply re-reads the lane-set mirror -
+	 * so the same callback works for both, and the only thing this
+	 * function needs to do extra in 128B/132B mode is to also fire the
+	 * callback when the stage has advanced past TPS2 into TPS2_CDS
+	 * (ltstate == 3).
+	 *
+	 * Act on the stage this run was queued for, not on whatever stage is
+	 * current by the time it runs. A pass that latches the request
+	 * alongside training completing or being lost clears the live stage
+	 * before the worker gets to it, which would drop the request.
+	 */
+	ltstate = READ_ONCE(state->lane_set_ltstate);
+	if ((ltstate == 2 || ltstate == 3) && training != 1) {
 		read_val = xdprxss_get_lane01_reqval(state);
 
 		if (state->ce_req_val != read_val && state->retimer_prvdata) {
@@ -2039,8 +2068,6 @@ static irqreturn_t xdprxss_irq_thread(int irq, void *dev_id)
 	state->irq_status2 = 0;
 	raw_spin_unlock_irq(&state->irq_lock);
 
-	if (status1 & XDPRX_INTR_ACCESS_LANE_SET_MASK)
-		schedule_work(&state->lane_set_work);
 	if (status1 & XDPRX_INTR_LINKQUAL_MASK)
 		schedule_work(&state->link_qual_work);
 	if (status & XDPRX_INTR_POWER_MASK)
@@ -2057,6 +2084,19 @@ static irqreturn_t xdprxss_irq_thread(int irq, void *dev_id)
 	 */
 	if (status1 & XDPRX_INTR_TP4_MASK)
 		xdprxss_irq_tp4(state);
+	/*
+	 * Queue the lane-set worker only after the handlers above have stored
+	 * the stage they reached. A single pass can latch both the lane-set
+	 * request and TPS2_CDS, and the worker needs the newer stage to know
+	 * that the nibbles now carry an FFE preset rather than VSwing.
+	 *
+	 * Hand it that stage rather than let it read the live one, which the
+	 * handlers below clear when a pass ends.
+	 */
+	if (status1 & XDPRX_INTR_ACCESS_LANE_SET_MASK) {
+		WRITE_ONCE(state->lane_set_ltstate, READ_ONCE(state->ltstate));
+		schedule_work(&state->lane_set_work);
+	}
 	if (status & XDPRX_INTR_TRLOST_MASK)
 		xdprxss_training_failure(state);
 	if (status & XDPRX_INTR_NOVID_MASK)
@@ -2117,6 +2157,8 @@ static irqreturn_t xdprxss_irq_thread(int irq, void *dev_id)
 			xhdcp2x_rx_enable(state->hdcp2x, lane_count);
 		if (state->hdcp_enable && state->hdcp1x_key_available)
 			xhdcp1x_rx_enable(state->hdcp1x, lane_count);
+		/* Training is past every equalisation stage, as above. */
+		WRITE_ONCE(state->ltstate, 0);
 		dev_dbg(state->dev, "DP Link training is done !!\n");
 	}
 	if (status & XDPRX_INTR_HDCP1X_AKSV_WRITE_MASK)
