@@ -9,6 +9,7 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_fixed.h>
 
+#include <linux/array_size.h>
 #include <linux/export.h>
 #include <linux/media-bus-format.h>
 #include <linux/mutex.h>
@@ -26,6 +27,107 @@
  */
 static struct dptx *mmi_dp_audio_dptx;
 static DEFINE_MUTEX(mmi_dp_audio_lock);
+
+/**
+ * struct dp_tu_lut_entry - Tested TU parameters for a display configuration
+ * @h_active: Horizontal active pixels of the video mode
+ * @v_active: Vertical active lines of the video mode
+ * @pixel_clock: Pixel clock in kHz (distinguishes refresh rates sharing the
+ *		 same h_active/v_active)
+ * @rate: Link rate, one of DPTX_PHYIF_CTRL_RATE_RBR/HBR/HBR2/HBR3
+ * @lanes: Number of lanes (1, 2 or 4)
+ * @aver_bytes_per_tu: Known-good AVERAGE_BYTES_PER_TU value
+ * @aver_bytes_per_tu_frac: Known-good AVERAGE_BYTES_PER_TU_FRAC value
+ * @init_threshold: Known-good INIT_THRESHOLD value
+ * @bpc: Bits per component value
+ * @pix_enc: Video pixel encoding
+ * @multipixel: Multipixel mode used for the video stream (0-Single, 1-Dual, 2-Quad)
+ */
+struct dp_tu_lut_entry {
+	u16 h_active;
+	u16 v_active;
+	u32 pixel_clock;
+	u8 rate;
+	u8 lanes;
+	u8 aver_bytes_per_tu;
+	u8 aver_bytes_per_tu_frac;
+	u8 init_threshold;
+	u8 bpc;
+	u8 pix_enc;
+	u8 multipixel;
+};
+
+/*
+ * Lookup table of known-good TU values for each mode, link rate, lane count
+ * and multipixel mode.
+ *
+ * Add one row per validated combination, e.g.:
+ *	{ 3840, 2160, 594000, DPTX_PHYIF_CTRL_RATE_HBR2, 4, 0, 0, 0, COLOR_DEPTH_8, RGB, DPTX_MP_SINGLE_PIXEL },
+ *
+ * Combinations not present here fall back to the values computed by
+ * mmi_dp_video_ts_calculate().
+ */
+static const struct dp_tu_lut_entry dp_tu_lut[] = {
+	{ 1920, 1080, 148500, DPTX_PHYIF_CTRL_RATE_HBR3, 4,  8,  6, 32, COLOR_DEPTH_8, RGB, DPTX_MP_SINGLE_PIXEL },
+	{ 1920, 1080, 401200, DPTX_PHYIF_CTRL_RATE_HBR3, 4, 23,  7, 16, COLOR_DEPTH_8, RGB, DPTX_MP_SINGLE_PIXEL },
+	{ 1920, 1080, 571160, DPTX_PHYIF_CTRL_RATE_HBR3, 4, 33,  6, 16, COLOR_DEPTH_8, RGB, DPTX_MP_SINGLE_PIXEL },
+	{ 1280,  800,  83500, DPTX_PHYIF_CTRL_RATE_HBR2, 4,  7, 20, 32, COLOR_DEPTH_8, RGB, DPTX_MP_SINGLE_PIXEL },
+	{ 1280,  720,  74250, DPTX_PHYIF_CTRL_RATE_HBR3, 4,  4,  3, 32, COLOR_DEPTH_8, RGB, DPTX_MP_SINGLE_PIXEL },
+	{ 1280,  720,  74176, DPTX_PHYIF_CTRL_RATE_HBR3, 4,  4,  3, 32, COLOR_DEPTH_8, RGB, DPTX_MP_SINGLE_PIXEL },
+	{ 1280,  720,  74176, DPTX_PHYIF_CTRL_RATE_HBR2, 4,  6, 24, 32, COLOR_DEPTH_8, RGB, DPTX_MP_SINGLE_PIXEL },
+	{ 1024,  768,  75000, DPTX_PHYIF_CTRL_RATE_HBR3, 4,  4,  4, 32, COLOR_DEPTH_8, RGB, DPTX_MP_SINGLE_PIXEL },
+	{ 1024,  768,  65000, DPTX_PHYIF_CTRL_RATE_HBR3, 4,  3, 28, 32, COLOR_DEPTH_8, RGB, DPTX_MP_SINGLE_PIXEL },
+	{ 1024,  768,  65000, DPTX_PHYIF_CTRL_RATE_HBR2, 4,  5, 32, 32, COLOR_DEPTH_8, RGB, DPTX_MP_SINGLE_PIXEL },
+	{  800,  600,  50000, DPTX_PHYIF_CTRL_RATE_HBR2, 4,  4, 24, 32, COLOR_DEPTH_8, RGB, DPTX_MP_SINGLE_PIXEL },
+	{  800,  600,  40000, DPTX_PHYIF_CTRL_RATE_HBR3, 4,  2,  8, 32, COLOR_DEPTH_8, RGB, DPTX_MP_SINGLE_PIXEL },
+	{  800,  600,  40000, DPTX_PHYIF_CTRL_RATE_HBR2, 4,  3, 16, 32, COLOR_DEPTH_8, RGB, DPTX_MP_SINGLE_PIXEL },
+	{  800,  600,  36000, DPTX_PHYIF_CTRL_RATE_HBR2, 4,  3,  8, 32, COLOR_DEPTH_8, RGB, DPTX_MP_SINGLE_PIXEL },
+	{  720,  400,  28320, DPTX_PHYIF_CTRL_RATE_HBR2, 4,  2,  4, 32, COLOR_DEPTH_8, RGB, DPTX_MP_SINGLE_PIXEL },
+
+	/* Multipixel mode */
+	{ 1280,  800,  83500, DPTX_PHYIF_CTRL_RATE_HBR2, 4, 7, 20, 40, COLOR_DEPTH_8, RGB, DPTX_MP_QUAD_PIXEL },
+	{ 1280,  720,  74176, DPTX_PHYIF_CTRL_RATE_HBR2, 4, 6, 24, 40, COLOR_DEPTH_8, RGB, DPTX_MP_QUAD_PIXEL },
+	{ 1024,  768,  65000, DPTX_PHYIF_CTRL_RATE_HBR2, 4, 5, 32, 40, COLOR_DEPTH_8, RGB, DPTX_MP_QUAD_PIXEL },
+	{  800,  600,  49500, DPTX_PHYIF_CTRL_RATE_HBR2, 4, 4, 24, 32, COLOR_DEPTH_8, RGB, DPTX_MP_QUAD_PIXEL },
+	{  800,  600,  40000, DPTX_PHYIF_CTRL_RATE_HBR2, 4, 3, 16, 40, COLOR_DEPTH_8, RGB, DPTX_MP_QUAD_PIXEL },
+	{  800,  600,  36000, DPTX_PHYIF_CTRL_RATE_HBR2, 4, 3,  8, 40, COLOR_DEPTH_8, RGB, DPTX_MP_QUAD_PIXEL },
+	{  720,  400,  28320, DPTX_PHYIF_CTRL_RATE_HBR2, 4, 2,  4, 40, COLOR_DEPTH_8, RGB, DPTX_MP_QUAD_PIXEL },
+	{  800,  600,  50000, DPTX_PHYIF_CTRL_RATE_HBR2, 4, 4, 12, 40, COLOR_DEPTH_8, RGB, DPTX_MP_QUAD_PIXEL },
+};
+
+/**
+ * mmi_dp_tu_lut_find() - Look up a known-good TU configuration
+ * @h_active: Horizontal active pixels of the current video mode
+ * @v_active: Vertical active lines of the current video mode
+ * @pixel_clock: Pixel clock in kHz of the current video mode
+ * @rate: Current link rate (DPTX_PHYIF_CTRL_RATE_*)
+ * @lanes: Current lane count
+ * @bpc: Bits per component value
+ * @pix_enc: Video pixel encoding
+ * @multipixel: Multipixel mode used for the video stream (0-Single, 1-Dual, 2-Quad)
+ *
+ * Return: Pointer to the matching dp_tu_lut_entry, or NULL if the
+ * combination is not present in the table.
+ */
+static const struct dp_tu_lut_entry *mmi_dp_tu_lut_find(u16 h_active, u16 v_active,
+							u32 pixel_clock, u8 rate,
+							u8 lanes, u8 bpc,
+							u8 pix_enc, u8 multipixel)
+{
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(dp_tu_lut); i++) {
+		const struct dp_tu_lut_entry *e = &dp_tu_lut[i];
+
+		if (e->h_active == h_active && e->v_active == v_active &&
+		    e->pixel_clock == pixel_clock && e->rate == rate &&
+		    e->lanes == lanes && e->bpc == bpc &&
+		    e->pix_enc == pix_enc && e->multipixel == multipixel)
+			return e;
+	}
+
+	return NULL;
+}
 
 static int mmi_dp_validate_audio_channels(u32 num_audio_channels)
 {
@@ -419,6 +521,7 @@ static int mmi_dp_config_ctrl_video_mode(struct dptx *dptx)
 {
 	struct video_params *vparams;
 	struct dtd *mdtd;
+	const struct dp_tu_lut_entry *lut = NULL;
 
 	vparams = &dptx->vparams[0];
 	mdtd = &vparams->mdtd;
@@ -433,11 +536,34 @@ static int mmi_dp_config_ctrl_video_mode(struct dptx *dptx)
 
 	mmi_dp_video_ts_calculate(dptx, dptx->link.lanes, dptx->link.rate, vparams->bpc,
 				  vparams->pix_enc, mdtd->pixel_clock);
+
+	/*
+	 * Due to known Hardware issue (MVID and MAUD corruption), video transmission
+	 * can be unstable for two- and four-lane configurations, override the
+	 * calculated TU/TU_FRAC/INIT_THRESHOLD with known-good values when
+	 * this resolution/link rate/lane count/multipixel mode combination has
+	 * been characterized.
+	 */
+	if (!dptx->skip_tu_lut) {
+		lut = mmi_dp_tu_lut_find(mdtd->h_active, mdtd->v_active,
+					 mdtd->pixel_clock, dptx->link.rate,
+					 dptx->link.lanes, vparams->bpc,
+					 vparams->pix_enc, dptx->multipixel);
+		if (lut) {
+			dptx_dbg(dptx, "%s: Using TU LUT entry for %dx%d@%d rate=%d lanes=%d\n",
+				 __func__, mdtd->h_active, mdtd->v_active, mdtd->pixel_clock,
+				 dptx->link.rate, dptx->link.lanes);
+			vparams->aver_bytes_per_tu = lut->aver_bytes_per_tu;
+			vparams->aver_bytes_per_tu_frac = lut->aver_bytes_per_tu_frac;
+			vparams->init_threshold = lut->init_threshold;
+		}
+	}
+
 	mmi_dp_write_mask(dptx, VIDEO_CONFIG5, AVERAGE_BYTES_PER_TU_MASK,
 			  vparams->aver_bytes_per_tu);
 	/* TODO : Fix this workaround to get 4kp60 working */
 	msleep(150);
-	if (!dptx->mst)
+	if (!dptx->mst && !lut)
 		mmi_dp_write_mask(dptx, VIDEO_CONFIG5, AVERAGE_BYTES_PER_TU_FRAC_MASK,
 				  vparams->aver_bytes_per_tu_frac << 2);
 	else

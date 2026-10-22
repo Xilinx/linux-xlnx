@@ -23,12 +23,22 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
+#include <linux/sys_soc.h>
 
 #include "mmi_dp.h"
 #include "mmi_dp_reg.h"
 
 #define MMI_DPTX_MAX_AUX_MSG_LEN	(16)
 #define MMI_DPTX_MAX_AUX_DEFERS		(8)
+
+/* The MVID/MAUD issue is fixed on these Versal2 small device; skip the TU LUT */
+static const struct soc_device_attribute mmi_soc_lut_skip[] = {
+	{.machine = "Versal Gen 2 04d98093",
+	 .family = "jep106:0049",
+	 .revision = "0x00101010",
+	 .soc_id = "jep106:0049:4d98"},
+	{ /* sentinel */ }
+};
 
 /**
  * mmi_dp_tx_first_bit_set - Find first (least significant) bit set
@@ -1299,6 +1309,9 @@ static int mmi_dp_probe(struct platform_device *pdev)
 		return dptx->irq;
 
 	dev_info(dev, "IRQ number %d.\n", dptx->irq);
+
+	if (soc_device_match(mmi_soc_lut_skip))
+		dptx->skip_tu_lut = true;
 
 	retval = of_property_read_u32(dev->of_node, "xlnx,dp-lanes", &max_lanes);
 	if (retval < 0 || (max_lanes != 1 && max_lanes != 2 && max_lanes != 4)) {

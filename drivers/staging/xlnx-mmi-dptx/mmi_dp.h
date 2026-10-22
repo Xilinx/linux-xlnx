@@ -240,6 +240,7 @@ struct rx_capabilities {
  * @ssc_en: Spread Spectrum clocking enabled flag
  * @enhanced_frame_cap: Enhanced frame capabilities flag
  * @edp: EDP flag
+ * @skip_tu_lut: Use calculated TU parameters instead of LUT values
  * @dev: The struct device
  * @bridge: DRM Bridge
  * @enabled: Is DRM bridge enabled?
@@ -300,6 +301,7 @@ struct dptx {
 	bool ssc_en;
 	bool enhanced_frame_cap;
 	bool edp;
+	bool skip_tu_lut;
 
 	struct device *dev;
 	struct drm_bridge bridge;
