@@ -30,7 +30,11 @@
 
 #define ZYNQMP_PIN_PREFIX			"MIO"
 #define PINCTRL_GET_FUNC_NAME_RESP_LEN		16
-#define MAX_FUNC_NAME_LEN			16
+/*
+ * Firmware returns the name in a fixed-size field and does not guarantee a
+ * NUL terminator. Keep one extra byte for the NUL terminator.
+ */
+#define MAX_FUNC_NAME_LEN			(PINCTRL_GET_FUNC_NAME_RESP_LEN + 1)
 #define MAX_GROUP_PIN				50
 #define MAX_PIN_GROUPS				50
 #define END_OF_FUNCTIONS			"END_OF_FUNCTIONS"
@@ -655,6 +659,7 @@ static void zynqmp_pinctrl_get_function_name(u32 fid, char *name)
 	 */
 	zynqmp_pm_query_data(qdata, payload);
 	memcpy(name, payload, PINCTRL_GET_FUNC_NAME_RESP_LEN);
+	name[PINCTRL_GET_FUNC_NAME_RESP_LEN] = '\0';
 }
 
 static int zynqmp_pinctrl_get_num_functions(unsigned int *nfuncs)
