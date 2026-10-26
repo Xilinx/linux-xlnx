@@ -76,6 +76,7 @@
 #define MMI_DCDMA_ERR_OVERFLOW(ch)	BIT((ch))
 #define MMI_DCDMA_STATUS_OTRAN_MASK	GENMASK(28, 20)
 #define MMI_DCDMA_CH_VIDEO_GROUP	3
+#define MMI_DCDMA_STOP_TIMEOUT_US	50000
 #define MMI_DCDMA_CH_STATUS_ERR_ALL(ch)	({ typeof(ch) __ch = (ch);	 \
 					   MMI_DCDMA_ERR_DESC(__ch)	 |\
 					   MMI_DCDMA_ERR_DATA_AXI(__ch); })
@@ -969,6 +970,39 @@ static bool mmi_dcdma_chan_done(struct mmi_dcdma_chan *chan)
 }
 
 /**
+ * mmi_dcdma_chan_reset_hw - Reset channel state inherited from the boot stages
+ * @chan: DCDMA channel
+ *
+ * A channel left enabled or paused by the firmware or a previous kernel can't
+ * be told apart from a running one, and a paused channel never fetches a new
+ * descriptor. Stop it and wait for outstanding transactions to drain.
+ */
+static void mmi_dcdma_chan_reset_hw(struct mmi_dcdma_chan *chan)
+{
+	u32 cntl = dcdma_read(chan->reg, MMI_DCDMA_CH_CNTL);
+	bool done;
+
+	if (!(cntl & (MMI_DCDMA_CH_ENABLE | MMI_DCDMA_CH_PAUSE)))
+		return;
+
+	dev_info(chan->mdev->base.dev, "chan%u: resetting inherited state %#x\n",
+		 chan->id, cntl);
+
+	if (cntl & MMI_DCDMA_CH_ENABLE) {
+		mmi_dcdma_chan_pause(chan);
+		if (read_poll_timeout(mmi_dcdma_chan_done, done, done, 10,
+				      MMI_DCDMA_STOP_TIMEOUT_US, false, chan))
+			dev_warn(chan->mdev->base.dev,
+				 "chan%u: transactions still outstanding: %#x\n",
+				 chan->id,
+				 dcdma_read(chan->reg, MMI_DCDMA_CH_STATUS));
+	}
+
+	mmi_dcdma_chan_disable(chan);
+	mmi_dcdma_chan_resume(chan);
+}
+
+/**
  * mmi_dcdma_chan_video_group_done - Check if all channels in the video group
  * are done
  * @chan: DCDMA channel within the video group
@@ -1723,8 +1757,11 @@ static int mmi_dcdma_probe(struct platform_device *pdev)
 
 	mmi_dcdma_write_protect(mdev, false);
 
-	for (ch = 0; ch < ARRAY_SIZE(mdev->chan); ++ch)
+	for (ch = 0; ch < ARRAY_SIZE(mdev->chan); ++ch) {
 		mmi_dcdma_chan_init(mdev, ch);
+		mmi_dcdma_chan_reset_hw(&mdev->chan[ch]);
+	}
+	mmi_dcdma_clear_irq(mdev);
 
 	ret = dma_async_device_register(ddev);
 	if (ret)
