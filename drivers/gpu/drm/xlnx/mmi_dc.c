@@ -817,6 +817,5 @@ void mmi_dc_fini(struct mmi_dc *dc)
 {
 	mmi_dc_destroy_planes(dc);
 	mmi_dc_audio_uninit(dc);
-	mmi_dc_reset(dc, true);
 	dc_write_misc(dc, MMI_DC_MISC_WPROTS, 1);
 }
