@@ -15,6 +15,7 @@
 #include <linux/of_device.h>
 #include <linux/pci.h>
 #include <linux/platform_device.h>
+#include <linux/reset.h>
 #include <linux/resource.h>
 #include <linux/types.h>
 
@@ -134,6 +135,7 @@ struct amd_mdb_pcie_variant {
  * @intx_domain: INTx IRQ domain pointer
  * @mdb_domain: MDB IRQ domain pointer
  * @perst_gpio: GPIO descriptor for PERST# signal handling
+ * @rstc: CPM6 PCIe controller reset control
  * @intx_irq: INTx IRQ interrupt number
  */
 struct amd_mdb_pcie {
@@ -144,6 +146,7 @@ struct amd_mdb_pcie {
 	struct irq_domain		*intx_domain;
 	struct irq_domain		*mdb_domain;
 	struct gpio_desc		*perst_gpio;
+	struct reset_control		*rstc;
 	int				intx_irq;
 };
 
@@ -740,8 +743,15 @@ static int amd_mdb_add_pcie_port(struct amd_mdb_pcie *pcie,
 
 	pp->ops = &amd_mdb_pcie_host_ops;
 
-	if (pcie->perst_gpio) {
+	/*
+	 * Bring the controller out of reset and deassert PERST# just before
+	 * host init. reset_control_*() is a no-op when no reset is wired (e.g.
+	 * MDB5, whose controller is brought up by firmware).
+	 */
+	if (pcie->perst_gpio || pcie->rstc) {
+		reset_control_assert(pcie->rstc);
 		mdelay(PCIE_T_PVPERL_MS);
+		reset_control_deassert(pcie->rstc);
 		gpiod_set_value_cansleep(pcie->perst_gpio, 0);
 		mdelay(PCIE_RESET_CONFIG_WAIT_MS);
 	}
@@ -801,6 +811,16 @@ static int amd_mdb_pcie_probe(struct platform_device *pdev)
 					     "Failed to request reset GPIO\n");
 	}
 
+	/*
+	 * Optional CPM6 controller reset, distinct from the endpoint PERST#
+	 * GPIO above. Applied later in amd_mdb_add_pcie_port(). Absent on MDB5,
+	 * whose controller is brought up by firmware.
+	 */
+	pcie->rstc = devm_reset_control_get_optional_exclusive(dev, "core");
+	if (IS_ERR(pcie->rstc))
+		return dev_err_probe(dev, PTR_ERR(pcie->rstc),
+				     "Failed to request CPM6 controller reset\n");
+
 	return amd_mdb_add_pcie_port(pcie, pdev);
 }
 
@@ -809,6 +829,7 @@ static void amd_mdb_pcie_shutdown(struct platform_device *pdev)
 	struct amd_mdb_pcie *pcie = platform_get_drvdata(pdev);
 
 	gpiod_set_value_cansleep(pcie->perst_gpio, 1);
+	reset_control_assert(pcie->rstc);
 }
 
 static const struct amd_mdb_pcie_variant cpm6_host = {
