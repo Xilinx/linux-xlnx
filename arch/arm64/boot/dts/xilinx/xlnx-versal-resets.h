@@ -101,5 +101,7 @@
 #define VERSAL_RST_XRAM				(0xc30c05dU)
 #define VERSAL_RST_AIE_ARRAY			(0xc10405eU)
 #define VERSAL_RST_AIE_SHIM			(0xc10405fU)
+#define VERSAL_RST_XAPE0			(0xc410115U)
+#define VERSAL_RST_XAPE1			(0xc410116U)
 
 #endif
