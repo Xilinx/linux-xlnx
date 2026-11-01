@@ -839,6 +839,7 @@ static int zynqmp_clear_pm_state(struct device *dev)
 
 static int zynqmp_firmware_probe(struct platform_device *pdev)
 {
+	u64 dma_mask = DMA_BIT_MASK(32);
 	struct device *dev = &pdev->dev;
 	struct zynqmp_devinfo *devinfo;
 	u32 pm_api_version;
@@ -919,7 +920,10 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
+	if (pm_family_code != PM_ZYNQMP_FAMILY_CODE)
+		dma_mask = DMA_BIT_MASK(44);
+
+	ret = dma_set_mask_and_coherent(&pdev->dev, dma_mask);
 	if (ret < 0) {
 		dev_err(dev, "no usable DMA configuration");
 		return ret;
