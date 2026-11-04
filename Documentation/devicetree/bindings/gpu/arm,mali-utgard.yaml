@@ -112,7 +112,8 @@ properties:
     maxItems: 1
 
   resets:
-    maxItems: 1
+    minItems: 1
+    maxItems: 3
 
   operating-points-v2: true
 
@@ -153,6 +154,22 @@ allOf:
     then:
       required:
         - resets
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: xlnx,zynqmp-mali
+    then:
+      properties:
+        resets:
+          items:
+            - description: GPU reset
+            - description: Pixel Processor 0 reset
+            - description: Pixel Processor 1 reset
+    else:
+      properties:
+        resets:
+          maxItems: 1
 
 examples:
   - |
