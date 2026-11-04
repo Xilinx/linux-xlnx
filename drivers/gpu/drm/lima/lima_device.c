@@ -4,6 +4,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/reset.h>
 #include <linux/clk.h>
+#include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/dma-mapping.h>
 #include <linux/platform_device.h>
@@ -152,7 +153,25 @@ static int lima_clk_init(struct lima_device *dev)
 		return err;
 	}
 
-	return lima_clk_enable(dev);
+	err = lima_clk_enable(dev);
+	if (err || !dev->reset)
+		return err;
+
+	/*
+	 * A subsystem restart may leave the GPU running work from the
+	 * previous kernel, so pulse the reset before touching the hardware.
+	 * The assert has no effect while another user holds a shared reset.
+	 */
+	reset_control_assert(dev->reset);
+	usleep_range(10, 20);
+	err = reset_control_deassert(dev->reset);
+	if (err) {
+		dev_err(dev->dev, "GPU reset pulse deassert failed %d\n", err);
+		clk_disable_unprepare(dev->clk_gpu);
+		clk_disable_unprepare(dev->clk_bus);
+	}
+
+	return err;
 }
 
 static void lima_clk_fini(struct lima_device *dev)
