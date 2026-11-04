@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0 OR MIT
 /* Copyright 2017-2019 Qiang Yu <yuq825@gmail.com> */
 
+#include <linux/interrupt.h>
+#include <linux/iopoll.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/reset.h>
 #include <linux/uaccess.h>
 #include <linux/slab.h>
 #include <linux/pm_runtime.h>
@@ -465,6 +468,63 @@ static void lima_pdev_remove(struct platform_device *pdev)
 	lima_sched_slab_fini();
 }
 
+static int lima_credit_count(struct lima_device *ldev)
+{
+	int i, credits = 0;
+
+	for (i = 0; i < lima_pipe_num; i++)
+		credits += atomic_read(&ldev->pipe[i].base.credit_count);
+
+	return credits;
+}
+
+static void lima_pdev_shutdown(struct platform_device *pdev)
+{
+	struct lima_device *ldev = platform_get_drvdata(pdev);
+	int busy, i;
+
+	/*
+	 * Leave the GPU off for whatever runs next, so that it does not
+	 * inherit running jobs. Userspace may still be submitting, so stop
+	 * the schedulers and give the jobs already on the GPU time to
+	 * finish. pm_runtime_force_suspend() then asserts the resets and
+	 * gates the clocks, and leaves runtime PM disabled so that nothing
+	 * powers the GPU up again.
+	 */
+	for (i = 0; i < lima_pipe_num; i++) {
+		drm_sched_wqueue_stop(&ldev->pipe[i].base);
+		/*
+		 * The submit and free workers are the only things that re-arm
+		 * the job timeout, so with them stopped it is safe to cancel
+		 * it. Leaving it armed would let lima_sched_timedout_job()
+		 * run after the clocks are gated and the resets asserted.
+		 */
+		cancel_delayed_work_sync(&ldev->pipe[i].base.work_tdr);
+	}
+
+	poll_timeout_us(busy = lima_credit_count(ldev), !busy,
+			1000, USEC_PER_SEC, false);
+
+	for (i = 0; i < lima_ip_num; i++) {
+		if (ldev->ip[i].present && ldev->ip[i].irq > 0)
+			disable_irq(ldev->ip[i].irq);
+	}
+
+	if (!pm_runtime_force_suspend(ldev->dev))
+		return;
+
+	/*
+	 * A job did not finish, so lima_device_suspend() returned -EBUSY
+	 * before tearing anything down and the clocks and the regulator are
+	 * still on. Hold the GPU in reset anyway, which is the part that
+	 * matters for whatever runs next.
+	 */
+	dev_warn(ldev->dev, "GPU busy at shutdown\n");
+	pm_runtime_disable(ldev->dev);
+	if (ldev->reset)
+		reset_control_assert(ldev->reset);
+}
+
 static const struct lima_compatible lima_mali400_data = {
 	.id = lima_gpu_mali400,
 };
@@ -488,6 +548,7 @@ static const struct dev_pm_ops lima_pm_ops = {
 static struct platform_driver lima_platform_driver = {
 	.probe      = lima_pdev_probe,
 	.remove     = lima_pdev_remove,
+	.shutdown   = lima_pdev_shutdown,
 	.driver     = {
 		.name   = "lima",
 		.pm	= &lima_pm_ops,
