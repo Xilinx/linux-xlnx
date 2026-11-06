@@ -368,6 +368,7 @@ struct cfi_fixup {
 #define CFI_MFR_NEC		0x0010
 #define CFI_MFR_PMC		0x009D
 #define CFI_MFR_SAMSUNG		0x00EC
+#define CFI_MFR_WINBOND		0x00EF
 #define CFI_MFR_SHARP		0x00B0
 #define CFI_MFR_SST		0x00BF
 #define CFI_MFR_ST		0x0020 /* STMicroelectronics */
