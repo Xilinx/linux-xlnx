@@ -35,6 +35,11 @@ properties:
           - const: xlnx,zynq-7000
 
       - items:
+          - const: alinx,ax7z020b
+          - const: alinx,ac7z020
+          - const: xlnx,zynq-7000
+
+      - items:
           - const: avnet,zynq-microzed
           - const: xlnx,zynq-microzed
           - const: xlnx,zynq-7000
