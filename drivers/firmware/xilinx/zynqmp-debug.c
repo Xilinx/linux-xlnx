@@ -325,7 +325,7 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 	u32 pm_id = 0;
 	u64 pm_api_arg[5] = {0, 0, 0, 0, 0};
 	/* Return values from PM APIs calls */
-	u32 pm_api_ret[4] = {0, 0, 0, 0};
+	u32 pm_api_ret[PAYLOAD_ARG_CNT] = {0};
 
 	int ret;
 	int i = 0;
