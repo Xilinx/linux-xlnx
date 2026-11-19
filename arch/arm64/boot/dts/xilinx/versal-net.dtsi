@@ -706,6 +706,28 @@
 		compatible = "xlnx,versal-fpga";
 	};
 
+	sysmon_temp: thermal-sensor {
+		compatible = "generic-adc-thermal";
+		#thermal-sensor-cells = <0>;
+		io-channels = <&sysmon0 0>;
+		io-channel-names = "sensor-channel";
+	};
+
+	thermal-zones {
+		versal_thermal: versal-thermal {
+			polling-delay = <1000>; /* milliseconds */
+			thermal-sensors = <&sysmon_temp>;
+
+			trips {
+				ot_crit: ot-crit {
+					temperature = <125000>; /* millicelsius */
+					hysteresis = <0>; /* millicelsius */
+					type = "critical";
+				};
+			};
+		};
+	};
+
 	amba: axi {
 		compatible = "simple-bus";
 		bootph-all;
@@ -1003,6 +1025,14 @@
 			interrupts = <0 24 4>;
 			reg = <0 0xf1970000 0 0x1000>;
 			clock-names = "ref_clk", "pclk";
+		};
+
+		sysmon0: sysmon@f1270000 {
+			compatible = "xlnx,versal-sysmon";
+			status = "disabled";
+			reg = <0 0xf1270000 0 0x4000>;
+			interrupts = <0 202 4>;
+			#io-channel-cells = <1>;
 		};
 
 		ttc0: timer@f1dc0000 {
