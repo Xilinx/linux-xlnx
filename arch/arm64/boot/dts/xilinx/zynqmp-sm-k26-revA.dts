@@ -363,10 +363,6 @@
 	status = "okay";
 };
 
-&zynqmp_dpsub {
-	status = "okay";
-};
-
 &rtc {
 	status = "okay";
 };
