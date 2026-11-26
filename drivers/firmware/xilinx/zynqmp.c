@@ -21,7 +21,6 @@
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
-#include <linux/pm_domain.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/hashtable.h>
@@ -389,15 +388,22 @@ int zynqmp_pm_invoke_fw_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...)
 	u32 args[SMC_ARG_CNT_32] = {0};
 	u32 module_id;
 
+	/*
+	 * According to the SMCCC: The total number of registers available for
+	 * arguments is 16.
+	 *
+	 * In the Extended SMC format, 3 registers are used for headers, leaving
+	 * up to 13 registers for arguments.
+	 */
 	if (num_args > SMC_ARG_CNT_32)
 		return -EINVAL;
-
-	va_start(arg_list, num_args);
 
 	/* Check if feature is supported or not */
 	ret = zynqmp_pm_feature(pm_api_id);
 	if (ret < 0)
 		return ret;
+
+	va_start(arg_list, num_args);
 
 	for (i = 0; i < num_args; i++)
 		args[i] = va_arg(arg_list, u32);
@@ -450,17 +456,24 @@ int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 *ret_payload, u32 num_args, ...)
 	u64 smc_arg[8];
 	int ret, i;
 	va_list arg_list;
-	u32 args[14] = {0};
+	u32 args[SMC_ARG_CNT_BASIC_32] = {0};
 
-	if (num_args > 14)
+	/*
+	 * According to the SMCCC: The total number of registers available for
+	 * arguments is 16.
+	 *
+	 * In the Basic SMC format, 2 registers are used for headers, leaving
+	 * up to 14 registers for arguments.
+	 */
+	if (num_args > SMC_ARG_CNT_BASIC_32)
 		return -EINVAL;
-
-	va_start(arg_list, num_args);
 
 	/* Check if feature is supported or not */
 	ret = zynqmp_pm_feature(pm_api_id);
 	if (ret < 0)
 		return ret;
+
+	va_start(arg_list, num_args);
 
 	for (i = 0; i < num_args; i++)
 		args[i] = va_arg(arg_list, u32);
@@ -2176,7 +2189,7 @@ static ssize_t feature_config_value_store(struct device *device,
 
 static DEVICE_ATTR_RW(feature_config_value);
 
-static struct attribute *zynqmp_firmware_attrs[] = {
+static const struct attribute *zynqmp_firmware_attrs[] = {
 	&dev_attr_ggs0.attr,
 	&dev_attr_ggs1.attr,
 	&dev_attr_ggs2.attr,
@@ -2192,7 +2205,18 @@ static struct attribute *zynqmp_firmware_attrs[] = {
 	NULL,
 };
 
-ATTRIBUTE_GROUPS(zynqmp_firmware);
+static int zynqmp_firmware_pm_sysfs_entry(struct platform_device *pdev)
+{
+	int ret;
+
+	ret = sysfs_create_files(&pdev->dev.kobj, zynqmp_firmware_attrs);
+	if (ret) {
+		pr_err("%s() Failed to create PM firmware attrs, err=%d\n",
+		       __func__, ret);
+	}
+
+	return ret;
+}
 
 /**
  * zynqmp_clear_pm_state() - Clear subsystem state
@@ -2347,6 +2371,13 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	ret = zynqmp_firmware_pm_sysfs_entry(pdev);
+	if (ret) {
+		pr_err("%s() Failed to create sysfs file with error%d\n",
+		       __func__, ret);
+		return ret;
+	}
+
 	zynqmp_pm_api_debugfs_init();
 
 	if (pm_family_code != PM_ZYNQMP_FAMILY_CODE) {
@@ -2381,19 +2412,6 @@ static void zynqmp_firmware_remove(struct platform_device *pdev)
 	platform_device_unregister(em_dev);
 }
 
-static void zynqmp_firmware_sync_state(struct device *dev)
-{
-	struct device_node *np = dev->of_node;
-
-	if (!of_device_is_compatible(np, "xlnx,zynqmp-firmware"))
-		return;
-
-	of_genpd_sync_state(np);
-
-	if (zynqmp_pm_init_finalize())
-		dev_warn(dev, "failed to release power management to firmware\n");
-}
-
 static const struct platform_fw_data platform_fw_data_versal = {
 	.family_code = PM_VERSAL_FAMILY_CODE,
 };
@@ -2418,11 +2436,35 @@ static struct platform_driver zynqmp_firmware_driver = {
 	.driver = {
 		.name = "zynqmp_firmware",
 		.of_match_table = zynqmp_firmware_of_match,
-		.dev_groups = zynqmp_firmware_groups,
-		.sync_state = zynqmp_firmware_sync_state,
 	},
 	.probe = zynqmp_firmware_probe,
 	.remove = zynqmp_firmware_remove,
 	.shutdown = zynqmp_firmware_shutdown,
 };
 module_platform_driver(zynqmp_firmware_driver);
+
+/*
+ * pm_init_finalize was previously called from the firmware driver's
+ * sync_state callback, but sync_state can be blocked indefinitely if
+ * any device consumer never probes. Use late_initcall to ensure
+ * pm_init_finalize is called reliably regardless of consumer
+ * probe status.
+ */
+static int __init zynqmp_pm_init_finalize_late(void)
+{
+	u32 pm_family_code;
+	int ret;
+
+	ret = zynqmp_pm_get_family_info(&pm_family_code);
+	if (ret)
+		return ret;
+
+	if (pm_family_code != PM_ZYNQMP_FAMILY_CODE)
+		return 0;
+
+	if (zynqmp_pm_init_finalize())
+		pr_warn("zynqmp: failed to release power management to firmware\n");
+
+	return 0;
+}
+late_initcall(zynqmp_pm_init_finalize_late);
